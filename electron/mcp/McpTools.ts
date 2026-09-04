@@ -5,9 +5,11 @@ import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
 import { clampHistoryLimit, visibleTabs } from '../../shared/mcpPolicy';
 import {
-  batchTextLimit, bookmarkTargets, clampPageText, readUrlTargets, safeOpenUrl, tidyLinks,
+  batchTextLimit, bookmarkTargets, clampPageText, groupTargets, readUrlTargets, safeOpenUrl,
+  tidyLinks, trackingFreeUrl,
   MCP_SHOT_QUALITY, MCP_SHOT_WIDTH, type McpLink,
 } from '../../shared/mcpArgs';
+import type { GroupNode, SidebarNode } from '../../shared/ipc';
 import type { HistoryManager } from '../HistoryManager';
 
 // Три инструмента на чтение — тела вызовов MCP-сервера.
@@ -376,6 +378,69 @@ export function openTab(rawUrl: unknown, background: unknown): McpWriteResult {
 }
 
 /**
+ * Группа с таким именем в сайдбаре — или ничего.
+ *
+ * ⚠️ ПО ИМЕНИ, а не по id: наших идентификаторов у агента нет и быть не должно, он видит ровно то
+ * же, что человек в сайдбаре. Регистр не важен — «Кресла» и «кресла» это одна группа, заводить
+ * вторую глупо.
+ *
+ * ⚠️ Живёт ЗДЕСЬ, а не в TabManager: «найти группу по имени, которое назвала чужая программа» —
+ * это про наш фасад наружу, а не про управление вкладками. Дерево у менеджера и так спрашивается
+ * публично (sidebarNodesSnapshot).
+ */
+function findGroupByLabel(nodes: readonly SidebarNode[], name: string): string | null {
+  const want = name.trim().toLowerCase();
+  if (!want) return null;
+  const hit = nodes.find((n): n is GroupNode => n.type === 'group' && n.label.trim().toLowerCase() === want);
+  return hit?.id ?? null;
+}
+
+/**
+ * Собрать вкладки в группу сайдбара.
+ *
+ * ⚠️ Заведено по прямой просьбе: складывать найденное можно не только в закладки — у сайдбара есть
+ * группы, и для «разбери, что открыто» они уместнее. Закладка это «сохранить на потом», группа —
+ * «прибраться сейчас».
+ *
+ * ⚠️ Группа ищется ПО ИМЕНИ и создаётся, если её нет: у агента нет наших идентификаторов, он
+ * видит только то же, что человек в сайдбаре.
+ *
+ * ⚠️ Кладём ТОЛЬКО ВИДИМЫЕ снаружи вкладки (visibleTabs), даже если id прислали чужой: приватная
+ * вкладка, утащенная в группу, — это не перестановка, а раскрытие того, что человек прятал.
+ */
+export function groupTabs(args: Record<string, unknown>): McpWriteResult {
+  const ctx = activeContext();
+  if (!ctx) return { ok: false, note: 'No browser window is open.' };
+  const target = groupTargets(args);
+  if (!target.ok) return { ok: false, note: target.error };
+
+  const visible = new Set(visibleTabs(ctx.tabs.snapshot()).map((t) => t.id));
+  const ids = target.tabIds.filter((id) => visible.has(id));
+  if (ids.length === 0) return { ok: false, note: 'No such tabs. Call tabs_list first.' };
+
+  let groupId = findGroupByLabel(ctx.tabs.sidebarNodesSnapshot(), target.name);
+  let moved = 0;
+  if (groupId === null) {
+    // ⚠️ Группа создаётся ИЗ ПЕРВОЙ вкладки — другого способа завести её нет (createGroup берёт
+    // вкладку и оборачивает её узлом), поэтому первая уже внутри и второй раз не добавляется.
+    const first = ids[0] as string;
+    groupId = ctx.tabs.createGroup(first);
+    if (groupId === null) return { ok: false, note: 'The browser refused to create a group.' };
+    ctx.tabs.renameGroup(groupId, target.name);
+    moved = 1;
+  }
+  for (const id of ids.slice(moved)) {
+    ctx.tabs.addTabToGroup(groupId, id);
+    moved++;
+  }
+  const skipped = target.tabIds.length - ids.length;
+  return {
+    ok: true,
+    note: `Собрано ${moved} в группу «${target.name}»${skipped > 0 ? `, пропущено ${skipped} (таких вкладок нет)` : ''}`,
+  };
+}
+
+/**
  * Переключиться на уже открытую вкладку.
  *
  * ⚠️ Переключать можно ТОЛЬКО то, что и так видно снаружи: приватная вкладка и наш интерфейс
@@ -438,14 +503,17 @@ export async function readUrl(args: Record<string, unknown>): Promise<McpPageBat
  * вызову огрызок от первого.
  */
 async function readOne(win: BrowserWindow, url: string, limit: number): Promise<McpPage> {
-  const hit = cached(url);
+  // ⚠️ Ключ кеша — адрес БЕЗ МЕТОК СЛЕЖЕНИЯ: у маркетплейса та же карточка приходит с новым
+  // `advert` при каждом показе, и по полному адресу кеш промахивался бы всегда.
+  const key = trackingFreeUrl(url);
+  const hit = cached(key);
   if (hit) return { ok: true, url, title: hit.title, text: clampTo(hit.text, limit), cached: true };
 
   const res = await extractUrlText(win, url);
   if (!res.ok || !res.text?.trim()) {
     return { ok: false, url, error: 'Could not read this page (it did not load, or has no readable text).' };
   }
-  remember(url, res.title, res.text);
+  remember(key, res.title, res.text);
   return { ok: true, url, title: res.title, text: clampTo(res.text, limit) };
 }
 

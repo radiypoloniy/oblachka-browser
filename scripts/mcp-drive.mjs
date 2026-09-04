@@ -151,7 +151,7 @@ await withStand(async (ctx) => {
 
   const list = await c.send('tools/list', {});
   const tools = list?.result?.tools ?? [];
-  check('инструменты отдаются', tools.length === 11, `их ${tools.length}`);
+  check('инструменты отдаются', tools.length === 12, `их ${tools.length}`);
   check('у каждого есть схема и аннотации',
     tools.every((t) => t.inputSchema?.type === 'object' && typeof t.annotations?.readOnlyHint === 'boolean'));
   check('чтение помечено чтением',
@@ -204,48 +204,6 @@ await withStand(async (ctx) => {
   check('неподдержанная версия отбивается со списком',
     badVersion?.error?.code === -32602 && Array.isArray(badVersion?.error?.data?.supported),
     JSON.stringify(badVersion));
-
-  // ── Снимок страницы ───────────────────────────────────────────────────────
-  //
-  // ⚠️ Проверяется то, ради чего инструмент заведён: агент получает КАРТИНКУ протокола, а не
-  // JSON с base64 внутри текста. Разница принципиальная — во втором случае модель видит полмега
-  // мусорных символов, за которые платит человек, и ничего на них не разглядит.
-  // ⚠️ Снимаем НАСТОЯЩУЮ страницу: активная вкладка стенда — наш собственный интерфейс, а его
-  // политика видимости наружу не отдаёт (и правильно делает). Открываем эхо-страницу и ждём
-  // кадра: capturePage возвращает пустоту, пока страница не скомпонована.
-  await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(ctx.echo.url('/?shot=1'))})`);
-  // ⚠️ Ждём с запасом: capturePage возвращает пустой кадр, пока страница не скомпонована, и на
-  // загруженной машине первая компоновка занимает заметно больше, чем загрузка эхо-страницы.
-  //
-  // ⚠️ Окно поднимаем ЯВНО: у окна, не выведенного на экран, Chromium отвечает «current display
-  // surface not available for capture» — снять можно только то, что отрисовано. В бою это честный
-  // отказ (человек свернул браузер), а в прогоне — ложное красное.
-  await ctx.evalMain(`(() => {
-    const w = ${E}.BrowserWindow.getAllWindows().filter((x) => x.getParentWindow() === null)[0];
-    if (w) { w.show(); w.focus(); }
-    return true;
-  })()`);
-  await wait(3500);
-  const shotCall = await c.send('tools/call', { name: 'page_screenshot', arguments: {} });
-  const parts = shotCall?.result?.content ?? [];
-  const image = parts.find((p) => p.type === 'image');
-  check('снимок приходит картинкой протокола', !!image, JSON.stringify(parts).slice(0, 160));
-  check('и это JPEG', image?.mimeType === 'image/jpeg', String(image?.mimeType));
-  check('рядом есть текст с адресом страницы',
-    parts.some((p) => p.type === 'text' && p.text.includes('127.0.0.1')),
-    JSON.stringify(parts.filter((p) => p.type === 'text')).slice(0, 200));
-  // ⚠️ Размер под контролем: снимок окна в PNG — это мегабайты, которые поедут строкой через
-  // канал и лягут в контекст модели целиком. Уменьшенный JPEG обязан быть заметно меньше.
-  const shotBytes = (image?.data?.length ?? 0) * 3 / 4;
-  check('снимок ужат до разумного размера', shotBytes > 1000 && shotBytes < 900_000,
-    `${Math.round(shotBytes / 1024)} КБ`);
-  // ⚠️ base64 отдаётся ГОЛЫМ, без префикса data: — так требует протокол, и клиенты, добавляющие
-  // префикс сами, получили бы битую картинку.
-  check('данные без префикса data:', !String(image?.data ?? '').startsWith('data:'),
-    String(image?.data ?? '').slice(0, 24));
-  // ⚠️ Машинной копии у снимка нет намеренно: туда уехал бы тот же base64 вторым экземпляром.
-  check('машинной копии снимка нет', shotCall?.result?.structuredContent === undefined,
-    JSON.stringify(shotCall?.result?.structuredContent ?? null).slice(0, 80));
 
   // ── Готовые сценарии ──────────────────────────────────────────────────────
   //
@@ -300,6 +258,59 @@ await withStand(async (ctx) => {
   const wild = await c.send('tools/call', { name: 'bookmarks_search', arguments: { query: '%' } });
   check('проценты не находят всё подряд',
     JSON.parse(textOf(wild) || '{}').count === 0, textOf(wild).slice(0, 160));
+
+  // ── Вкладки в группу сайдбара ─────────────────────────────────────────────
+  //
+  // ⚠️ Закладка — «сохранить на потом», группа — «прибраться сейчас», и для «разбери, что открыто»
+  // уместна вторая. Группа ищется по ИМЕНИ и создаётся, если её нет: наших идентификаторов у
+  // агента нет, он видит ровно то же, что человек в сайдбаре.
+  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setStance(${JSON.stringify(CLIENT.toLowerCase())}, 'tabs_group', 'allow'); return true; })()`);
+  // ⚠️ Открываем ДВЕ НАСТОЯЩИЕ страницы: `about:blank` в список вкладок не попадает — наружу
+  // отдаётся только то, что человек считает страницей (см. visibleTabs), и группировать было бы
+  // нечего. Первая версия этой проверки так и краснела на пустом списке.
+  await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(ctx.echo.url('/?g=1'))})`);
+  await wait(700);
+  await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(ctx.echo.url('/?g=2'))})`);
+  await wait(1500);
+  const forGroup = await c.send('tools/call', { name: 'tabs_list', arguments: {} });
+  const tabsNow = JSON.parse(textOf(forGroup) || '{}').tabs ?? [];
+  const ids = tabsNow.map((t) => t.id).slice(0, 2);
+  check('есть что группировать', ids.length >= 2, JSON.stringify(tabsNow).slice(0, 160));
+
+  const grouped = await c.send('tools/call', {
+    name: 'tabs_group',
+    arguments: { tabIds: ids, name: 'Кресла' },
+  });
+  check('вкладки собраны в группу', /Собрано 2 в группу/.test(textOf(grouped)), textOf(grouped).slice(0, 160));
+
+  const sidebar = await ctx.evalMain(`
+    (() => {
+      const tabs = ${E}.BrowserWindow.getAllWindows()
+        .filter((w) => w.getParentWindow() === null)[0];
+      const ctx2 = ${MOD('WindowRegistry.js')}.contextForWindow(tabs);
+      const node = ctx2.tabs.sidebarNodesSnapshot().find((n) => n.type === 'group' && n.label === 'Кресла');
+      return node ? String(ctx2.tabs.getGroupContents(node.id).length) : 'группы нет';
+    })()
+  `);
+  check('группа появилась в сайдбаре и в ней обе вкладки', sidebar === '2', sidebar);
+
+  // ⚠️ Повтор с тем же именем кладёт В ТУ ЖЕ группу, а не создаёт вторую с тем же названием:
+  // человек, попросивший «добавь ещё сюда же», получил бы две «Кресла» в сайдбаре.
+  const forGroup2 = await c.send('tools/call', { name: 'tabs_list', arguments: {} });
+  const more = (JSON.parse(textOf(forGroup2) || '{}').tabs ?? [])
+    .map((t) => t.id).filter((id) => !ids.includes(id)).slice(0, 1);
+  if (more.length > 0) {
+    await c.send('tools/call', { name: 'tabs_group', arguments: { tabIds: more, name: 'кресла' } });
+    const same = await ctx.evalMain(`
+      (() => {
+        const win = ${E}.BrowserWindow.getAllWindows().filter((w) => w.getParentWindow() === null)[0];
+        const ctx2 = ${MOD('WindowRegistry.js')}.contextForWindow(win);
+        const node = ctx2.tabs.sidebarNodesSnapshot().find((n) => n.type === 'group' && n.label === 'Кресла');
+        return node ? String(ctx2.tabs.getGroupContents(node.id).length) : 'группы нет';
+      })()
+    `);
+    check('имя без учёта регистра ведёт в ту же группу', same === '3', same);
+  }
 
   // ── Сохранение в закладки ─────────────────────────────────────────────────
   //
@@ -526,6 +537,75 @@ await withStand(async (ctx) => {
     })()
   `);
   check('после ответа окно вопроса скрыто', hidden === 'false' || hidden === 'нет окна', hidden);
+
+  // ── Снимок страницы ───────────────────────────────────────────────────────
+  //
+  // ⚠️ Проверяется то, ради чего инструмент заведён: агент получает КАРТИНКУ протокола, а не
+  // JSON с base64 внутри текста. Разница принципиальная — во втором случае модель видит полмега
+  // мусорных символов, за которые платит человек, и ничего на них не разглядит.
+  // ⚠️ Снимаем НАСТОЯЩУЮ страницу: активная вкладка стенда — наш собственный интерфейс, а его
+  // политика видимости наружу не отдаёт (и правильно делает). Открываем эхо-страницу и ждём
+  // кадра: capturePage возвращает пустоту, пока страница не скомпонована.
+  // ⚠️ Вкладку не только открываем, но и ДЕЛАЕМ АКТИВНОЙ нашим же инструментом: снимок берёт
+  // активную, а после группировки и прочих перестановок активной может оказаться другая — и тогда
+  // краснеет не снимок, а порядок проверок.
+  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setStance(${JSON.stringify(CLIENT.toLowerCase())}, 'tabs_activate', 'allow'); return true; })()`);
+  await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(ctx.echo.url('/?shot=1'))})`);
+  // ⚠️ Ждём с запасом: capturePage возвращает пустой кадр, пока страница не скомпонована, и на
+  // загруженной машине первая компоновка занимает заметно больше, чем загрузка эхо-страницы.
+  //
+  // ⚠️ Окно поднимаем ЯВНО: у окна, не выведенного на экран, Chromium отвечает «current display
+  // surface not available for capture» — снять можно только то, что отрисовано. В бою это честный
+  // отказ (человек свернул браузер), а в прогоне — ложное красное.
+  await ctx.evalMain(`(() => {
+    const w = ${E}.BrowserWindow.getAllWindows().filter((x) => x.getParentWindow() === null)[0];
+    if (w) { w.show(); w.focus(); }
+    return true;
+  })()`);
+  // ⚠️ Ждём САМУ СТРАНИЦУ, а не время: пока её таргет не поднялся, снимать нечего, и слепая пауза
+  // на загруженной машине то хватает, то нет.
+  await ctx.findTarget((t) => t.url?.includes('shot=1'));
+  await wait(1500);
+  const forShot = await c.send('tools/call', { name: 'tabs_list', arguments: {} });
+  const shotTab = (JSON.parse(textOf(forShot) || '{}').tabs ?? []).find((t) => t.url.includes('shot=1'));
+  if (shotTab) {
+    await c.send('tools/call', { name: 'tabs_activate', arguments: { tabId: shotTab.id } });
+    await wait(1200);
+  }
+  check('снимаемая вкладка нашлась и стала активной', !!shotTab, JSON.stringify(shotTab ?? null));
+  // ⚠️ До трёх попыток, и это про СТЕНД, а не про продукт: окно прогона может быть не выведено на
+  // экран (свёрнуто системой, перекрыто), а снять можно только отрисованное. В бою тот же отказ
+  // честен — человек свернул браузер, — но красить прогон из-за оконного менеджера незачем.
+  let shotCall = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    shotCall = await c.send('tools/call', { name: 'page_screenshot', arguments: {} });
+    if ((shotCall?.result?.content ?? []).some((p) => p.type === 'image')) break;
+    await ctx.evalMain(`(() => {
+      const w = ${E}.BrowserWindow.getAllWindows().filter((x) => x.getParentWindow() === null)[0];
+      if (w) { w.restore(); w.show(); w.focus(); }
+      return true;
+    })()`);
+    await wait(1500);
+  }
+  const parts = shotCall?.result?.content ?? [];
+  const image = parts.find((p) => p.type === 'image');
+  check('снимок приходит картинкой протокола', !!image, JSON.stringify(parts).slice(0, 160));
+  check('и это JPEG', image?.mimeType === 'image/jpeg', String(image?.mimeType));
+  check('рядом есть текст с адресом страницы',
+    parts.some((p) => p.type === 'text' && p.text.includes('127.0.0.1')),
+    JSON.stringify(parts.filter((p) => p.type === 'text')).slice(0, 200));
+  // ⚠️ Размер под контролем: снимок окна в PNG — это мегабайты, которые поедут строкой через
+  // канал и лягут в контекст модели целиком. Уменьшенный JPEG обязан быть заметно меньше.
+  const shotBytes = (image?.data?.length ?? 0) * 3 / 4;
+  check('снимок ужат до разумного размера', shotBytes > 1000 && shotBytes < 900_000,
+    `${Math.round(shotBytes / 1024)} КБ`);
+  // ⚠️ base64 отдаётся ГОЛЫМ, без префикса data: — так требует протокол, и клиенты, добавляющие
+  // префикс сами, получили бы битую картинку.
+  check('данные без префикса data:', !String(image?.data ?? '').startsWith('data:'),
+    String(image?.data ?? '').slice(0, 24));
+  // ⚠️ Машинной копии у снимка нет намеренно: туда уехал бы тот же base64 вторым экземпляром.
+  check('машинной копии снимка нет', shotCall?.result?.structuredContent === undefined,
+    JSON.stringify(shotCall?.result?.structuredContent ?? null).slice(0, 80));
 
   // ── Выключение ────────────────────────────────────────────────────────────
   c.close();

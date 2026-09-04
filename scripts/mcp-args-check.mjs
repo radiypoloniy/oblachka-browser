@@ -7,8 +7,9 @@
 //
 // Запуск: node scripts/mcp-args-check.mjs
 import {
-  MCP_BATCH_MAX, MCP_BOOKMARKS_MAX, MCP_LINKS_MAX,
-  batchTextLimit, bookmarkTargets, confirmSubject, readUrlTargets, tidyLinks,
+  MCP_BATCH_MAX, MCP_BOOKMARKS_MAX, MCP_GROUP_MAX, MCP_LINKS_MAX,
+  batchTextLimit, bookmarkTargets, confirmSubject, groupTargets, readUrlTargets, tidyLinks,
+  trackingFreeUrl,
 } from '../shared/mcpArgs.ts';
 import { findTool } from '../shared/mcpPolicy.ts';
 
@@ -72,6 +73,53 @@ check('лишние адреса сверх предела отсекаются'
 check('одна страница получает полный лимит', batchTextLimit(1), 12000);
 check('восемь делят общий бюджет', batchTextLimit(8), 3000);
 check('мельче минимума не режем', batchTextLimit(50), 3000);
+
+console.log('\n— метки слежения: один товар не должен выглядеть десятью —');
+// ⚠️ ЖИВОЙ СЛУЧАЙ: в выдаче Ozon каждая карточка несёт рекламные метки, и они меняются от показа
+// к показу. Без чистки один товар приезжает несколько раз, дедуп его не схлопывает, кеш
+// промахивается — человек платит за повторное чтение одной и той же страницы.
+check('рекламные метки убраны',
+  trackingFreeUrl('https://www.ozon.ru/product/kreslo-123/?advert=aaa&avtc=1&avte=2'),
+  'https://www.ozon.ru/product/kreslo-123/');
+check('utm-метки любые',
+  trackingFreeUrl('https://a.ru/x?utm_source=ya&utm_campaign=1&id=7'), 'https://a.ru/x?id=7');
+// ⚠️ Список закрытый: параметр — часть адреса, и лишняя чистка ломает то, ради чего он там стоит.
+check('значимые параметры остаются',
+  trackingFreeUrl('https://a.ru/list?page=2&variant=red'), 'https://a.ru/list?page=2&variant=red');
+check('якорь не участвует в сравнении', trackingFreeUrl('https://a.ru/x#comments'), 'https://a.ru/x');
+check('битый адрес возвращается как есть', trackingFreeUrl('не адрес'), 'не адрес');
+check('две ссылки на один товар схлопываются в одну',
+  readUrlTargets({ urls: [
+    'https://www.ozon.ru/product/kreslo-123/?advert=aaa',
+    'https://www.ozon.ru/product/kreslo-123/?advert=bbb&avtc=9',
+  ] }).urls.length, 1);
+check('но читаем по ОРИГИНАЛЬНОМУ адресу — сайту его параметры могут быть нужны',
+  readUrlTargets({ urls: ['https://www.ozon.ru/product/kreslo-123/?advert=aaa'] }).urls[0],
+  'https://www.ozon.ru/product/kreslo-123/?advert=aaa');
+check('то же в ссылках со страницы',
+  tidyLinks([
+    { url: 'https://shop.ru/p/1?advert=x', text: 'товар' },
+    { url: 'https://shop.ru/p/1?advert=y', text: 'он же' },
+  ], 'https://shop.ru/search').length, 1);
+
+console.log('\n— вкладки в группу —');
+// ⚠️ Имя обязательно: безымянная группа в сайдбаре называется «Новая группа», и человек,
+// вернувшийся к ней через час, видит ровно ноль информации о том, что там лежит.
+check('без имени — отказ', groupTargets({ tabIds: ['a'] }).ok, false);
+check('без вкладок — отказ', groupTargets({ name: 'Кресла' }).ok, false);
+check('имя чистится', groupTargets({ tabIds: ['a'], name: '  Кресла  ' }).name, 'Кресла');
+check('одиночный tabId тоже принимается', groupTargets({ tabId: 'a', name: 'Кресла' }).tabIds, ['a']);
+check('дубликаты id схлопываются',
+  groupTargets({ tabIds: ['a', 'a', 'b'], name: 'Кресла' }).tabIds, ['a', 'b']);
+check('мусор в списке пропускается',
+  groupTargets({ tabIds: ['a', 7, null], name: 'Кресла' }).tabIds, ['a']);
+check('сверх предела отсекается',
+  groupTargets({ tabIds: Array.from({ length: MCP_GROUP_MAX + 5 }, (_, i) => `t${i}`), name: 'Кресла' }).tabIds.length,
+  MCP_GROUP_MAX);
+// ⚠️ Карточка называет группу и число вкладок: id человеку ничего не говорят.
+const groupSubj = confirmSubject(findTool('tabs_group'), { tabIds: ['a', 'b'], name: 'Кресла' });
+check('в карточке видно имя группы', groupSubj.includes('Кресла'), true);
+check('и сколько вкладок уедет', groupSubj.includes('2'), true);
 
 console.log('\n— сохранение в закладки —');
 // ⚠️ Пачкой, а не по одной: восемь находок — это восемь карточек подтверждения подряд, и на

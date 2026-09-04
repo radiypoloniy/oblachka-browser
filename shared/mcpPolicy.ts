@@ -235,6 +235,29 @@ export const MCP_TOOLS: readonly McpTool[] = [
     },
   },
   {
+    name: 'tabs_group',
+    mode: 'write',
+    title: 'Собрать вкладки в группу',
+    description:
+      'Put open tabs into a named group in the browser sidebar, creating the group if it does not '
+      + 'exist. Take the ids from tabs_list and pass them in `tabIds`. This is how you TIDY UP for '
+      + 'the user: after reviewing what is open, collect the tabs that belong together instead of '
+      + 'listing them in chat. The group and its name are visible in the sidebar, and the user can '
+      + 'disband it in one move.',
+    input: {
+      type: 'object',
+      properties: {
+        tabIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tab ids from tabs_list.',
+        },
+        name: { type: 'string', description: 'Group name the user will see in the sidebar.' },
+      },
+      required: ['tabIds', 'name'],
+    },
+  },
+  {
     name: 'tabs_activate',
     mode: 'write',
     title: 'Переключить вкладку',

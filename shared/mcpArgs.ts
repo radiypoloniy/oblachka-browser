@@ -38,6 +38,45 @@ export function safeOpenUrl(raw: unknown): string | null {
   }
 }
 
+/**
+ * Метки, по которым один и тот же товар выглядит десятью разными адресами.
+ *
+ * ⚠️ ЖИВОЙ СЛУЧАЙ: в выдаче Ozon каждая карточка несёт рекламные метки (`advert`, `avtc`, `avte`),
+ * и они МЕНЯЮТСЯ ОТ ПОКАЗА К ПОКАЗУ. Без чистки один товар приезжает в списке ссылок несколько раз,
+ * дедуп его не схлопывает, кеш промахивается — то есть человек платит за повторное чтение одной и
+ * той же страницы. То же у маркетплейсов с `from`, `keywords`, `sh` и у всех с `utm_*`.
+ *
+ * ⚠️ СПИСОК ЗАКРЫТЫЙ, а не «всё, что похоже на мусор». Параметр — часть адреса, и лишняя чистка
+ * ломает ровно то, ради чего он там стоит: `?page=2`, `?variant=`, `?id=` — разные страницы.
+ * Сомневаешься — не трогай: цена ошибки здесь «прочитали не ту страницу».
+ */
+const TRACKING_PARAMS: readonly string[] = [
+  'advert', 'advert_id', 'avtc', 'avte', 'avts', 'asb', 'asb2', 'sh', 'from', 'keywords',
+  'gclid', 'yclid', 'ysclid', 'fbclid', '_openstat', 'wbracket', 'oos_search', 'miniapp',
+];
+
+/**
+ * Адрес без меток слежения — ДЛЯ СРАВНЕНИЯ, а не для чтения.
+ *
+ * ⚠️ Читаем всегда по ОРИГИНАЛЬНОМУ адресу: часть сайтов без своих параметров отдаёт другую
+ * страницу или редирект. Нормализованный вид нужен только чтобы понять «это одно и то же» —
+ * в дедупе списка и в ключе кеша.
+ */
+export function trackingFreeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const key of [...u.searchParams.keys()]) {
+      const low = key.toLowerCase();
+      if (low.startsWith('utm_') || TRACKING_PARAMS.includes(low)) u.searchParams.delete(key);
+    }
+    // Хвостовой «?» после чистки — тот же адрес, но строкой другой; убираем, иначе дедуп промахнётся.
+    u.hash = '';
+    return u.searchParams.toString() ? u.toString() : `${u.origin}${u.pathname}`;
+  } catch {
+    return url;
+  }
+}
+
 /** Потолок текста страницы в одном ответе. Разбор — docs/architecture-mcp.md, «Про скорость». */
 export const MCP_TEXT_LIMIT = 12_000;
 
@@ -84,9 +123,11 @@ export function readUrlTargets(args: Record<string, unknown>): BatchTargets {
   for (const item of raw) {
     const safe = safeOpenUrl(item);
     if (!safe) { dropped++; continue; }
-    // Дубликаты в списке — не повод читать одно и то же дважды.
-    if (seen.has(safe)) continue;
-    seen.add(safe);
+    // ⚠️ Дубликаты ищем по адресу БЕЗ МЕТОК СЛЕЖЕНИЯ, а читаем оригинал: в выдаче маркетплейса
+    // один товар приходит несколькими ссылками, отличающимися только рекламной меткой.
+    const key = trackingFreeUrl(safe);
+    if (seen.has(key)) continue;
+    seen.add(key);
     if (urls.length < MCP_BATCH_MAX) urls.push(safe);
     else dropped++;
   }
@@ -106,7 +147,7 @@ export interface McpLink { url: string; text: string }
  */
 export function tidyLinks(raw: unknown, pageUrl: string): McpLink[] {
   if (!Array.isArray(raw)) return [];
-  const here = stripHash(pageUrl);
+  const here = trackingFreeUrl(pageUrl);
   const seen = new Set<string>();
   const out: McpLink[] = [];
   for (const item of raw) {
@@ -114,7 +155,9 @@ export function tidyLinks(raw: unknown, pageUrl: string): McpLink[] {
     const o = item as { url?: unknown; text?: unknown };
     const url = safeOpenUrl(o.url);
     if (!url) continue;
-    const flat = stripHash(url);
+    // ⚠️ Сравниваем без меток слежения: у Ozon одна и та же карточка приходит в выдаче несколько
+    // раз с разными `advert`/`avtc`, и без этого список ссылок наполовину состоит из повторов.
+    const flat = trackingFreeUrl(url);
     if (flat === here || seen.has(flat)) continue;
     seen.add(flat);
     const text = typeof o.text === 'string' ? o.text.replace(/\s+/g, ' ').trim().slice(0, LINK_TEXT_MAX) : '';
@@ -124,10 +167,6 @@ export function tidyLinks(raw: unknown, pageUrl: string): McpLink[] {
   return out;
 }
 
-function stripHash(url: string): string {
-  const cut = url.indexOf('#');
-  return cut === -1 ? url : url.slice(0, cut);
-}
 
 /** ⚠️ Кадр УМЕНЬШАЕМ и жмём JPEG: снимок окна в PNG — мегабайты, которые лягут в контекст модели. */
 export const MCP_SHOT_WIDTH = 1152;
@@ -192,6 +231,43 @@ function cleanFolder(raw: unknown): string | null {
   return name || null;
 }
 
+/** Сколько вкладок кладём в группу за вызов. Больше — это уже не «разложи», а «перетасуй всё». */
+export const MCP_GROUP_MAX = 30;
+
+export type GroupTargets =
+  | { ok: true; tabIds: string[]; name: string }
+  | { ok: false; error: string };
+
+/**
+ * Что программа просит сгруппировать.
+ *
+ * ⚠️ Имя группы ОБЯЗАТЕЛЬНО. Безымянная группа в сайдбаре называется «Новая группа», и человек,
+ * вернувшийся к ней через час, видит ровно ноль информации о том, что там лежит и кто это сложил.
+ *
+ * ⚠️ Идентификаторы вкладок приходят от нас же (tabs_list) и проверяются при выполнении: здесь
+ * только форма. Чужой id ничего не даст — вкладку с ним не найдут, а приватные и внутренние в
+ * список вообще не попадают (см. visibleTabs в mcpPolicy).
+ */
+export function groupTargets(args: Record<string, unknown>): GroupTargets {
+  const raw: unknown[] = Array.isArray(args.tabIds) ? [...args.tabIds] : [];
+  if (typeof args.tabId === 'string') raw.unshift(args.tabId);
+
+  const seen = new Set<string>();
+  const tabIds: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const id = item.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    if (tabIds.length < MCP_GROUP_MAX) tabIds.push(id);
+  }
+  if (tabIds.length === 0) return { ok: false, error: 'Pass tab ids from tabs_list in `tabIds`.' };
+
+  const name = typeof args.name === 'string' ? args.name.replace(/\s+/g, ' ').trim().slice(0, 60) : '';
+  if (!name) return { ok: false, error: 'Argument "name" is required: a group without a name tells the user nothing.' };
+  return { ok: true, tabIds, name };
+}
+
 /**
  * Заголовок карточки — ВОПРОС, а не название действия.
  *
@@ -206,6 +282,7 @@ export function confirmTitle(tool: McpTool): string {
     case 'tabs_activate': return 'Переключить вкладку?';
     case 'tabs_close': return 'Закрыть вкладку?';
     case 'bookmarks_add': return 'Сохранить в закладки?';
+    case 'tabs_group': return 'Собрать вкладки в группу?';
     default: return `Разрешить «${tool.title}»?`;
   }
 }
@@ -246,6 +323,16 @@ export function confirmSubject(tool: McpTool, args: Record<string, unknown>): st
         .join('\n\n');
       const where = targets.folder ? `Папка «${targets.folder}»` : 'В корень закладок';
       return `${where}\n\n${list}`;
+    }
+    case 'tabs_group': {
+      const g = groupTargets(args);
+      if (!g.ok) return 'Программа не назвала ни одной вкладки или имя группы.';
+      // ⚠️ Число вкладок, а не их список: id человеку ничего не говорят, а заголовки сюда не
+      // доедут — карточка собирается из аргументов вызова, без обращения к браузеру.
+      const many = g.tabIds.length;
+      return `Группа «${g.name}»
+
+В неё уйдёт ${many} ${many === 1 ? 'вкладка' : 'вкладок'}. Разобрать группу можно в сайдбаре.`;
     }
     case 'tabs_activate':
       return 'Браузер переключится на другую открытую вкладку.';

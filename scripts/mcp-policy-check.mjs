@@ -31,7 +31,13 @@ console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
 check('состав каталога', MCP_TOOLS.map((t) => t.name),
   ['tabs_list', 'page_text', 'page_screenshot', 'page_links', 'history_search', 'bookmarks_search',
-    'page_read_url', 'bookmarks_add', 'tabs_open', 'tabs_activate', 'tabs_close']);
+    'page_read_url', 'bookmarks_add', 'tabs_open', 'tabs_group', 'tabs_activate', 'tabs_close']);
+// ⚠️ Группировка вкладок — запись, и обратимая: группу видно в сайдбаре и можно расформировать
+// одним движением, поэтому «разрешать всегда» у неё есть.
+check('группировка — запись', findTool('tabs_group').mode, 'write');
+check('спрашивает по умолчанию', defaultStance(findTool('tabs_group')), 'ask');
+check('и разрешается навсегда', canRemember(findTool('tabs_group')), true);
+check('имя группы обязательно', findTool('tabs_group').input.required, ['tabIds', 'name']);
 // ⚠️ Сохранение в закладки — ЗАПИСЬ, то есть спрашивает. Но оно обратимо (закладку видно и можно
 // удалить), поэтому «разрешать всегда» у него есть — в отличие от закрытия вкладок.
 check('сохранение закладок — запись', findTool('bookmarks_add').mode, 'write');
