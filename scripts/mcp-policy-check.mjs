@@ -9,8 +9,8 @@ import {
   MCP_HISTORY_MAX, MCP_TEXT_LIMIT,
   MCP_CONFIRM_TTL_MS,
   annotationsFor, approvalFits, clampHistoryLimit, clampPageText, clientKey, clientLabel,
-  canRemember, confirmSubject, confirmTitle, decide, defaultStance, eraOf, findTool,
-  isClosedName, mustAsk,
+  canonicalToolName, canRemember, confirmSubject, confirmTitle, decide, defaultStance, eraOf,
+  findTool, isClosedName, mustAsk,
   pickVersion, safeOpenUrl, stanceFor, visibleTabs,
 } from '../shared/mcpPolicy.ts';
 
@@ -27,8 +27,8 @@ const ALL = { connected: true, stances: {} };
 console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
 check('состав каталога', MCP_TOOLS.map((t) => t.name),
-  ['tabs.list', 'page.text', 'history.search', 'page.read_url',
-    'tabs.open', 'tabs.activate', 'tabs.close']);
+  ['tabs_list', 'page_text', 'history_search', 'page_read_url',
+    'tabs_open', 'tabs_activate', 'tabs_close']);
 // ⚠️ Главный инвариант захода 2: КАЖДЫЙ инструмент на запись проходит через вопрос человеку.
 // Забытое подтверждение — это чужая программа, меняющая браузер молча.
 // ⚠️ Главный инвариант захода 3: пока человек не решил иначе, ЛЮБАЯ запись спрашивает, а чтение
@@ -38,13 +38,33 @@ check('запись по умолчанию спрашивает',
   MCP_TOOLS.filter((t) => t.mode === 'write' && defaultStance(t) !== 'ask'), []);
 check('обычное чтение идёт молча',
   MCP_TOOLS.filter((t) => t.mode === 'read' && !t.sensitive && defaultStance(t) !== 'allow'), []);
-// ⚠️ Чтение ЛЮБОГО адреса куками человека — тоже вопрос, хотя браузер оно не меняет: page.text
-// отдаёт страницу, которую человек и так видит, а page.read_url — любую, какую выберет программа.
-check('чтение чужого адреса спрашивает', defaultStance(findTool('page.read_url')), 'ask');
-check('и его можно разрешить навсегда', canRemember(findTool('page.read_url')), true);
-check('«прочитать по адресу» помечено чувствительным', findTool('page.read_url').sensitive, true);
+// ⚠️ Чтение ЛЮБОГО адреса куками человека — тоже вопрос, хотя браузер оно не меняет: page_text
+// отдаёт страницу, которую человек и так видит, а page_read_url — любую, какую выберет программа.
+// ── Имя инструмента: подчёркивание, а не точка ──────────────────────────────────────────────
+//
+// ⚠️ СЛУЧАЙ ИЗ ЖИЗНИ 04.09.2026, и он стоил дня разбора. Спецификация MCP точку в имени допускает,
+// а провайдерские API — нет: и Anthropic, и OpenAI требуют ^[a-zA-Z0-9_-]{1,64}$. Клиент, ведущий
+// разговор через такую модель, заменяет точку на подчёркивание у себя и зовёт сервер уже
+// изменённым именем — обратно не переводит никто. Cursor звал `tabs_open`, браузер отвечал
+// «такого инструмента нет», в журнале копились `unknown`, карточка не показывалась ни разу, а
+// страницу Cursor открывал своими средствами — со стороны это выглядело как «MCP не работает».
+check('каталог назван через подчёркивание', MCP_TOOLS.every((t) => !t.name.includes('.')), true);
+check('прежнее написание через точку принимается', findTool('tabs.open')?.name, 'tabs_open');
+check('и приводится к каноническому', canonicalToolName('page.read_url'), 'page_read_url');
+check('каноническое имя не портится', canonicalToolName('tabs_open'), 'tabs_open');
+check('незнакомое имя остаётся собой', canonicalToolName('tabs.nuke'), 'tabs.nuke');
+check('незнакомый инструмент по-прежнему не находится', findTool('tabs_nuke'), null);
+// ⚠️ Закрытая категория обязана ловить оба написания: иначе запрет обходится сменой одного символа.
+check('закрытая категория ловит подчёркивание', isClosedName('passwords_list'), true);
+check('и точку', isClosedName('passwords.list'), true);
+check('и составной префикс в обоих видах',
+  [isClosedName('downloads_file'), isClosedName('downloads.file')], [true, true]);
+
+check('чтение чужого адреса спрашивает', defaultStance(findTool('page_read_url')), 'ask');
+check('и его можно разрешить навсегда', canRemember(findTool('page_read_url')), true);
+check('«прочитать по адресу» помечено чувствительным', findTool('page_read_url').sensitive, true);
 check('у остальных чтений пометки нет',
-  MCP_TOOLS.filter((t) => t.mode === 'read' && t.sensitive).map((t) => t.name), ['page.read_url']);
+  MCP_TOOLS.filter((t) => t.mode === 'read' && t.sensitive).map((t) => t.name), ['page_read_url']);
 // ⚠️ Заголовок карточки — ВОПРОС: названием действия она читается как сообщение, которое можно
 // не заметить (тот же закон, что у карточки разрешений сайта).
 check('у каждой записи заголовок — вопрос',
@@ -53,7 +73,7 @@ check('у каждой записи есть предмет вопроса',
   MCP_TOOLS.filter((t) => t.mode === 'write' && confirmSubject(t, {}).length < 5), []);
 // Адрес в карточке — проверенный, а не тот, что прислали.
 check('в карточке показывается разобранный адрес',
-  confirmSubject(findTool('tabs.open'), { url: 'https://ok.ru' }), 'https://ok.ru/');
+  confirmSubject(findTool('tabs_open'), { url: 'https://ok.ru' }), 'https://ok.ru/');
 check('у каждого инструмента объявлен режим',
   MCP_TOOLS.filter((t) => t.mode !== 'read' && t.mode !== 'write'), []);
 check('у каждого есть описание для чужого клиента',
@@ -74,47 +94,47 @@ check('хранилище закрыто', isClosedName('vault.reveal'), true);
 check('куки закрыты', isClosedName('cookies.get'), true);
 check('автозаполнение закрыто', isClosedName('autofill.profile'), true);
 check('приватные вкладки закрыты как категория', isClosedName('private.tabs'), true);
-check('открытая вкладка — не закрытая категория', isClosedName('tabs.list'), false);
-check('текст страницы — не закрытая категория', isClosedName('page.text'), false);
+check('открытая вкладка — не закрытая категория', isClosedName('tabs_list'), false);
+check('текст страницы — не закрытая категория', isClosedName('page_text'), false);
 check('закрытых корней восемь', MCP_CLOSED_PREFIXES.length, 8);
 
 console.log('\n— кому и что позволено —');
-check('знакомый инструмент подтверждённому клиенту', decide('tabs.list', ALL).ok, true);
+check('знакомый инструмент подтверждённому клиенту', decide('tabs_list', ALL).ok, true);
 check('незнакомое имя', decide('tabs.nuke', ALL).reason, 'unknown');
 check('выключенный тумблером',
-  decide('page.text', { connected: true, stances: { 'page.text': 'deny' } }).reason, 'disabled');
+  decide('page_text', { connected: true, stances: { 'page_text': 'deny' } }).reason, 'disabled');
 check('выключение одного не трогает соседей',
-  decide('tabs.list', { connected: true, stances: { 'page.text': 'deny' } }).ok, true);
+  decide('tabs_list', { connected: true, stances: { 'page_text': 'deny' } }).ok, true);
 // ⚠️ Неподтверждённый клиент получает ОДИН И ТОТ ЖЕ отказ на любое имя — иначе перебором имён
 // он узнаёт состав каталога и то, чем человек пользуется, ещё до всякого разрешения.
 check('неподтверждённому — отказ на существующее имя',
-  decide('tabs.list', { connected: false, stances: {} }).reason, 'not-connected');
+  decide('tabs_list', { connected: false, stances: {} }).reason, 'not-connected');
 check('неподтверждённому — тот же отказ на выдуманное имя',
   decide('нет-такого', { connected: false, stances: {} }).reason, 'not-connected');
 check('и слова у обоих отказов совпадают',
-  decide('tabs.list', { connected: false, stances: {} }).message
+  decide('tabs_list', { connected: false, stances: {} }).message
     === decide('нет-такого', { connected: false, stances: {} }).message, true);
-check('поиск по имени', findTool('history.search')?.mode, 'read');
+check('поиск по имени', findTool('history_search')?.mode, 'read');
 check('поиск несуществующего', findTool('history.nuke'), null);
 
 console.log('\n— аннотации для чужого клиента —');
-check('чтение помечено чтением', annotationsFor(findTool('tabs.list')).readOnlyHint, true);
-check('чтение не разрушительно', annotationsFor(findTool('tabs.list')).destructiveHint, false);
+check('чтение помечено чтением', annotationsFor(findTool('tabs_list')).readOnlyHint, true);
+check('чтение не разрушительно', annotationsFor(findTool('tabs_list')).destructiveHint, false);
 // ⚠️ Открытый мир везде: ответ зависит от живого веба, и повторный вызов даст другое.
 check('открытый мир у всех', MCP_TOOLS.every((t) => annotationsFor(t).openWorldHint), true);
-// ⚠️ Идемпотентно только чтение: повторный tabs.open откроет ВТОРУЮ вкладку, и клиент, решивший
+// ⚠️ Идемпотентно только чтение: повторный tabs_open откроет ВТОРУЮ вкладку, и клиент, решивший
 // «можно смело повторить», сделал бы человеку два окна вместо одного.
 check('чтение идемпотентно',
   MCP_TOOLS.filter((t) => t.mode === 'read').every((t) => annotationsFor(t).idempotentHint), true);
 check('запись — нет',
   MCP_TOOLS.filter((t) => t.mode === 'write').every((t) => !annotationsFor(t).idempotentHint), true);
 // Будущая запись: добавление против необратимого — разные карточки у клиента.
-const openTab = { name: 'tabs.open', mode: 'write', title: '', description: '', input: { type: 'object', properties: {} } };
-const closeTab = { name: 'tabs.close', mode: 'write', title: '', description: '', input: { type: 'object', properties: {} } };
+const openTab = { name: 'tabs_open', mode: 'write', title: '', description: '', input: { type: 'object', properties: {} } };
+const closeTab = { name: 'tabs_close', mode: 'write', title: '', description: '', input: { type: 'object', properties: {} } };
 check('открыть вкладку — добавление', annotationsFor(openTab).destructiveHint, false);
 check('закрыть вкладку — необратимо', annotationsFor(closeTab).destructiveHint, true);
 check('запись требует подтверждения', mustAsk(openTab, {}), true);
-check('чтение не требует', mustAsk(findTool('page.text'), {}), false);
+check('чтение не требует', mustAsk(findTool('page_text'), {}), false);
 // ⚠️ «Разрешать всегда» есть у добавляющего и НЕТ у необратимого: одним нажатием разрешить
 // закрывать вкладки навсегда человек не должен даже при желании.
 check('«всегда» можно для открытия', canRemember(openTab), true);
@@ -122,17 +142,17 @@ check('«всегда» нельзя для закрытия', canRemember(close
 
 console.log('\n— решение человека сильнее умолчания —');
 check('разрешил молча — не спрашиваем',
-  mustAsk(openTab, { 'tabs.open': 'allow' }), false);
+  mustAsk(openTab, { 'tabs_open': 'allow' }), false);
 check('запретил — decide отказывает',
-  decide('tabs.open', { connected: true, stances: { 'tabs.open': 'deny' } }).reason, 'disabled');
-check('вернул «спрашивать»', mustAsk(openTab, { 'tabs.open': 'ask' }), true);
+  decide('tabs_open', { connected: true, stances: { 'tabs_open': 'deny' } }).reason, 'disabled');
+check('вернул «спрашивать»', mustAsk(openTab, { 'tabs_open': 'ask' }), true);
 // ⚠️ Мусор в записи не должен молча превращаться в разрешение: неизвестное значение — умолчание.
 check('мусор в записи читается как умолчание',
-  stanceFor(openTab, { 'tabs.open': 'да конечно' }), 'ask');
+  stanceFor(openTab, { 'tabs_open': 'да конечно' }), 'ask');
 check('решение про соседа не задевает',
-  mustAsk(openTab, { 'tabs.close': 'allow' }), true);
+  mustAsk(openTab, { 'tabs_close': 'allow' }), true);
 check('чтение можно и запретить',
-  decide('tabs.list', { connected: true, stances: { 'tabs.list': 'deny' } }).reason, 'disabled');
+  decide('tabs_list', { connected: true, stances: { 'tabs_list': 'deny' } }).reason, 'disabled');
 
 console.log('\n— что видно снаружи —');
 const tabs = [
@@ -207,16 +227,16 @@ check('слишком длинный', safeOpenUrl('https://a.com/' + 'x'.repeat
 
 console.log('\n— подтверждение живёт недолго и только на своё —');
 const now = 1_000_000;
-const given = { tool: 'tabs.open', digest: 'D1', at: now };
-check('своё подтверждение годится', approvalFits(given, { tool: 'tabs.open', digest: 'D1' }, now), true);
+const given = { tool: 'tabs_open', digest: 'D1', at: now };
+check('своё подтверждение годится', approvalFits(given, { tool: 'tabs_open', digest: 'D1' }, now), true);
 // ⚠️ Без слепка аргументов подтверждённое «открыть habr.ru» открывало бы что угодно.
-check('другие аргументы — не годится', approvalFits(given, { tool: 'tabs.open', digest: 'D2' }, now), false);
-check('другой инструмент — не годится', approvalFits(given, { tool: 'tabs.close', digest: 'D1' }, now), false);
-check('в пределах срока', approvalFits(given, { tool: 'tabs.open', digest: 'D1' }, now + MCP_CONFIRM_TTL_MS), true);
-check('просрочено', approvalFits(given, { tool: 'tabs.open', digest: 'D1' }, now + MCP_CONFIRM_TTL_MS + 1), false);
+check('другие аргументы — не годится', approvalFits(given, { tool: 'tabs_open', digest: 'D2' }, now), false);
+check('другой инструмент — не годится', approvalFits(given, { tool: 'tabs_close', digest: 'D1' }, now), false);
+check('в пределах срока', approvalFits(given, { tool: 'tabs_open', digest: 'D1' }, now + MCP_CONFIRM_TTL_MS), true);
+check('просрочено', approvalFits(given, { tool: 'tabs_open', digest: 'D1' }, now + MCP_CONFIRM_TTL_MS + 1), false);
 // Часы съехали назад — подтверждение «из будущего» не принимаем.
-check('время назад', approvalFits(given, { tool: 'tabs.open', digest: 'D1' }, now - 1), false);
-check('подтверждения не было вовсе', approvalFits(null, { tool: 'tabs.open', digest: 'D1' }, now), false);
+check('время назад', approvalFits(given, { tool: 'tabs_open', digest: 'D1' }, now - 1), false);
+check('подтверждения не было вовсе', approvalFits(null, { tool: 'tabs_open', digest: 'D1' }, now), false);
 check('срок — минута', MCP_CONFIRM_TTL_MS, 60000);
 
 console.log('\n— как называем клиента —');

@@ -53,8 +53,8 @@ export interface McpTool {
   /**
    * Чтение, которое всё равно спрашивают.
    *
-   * ⚠️ Заведено ради `page.read_url`. Он ничего не меняет в браузере — и по режиму это чтение, —
-   * но читает ЛЮБОЙ адрес КУКАМИ ЧЕЛОВЕКА: почту, банк, внутреннюю вики. Разница с `page.text`
+   * ⚠️ Заведено ради `page_read_url`. Он ничего не меняет в браузере — и по режиму это чтение, —
+   * но читает ЛЮБОЙ адрес КУКАМИ ЧЕЛОВЕКА: почту, банк, внутреннюю вики. Разница с `page_text`
    * принципиальная: тот отдаёт страницу, которую человек и так видит на экране, а этот — любую,
    * которую выбрала программа. Молча такое отдавать нельзя.
    */
@@ -78,7 +78,7 @@ export interface McpTool {
  * человека, а читает обычно первую треть. Двенадцать тысяч — это статья целиком и половина
  * длинного лонгрида; что обрезано, сказано в самом ответе, и агент может попросить ещё.
  *
- * ⚠️ Число общее для page.text и page.read_url намеренно: разного потолка у «прочитать открытую»
+ * ⚠️ Число общее для page_text и page_read_url намеренно: разного потолка у «прочитать открытую»
  * и «прочитать по адресу» человек не поймёт, а разойтись они успеют на первой же правке.
  */
 export const MCP_TEXT_LIMIT = 12_000;
@@ -96,7 +96,7 @@ export const MCP_HISTORY_DEFAULT = 10;
  */
 export const MCP_TOOLS: readonly McpTool[] = [
   {
-    name: 'tabs.list',
+    name: 'tabs_list',
     mode: 'read',
     title: 'Открытые вкладки',
     description:
@@ -105,13 +105,13 @@ export const MCP_TOOLS: readonly McpTool[] = [
     input: { type: 'object', properties: {} },
   },
   {
-    name: 'page.text',
+    name: 'page_text',
     mode: 'read',
     title: 'Текст страницы',
     description:
       'Read the main text of the tab the user is looking at right now, without ads, menus or '
       + 'navigation. Takes no arguments: it always reads the ACTIVE tab. To read a DIFFERENT open '
-      + 'tab, take its url from tabs.list and pass it to page.read_url — that reuses the already '
+      + 'tab, take its url from tabs_list and pass it to page_read_url — that reuses the already '
       + 'open tab instead of switching the user away from their work.',
     // ⚠️ Аргумента tabId здесь НЕТ намеренно, и это не забывчивость. Чтение произвольной вкладки
     // по номеру — это уже управление чужим браузером вслепую: агент выбирает, во что заглянуть, а
@@ -120,7 +120,7 @@ export const MCP_TOOLS: readonly McpTool[] = [
     input: { type: 'object', properties: {} },
   },
   {
-    name: 'history.search',
+    name: 'history_search',
     mode: 'read',
     title: 'Поиск по истории',
     description:
@@ -136,7 +136,7 @@ export const MCP_TOOLS: readonly McpTool[] = [
     },
   },
   {
-    name: 'page.read_url',
+    name: 'page_read_url',
     mode: 'read',
     sensitive: true,
     title: 'Прочитать страницу по адресу',
@@ -155,7 +155,7 @@ export const MCP_TOOLS: readonly McpTool[] = [
     },
   },
   {
-    name: 'tabs.open',
+    name: 'tabs_open',
     mode: 'write',
     title: 'Открыть вкладку',
     description:
@@ -171,28 +171,28 @@ export const MCP_TOOLS: readonly McpTool[] = [
     },
   },
   {
-    name: 'tabs.activate',
+    name: 'tabs_activate',
     mode: 'write',
     title: 'Переключить вкладку',
     description:
-      'Switch the browser to an already open tab, by id from tabs.list. Use it before page.text '
+      'Switch the browser to an already open tab, by id from tabs_list. Use it before page_text '
       + 'to read a tab other than the active one. The user is asked to confirm.',
     input: {
       type: 'object',
-      properties: { id: { type: 'string', description: 'Tab id from tabs.list.' } },
+      properties: { id: { type: 'string', description: 'Tab id from tabs_list.' } },
       required: ['id'],
     },
   },
   {
-    name: 'tabs.close',
+    name: 'tabs_close',
     mode: 'write',
     title: 'Закрыть вкладку',
     description:
-      'Close an open tab, by id from tabs.list. The user is asked to confirm; closing cannot be '
+      'Close an open tab, by id from tabs_list. The user is asked to confirm; closing cannot be '
       + 'undone from here.',
     input: {
       type: 'object',
-      properties: { id: { type: 'string', description: 'Tab id from tabs.list.' } },
+      properties: { id: { type: 'string', description: 'Tab id from tabs_list.' } },
       required: ['id'],
     },
   },
@@ -210,13 +210,45 @@ export const MCP_CLOSED_PREFIXES: readonly string[] = [
   'passwords', 'vault', 'cookies', 'autofill', 'forms', 'session', 'downloads.file', 'private',
 ];
 
+/**
+ * ⚠️ Разделитель имени приводим к ОДНОМУ виду прежде, чем сравнивать: `downloads.file` и
+ * `downloads_file` — одно и то же имя, и закрытая категория обязана ловить оба. Иначе запрет
+ * обходится сменой одного символа.
+ */
 export function isClosedName(name: string): boolean {
-  const root = name.toLowerCase().split('.')[0] ?? '';
-  return MCP_CLOSED_PREFIXES.some((p) => name.toLowerCase().startsWith(p) || p === root);
+  const flat = name.toLowerCase().replace(/\./g, '_');
+  const root = flat.split('_')[0] ?? '';
+  return MCP_CLOSED_PREFIXES.some((p) => {
+    const pf = p.toLowerCase().replace(/\./g, '_');
+    return flat.startsWith(pf) || pf === root;
+  });
 }
 
+/**
+ * Имя инструмента в том виде, в каком его знает браузер.
+ *
+ * ⚠️ ИМЕНА ЖИВУТ ЧЕРЕЗ ПОДЧЁРКИВАНИЕ, А НЕ ЧЕРЕЗ ТОЧКУ, и это не стиль. Спецификация MCP точку
+ * допускает, а провайдерские API — нет: и Anthropic, и OpenAI требуют от имени инструмента
+ * `^[a-zA-Z0-9_-]{1,64}$`. Клиент, который ведёт разговор через такую модель, заменяет точку на
+ * подчёркивание у себя и зовёт сервер уже изменённым именем — обратно не переводит никто.
+ * Живой случай 04.09.2026: Cursor звал `tabs_open`, браузер отвечал «такого инструмента нет»,
+ * человек видел в журнале три `unknown` подряд и ни одной карточки, а страницу Cursor открывал
+ * своими средствами.
+ *
+ * ⚠️ Точечное написание принимаем как СИНОНИМ и будем принимать дальше: под ним выданы права в
+ * уже существующих профилях (`mcp-clients.json`), и клиенты, запомнившие старый каталог, никуда
+ * не делись. Отвечаем при этом всегда каноническим именем.
+ */
 export function findTool(name: string): McpTool | null {
-  return MCP_TOOLS.find((t) => t.name === name) ?? null;
+  const exact = MCP_TOOLS.find((t) => t.name === name);
+  if (exact) return exact;
+  const dotted = name.replace(/\./g, '_');
+  return MCP_TOOLS.find((t) => t.name === dotted) ?? null;
+}
+
+/** Каноническое имя для записи в права и журнал: `tabs.open` и `tabs_open` — один инструмент. */
+export function canonicalToolName(name: string): string {
+  return findTool(name)?.name ?? name;
 }
 
 /**
@@ -257,7 +289,7 @@ export type McpStance = 'ask' | 'allow' | 'deny';
  *
  * ⚠️ Чтение — 'allow', и это не послабление: согласие на чтение человек уже дал, подключив
  * программу, и карточка подключения прямо перечисляет, что она сможет видеть. Спрашивать ещё раз
- * на каждый `tabs.list` значит спрашивать про то, о чём уже договорились.
+ * на каждый `tabs_list` значит спрашивать про то, о чём уже договорились.
  *
  * ⚠️ Запись — 'ask', ВКЛЮЧАЯ ту, что кажется безобидной. Открытая вкладка меняет то, что человек
  * видит на экране, а не только состояние программы.
@@ -426,10 +458,10 @@ export function safeOpenUrl(raw: unknown): string | null {
  */
 export function confirmTitle(tool: McpTool): string {
   switch (tool.name) {
-    case 'page.read_url': return 'Прочитать страницу?';
-    case 'tabs.open': return 'Открыть вкладку?';
-    case 'tabs.activate': return 'Переключить вкладку?';
-    case 'tabs.close': return 'Закрыть вкладку?';
+    case 'page_read_url': return 'Прочитать страницу?';
+    case 'tabs_open': return 'Открыть вкладку?';
+    case 'tabs_activate': return 'Переключить вкладку?';
+    case 'tabs_close': return 'Закрыть вкладку?';
     default: return `Разрешить «${tool.title}»?`;
   }
 }
@@ -443,7 +475,7 @@ export function confirmTitle(tool: McpTool): string {
  */
 export function confirmSubject(tool: McpTool, args: Record<string, unknown>): string {
   switch (tool.name) {
-    case 'page.read_url': {
+    case 'page_read_url': {
       const safe = safeOpenUrl(args.url);
       // ⚠️ Про куки сказано ПРЯМО: человек решает не «дать почитать сайт», а «дать почитать
       // сайт от моего имени» — и это разные вопросы.
@@ -451,7 +483,7 @@ export function confirmSubject(tool: McpTool, args: Record<string, unknown>): st
         ? `${safe}\n\nСтраница будет открыта вашим профилем — с вашими логинами.`
         : 'Программа не назвала пригодный адрес.';
     }
-    case 'tabs.open': {
+    case 'tabs_open': {
       // ⚠️ Пустого предмета не бывает: карточка без адреса — вопрос ни о чём, и человек ответит
       // «да» просто потому, что читать нечего. Негодный адрес показываем как есть и словами.
       const safe = safeOpenUrl(args.url);
@@ -459,9 +491,9 @@ export function confirmSubject(tool: McpTool, args: Record<string, unknown>): st
       const raw = String(args.url ?? '').trim();
       return raw ? `Адрес не годится: ${raw.slice(0, 200)}` : 'Программа не назвала адрес.';
     }
-    case 'tabs.activate':
+    case 'tabs_activate':
       return 'Браузер переключится на другую открытую вкладку.';
-    case 'tabs.close':
+    case 'tabs_close':
       return 'Вкладка закроется. Отменить это из браузера нельзя.';
     default:
       return tool.description;

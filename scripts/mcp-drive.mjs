@@ -124,7 +124,7 @@ await withStand(async (ctx) => {
     label: CLIENT,
     approvedAt: Date.now(),
     lastSeen: Date.now(),
-    stances: { 'tabs.open': 'deny' },
+    stances: { 'tabs_open': 'deny' },
   }], null, 2), 'utf8');
 
   // ── Разговор ──────────────────────────────────────────────────────────────
@@ -155,13 +155,13 @@ await withStand(async (ctx) => {
   check('у каждого есть схема и аннотации',
     tools.every((t) => t.inputSchema?.type === 'object' && typeof t.annotations?.readOnlyHint === 'boolean'));
   check('чтение помечено чтением',
-    tools.find((t) => t.name === 'tabs.list')?.annotations?.readOnlyHint === true);
+    tools.find((t) => t.name === 'tabs_list')?.annotations?.readOnlyHint === true);
   check('закрытие помечено необратимым',
-    tools.find((t) => t.name === 'tabs.close')?.annotations?.destructiveHint === true);
+    tools.find((t) => t.name === 'tabs_close')?.annotations?.destructiveHint === true);
 
   // ── Вызовы ────────────────────────────────────────────────────────────────
   const tabs = await c.send('tools/call', {
-    name: 'tabs.list', arguments: {}, clientInfo: { name: CLIENT },
+    name: 'tabs_list', arguments: {}, clientInfo: { name: CLIENT },
   });
   check('tabs.list выполняется', tabs?.result?.isError !== true, textOf(tabs));
   const listed = tabs?.result?.structuredContent;
@@ -170,26 +170,32 @@ await withStand(async (ctx) => {
   // список здесь ПРАВИЛЬНЫЙ ответ, и заодно это живая проверка фильтра видимости.
   check('наш интерфейс наружу не отдаётся', (listed?.tabs?.length ?? -1) === 0, JSON.stringify(listed));
 
-  const hist = await c.send('tools/call', { name: 'history.search', arguments: { query: 'oblako' } });
+  const hist = await c.send('tools/call', { name: 'history_search', arguments: { query: 'oblako' } });
   check('history.search выполняется', hist?.result?.isError !== true, textOf(hist));
   check('история пустого профиля пуста', hist?.result?.structuredContent?.count === 0);
 
-  const noArgs = await c.send('tools/call', { name: 'history.search', arguments: {} });
+  const noArgs = await c.send('tools/call', { name: 'history_search', arguments: {} });
   check('обязательный аргумент требуется словами', noArgs?.result?.isError === true, textOf(noArgs));
 
-  const page = await c.send('tools/call', { name: 'page.text', arguments: {} });
+  const page = await c.send('tools/call', { name: 'page_text', arguments: {} });
   // Активна псевдо-вкладка хаба: текста у неё нет, и это должно приехать ОБЪЯСНЕНИЕМ, а не пустотой.
   check('отказ page.text — словами', page?.result?.isError === true && textOf(page).length > 20, textOf(page));
 
   const denied = await c.send('tools/call', {
-    name: 'tabs.open', arguments: { url: 'https://example.com' },
+    name: 'tabs_open', arguments: { url: 'https://example.com' },
   });
   check('запрещённый инструмент отказывает без карточки',
     denied?.result?.isError === true && /turned/i.test(textOf(denied)), textOf(denied));
 
-  const unknown = await c.send('tools/call', { name: 'tabs.nuke', arguments: {} });
+  const unknown = await c.send('tools/call', { name: 'tabs_nuke', arguments: {} });
   check('незнакомый инструмент — ошибка результата, а не протокола',
     unknown?.result?.isError === true && !unknown?.error, JSON.stringify(unknown));
+
+  // ⚠️ Прежнее написание через точку обязано работать: под ним выданы права в существующих
+  // профилях, и клиенты, запомнившие старый каталог, никуда не делись (см. findTool).
+  const dotted = await c.send('tools/call', { name: 'page.text', arguments: {} });
+  check('прежнее имя через точку доходит до того же инструмента',
+    !/не существует|does not exist|unknown/i.test(textOf(dotted)), textOf(dotted).slice(0, 120));
 
   const badMethod = await c.send('tools/nope', {});
   check('незнакомый метод — ошибка протокола', badMethod?.error?.code === -32601, JSON.stringify(badMethod));
@@ -214,11 +220,11 @@ await withStand(async (ctx) => {
   // в память, то есть правка на диске не доехала бы вовсе. Первая версия этой проверки так и
   // ошиблась — файл менялся, в памяти оставался прежний 'deny', и «вкладка не открылась» проходило
   // по отказу политики, а не потому, что браузер спросил человека.
-  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setStance(${JSON.stringify(CLIENT.toLowerCase())}, 'tabs.open', 'ask'); return true; })()`);
+  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setStance(${JSON.stringify(CLIENT.toLowerCase())}, 'tabs_open', 'ask'); return true; })()`);
   const asking = talk(endpoint.pipe, endpoint.token);
   await asking.ready;
   await asking.send('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: CLIENT, version: '1' } });
-  const pendingCall = asking.send('tools/call', { name: 'tabs.open', arguments: { url: 'https://example.com/never' } });
+  const pendingCall = asking.send('tools/call', { name: 'tabs_open', arguments: { url: 'https://example.com/never' } });
   await wait(4000);
 
   const opened = await ctx.evalMain(`

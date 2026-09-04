@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
-import { MCP_TOOLS, type McpStance } from '../../shared/mcpPolicy';
+import { canonicalToolName, MCP_TOOLS, type McpStance } from '../../shared/mcpPolicy';
 import { askMcp, dropMcpPrompts } from '../McpPromptManager';
 
 // Кто подключён к браузеру и что ему позволено.
@@ -76,6 +76,14 @@ function load(): void {
         for (const t of old) if (typeof t === 'string') c.stances[t] = 'deny';
         delete (c as unknown as { disabled?: unknown }).disabled;
       }
+      // ⚠️ Права, выданные под ПРЕЖНИМИ именами через точку, переносим на канонические. Человек
+      // нажимал «Разрешать всегда» для «Открыть вкладку», а не для строки 'tabs.open' — потерять
+      // это при переименовании значило бы заставить его отвечать на те же вопросы заново.
+      const moved: Record<string, McpStance> = {};
+      for (const [name, stance] of Object.entries(c.stances)) {
+        moved[canonicalToolName(name)] = stance;
+      }
+      c.stances = moved;
     }
   } catch { /* файла ещё нет — это чистая установка, а не поломка */ }
 }
@@ -132,8 +140,12 @@ export function revokeClient(key: string): void {
 export function setStance(key: string, tool: string, stance: McpStance): void {
   load();
   const c = clients.find((x) => x.key === key);
-  if (!c || !MCP_TOOLS.some((t) => t.name === tool)) return;
-  c.stances = { ...c.stances, [tool]: stance };
+  // ⚠️ Имя приводим к каноническому: интерфейс шлёт его из каталога, а прежние профили и клиенты
+  // знают написание через точку (см. findTool). Хранить два ключа на один инструмент нельзя —
+  // разойдутся ровно в тот момент, когда человек поменяет решение.
+  const name = canonicalToolName(tool);
+  if (!c || !MCP_TOOLS.some((t) => t.name === name)) return;
+  c.stances = { ...c.stances, [name]: stance };
   save();
 }
 

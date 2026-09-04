@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import {
   MCP_SUPPORTED_VERSIONS, MCP_TOOLS, MCP_VERSION,
-  annotationsFor, clientKey, clientLabel, decide, mustAsk, pickVersion,
+  annotationsFor, canonicalToolName, clientKey, clientLabel, decide, mustAsk, pickVersion,
 } from '../../shared/mcpPolicy';
 import {
   activateTab, activePageText, closeTab, listTabs, openTab, readUrl, searchHistory,
@@ -173,7 +173,10 @@ export async function dispatch(
 }
 
 async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession): Promise<object> {
-  const name = typeof req.params?.name === 'string' ? req.params.name : '';
+  // ⚠️ Имя приводим к каноническому СРАЗУ: клиент мог прислать прежнее написание через точку
+  // (или своё, с заменой точки на подчёркивание — так делает Cursor). Дальше по коду имя участвует
+  // в правах, журнале и ответах, и два написания одного инструмента там разъедутся молча.
+  const name = canonicalToolName(typeof req.params?.name === 'string' ? req.params.name : '');
   const args = (req.params?.arguments ?? {}) as Record<string, unknown>;
   // ⚠️ Имя берём у СОЕДИНЕНИЯ, а не из вызова: в `tools/call` его нет вовсе у старых клиентов.
   const who = session.label;
@@ -255,38 +258,38 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession)
 
 async function run(name: string, args: Record<string, unknown>, deps: McpDeps): Promise<unknown> {
   switch (name) {
-    case 'tabs.list': {
+    case 'tabs_list': {
       const tabs = listTabs();
       return { tabs, count: tabs.length };
     }
-    case 'page.text': {
+    case 'page_text': {
       const page = await activePageText();
       // Не «пусто», а причина словами — см. разбор в McpTools.ts.
       if (!page.ok) throw new Error(page.error ?? 'unavailable');
       return { title: page.title, url: page.url, text: page.text };
     }
-    case 'page.read_url': {
+    case 'page_read_url': {
       const page = await readUrl(args.url);
       if (!page.ok) throw new Error(page.error ?? 'unavailable');
       return { title: page.title, url: page.url, text: page.text };
     }
-    case 'history.search': {
+    case 'history_search': {
       const query = typeof args.query === 'string' ? args.query : '';
       if (!query.trim()) throw new Error('Argument "query" is required.');
       const hits = searchHistory(deps.history(), query, args.limit);
       return { query, hits, count: hits.length };
     }
-    case 'tabs.open': {
+    case 'tabs_open': {
       const res = openTab(args.url, args.background);
       if (!res.ok) throw new Error(res.note);
       return { opened: true, note: res.note };
     }
-    case 'tabs.activate': {
+    case 'tabs_activate': {
       const res = activateTab(args.id);
       if (!res.ok) throw new Error(res.note);
       return { switched: true, note: res.note };
     }
-    case 'tabs.close': {
+    case 'tabs_close': {
       const res = closeTab(args.id);
       if (!res.ok) throw new Error(res.note);
       return { closed: true, note: res.note };

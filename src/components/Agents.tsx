@@ -226,7 +226,7 @@ function ClientRights({ state, clientKey, onChange }: {
  * Если таких инструментов станет больше, признак поедет в контракт целиком.
  */
 function isSensitive(name: string): boolean {
-  return name === 'page.read_url';
+  return name === 'page_read_url';
 }
 
 /** Значок раздела для рельсы библиотеки. */
