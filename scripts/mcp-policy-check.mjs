@@ -28,8 +28,13 @@ const ALL = { connected: true, stances: {} };
 console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
 check('состав каталога', MCP_TOOLS.map((t) => t.name),
-  ['tabs_list', 'page_text', 'page_screenshot', 'page_links', 'history_search', 'page_read_url',
-    'tabs_open', 'tabs_activate', 'tabs_close']);
+  ['tabs_list', 'page_text', 'page_screenshot', 'page_links', 'history_search', 'bookmarks_search',
+    'page_read_url', 'tabs_open', 'tabs_activate', 'tabs_close']);
+// ⚠️ Закладки — то, что человек отобрал РУКАМИ, в отличие от истории, куда попадает всё подряд.
+// Читаются молча, как и остальное чтение: согласие на него дано при подключении.
+check('закладки — чтение', findTool('bookmarks_search').mode, 'read');
+check('и не спрашивают', defaultStance(findTool('bookmarks_search')), 'allow');
+check('запрос обязателен', findTool('bookmarks_search').input.required, ['query']);
 // ⚠️ Снимок — ЧТЕНИЕ, и по умолчанию идёт молча, как page_text: он показывает ровно ту страницу,
 // которую человек и так видит на экране. Отдельного вопроса это не стоит, а вот отдать снимок
 // приватной вкладки нельзя (проверяется живьём — в снимке участвует политика видимости).

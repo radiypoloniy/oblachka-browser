@@ -5,8 +5,7 @@ import {
 } from '../../shared/mcpPolicy';
 import {
   activateTab, activePageLinks, activePageText, closeTab, listTabs, openTab, readUrl,
-  screenshotActiveTab,
-  searchHistory, type McpShot,
+  screenshotActiveTab, searchBookmarks, searchHistory, type McpShot,
 } from './McpTools';
 import { askToConnect, isApproved, stancesFor, touchClient } from './McpClients';
 import { confirmWrite } from './McpConfirm';
@@ -332,6 +331,12 @@ async function run(name: string, args: Record<string, unknown>, deps: McpDeps): 
       const found = await activePageLinks();
       if (!found.ok) throw new Error(found.error ?? 'unavailable');
       return { url: found.url, title: found.title, links: found.links, count: found.links?.length ?? 0 };
+    }
+    case 'bookmarks_search': {
+      const query = typeof args.query === 'string' ? args.query : '';
+      if (!query.trim()) throw new Error('Argument "query" is required.');
+      const hits = searchBookmarks(query, args.limit);
+      return { query, hits, count: hits.length };
     }
     case 'history_search': {
       const query = typeof args.query === 'string' ? args.query : '';

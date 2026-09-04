@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron';
 import { contextForWindow, mainContext } from '../WindowRegistry';
+import { activeBookmarks } from '../ProfileData';
 import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
 import {
@@ -174,8 +175,10 @@ export async function screenshotActiveTab(): Promise<McpShot> {
       title: tab.title,
       url: tab.url,
     };
-  } catch {
-    return { ok: false, error: 'The tab died while taking the screenshot.' };
+  } catch (e) {
+    // ⚠️ Причину говорим словами: «не вышло» без объяснения агент перескажет человеку как
+    // «браузер не смог», и разобраться будет не с чем.
+    return { ok: false, error: `Screenshot failed: ${(e as Error).message}` };
   }
 }
 
@@ -263,6 +266,33 @@ export function searchHistory(
     url: h.url,
     lastVisit: new Date(h.lastVisit).toISOString(),
     visits: h.visitCount,
+  }));
+}
+
+export interface McpBookmarkHit {
+  title: string;
+  url: string;
+  savedAt: string;
+}
+
+/**
+ * Поиск по закладкам.
+ *
+ * ⚠️ Отдельно от истории намеренно, хотя формы ответа похожи: история — это всё, куда человек
+ * заходил, а закладки — то, что он ОТОБРАЛ РУКАМИ. На вопрос «та статья, которую я сохранял» это
+ * разные источники, и лучший из них — второй.
+ *
+ * ⚠️ Берём activeBookmarks() на каждый вызов, а не держим ссылку: закладки живут на профиль, и
+ * захваченный объект пережил бы переключение профиля — то есть агент искал бы в чужих закладках.
+ * Тот же довод, что у истории (см. McpDeps.history).
+ */
+export function searchBookmarks(query: string, limit: unknown): McpBookmarkHit[] {
+  const q = query.trim();
+  if (!q) return [];
+  return activeBookmarks().search(q, clampHistoryLimit(limit)).map((b) => ({
+    title: b.title,
+    url: b.url,
+    savedAt: new Date(b.createdAt).toISOString(),
   }));
 }
 

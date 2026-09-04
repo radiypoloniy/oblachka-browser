@@ -151,7 +151,7 @@ await withStand(async (ctx) => {
 
   const list = await c.send('tools/list', {});
   const tools = list?.result?.tools ?? [];
-  check('инструменты отдаются', tools.length === 9, `их ${tools.length}`);
+  check('инструменты отдаются', tools.length === 10, `их ${tools.length}`);
   check('у каждого есть схема и аннотации',
     tools.every((t) => t.inputSchema?.type === 'object' && typeof t.annotations?.readOnlyHint === 'boolean'));
   check('чтение помечено чтением',
@@ -214,7 +214,9 @@ await withStand(async (ctx) => {
   // политика видимости наружу не отдаёт (и правильно делает). Открываем эхо-страницу и ждём
   // кадра: capturePage возвращает пустоту, пока страница не скомпонована.
   await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(ctx.echo.url('/?shot=1'))})`);
-  await wait(2500);
+  // ⚠️ Ждём с запасом: capturePage возвращает пустой кадр, пока страница не скомпонована, и на
+  // загруженной машине первая компоновка занимает заметно больше, чем загрузка эхо-страницы.
+  await wait(3500);
   const shotCall = await c.send('tools/call', { name: 'page_screenshot', arguments: {} });
   const parts = shotCall?.result?.content ?? [];
   const image = parts.find((p) => p.type === 'image');
@@ -235,6 +237,31 @@ await withStand(async (ctx) => {
   // ⚠️ Машинной копии у снимка нет намеренно: туда уехал бы тот же base64 вторым экземпляром.
   check('машинной копии снимка нет', shotCall?.result?.structuredContent === undefined,
     JSON.stringify(shotCall?.result?.structuredContent ?? null).slice(0, 80));
+
+  // ── Поиск по закладкам ────────────────────────────────────────────────────
+  //
+  // ⚠️ Отдельно от истории намеренно: история — всё, куда человек заходил, закладки — то, что он
+  // отобрал РУКАМИ. На вопрос «та статья, которую я сохранял» это разные источники.
+  //
+  // ⚠️ Закладку кладём ЧЕРЕЗ МЕНЕДЖЕР профиля стенда, а не в файл: база открыта, и правка на диске
+  // мимо неё не доехала бы (тот же урок, что с mcp-clients.json выше).
+  await ctx.evalMain(`(() => {
+    ${MOD('ProfileData.js')}.activeBookmarks().add('https://example.org/bergamot', 'Bergamot: перевод в браузере');
+    return true;
+  })()`);
+  const marks = await c.send('tools/call', { name: 'bookmarks_search', arguments: { query: 'bergamot' } });
+  const found = JSON.parse(textOf(marks) || '{}');
+  check('закладка находится по названию', found.count === 1, textOf(marks).slice(0, 200));
+  check('и отдаётся с адресом и датой',
+    found.hits?.[0]?.url === 'https://example.org/bergamot' && typeof found.hits?.[0]?.savedAt === 'string',
+    JSON.stringify(found.hits ?? []).slice(0, 200));
+  const nothing = await c.send('tools/call', { name: 'bookmarks_search', arguments: { query: 'ничего-такого-нет' } });
+  check('пустой поиск отвечает нулём, а не ошибкой',
+    JSON.parse(textOf(nothing) || '{}').count === 0, textOf(nothing).slice(0, 160));
+  // ⚠️ Проценты в запросе не должны превращаться в «найди всё»: LIKE их понимает как шаблон.
+  const wild = await c.send('tools/call', { name: 'bookmarks_search', arguments: { query: '%' } });
+  check('проценты не находят всё подряд',
+    JSON.parse(textOf(wild) || '{}').count === 0, textOf(wild).slice(0, 160));
 
   // ── Ссылки со страницы ────────────────────────────────────────────────────
   //

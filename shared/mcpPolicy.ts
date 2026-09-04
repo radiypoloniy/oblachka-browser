@@ -53,10 +53,9 @@ export interface McpTool {
   /**
    * Чтение, которое всё равно спрашивают.
    *
-   * ⚠️ Заведено ради `page_read_url`. Он ничего не меняет в браузере — и по режиму это чтение, —
-   * но читает ЛЮБОЙ адрес КУКАМИ ЧЕЛОВЕКА: почту, банк, внутреннюю вики. Разница с `page_text`
-   * принципиальная: тот отдаёт страницу, которую человек и так видит на экране, а этот — любую,
-   * которую выбрала программа. Молча такое отдавать нельзя.
+   * ⚠️ Заведено ради `page_read_url`: он ничего не меняет, но читает ЛЮБОЙ адрес КУКАМИ ЧЕЛОВЕКА
+   * — почту, банк, внутреннюю вики. `page_text` отдаёт страницу, которую человек и так видит,
+   * этот — любую, какую выбрала программа. Молча такое отдавать нельзя.
    */
   sensitive?: boolean;
   /** Короткая строка для чужого интерфейса. Пишется для ЧЕЛОВЕКА, который увидит её в карточке. */
@@ -71,14 +70,10 @@ export interface McpTool {
 }
 
 /**
- * Потолок текста страницы в одном ответе.
- *
- * ⚠️ СНИЖЕН С 40 000 ПО ЖИВОЙ ЖАЛОБЕ «через браузер долго и дорого»: сорок тысяч знаков — это
- * около десяти тысяч токенов на ОДНУ страницу, за которые платит человек, а читается первая треть.
- * Что обрезано, сказано в самом ответе, и агент может попросить ещё.
- *
- * ⚠️ Число общее для page_text и page_read_url: разного потолка человек не поймёт, а разойтись они
- * успеют на первой же правке.
+ * ⚠️ СНИЖЕН С 40 000 ПО ЖИВОЙ ЖАЛОБЕ «через браузер долго и дорого»: сорок тысяч знаков — около
+ * десяти тысяч токенов на ОДНУ страницу, за которые платит человек, а читается первая треть. Что
+ * обрезано, сказано в ответе. ⚠️ Число общее для page_text и page_read_url: разного потолка
+ * человек не поймёт, а разойтись они успеют на первой же правке.
  */
 export const MCP_TEXT_LIMIT = 12_000;
 
@@ -95,7 +90,6 @@ export const MCP_BATCH_MAX = 8;
  */
 export const MCP_SHOT_WIDTH = 1152;
 export const MCP_SHOT_QUALITY = 70;
-
 /** ⚠️ Потолок: на ленте новостей ссылок под тысячу — это тысячи токенов ради пары нужных строк. */
 export const MCP_LINKS_MAX = 100;
 const LINK_TEXT_MAX = 120; // длиннее — уже не подпись, а абзац из карточки товара
@@ -103,11 +97,8 @@ const LINK_TEXT_MAX = 120; // длиннее — уже не подпись, а 
 export interface McpLink { url: string; text: string }
 
 /**
- * Привести собранные страницей ссылки к тому, что уйдёт наружу.
- *
  * ⚠️ ЧИСТИМ ЗДЕСЬ, А НЕ В СТРАНИЦЕ: скрипт в чужом DOM обязан быть простым — он бегает по любому
- * сайту мира, и падать ему нельзя. ⚠️ Ссылка на саму себя выбрасывается: страница ссылается на
- * свои же якоря десятками, и агент пошёл бы читать то, что уже читает.
+ * сайту мира. ⚠️ Ссылка на саму себя выбрасывается: своих якорей у страницы десятки.
  */
 export function tidyLinks(raw: unknown, pageUrl: string): McpLink[] {
   if (!Array.isArray(raw)) return [];
@@ -136,24 +127,19 @@ function stripHash(url: string): string {
 const MCP_BATCH_BUDGET = 24_000;
 const MCP_BATCH_MIN_PER_PAGE = 3_000;
 
-/** Сколько знаков достаётся каждой странице, когда их читают пачкой. */
+/** Знаков на страницу, когда их читают пачкой. */
 export function batchTextLimit(count: number): number {
   if (count <= 1) return MCP_TEXT_LIMIT;
   return Math.max(MCP_BATCH_MIN_PER_PAGE, Math.floor(MCP_BATCH_BUDGET / count));
 }
 
-export type BatchTargets =
-  | { ok: true; urls: string[]; dropped: number }
-  | { ok: false; error: string };
+export type BatchTargets = { ok: true; urls: string[]; dropped: number } | { ok: false; error: string };
 
 /**
- * Какие адреса просит прочитать программа.
- *
  * ⚠️ Принимаем ОБА ВИДА аргумента — `url` строкой и `urls` списком: разные клиенты присылают
  * разное, и отказ «не то поле» человек прочитает как «браузер не работает».
- *
  * ⚠️ Негодные адреса ОТСЕИВАЕМ ПОШТУЧНО и считаем вслух: одна битая ссылка из восьми — обычное
- * дело, и терять из-за неё семь прочитанных страниц незачем.
+ * дело, и терять из-за неё семь прочитанных незачем.
  */
 export function readUrlTargets(args: Record<string, unknown>): BatchTargets {
   const raw: unknown[] = Array.isArray(args.urls)
@@ -218,14 +204,12 @@ export const MCP_TOOLS: readonly McpTool[] = [
     mode: 'read',
     title: 'Снимок страницы',
     description:
-      'Take a screenshot of the tab the user is looking at right now and return it as an image. '
-      + 'Use it when the ANSWER IS IN THE LAYOUT and not in the text: charts, dashboards, maps, '
-      + 'tables, design work, a form the user is stuck on, or a page whose text extraction came '
-      + 'back empty. The shot goes through the user\'s logged-in session, so it shows what THEY '
-      + 'see — something your own web fetching cannot reach at all. '
-      + 'Takes no arguments: it always captures the ACTIVE tab, visible area only.',
-    // ⚠️ tabId нет по той же причине, что у page_text: снимок вкладки по номеру — разглядывание
-    // чужого браузера вслепую. Отдаём то, что человек и так видит на экране.
+      'Screenshot the tab the user is looking at right now, as an image. Use it when the ANSWER '
+      + 'IS IN THE LAYOUT, not the text: charts, dashboards, maps, tables, a form they are stuck '
+      + 'on, or a page whose text extraction came back empty. It goes through their logged-in '
+      + 'session — something your own web fetching cannot reach at all. No arguments: ACTIVE tab, '
+      + 'visible area only.',
+    // ⚠️ tabId нет по той же причине, что у page_text: это разглядывание браузера вслепую.
     input: { type: 'object', properties: {} },
   },
   {
@@ -233,11 +217,10 @@ export const MCP_TOOLS: readonly McpTool[] = [
     mode: 'read',
     title: 'Ссылки со страницы',
     description:
-      'List the links on the tab the user is looking at right now: address plus the anchor text. '
-      + 'Use it to WALK a site the user is logged into: take the links you need from here and '
-      + 'pass them to page_read_url as a list — that reads them all in one call. '
-      + 'Takes no arguments: it always reads the ACTIVE tab. Links to the same page, empty ones '
-      + 'and non-http addresses are left out.',
+      'List the links on the tab the user is looking at right now: address plus anchor text. Use '
+      + 'it to WALK a site they are logged into — take the links you need and pass them to '
+      + 'page_read_url as a list, which reads them all in one call. No arguments: ACTIVE tab. '
+      + 'Self-links and non-http addresses are left out.',
     input: { type: 'object', properties: {} },
   },
   {
@@ -252,6 +235,23 @@ export const MCP_TOOLS: readonly McpTool[] = [
       properties: {
         query: { type: 'string', description: 'Words to look for in titles and page text.' },
         limit: { type: 'number', description: `How many results, 1..${MCP_HISTORY_MAX}.` },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'bookmarks_search',
+    mode: 'read',
+    title: 'Поиск по закладкам',
+    description:
+      'Search the pages the user SAVED as bookmarks, by title and address. History is everything '
+      + 'they happened to visit; bookmarks are what they picked on purpose — the better source '
+      + 'for "that article I saved about X".',
+    input: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'What to look for in titles and addresses.' },
+        limit: { type: 'number', description: 'How many to return, 1..100. Default 20.' },
       },
       required: ['query'],
     },

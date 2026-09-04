@@ -236,6 +236,32 @@ export class BookmarkManager {
   }
 
   /**
+   * Найти закладки по названию и адресу.
+   *
+   * ⚠️ Ищем ТОЛЬКО ссылки: папка без своих детей — это ответ «у вас есть папка Рецепты», который
+   * никому не помогает, а с детьми она превращает список находок в дерево.
+   *
+   * ⚠️ LIKE, а не FTS. У закладок нет полнотекстового индекса (в отличие от истории), заводить
+   * его ради названий из двух слов незачем: их тысячи, а не миллионы, и LIKE по такой таблице
+   * отвечает мгновенно. Проценты экранируем — иначе запрос «50%» найдёт вообще всё.
+   */
+  search(query: string, limit = 20): BookmarkEntry[] {
+    if (!this.#db) return [];
+    const q = query.trim();
+    if (!q) return [];
+    try {
+      const like = `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+      const sql = `SELECT ${COLUMNS} FROM bookmarks
+        WHERE kind = 'link' AND (title LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\')
+        ${ORDER} LIMIT ?`;
+      return this.#db.prepare(sql).all(like, like, Math.max(1, Math.min(100, limit))) as BookmarkEntry[];
+    } catch (e) {
+      console.warn('[Bookmarks] search error:', (e as Error).message);
+      return [];
+    }
+  }
+
+  /**
    * Всё дерево целиком, папки со своими children.
    *
    * ⚠️ Один SELECT на всю таблицу и сборка в памяти, а не рекурсивный обход с запросом на
