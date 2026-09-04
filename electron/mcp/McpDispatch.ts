@@ -219,8 +219,23 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession)
   // ⚠️ Вопрос задаётся ПЕРЕД действием и ждёт человека. Разбор, почему карточка наша, а не
   // клиентская (то есть почему не MRTR), — в шапке McpConfirm.ts.
   if (mustAsk(verdict.tool, stancesFor(key))) {
-    const allowed = await confirmWrite({ clientKey: key, clientLabel: who, tool: verdict.tool, args });
-    if (!allowed) {
+    const outcome = await confirmWrite({ clientKey: key, clientLabel: who, tool: verdict.tool, args });
+    // ⚠️ «Отказал» и «не ответил» — РАЗНЫЕ новости для агента, и путать их дорого. Пока оба
+    // отвечали «The user refused», агент читал отказ и уходил в обход: «MCP-вызов вкладки не
+    // проходит, открою напрямую» (живая жалоба 04.09.2026). А человек в этот момент просто не
+    // подошёл к браузеру: карточка висит и ждёт одного нажатия.
+    if (outcome === 'waiting') {
+      note(false, 'waiting');
+      return ok(req.id, content(
+        'The user has not answered yet. A card is waiting in the Oblako browser window (top-left '
+        + 'corner). Ask the user to switch to Oblako and confirm it, then call this tool again — '
+        + 'the card stays open, and once confirmed the repeat goes through without asking. '
+        + 'To stop being asked every time, the user can set this tool to "Можно" in the browser: '
+        + 'Library → Agents → pick this program.',
+        true,
+      ));
+    }
+    if (outcome === 'refused') {
       note(false, 'refused');
       return ok(req.id, content('The user refused this action in the browser.', true));
     }
