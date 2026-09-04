@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type React from 'react';
-import { Plug, Trash2 } from 'lucide-react';
+import { Plug, Trash2, Zap } from 'lucide-react';
 import {
   btnGhost, btnTone, CapsLabel, fieldFlex, InputRow, InlineHint,
   Panel, Segmented, SpotCard, StatusCard, StatusCardSkeleton, Subsection, TextField,
@@ -8,7 +8,8 @@ import {
 import { CAPS, RADIUS, pad, sp } from '../../styles/system';
 import { formatCost, formatTokens, totalTokens, type AiUsage } from '../../../shared/aiUsage';
 import { PROVIDER_PRESETS, defaultSchemaMode, isLoopbackUrl, type ProviderKind } from '../../../shared/aiProviders';
-import type { AiConnection, AiConnectionsState } from '../../../shared/ipc';
+import type { AiConnection, AiConnectionsState, AiRunnerFound } from '../../../shared/ipc';
+import { ModelField } from './ModelField';
 
 /**
  * Подключения к моделям по API.
@@ -59,6 +60,23 @@ export function AiConnectionsBlock({ state, usage, summary }: {
   const [form, setForm] = useState<Draft>(draft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [finds, setFinds] = useState<AiRunnerFound[]>([]);
+  // Список моделей от находки: он уже приехал вместе с ней, и переспрашивать раннер незачем.
+  const [known, setKnown] = useState<string[] | undefined>(undefined);
+
+  // ⚠️ Проба локальных раннеров при открытии раздела, а не по кнопке: человек, у которого запущена
+  // Ollama, не знает, что браузер умеет её подхватить, — то есть кнопку «поискать» он не нажмёт.
+  // Стоит это одного запроса на loopback с коротким таймаутом (см. electron/ai/modelList.ts).
+  //
+  // ⚠️ Зависимость — ЧИСЛО подключений, а не сам массив: снимок приезжает пушем на каждое
+  // изменение, и от ссылки на него проба уходила бы кругами. Завели раннер — находка пропадает,
+  // потому что main её уже не отдаёт.
+  const count = state?.connections.length ?? 0;
+  useEffect(() => {
+    let alive = true;
+    void window.oblako.discoverAiRunners().then((r) => { if (alive) setFinds(r); });
+    return () => { alive = false; };
+  }, [count]);
 
   // Правка черновика идёт и в состояние, и в модульную копию — иначе уход со страницы сотрёт её.
   const edit = (patch: Partial<Draft>): void => {
@@ -69,6 +87,14 @@ export function AiConnectionsBlock({ state, usage, summary }: {
 
   // Пресет подставляет адрес и имя модели — и ничего больше: дальше человек правит руками.
   const presets = PROVIDER_PRESETS.filter((p) => p.kind === form.kind);
+
+  // ⚠️ Находка ЗАПОЛНЯЕТ ФОРМУ, а не заводит подключение сама. Раннер отвечает без ключа, то есть
+  // «подключить» одним нажатием технически можно — но человек не увидит, ЧТО именно подключилось,
+  // и какая из четырёх скачанных моделей выбрана. Две кнопки вместо одной здесь честнее.
+  const take = (f: AiRunnerFound): void => {
+    setKnown(f.models);
+    edit({ kind: 'openai-compatible', baseUrl: f.baseUrl, model: f.models[0] ?? '', key: '' });
+  };
 
   async function save(): Promise<void> {
     setError('');
@@ -90,6 +116,7 @@ export function AiConnectionsBlock({ state, usage, summary }: {
     // Сохранилось — черновик больше не нужен, и держать чужой ключ в памяти дольше незачем.
     draft = { kind: form.kind, baseUrl: '', model: '', key: '' };
     setForm(draft);
+    setKnown(undefined);
   }
 
   const ready = form.baseUrl.trim() !== '' && form.model.trim() !== '';
@@ -117,13 +144,29 @@ export function AiConnectionsBlock({ state, usage, summary }: {
 
       {summary}
 
+      {/* ⚠️ Находки стоят НАД формой, а не под списком подключений: это не отчёт о состоянии, а
+          предложение к действию, и читаться оно должно ровно перед тем местом, где действие
+          совершается. */}
+      {finds.map((f) => (
+        <StatusCard
+          key={f.presetId}
+          icon={<Zap size={20} style={{ color: f.models.length === 0 ? 'var(--text-faint)' : 'var(--dot-local)', flex: 'none' }} />}
+          title={`Нашли ${f.label} на этой машине`}
+          subtitle={f.models.length === 0 ? emptyRunnerHint(f.presetId) : `${f.models.length} ${plural(f.models.length, 'модель', 'модели', 'моделей')} — ответы не уходят с компьютера.`}
+          // ⚠️ У пустого раннера кнопки НЕТ, и это не забывчивость: подключать нечего, пока не
+          // скачана модель. Кнопка, которая заведёт подключение с пустым именем модели, приведёт
+          // ровно туда же — к отказу, но на два шага позже и без объяснения.
+          {...(f.models.length === 0 ? {} : { actions: <button onClick={() => take(f)} style={btnTone}>Подключить</button> })}
+        />
+      ))}
+
       <Panel style={{ padding: pad(4), display: 'flex', flexDirection: 'column', gap: sp(3) }}>
         <CapsLabel>Новое подключение</CapsLabel>
         <Segmented value={form.kind} options={KINDS} onChange={(k) => edit({ kind: k })} />
 
         <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
           {presets.map((p) => (
-            <button key={p.id} onClick={() => edit({ baseUrl: p.baseUrl, model: p.sampleModel })}
+            <button key={p.id} onClick={() => { setKnown(undefined); edit({ baseUrl: p.baseUrl, model: p.sampleModel }); }}
               style={{ ...btnGhost, fontSize: 'var(--fs-xs)', padding: pad(1, 3) }}>{p.label}</button>
           ))}
         </div>
@@ -131,8 +174,13 @@ export function AiConnectionsBlock({ state, usage, summary }: {
         <InputRow>
           <TextField value={form.baseUrl} onChange={(v) => edit({ baseUrl: v })}
             placeholder="https://api.openai.com/v1" mono style={fieldFlex} />
-          <TextField value={form.model} onChange={(v) => edit({ model: v })}
-            placeholder="gpt-5" mono style={{ flex: '0 1 220px' }} />
+          <ModelField
+            kind={form.kind} baseUrl={form.baseUrl} apiKey={form.key}
+            value={form.model} onChange={(v) => edit({ model: v })}
+            {...(known ? { known } : {})}
+            onEnter={() => void save()}
+            style={{ flex: '0 1 260px' }}
+          />
         </InputRow>
         <InputRow>
           <TextField
@@ -272,4 +320,27 @@ function Dot({ local, ready }: { local: boolean; ready: boolean }) {
 function hostOf(url: string): string {
   const m = /^[a-z]+:\/\/([^/?#:]+)/i.exec(url.trim());
   return m ? (m[1] ?? url) : url;
+}
+
+/** ⚠️ Своя копия, как в остальных разделах настроек: общего хелпера в проекте нет, а тянуть его из
+ *  чужого компонента ради одной строки — связь, которой здесь быть не должно. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+/**
+ * Что делать, когда раннер запущен, а моделей в нём нет.
+ *
+ * ⚠️ Живой случай: человек поставил Ollama и не увидел в браузере ничего — потому что свежая
+ * Ollama отвечает пустым списком, а мы на это молчали. Молчание тут читается как «не нашли»;
+ * говорить надо ровно то, чего не хватает, и командой, которую можно скопировать.
+ */
+function emptyRunnerHint(presetId: string): string {
+  return presetId === 'ollama'
+    ? 'Запущена, но ни одной модели не скачано. Скачайте любую — например, командой ollama pull qwen3.'
+    : 'Запущена, но ни одной модели не загружено. Загрузите модель в самом приложении.';
 }

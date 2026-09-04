@@ -5,6 +5,7 @@
 import * as ConnectionStore from '../ai/ConnectionStore';
 import * as KeyStore from '../ai/KeyStore';
 import { connectionsState, probeConnection } from '../ai/connections';
+import { discoverRunners, listModels } from '../ai/modelList';
 import type { Connection } from '../../shared/aiProviders';
 import type { AiRole } from '../../shared/aiRouting';
 import { IPC } from '../../shared/ipc';
@@ -109,6 +110,10 @@ export function registerAiHubIpc(d: IpcDeps): void {
     return ConnectionStore.remove(id);
   });
   ipcMain.handle(IPC.AI_CONN_TEST, (_e, conn: Connection, key: string | null) => probeConnection(conn, key));
+  // ⚠️ Список моделей и проба раннеров живут в ai/modelList.ts, а не рядом с probeConnection:
+  // это вопрос «что у тебя есть», который задаётся ещё до того, как подключение заведено.
+  ipcMain.handle(IPC.AI_CONN_MODELS, (_e, conn: Connection, key: string | null) => listModels(conn, key));
+  ipcMain.handle(IPC.AI_CONN_DISCOVER, () => discoverRunners());
   ipcMain.handle(IPC.AI_SET_ROUTE, (_e, role: AiRole, connectionId: string | null) =>
     ConnectionStore.setRoute(role, connectionId));
 

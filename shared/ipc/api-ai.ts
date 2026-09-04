@@ -8,7 +8,7 @@
 // ⚠️ Сам OblakoApi по-прежнему ОДИН тип (api.ts наследует все части): звать его из renderer'а
 // приходится как единое window.oblako, и дробить эту точку входа было бы правдой про файлы, а не
 // про программу.
-import type { PageLength, AiConnection, AiConnectionsState, AiConnectionTest } from './ai';
+import type { PageLength, AiConnection, AiConnectionsState, AiConnectionTest, AiModelList, AiRunnerFound } from './ai';
 import type { AiUsage } from '../aiUsage';
 import type { SearchEngineId } from '../searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../graph';
@@ -416,6 +416,10 @@ export interface AiApi {
   saveAiConnection(conn: AiConnection, key: string | null): Promise<boolean>;
   deleteAiConnection(id: string): Promise<boolean>;
   testAiConnection(conn: AiConnection, key: string | null): Promise<AiConnectionTest>;
+  /** Список моделей у провайдера. Ключ — как в test: null означает «возьми сохранённый». */
+  listAiModels(conn: AiConnection, key: string | null): Promise<AiModelList>;
+  /** Кто из локальных раннеров запущен прямо сейчас. Уже заведённые в ответ не попадают. */
+  discoverAiRunners(): Promise<AiRunnerFound[]>;
   /** null — вернуть роль на модель этой машины. */
   setAiRoute(role: string, connectionId: string | null): Promise<boolean>;
   onAiConnectionsChanged(cb: (state: AiConnectionsState) => void): () => void;

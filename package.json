@@ -45,6 +45,7 @@
     "word-match-check": "node --experimental-strip-types scripts/word-match-check.mjs",
     "calc-check": "node --experimental-strip-types scripts/calc-check.mjs",
     "ai-providers-check": "node --experimental-strip-types scripts/ai-providers-check.mjs",
+    "model-list-check": "node --experimental-strip-types scripts/model-list-check.mjs",
     "ai-schema-check": "node --experimental-strip-types scripts/ai-schema-check.mjs",
     "ai-routing-check": "node --experimental-strip-types scripts/ai-routing-check.mjs",
     "sse-parse-check": "node --experimental-strip-types scripts/sse-parse-check.mjs",

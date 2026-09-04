@@ -139,6 +139,25 @@ export type { AiConnection };
 
 export type AiConnectionTest = { ok: true } | { ok: false; error: string };
 
+/**
+ * Список моделей, отданный самим провайдером (GET /models).
+ *
+ * ⚠️ Отказ — обычный исход, а не сбой: половина совместимых шлюзов этого метода не имеет вовсе.
+ * Поэтому ошибка приезжает ФРАЗОЙ для человека рядом с полем, а ручной ввод имени остаётся на
+ * месте — выпадашка его дополняет, но не заменяет.
+ */
+export type AiModelList = { ok: true; models: string[] } | { ok: false; error: string };
+
+/** Локальный раннер, который отвечает прямо сейчас (Ollama, LM Studio). */
+export interface AiRunnerFound {
+  /** id пресета из PROVIDER_PRESETS — по нему интерфейс знает, как назвать находку. */
+  presetId: string;
+  label: string;
+  baseUrl: string;
+  /** Что у него реально скачано. Пустым не бывает: раннер без моделей мы не показываем. */
+  models: string[];
+}
+
 
 // Снапшот железа (см. electron/HardwareInfo.ts) — задел под подбор GGUF-модели по доступной VRAM.
 // vram*/gpuBackend — null, если детект упал (нет подходящего GPU/драйвера) или ещё не запускался;

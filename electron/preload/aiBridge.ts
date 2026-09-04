@@ -12,7 +12,7 @@
 // (preload-content.ts) он песочный, и там строки каналов дублируются руками — см. CLAUDE.md.
 import { ipcRenderer } from 'electron';
 import { IPC } from '../../shared/ipc';
-import type { AiConnection, AiConnectionsState, AiConnectionTest } from '../../shared/ipc';
+import type { AiConnection, AiConnectionsState, AiConnectionTest, AiModelList, AiRunnerFound } from '../../shared/ipc';
 import type { AiUsage } from '../../shared/aiUsage';
 
 export const aiBridge = {
@@ -31,6 +31,9 @@ export const aiBridge = {
   deleteAiConnection: (id: string) => ipcRenderer.invoke(IPC.AI_CONN_DELETE, id) as Promise<boolean>,
   testAiConnection: (conn: AiConnection, key: string | null) =>
     ipcRenderer.invoke(IPC.AI_CONN_TEST, conn, key) as Promise<AiConnectionTest>,
+  listAiModels: (conn: AiConnection, key: string | null) =>
+    ipcRenderer.invoke(IPC.AI_CONN_MODELS, conn, key) as Promise<AiModelList>,
+  discoverAiRunners: () => ipcRenderer.invoke(IPC.AI_CONN_DISCOVER) as Promise<AiRunnerFound[]>,
   setAiRoute: (role: string, connectionId: string | null) =>
     ipcRenderer.invoke(IPC.AI_SET_ROUTE, role, connectionId) as Promise<boolean>,
   aiUsage: () => ipcRenderer.invoke(IPC.AI_USAGE) as Promise<Record<string, AiUsage>>,

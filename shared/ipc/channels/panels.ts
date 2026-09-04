@@ -104,6 +104,12 @@ export const PANELS = {
   // Проба живого подключения: один дешёвый запрос к провайдеру. Без неё человек узнаёт об опечатке
   // в ключе через полминуты в чате и не понимает, что случилось.
   AI_CONN_TEST:           'ai:connection-test',
+  // Список моделей у самого провайдера: имя модели человек вбивал руками и ошибался, а ошибка не
+  // видна до первого настоящего запроса — адрес отвечает, ключ принят, а модель «не найдена».
+  AI_CONN_MODELS:         'ai:connection-models',
+  // Проба штатных портов Ollama и LM Studio при открытии раздела. Порты НЕ сканируем — только
+  // адреса пресетов без ключа (см. electron/ai/modelList.ts).
+  AI_CONN_DISCOVER:       'ai:connection-discover',
   AI_SET_ROUTE:           'ai:set-route',
   AI_CONN_CHANGED:        'ai:connections-changed',
   AI_KEY_STATUS_CHANGED:  'ai:key-status-changed',  // main → renderer: push нового connected-статуса
