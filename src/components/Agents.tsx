@@ -177,7 +177,12 @@ function ClientRights({ state, clientKey, onChange }: {
     <div style={{ marginBottom: sp(4) }}>
       <GroupCap
         title={client.label}
-        note="назвалась так сама · проверить это мы не можем"
+        // ⚠️ Профиль стоит рядом с именем не для полноты: разрешение живёт ТОЛЬКО в нём, и человек
+        // должен видеть, какому именно профилю он открыл дверь. В другом браузер этой программе не
+        // ответит вовсе.
+        note={client.profileName
+          ? `профиль «${client.profileName}» · назвалась так сама, проверить это мы не можем`
+          : 'назвалась так сама · проверить это мы не можем'}
       />
       <div style={{ display: 'flex', flexDirection: 'column', gap: sp(1), padding: pad(2, 4) }}>
         {state.tools.map((t) => {

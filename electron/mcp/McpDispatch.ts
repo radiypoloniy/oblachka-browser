@@ -11,7 +11,7 @@ import {
 import {
   MCP_PROMPTS, findPrompt, missingArgs, promptArgs,
 } from '../../shared/mcpPrompts';
-import { askToConnect, isApproved, stancesFor, touchClient } from './McpClients';
+import { askToConnect, isApproved, profileMatches, stancesFor, touchClient } from './McpClients';
 import { confirmWrite } from './McpConfirm';
 import type { HistoryManager } from '../HistoryManager';
 
@@ -272,6 +272,23 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession)
     ));
   }
   touchClient(key);
+
+  // ⚠️ ГРАНИЦА ПРОФИЛЯ, а не ещё одно разрешение. Инструменты работают с АКТИВНЫМ профилем, а
+  // согласие человек давал один раз и для конкретного: отдал агенту рабочий, переключился в
+  // личный — и та же программа с тем же разрешением читает личную историю. Поэтому расхождение
+  // профилей отвечает ОТКАЗОМ, а не карточкой: карточка здесь была бы приглашением нажать «да»
+  // рефлексом, а решение уже принято — просто не для этого профиля.
+  const profile = profileMatches(key);
+  if (!profile.ok) {
+    note(false, 'other-profile');
+    return ok(req.id, content(
+      `This client was connected in the browser profile "${profile.connected}", but the active `
+      + `profile is now "${profile.now}". The browser answers only inside the profile it was `
+      + 'connected for. Ask the user to switch back to that profile, or to connect this client '
+      + 'in the current one (Library → Agents).',
+      true,
+    ));
+  }
 
   const verdict = decide(name, { connected: true, stances: stancesFor(key) });
   if (!verdict.ok) {

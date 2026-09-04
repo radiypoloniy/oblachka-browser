@@ -589,6 +589,30 @@ await withStand(async (ctx) => {
   }
   const parts = shotCall?.result?.content ?? [];
   const image = parts.find((p) => p.type === 'image');
+  if (!image) {
+    // Диагностика ровно в момент отказа: что с активной вью и снимается ли она напрямую.
+    const why = await ctx.evalMain(`
+      (async () => {
+        const win = ${E}.BrowserWindow.getAllWindows()
+          .find((w) => w.webContents.getURL().indexOf('index.html') !== -1);
+        if (!win) return JSON.stringify({ окноБраузера: 'не найдено' });
+        const c2 = ${MOD('WindowRegistry.js')}.contextForWindow(win);
+        const wc = c2 ? c2.tabs.getActiveWebContents() : null;
+        const out = { окноВидно: win.isVisible(), естьАктивная: !!wc };
+        if (wc) {
+          out.адрес = wc.getURL().slice(0, 50);
+          try { const s = await wc.capturePage(); out.прямойСнимок = s.isEmpty() ? 'пусто' : JSON.stringify(s.getSize()); }
+          catch (e) { out.прямойСнимок = 'ошибка: ' + e.message; }
+        }
+        const views = win.contentView.children;
+        out.вью = views.length;
+        try { const s2 = await views[views.length - 1].webContents.capturePage(); out.последняя = s2.isEmpty() ? 'пусто' : JSON.stringify(s2.getSize()); }
+        catch (e) { out.последняя = 'ошибка: ' + e.message; }
+        return JSON.stringify(out);
+      })()
+    `);
+    console.log(`         диагностика снимка: ${why}`);
+  }
   check('снимок приходит картинкой протокола', !!image, JSON.stringify(parts).slice(0, 160));
   check('и это JPEG', image?.mimeType === 'image/jpeg', String(image?.mimeType));
   check('рядом есть текст с адресом страницы',
@@ -606,6 +630,50 @@ await withStand(async (ctx) => {
   // ⚠️ Машинной копии у снимка нет намеренно: туда уехал бы тот же base64 вторым экземпляром.
   check('машинной копии снимка нет', shotCall?.result?.structuredContent === undefined,
     JSON.stringify(shotCall?.result?.structuredContent ?? null).slice(0, 80));
+
+  // ── Граница профиля ───────────────────────────────────────────────────────
+  //
+  // ⚠️ САМАЯ ТИХАЯ ИЗ ДЫР, которые тут закрывались: разрешение выдаётся ОДИН РАЗ, а инструменты
+  // работают с АКТИВНЫМ профилем. Человек отдаёт агенту рабочий профиль, переключается в личный —
+  // и та же программа с тем же разрешением читает личную историю и личные вкладки. Ничего не
+  // ломается, никто не спрашивает: просто граница, которую человек считал проведённой, её нет.
+  //
+  // ⚠️ Проверка идёт ПОСЛЕДНЕЙ: она переключает профиль стенда, и после неё остальным проверкам
+  // жить незачем.
+  const switched = await ctx.evalMain(`
+    (() => {
+      const store = ${MOD('ProfileStore.js')};
+      const before = store.getActiveProfile();
+      const state = store.createProfile('Личный', 'blue');
+      const created = state.profiles.find((p) => p.name === 'Личный');
+      if (!created) return 'профиль не создался';
+      store.setActiveProfile(created.id);
+      return JSON.stringify({ было: before.name, стало: store.getActiveProfile().name });
+    })()
+  `);
+  check('профиль переключён — есть что проверять', switched.includes('Личный'), switched);
+
+  const foreign = await c.send('tools/call', { name: 'tabs_list', arguments: {} });
+  check('в чужом профиле браузер не отвечает', foreign?.result?.isError === true,
+    textOf(foreign).slice(0, 200));
+  // ⚠️ Отказ обязан НАЗВАТЬ ОБА профиля: агент перескажет это человеку, и «нет доступа» без имён
+  // тот прочитает как поломку, а не как границу, которую сам же провёл.
+  check('и объясняет, куда вернуться', /connected in the browser profile/.test(textOf(foreign))
+    && textOf(foreign).includes('Личный'), textOf(foreign).slice(0, 240));
+
+  // Возвращаемся, чтобы выключение проверялось в том же профиле, где всё поднималось.
+  await ctx.evalMain(`
+    (() => {
+      const store = ${MOD('ProfileStore.js')};
+      const main = store.getProfiles().profiles[0];
+      store.setActiveProfile(main.id);
+      return true;
+    })()
+  `);
+  await wait(500);
+  const backHome = await c.send('tools/call', { name: 'tabs_list', arguments: {} });
+  check('в своём профиле отвечает снова', backHome?.result?.isError !== true,
+    textOf(backHome).slice(0, 160));
 
   // ── Выключение ────────────────────────────────────────────────────────────
   c.close();

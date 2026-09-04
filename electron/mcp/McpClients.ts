@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
+import { getActiveProfile } from '../ProfileStore';
 import { canonicalToolName, MCP_TOOLS, type McpStance } from '../../shared/mcpPolicy';
 import { askMcp, dropMcpPrompts } from '../McpPromptManager';
 
@@ -37,6 +38,20 @@ export interface McpClientRecord {
   label: string;
   approvedAt: number;
   lastSeen: number;
+  /**
+   * Профиль, В КОТОРОМ программу подключили.
+   *
+   * ⚠️ Заведено потому, что разрешение выдаётся ОДИН РАЗ, а инструменты работают с АКТИВНЫМ
+   * профилем — каким бы он ни был в момент вызова. Человек отдал агенту рабочий профиль,
+   * переключился в личный, и та же программа с тем же разрешением читает личную историю.
+   * Разрешение обязано жить в границах того профиля, для которого его дали.
+   *
+   * ⚠️ Может отсутствовать у записей прошлой версии: их привязываем к активному профилю при
+   * первом же обращении, а не запрещаем задним числом — человек этих подключений не отменял.
+   */
+  profileId?: string;
+  /** Имя профиля на момент подключения — для интерфейса. Id переживает переименование, имя нет. */
+  profileName?: string;
   /**
    * Решения человека по инструментам: 'ask' | 'allow' | 'deny'.
    *
@@ -106,6 +121,32 @@ export function isApproved(key: string): boolean {
   return clients.some((c) => c.key === key);
 }
 
+/**
+ * Тот ли это профиль, для которого программу подключали.
+ *
+ * ⚠️ Записи прошлой версии профиля не знают — привязываем их к текущему при первом обращении.
+ * Запрещать задним числом нельзя: человек эти подключения не отменял, и «вчера работало, сегодня
+ * нет» он прочитает как поломку, а не как защиту.
+ */
+export function profileMatches(key: string): { ok: true } | { ok: false; connected: string; now: string } {
+  load();
+  const c = clients.find((x) => x.key === key);
+  const profile = getActiveProfile();
+  if (!c) return { ok: true }; // неподключённого остановит проверка выше
+  if (!c.profileId) {
+    c.profileId = profile.id;
+    c.profileName = profile.name;
+    save();
+    return { ok: true };
+  }
+  if (c.profileId === profile.id) {
+    // Имя могли поменять — держим его свежим, чтобы интерфейс не показывал старое.
+    if (c.profileName !== profile.name) { c.profileName = profile.name; save(); }
+    return { ok: true };
+  }
+  return { ok: false, connected: c.profileName ?? c.profileId, now: profile.name };
+}
+
 export function stancesFor(key: string): Record<string, McpStance> {
   load();
   return clients.find((c) => c.key === key)?.stances ?? {};
@@ -167,7 +208,11 @@ export function approveClient(key: string, label: string): void {
   load();
   const key0 = key.trim();
   if (key0 === '' || isApproved(key0)) return;
-  clients = [...clients, { key: key0, label: label.trim() || key0, approvedAt: Date.now(), lastSeen: Date.now(), stances: {} }];
+  const profile = getActiveProfile();
+  clients = [...clients, {
+    key: key0, label: label.trim() || key0, approvedAt: Date.now(), lastSeen: Date.now(),
+    profileId: profile.id, profileName: profile.name, stances: {},
+  }];
   // Пауза после прежнего отказа снимается: человек только что решил иначе, и его решение свежее.
   denied.delete(key0);
   save();
@@ -194,9 +239,13 @@ export async function askToConnect(key: string, label: string): Promise<boolean>
         denied.set(key, Date.now() + DENY_COOLDOWN_MS);
         return false;
       }
+      const profile = getActiveProfile();
       clients = [
         ...clients.filter((c) => c.key !== key),
-        { key, label, approvedAt: Date.now(), lastSeen: Date.now(), stances: {} },
+        {
+          key, label, approvedAt: Date.now(), lastSeen: Date.now(),
+          profileId: profile.id, profileName: profile.name, stances: {},
+        },
       ];
       save();
       return true;
@@ -217,10 +266,15 @@ async function prompt(label: string): Promise<boolean> {
     kind: 'connect',
     client: label,
     title: 'Подключить программу?',
+    // ⚠️ ПРОФИЛЬ НАЗЫВАЕТСЯ ПЕРВЫМ, и это не украшение вопроса. Человек отдаёт не «браузер», а
+    // конкретный профиль со своими вкладками, историей и логинами: в рабочем это одно решение, в
+    // личном — совсем другое. Не сказав, о каком идёт речь, мы получаем согласие не на то.
     detail:
-      `Сможет без отдельного вопроса:\n${read}\n\n`
+      `Профиль «${getActiveProfile().name}»\n\n`
+      + `Сможет без отдельного вопроса:\n${read}\n\n`
       + 'Изменения — открыть, переключить или закрыть вкладку — спрашиваются отдельно. '
-      + 'Пароли, куки и приватные вкладки не отдаются вовсе.',
+      + 'Пароли, куки и приватные вкладки не отдаются вовсе. В других профилях программа '
+      + 'отвечать не будет.',
     // ⚠️ У подключения «всегда» нет: сам ответ «Подключить» и есть решение навсегда, а вторая
     // кнопка с тем же смыслом читалась бы как «а эта — ещё сильнее?».
     canRemember: false,

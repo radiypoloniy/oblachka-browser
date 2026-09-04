@@ -394,6 +394,12 @@ export interface McpClientInfo {
   label: string;
   approvedAt: number;
   lastSeen: number;
+  /**
+   * Профиль, для которого программу подключили: браузер отвечает ей только внутри него.
+   *
+   * ⚠️ Пусто у записей прошлой версии — они привяжутся к активному профилю при первом обращении.
+   */
+  profileName?: string;
   /** Решения человека по инструментам: 'ask' | 'allow' | 'deny'. Пусто — как по умолчанию. */
   stances: Record<string, 'ask' | 'allow' | 'deny'>;
 }
