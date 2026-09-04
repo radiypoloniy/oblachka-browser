@@ -151,7 +151,7 @@ await withStand(async (ctx) => {
 
   const list = await c.send('tools/list', {});
   const tools = list?.result?.tools ?? [];
-  check('инструменты отдаются', tools.length === 10, `их ${tools.length}`);
+  check('инструменты отдаются', tools.length === 11, `их ${tools.length}`);
   check('у каждого есть схема и аннотации',
     tools.every((t) => t.inputSchema?.type === 'object' && typeof t.annotations?.readOnlyHint === 'boolean'));
   check('чтение помечено чтением',
@@ -300,6 +300,61 @@ await withStand(async (ctx) => {
   const wild = await c.send('tools/call', { name: 'bookmarks_search', arguments: { query: '%' } });
   check('проценты не находят всё подряд',
     JSON.parse(textOf(wild) || '{}').count === 0, textOf(wild).slice(0, 160));
+
+  // ── Сохранение в закладки ─────────────────────────────────────────────────
+  //
+  // ⚠️ Закрывает круг, который обрывался: агент находил нужное и не мог его никуда положить —
+  // «папку создать не смог, вот ссылки». Найденное без места хранения человек переносит руками,
+  // то есть делает ровно ту работу, ради которой звал агента.
+  //
+  // ⚠️ Право переводим в 'allow' СПЕЦИАЛЬНО: сама карточка подтверждения проверяется отдельным
+  // блоком выше, а здесь смотрим, что запись доходит до базы закладок и папка создаётся по имени.
+  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setStance(${JSON.stringify(CLIENT.toLowerCase())}, 'bookmarks_add', 'allow'); return true; })()`);
+  const put = await c.send('tools/call', {
+    name: 'bookmarks_add',
+    arguments: {
+      folder: 'Кресла',
+      items: [
+        { url: 'https://example.org/kreslo-1', title: 'Кресло первое' },
+        { url: 'https://example.org/kreslo-2', title: 'Кресло второе' },
+      ],
+    },
+  });
+  check('закладки сохраняются пачкой', /Сохранено 2/.test(textOf(put)), textOf(put).slice(0, 160));
+  check('и в названную папку', /Кресла/.test(textOf(put)), textOf(put).slice(0, 160));
+
+  const inFolder = await ctx.evalMain(`
+    (() => {
+      const store = ${MOD('ProfileData.js')}.activeBookmarks();
+      const folder = store.list(null).find((e) => e.kind === 'folder' && e.title === 'Кресла');
+      if (!folder) return 'папки нет';
+      return JSON.stringify(store.list(folder.id).map((b) => b.title));
+    })()
+  `);
+  check('папка создана по имени и в ней обе закладки',
+    inFolder === JSON.stringify(['Кресло первое', 'Кресло второе']), inFolder);
+
+  // ⚠️ Повтор не плодит дублей: агент, потерявший ответ, зовёт инструмент снова — обычное дело.
+  await c.send('tools/call', {
+    name: 'bookmarks_add',
+    arguments: { folder: 'Кресла', items: [{ url: 'https://example.org/kreslo-1', title: 'Кресло первое' }] },
+  });
+  const afterRepeat = await ctx.evalMain(`
+    (() => {
+      const store = ${MOD('ProfileData.js')}.activeBookmarks();
+      const folder = store.list(null).find((e) => e.kind === 'folder' && e.title === 'Кресла');
+      return String(store.list(folder.id).length);
+    })()
+  `);
+  check('повторный вызов не плодит дублей', afterRepeat === '2', afterRepeat);
+  // ⚠️ Найтись сохранённое обязано тем же инструментом, которым агент ищет: иначе он «сохранил»
+  // в пустоту и об этом не узнает.
+  // ⚠️ Запрос СТРОЧНЫМИ по закладке с Заглавной: SQLite LIKE и COLLATE NOCASE регистронезависимы
+  // только для ASCII, и «Кресло» по «кресло» не находилось вовсе. Для русскоязычного браузера это
+  // сломанный поиск, а не мелочь — поймано этим драйвером.
+  const back = await c.send('tools/call', { name: 'bookmarks_search', arguments: { query: 'кресло' } });
+  check('сохранённое находится поиском, невзирая на регистр',
+    JSON.parse(textOf(back) || '{}').count === 2, textOf(back).slice(0, 160));
 
   // ── Ссылки со страницы ────────────────────────────────────────────────────
   //

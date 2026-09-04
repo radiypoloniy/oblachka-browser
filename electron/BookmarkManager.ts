@@ -236,6 +236,23 @@ export class BookmarkManager {
   }
 
   /**
+   * Папка с таким названием в корне — или новая с этим названием.
+   *
+   * ⚠️ ПО ИМЕНИ, а не по номеру: снаружи (у внешнего агента, у правил) номеров наших папок нет и
+   * быть не должно. Имя — единственное, чем такую папку можно назвать, не заглядывая в базу.
+   *
+   * ⚠️ Ищем СРЕДИ КОРНЕВЫХ. Совпадение по всему дереву означало бы, что «Кресла» внутри чужой
+   * папки «Старое» вдруг становится целью — человек искал бы сохранённое не там, где ожидал.
+   */
+  folderByName(title: string): number | null {
+    const name = title.trim();
+    if (!name) return null;
+    const found = this.list(null).find((e) => e.kind === 'folder' && e.title.trim().toLowerCase() === name.toLowerCase());
+    if (found) return found.id;
+    return this.createFolder(name)?.id ?? null;
+  }
+
+  /**
    * Найти закладки по названию и адресу.
    *
    * ⚠️ Ищем ТОЛЬКО ссылки: папка без своих детей — это ответ «у вас есть папка Рецепты», который
@@ -247,14 +264,26 @@ export class BookmarkManager {
    */
   search(query: string, limit = 20): BookmarkEntry[] {
     if (!this.#db) return [];
-    const q = query.trim();
+    const q = query.trim().toLowerCase();
     if (!q) return [];
     try {
-      const like = `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
-      const sql = `SELECT ${COLUMNS} FROM bookmarks
-        WHERE kind = 'link' AND (title LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\')
-        ${ORDER} LIMIT ?`;
-      return this.#db.prepare(sql).all(like, like, Math.max(1, Math.min(100, limit))) as BookmarkEntry[];
+      // ⚠️ ФИЛЬТРУЕМ В JS, А НЕ ЧЕРЕЗ LIKE, и это не лень написать SQL. `LIKE` и `COLLATE NOCASE`
+      // в SQLite регистронезависимы ТОЛЬКО ДЛЯ ASCII: закладка «Кресло» по запросу «кресло» не
+      // находится вовсе. Для русскоязычного браузера это не мелочь, а сломанный поиск — поймано
+      // живым драйвером 04.09.2026. `lower()` там тем же страдает.
+      //
+      // ⚠️ Читать всю таблицу не страшно ровно потому, что это ЗАКЛАДКИ: их тысячи, а не
+      // миллионы (у истории иначе — там FTS и не зря). Одно чтение против сотен обращений на
+      // каждую папку — тот же довод, что у listTree.
+      const rows = this.#db.prepare(`SELECT ${COLUMNS} FROM bookmarks WHERE kind = 'link' ${ORDER}`)
+        .all() as BookmarkEntry[];
+      const cap = Math.max(1, Math.min(100, limit));
+      const hits: BookmarkEntry[] = [];
+      for (const r of rows) {
+        if (r.title.toLowerCase().includes(q) || r.url.toLowerCase().includes(q)) hits.push(r);
+        if (hits.length >= cap) break;
+      }
+      return hits;
     } catch (e) {
       console.warn('[Bookmarks] search error:', (e as Error).message);
       return [];

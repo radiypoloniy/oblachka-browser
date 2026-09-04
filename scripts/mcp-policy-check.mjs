@@ -6,14 +6,16 @@
 // человеческий глаз на код-ревью: они выглядят безобидно ровно до того дня, когда сработают.
 import {
   MCP_TOOLS, MCP_CLOSED_PREFIXES, MCP_SUPPORTED_VERSIONS, MCP_VERSION,
-  MCP_HISTORY_MAX, MCP_TEXT_LIMIT,
-  MCP_CONFIRM_TTL_MS,
-  annotationsFor, approvalFits, clampHistoryLimit, clampPageText, clientKey, clientLabel,
-  batchTextLimit, canonicalToolName, canRemember, confirmSubject, confirmTitle, decide,
-  defaultStance, eraOf, findTool, isClosedName, mustAsk, readUrlTargets, tidyLinks,
-  MCP_BATCH_MAX, MCP_LINKS_MAX,
-  pickVersion, safeOpenUrl, stanceFor, visibleTabs,
+  MCP_HISTORY_MAX, MCP_CONFIRM_TTL_MS,
+  annotationsFor, approvalFits, canonicalToolName, canRemember, clampHistoryLimit, clientKey,
+  clientLabel, decide, defaultStance, eraOf, findTool, isClosedName, mustAsk,
+  pickVersion, stanceFor, visibleTabs,
 } from '../shared/mcpPolicy.ts';
+// ⚠️ Разбор аргументов и тексты карточек живут в своём модуле (см. его шапку): политика решает,
+// КОМУ И ЧТО позволено, а он — ЧТО ИМЕННО просят в этом вызове.
+import {
+  MCP_TEXT_LIMIT, clampPageText, confirmSubject, confirmTitle, safeOpenUrl,
+} from '../shared/mcpArgs.ts';
 
 let passed = 0;
 let failed = 0;
@@ -29,7 +31,12 @@ console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
 check('состав каталога', MCP_TOOLS.map((t) => t.name),
   ['tabs_list', 'page_text', 'page_screenshot', 'page_links', 'history_search', 'bookmarks_search',
-    'page_read_url', 'tabs_open', 'tabs_activate', 'tabs_close']);
+    'page_read_url', 'bookmarks_add', 'tabs_open', 'tabs_activate', 'tabs_close']);
+// ⚠️ Сохранение в закладки — ЗАПИСЬ, то есть спрашивает. Но оно обратимо (закладку видно и можно
+// удалить), поэтому «разрешать всегда» у него есть — в отличие от закрытия вкладок.
+check('сохранение закладок — запись', findTool('bookmarks_add').mode, 'write');
+check('спрашивает по умолчанию', defaultStance(findTool('bookmarks_add')), 'ask');
+check('и разрешается навсегда — оно обратимо', canRemember(findTool('bookmarks_add')), true);
 // ⚠️ Закладки — то, что человек отобрал РУКАМИ, в отличие от истории, куда попадает всё подряд.
 // Читаются молча, как и остальное чтение: согласие на него дано при подключении.
 check('закладки — чтение', findTool('bookmarks_search').mode, 'read');
@@ -72,80 +79,6 @@ check('закрытая категория ловит подчёркивание
 check('и точку', isClosedName('passwords.list'), true);
 check('и составной префикс в обоих видах',
   [isClosedName('downloads_file'), isClosedName('downloads.file')], [true, true]);
-
-// ── Ссылки со страницы ──────────────────────────────────────────────────────────────────────
-//
-// ⚠️ Отсев живёт ЗДЕСЬ, а не в скрипте, который бегает по чужому DOM: тот исполняется на любом
-// сайте мира и обязан быть простым до предела, иначе упадёт и вернёт агенту пустоту — а тот
-// прочитает её как «ссылок на странице нет».
-const here = 'https://site.ru/article';
-check('ссылка на саму себя выброшена',
-  tidyLinks([{ url: 'https://site.ru/article', text: 'сюда' }], here), []);
-check('и её же якорь на этой странице',
-  tidyLinks([{ url: 'https://site.ru/article#comments', text: 'к комментариям' }], here), []);
-check('чужая схема не проходит',
-  tidyLinks([{ url: 'javascript:void(0)', text: 'меню' }, { url: 'mailto:a@b.ru', text: 'почта' }], here), []);
-check('обычная ссылка проходит с текстом',
-  tidyLinks([{ url: 'https://site.ru/next', text: '  Следующая\n глава ' }], here),
-  [{ url: 'https://site.ru/next', text: 'Следующая глава' }]);
-check('дубликаты схлопываются',
-  tidyLinks([{ url: 'https://a.ru/x', text: 'раз' }, { url: 'https://a.ru/x#top', text: 'два' }], here).length, 1);
-check('ссылка без текста остаётся — адрес важнее подписи',
-  tidyLinks([{ url: 'https://a.ru/x', text: '' }], here), [{ url: 'https://a.ru/x', text: '' }]);
-check('мусор в списке пропускается поштучно',
-  tidyLinks(['строка', null, 7, { url: 'https://a.ru/x' }], here).length, 1);
-check('не массив — пустой список', tidyLinks('ссылки', here), []);
-// ⚠️ Потолок нужен: на ленте новостей ссылок под тысячу, и список целиком — это тысячи токенов
-// ради пары нужных строк.
-check('список обрезан по потолку',
-  tidyLinks(Array.from({ length: MCP_LINKS_MAX + 30 }, (_, i) => ({ url: `https://a.ru/${i}`, text: 'x' })), here).length,
-  MCP_LINKS_MAX);
-check('ссылки — чтение', findTool('page_links').mode, 'read');
-check('и не спрашивают', defaultStance(findTool('page_links')), 'allow');
-
-// ── Пакетное чтение: адреса и бюджет ответа ─────────────────────────────────────────────────
-//
-// ⚠️ Заведено ради КРУГОВ: десять страниц по одной — это десять оборотов «модель → клиент →
-// браузер → модель», и каждый человек оплачивает контекстом заново.
-//
-// ⚠️ Бюджет ответа ОБЩИЙ. Иначе восемь адресов дают сотню тысяч знаков за вызов — десятки тысяч
-// токенов, за которые платит человек, а прочитана будет первая треть.
-const targets = (args) => readUrlTargets(args);
-check('одиночный url принимается', targets({ url: 'https://a.ru' }).urls, ['https://a.ru/']);
-check('список urls принимается',
-  targets({ urls: ['https://a.ru', 'https://b.ru'] }).urls, ['https://a.ru/', 'https://b.ru/']);
-check('оба поля разом — url идёт первым',
-  targets({ url: 'https://a.ru', urls: ['https://b.ru'] }).urls, ['https://a.ru/', 'https://b.ru/']);
-check('одиночная строка в urls тоже годится', targets({ urls: 'https://a.ru' }).urls, ['https://a.ru/']);
-check('дубликаты не читаем дважды',
-  targets({ urls: ['https://a.ru', 'https://a.ru/'] }).urls, ['https://a.ru/']);
-// ⚠️ Одна битая ссылка в списке — обычное дело; терять из-за неё остальные семь незачем.
-check('битый адрес выбрасывается поштучно',
-  targets({ urls: ['не адрес', 'https://a.ru'] }).urls, ['https://a.ru/']);
-check('и сосчитан вслух', targets({ urls: ['не адрес', 'https://a.ru'] }).dropped, 1);
-check('чужая схема не проходит',
-  targets({ urls: ['file:///c:/secret.txt', 'javascript:alert(1)'] }).ok, false);
-check('пустой список — отказ словами', targets({ urls: [] }).ok, false);
-check('лишние адреса сверх предела отсекаются',
-  targets({ urls: Array.from({ length: MCP_BATCH_MAX + 3 }, (_, i) => `https://s${i}.ru`) }).urls.length,
-  MCP_BATCH_MAX);
-check('и они тоже сосчитаны',
-  targets({ urls: Array.from({ length: MCP_BATCH_MAX + 3 }, (_, i) => `https://s${i}.ru`) }).dropped, 3);
-
-check('одна страница получает полный лимит', batchTextLimit(1), 12000);
-check('восемь делят общий бюджет', batchTextLimit(8), 3000);
-// ⚠️ Ниже минимума не опускаемся: страница, обрезанная до пары абзацев, бесполезна — честнее
-// прочитать меньше адресов целиком.
-check('мельче минимума не режем', batchTextLimit(50), 3000);
-check('бюджет не растёт от числа адресов', batchTextLimit(2) <= 12000, true);
-
-// ⚠️ Карточка называет ВСЕ адреса: человек решает, пускать ли программу на конкретные сайты своим
-// профилем, и разница между списком документации и списком, куда затесалась почта, видна только
-// в самих адресах.
-const subj = confirmSubject(findTool('page_read_url'), { urls: ['https://a.ru', 'https://mail.ru'] });
-check('в карточке перечислены все адреса',
-  subj.includes('https://a.ru/') && subj.includes('https://mail.ru/'), true);
-check('и сказано про профиль во множественном числе', subj.includes('Страницы будут открыты'), true);
 
 check('чтение чужого адреса спрашивает', defaultStance(findTool('page_read_url')), 'ask');
 check('и его можно разрешить навсегда', canRemember(findTool('page_read_url')), true);

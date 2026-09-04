@@ -4,7 +4,8 @@ import {
   annotationsFor, canonicalToolName, clientKey, clientLabel, decide, mustAsk, pickVersion,
 } from '../../shared/mcpPolicy';
 import {
-  activateTab, activePageLinks, activePageText, closeTab, listTabs, openTab, readUrl,
+  activateTab, activePageLinks, activePageText, addBookmarks, closeTab, listTabs, openTab,
+  readUrl,
   screenshotActiveTab, searchBookmarks, searchHistory, type McpShot,
 } from './McpTools';
 import {
@@ -377,6 +378,8 @@ async function run(name: string, args: Record<string, unknown>, deps: McpDeps): 
       const hits = searchHistory(deps.history(), query, args.limit);
       return { query, hits, count: hits.length };
     }
+    case 'bookmarks_add':
+      return addBookmarks(args);
     case 'tabs_open': {
       const res = openTab(args.url, args.background);
       if (!res.ok) throw new Error(res.note);

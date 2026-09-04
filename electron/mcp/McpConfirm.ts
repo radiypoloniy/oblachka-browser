@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import {
-  MCP_CONFIRM_TTL_MS, approvalFits, canRemember, confirmSubject, confirmTitle,
-  type McpApproval, type McpTool,
+  MCP_CONFIRM_TTL_MS, approvalFits, canRemember, type McpApproval, type McpTool,
 } from '../../shared/mcpPolicy';
+import { confirmSubject, confirmTitle } from '../../shared/mcpArgs';
 import { askMcp } from '../McpPromptManager';
 import { setStance } from './McpClients';
 

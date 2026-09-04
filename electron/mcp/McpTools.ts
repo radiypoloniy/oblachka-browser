@@ -3,10 +3,11 @@ import { contextForWindow, mainContext } from '../WindowRegistry';
 import { activeBookmarks } from '../ProfileData';
 import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
+import { clampHistoryLimit, visibleTabs } from '../../shared/mcpPolicy';
 import {
-  batchTextLimit, clampHistoryLimit, clampPageText, readUrlTargets, safeOpenUrl, tidyLinks,
-  visibleTabs, MCP_SHOT_QUALITY, MCP_SHOT_WIDTH, type McpLink,
-} from '../../shared/mcpPolicy';
+  batchTextLimit, bookmarkTargets, clampPageText, readUrlTargets, safeOpenUrl, tidyLinks,
+  MCP_SHOT_QUALITY, MCP_SHOT_WIDTH, type McpLink,
+} from '../../shared/mcpArgs';
 import type { HistoryManager } from '../HistoryManager';
 
 // Три инструмента на чтение — тела вызовов MCP-сервера.
@@ -317,6 +318,44 @@ export function searchBookmarks(query: string, limit: unknown): McpBookmarkHit[]
 export interface McpWriteResult {
   ok: boolean;
   note: string;
+}
+
+/**
+ * Сохранить страницы в закладки.
+ *
+ * ⚠️ Закрывает круг, который до сих пор обрывался: агент находил нужное и не мог его никуда
+ * положить — «папку создать не смог, вот ссылки» (живая жалоба 04.09.2026). Найденное без места
+ * хранения человек переносит руками, то есть делает ровно ту работу, ради которой звал агента.
+ *
+ * ⚠️ Пачкой, а не по одной: восемь находок — это восемь карточек подтверждения подряд, и на
+ * третьей человек перестаёт читать, что в них написано. Одна карточка перечисляет всё (см.
+ * confirmSubject в shared/mcpArgs.ts).
+ *
+ * ⚠️ Папка ищется/создаётся ПО ИМЕНИ (folderByName): номеров наших папок у агента нет и не будет.
+ */
+export function addBookmarks(args: Record<string, unknown>): McpWriteResult {
+  const targets = bookmarkTargets(args);
+  if (!targets.ok) return { ok: false, note: targets.error };
+
+  const store = activeBookmarks();
+  const parentId = targets.folder ? store.folderByName(targets.folder) : null;
+  // ⚠️ Папку не создали (база не открылась) — кладём в корень, а не бросаем всё: потерять место
+  // хуже, чем потерять папку, и человек всё равно найдёт закладку поиском.
+  let saved = 0;
+  const skipped: string[] = [];
+  for (const item of targets.items) {
+    const entry = store.add(item.url, item.title || item.url, parentId);
+    if (entry) saved++;
+    else skipped.push(item.url);
+  }
+  const where = targets.folder && parentId !== null ? ` в папку «${targets.folder}»` : '';
+  const tail = skipped.length > 0 ? `, пропущено ${skipped.length} (уже были или не открылась база)` : '';
+  return {
+    ok: saved > 0,
+    note: saved > 0
+      ? `Сохранено ${saved}${where}${tail}`
+      : 'Ни одной закладки сохранить не удалось.',
+  };
 }
 
 /**

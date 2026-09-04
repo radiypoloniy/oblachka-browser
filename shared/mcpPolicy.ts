@@ -69,99 +69,6 @@ export interface McpTool {
   };
 }
 
-/**
- * ⚠️ СНИЖЕН С 40 000 ПО ЖИВОЙ ЖАЛОБЕ «через браузер долго и дорого»: сорок тысяч знаков — около
- * десяти тысяч токенов на ОДНУ страницу, за которые платит человек, а читается первая треть. Что
- * обрезано, сказано в ответе. ⚠️ Число общее для page_text и page_read_url: разного потолка
- * человек не поймёт, а разойтись они успеют на первой же правке.
- */
-export const MCP_TEXT_LIMIT = 12_000;
-
-/**
- * ⚠️ БЮДЖЕТ ОБЩИЙ, а не «лимит × число страниц»: иначе восемь адресов дают сотню тысяч знаков за
- * вызов, за которые платит человек. Но не мельче минимума — страница, обрезанная до пары абзацев,
- * бесполезна. Разбор — docs/architecture-mcp.md, «Пакетное чтение».
- */
-export const MCP_BATCH_MAX = 8;
-
-/**
- * ⚠️ Кадр УМЕНЬШАЕМ и жмём JPEG: снимок окна в PNG — мегабайты, которые лягут в контекст модели
- * целиком. 1152 px хватает, чтобы прочитать интерфейс и подписи на графиках.
- */
-export const MCP_SHOT_WIDTH = 1152;
-export const MCP_SHOT_QUALITY = 70;
-/** ⚠️ Потолок: на ленте новостей ссылок под тысячу — это тысячи токенов ради пары нужных строк. */
-export const MCP_LINKS_MAX = 100;
-const LINK_TEXT_MAX = 120; // длиннее — уже не подпись, а абзац из карточки товара
-
-export interface McpLink { url: string; text: string }
-
-/**
- * ⚠️ ЧИСТИМ ЗДЕСЬ, А НЕ В СТРАНИЦЕ: скрипт в чужом DOM обязан быть простым — он бегает по любому
- * сайту мира. ⚠️ Ссылка на саму себя выбрасывается: своих якорей у страницы десятки.
- */
-export function tidyLinks(raw: unknown, pageUrl: string): McpLink[] {
-  if (!Array.isArray(raw)) return [];
-  const here = stripHash(pageUrl);
-  const seen = new Set<string>();
-  const out: McpLink[] = [];
-  for (const item of raw) {
-    if (typeof item !== 'object' || item === null) continue;
-    const o = item as { url?: unknown; text?: unknown };
-    const url = safeOpenUrl(o.url);
-    if (!url) continue;
-    const flat = stripHash(url);
-    if (flat === here || seen.has(flat)) continue;
-    seen.add(flat);
-    const text = typeof o.text === 'string' ? o.text.replace(/\s+/g, ' ').trim().slice(0, LINK_TEXT_MAX) : '';
-    out.push({ url, text });
-    if (out.length >= MCP_LINKS_MAX) break;
-  }
-  return out;
-}
-
-function stripHash(url: string): string {
-  const cut = url.indexOf('#');
-  return cut === -1 ? url : url.slice(0, cut);
-}
-const MCP_BATCH_BUDGET = 24_000;
-const MCP_BATCH_MIN_PER_PAGE = 3_000;
-
-/** Знаков на страницу, когда их читают пачкой. */
-export function batchTextLimit(count: number): number {
-  if (count <= 1) return MCP_TEXT_LIMIT;
-  return Math.max(MCP_BATCH_MIN_PER_PAGE, Math.floor(MCP_BATCH_BUDGET / count));
-}
-
-export type BatchTargets = { ok: true; urls: string[]; dropped: number } | { ok: false; error: string };
-
-/**
- * ⚠️ Принимаем ОБА ВИДА аргумента — `url` строкой и `urls` списком: разные клиенты присылают
- * разное, и отказ «не то поле» человек прочитает как «браузер не работает».
- * ⚠️ Негодные адреса ОТСЕИВАЕМ ПОШТУЧНО и считаем вслух: одна битая ссылка из восьми — обычное
- * дело, и терять из-за неё семь прочитанных незачем.
- */
-export function readUrlTargets(args: Record<string, unknown>): BatchTargets {
-  const raw: unknown[] = Array.isArray(args.urls)
-    ? [...args.urls]
-    : args.urls !== undefined ? [args.urls] : [];
-  if (args.url !== undefined) raw.unshift(args.url);
-
-  const seen = new Set<string>();
-  const urls: string[] = [];
-  let dropped = 0;
-  for (const item of raw) {
-    const safe = safeOpenUrl(item);
-    if (!safe) { dropped++; continue; }
-    // Дубликаты в списке — не повод читать одно и то же дважды.
-    if (seen.has(safe)) continue;
-    seen.add(safe);
-    if (urls.length < MCP_BATCH_MAX) urls.push(safe);
-    else dropped++;
-  }
-  if (urls.length === 0) return { ok: false, error: 'Only http(s) addresses can be read.' };
-  return { ok: true, urls, dropped };
-}
 /** Сколько записей истории отдаём максимум и сколько по умолчанию. */
 export const MCP_HISTORY_MAX = 50;
 export const MCP_HISTORY_DEFAULT = 10;
@@ -278,6 +185,36 @@ export const MCP_TOOLS: readonly McpTool[] = [
           items: { type: 'string' },
           description: 'Several addresses to read in one call, http(s) only. Prefer this over repeated calls.',
         },
+      },
+    },
+  },
+  {
+    name: 'bookmarks_add',
+    mode: 'write',
+    title: 'Сохранить в закладки',
+    description:
+      'Save pages to the user\'s bookmarks, optionally into a folder by name (created if missing). '
+      + 'Pass SEVERAL at once in `items` — a list of {url, title} — when you found several things '
+      + 'worth keeping: one confirmation instead of many. Use it to close the loop after a search: '
+      + 'you found the right pages, put them where the user will find them later.',
+    input: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Single address to save, http(s) only.' },
+        title: { type: 'string', description: 'Name for that single bookmark.' },
+        items: {
+          type: 'array',
+          description: 'Several bookmarks at once. Prefer this over repeated calls.',
+          items: {
+            type: 'object',
+            properties: {
+              url: { type: 'string' },
+              title: { type: 'string' },
+            },
+            required: ['url'],
+          },
+        },
+        folder: { type: 'string', description: 'Folder name. Created if it does not exist yet.' },
       },
     },
   },
@@ -515,17 +452,6 @@ export function clampHistoryLimit(raw: unknown): number {
   return Math.min(MCP_HISTORY_MAX, Math.max(1, n));
 }
 
-/**
- * Обрезка длинного текста страницы.
- *
- * ⚠️ Обрезаем ВСЛУХ — с пометкой в конце. Молча укороченная статья выглядит для агента как
- * статья, которая так и кончается: он ответит уверенно и неправильно, а человек не узнает.
- */
-export function clampPageText(text: string): string {
-  if (text.length <= MCP_TEXT_LIMIT) return text;
-  return `${text.slice(0, MCP_TEXT_LIMIT)}\n\n[… обрезано: страница длиннее ${MCP_TEXT_LIMIT} знаков]`;
-}
-
 export type VersionPick =
   | { ok: true; version: string; era: McpEra }
   | { ok: false; supported: readonly string[] };
@@ -548,85 +474,6 @@ export function pickVersion(requested: unknown): VersionPick {
 }
 
 // ── Заход 2: запись ──────────────────────────────────────────────────────────
-
-/**
- * Адрес, который агенту позволено открыть.
- *
- * ⚠️ БЕЛЫЙ СПИСОК СХЕМ, а не чёрный, — тот же вывод, что и у гостевой навигации после аудита
- * 21.08 (shared/guestNavigation.ts). Чёрный список обходится записью, о которой мы не подумали:
- * `javascript:` с пробелом внутри, `data:text/html`, протокол-относительный `//host`, ведущие
- * управляющие символы. Здесь пропускаются только http и https — и ничего больше.
- *
- * ⚠️ `file://` закрыт НАМЕРЕННО, хотя человек и сам открывает такие ссылки. Открыть локальный
- * файл по просьбе чужой программы — это чтение диска чужими руками, а не навигация.
- */
-export function safeOpenUrl(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  // Управляющие символы и пробелы по краям: с ними перевод строки перед `javascript:` даёт
-  // строку, которая глазом читается как обычный адрес.
-  const s = raw.replace(/[\u0000-\u001F\u007F]/g, '').trim();
-  if (!s || s.length > 2000) return null;
-  if (!/^https?:\/\//i.test(s)) return null;
-  try {
-    const u = new URL(s);
-    // Хост обязателен: `http:///path` разбирается, но никуда не ведёт.
-    return u.hostname ? u.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Заголовок карточки — ВОПРОС, а не название действия.
- *
- * ⚠️ Тот же закон, что у карточки разрешений сайта: «Открытие вкладки» — это ярлык раздела
- * настроек, а здесь у человека спрашивают. Названием карточка читается как сообщение, которое
- * можно не заметить, — а их и не замечают.
- */
-export function confirmTitle(tool: McpTool): string {
-  switch (tool.name) {
-    case 'page_read_url': return 'Прочитать страницу?';
-    case 'tabs_open': return 'Открыть вкладку?';
-    case 'tabs_activate': return 'Переключить вкладку?';
-    case 'tabs_close': return 'Закрыть вкладку?';
-    default: return `Разрешить «${tool.title}»?`;
-  }
-}
-
-/**
- * Предмет вопроса: то, на что человек смотрит, принимая решение.
- *
- * ⚠️ Адрес отдаётся ЦЕЛИКОМ и проверенным (safeOpenUrl), а не как его прислали: человек должен
- * увидеть ровно то, что откроется. Строка собирается здесь, а не в карточке, потому что это часть
- * политики — вопрос обязан называть настоящий аргумент.
- */
-export function confirmSubject(tool: McpTool, args: Record<string, unknown>): string {
-  switch (tool.name) {
-    case 'page_read_url': {
-      const targets = readUrlTargets(args);
-      if (!targets.ok) return 'Программа не назвала пригодный адрес.';
-      // ⚠️ Показываем ВСЕ адреса, а не «5 страниц»: разница между списком документации и списком,
-      // куда затесалась почта, видна только в самих адресах. ⚠️ Про куки сказано прямо — человек
-      // решает не «дать почитать сайт», а «дать почитать сайт от моего имени».
-      const many = targets.urls.length > 1;
-      return `${targets.urls.join('\n')}\n\n${many ? 'Страницы будут открыты' : 'Страница будет открыта'} вашим профилем — с вашими логинами.`;
-    }
-    case 'tabs_open': {
-      // ⚠️ Пустого предмета не бывает: карточка без адреса — вопрос ни о чём, и человек ответит
-      // «да» просто потому, что читать нечего. Негодный адрес показываем как есть и словами.
-      const safe = safeOpenUrl(args.url);
-      if (safe) return safe;
-      const raw = String(args.url ?? '').trim();
-      return raw ? `Адрес не годится: ${raw.slice(0, 200)}` : 'Программа не назвала адрес.';
-    }
-    case 'tabs_activate':
-      return 'Браузер переключится на другую открытую вкладку.';
-    case 'tabs_close':
-      return 'Вкладка закроется. Отменить это из браузера нельзя.';
-    default:
-      return tool.description;
-  }
-}
 
 /**
  * Сколько живёт разрешение, выданное на один вызов.
