@@ -38,6 +38,8 @@ interface PromptState {
   hasBounds: boolean;
   height: number;
   queue: McpPromptRequest[];
+  /** Пока висит вопрос — сторож верхнего слоя (см. keepOnTop). */
+  onTop: NodeJS.Timeout | null;
 }
 
 /**
@@ -65,7 +67,7 @@ function stateFor(win: BrowserWindow): PromptState {
     win, view: null, resizeBound: false,
     contentBounds: { x: 0, y: 0, width: 0, height: 0 },
     hasBounds: false,
-    height: INITIAL_HEIGHT, queue: [],
+    height: INITIAL_HEIGHT, queue: [], onTop: null,
   };
   states.set(win.id, created);
   // ⚠️ Вью закрываем сами: окно не уносит дочерние WebContentsView с собой (см. viewTeardown.ts).
@@ -141,6 +143,35 @@ function remeasureLater(st: PromptState): void {
   }, REMEASURE_MS);
 }
 
+/**
+ * Держать карточку сверху, пока на неё не ответили.
+ *
+ * ⚠️ Поднять ОДИН РАЗ при показе мало, и это показал замер: вкладка, открытая через две секунды
+ * после вопроса, встала над карточкой — а геометрия контента при этом не менялась, то есть
+ * подъём по syncMcpPromptBounds не сработал. Событие «слои изменились» перехватить негде:
+ * addChildView зовут TabManager (шесть мест), AI-панель, findbar, зоны перетаскивания и поповеры,
+ * и перечислять их все — список, который разъедется на первой же новой вью.
+ *
+ * ⚠️ Поэтому сторож по времени, и живёт он РОВНО пока висит вопрос. Работы у него на сравнение
+ * двух ссылок (raise выходит сразу, если карточка и так наверху), а отсутствие вопроса гасит его
+ * совсем — постоянного таймера в приложении не появляется.
+ */
+const ON_TOP_MS = 600;
+
+function keepOnTop(st: PromptState): void {
+  if (st.onTop) return;
+  st.onTop = setInterval(() => {
+    if (st.queue.length === 0 || st.win.isDestroyed()) { stopKeepOnTop(st); return; }
+    raise(st);
+  }, ON_TOP_MS);
+}
+
+function stopKeepOnTop(st: PromptState): void {
+  if (!st.onTop) return;
+  clearInterval(st.onTop);
+  st.onTop = null;
+}
+
 function show(st: PromptState): void {
   if (st.queue.length === 0 || st.win.isDestroyed()) return;
   if (!st.resizeBound) {
@@ -151,12 +182,41 @@ function show(st: PromptState): void {
   const view = ensureView(st);
   view.setBounds(bounds(st));
   if (!isAttached(st)) st.win.contentView.addChildView(view);
+  else raise(st); // вью осталась с прошлого вопроса и могла уйти под вкладку
   if (!firstTime) pushCurrent(st);
 }
 
 function detach(st: PromptState): void {
   if (!isAttached(st)) return;
   try { st.win.contentView.removeChildView(st.view!); } catch { /* окно могло закрыться */ }
+}
+
+/**
+ * Поднять карточку на верхний слой.
+ *
+ * ⚠️ ПОРЯДОК В `contentView.children` — ЭТО И ЕСТЬ ПОРЯДОК СЛОЁВ, и «добавили последними, значит
+ * поверх вкладки» верно ровно в момент добавления. Остальные поповеры этим и живут: их открывает
+ * человек, когда вью вкладки уже в списке. Наша карточка приходит СНАРУЖИ и висит минутами — а за
+ * это время агент открывает вкладку, TabManager делает addChildView, и вкладка встаёт НАД
+ * вопросом. Замер: [хром 1280, карточка 428] → после открытия вкладки [1280, 428, 1000].
+ *
+ * ⚠️ Дальше становилось только хуже: следующий вопрос шёл по ветке «вью уже прикреплена» — то есть
+ * пушил содержимое, ничего не переклеивая, — и карточка оставалась под контентом навсегда. Человек
+ * видел метку «Внешний агент» в тулбаре и ни одного вопроса: живая жалоба 04.09.2026 «появляется
+ * плашка внешний агент, но не всплывает поповер».
+ *
+ * ⚠️ Проверка «уже наверху» не косметическая: без неё мы переклеивали бы вью на КАЖДОМ обновлении
+ * геометрии (а оно приезжает постоянно), то есть дёргали бы живую WebContentsView десятки раз в
+ * секунду ради ничего.
+ */
+function raise(st: PromptState): void {
+  if (!isAttached(st)) return;
+  const kids = st.win.contentView.children;
+  if (kids[kids.length - 1] === st.view) return;
+  try {
+    st.win.contentView.removeChildView(st.view!);
+    st.win.contentView.addChildView(st.view!);
+  } catch { /* окно могло закрыться между проверкой и переклейкой */ }
 }
 
 /** Та же геометрия, что двигает вкладку: карточка привязана к контентной зоне. */
@@ -174,6 +234,10 @@ export function syncMcpPromptBounds(win: BrowserWindow, b: ContentBounds): void 
   st.hasBounds = true;
   if (st.queue.length > 0 && !isAttached(st)) { show(st); return; }
   layout(st);
+  // ⚠️ Пока вопрос висит, держим его поверх: вкладку могли открыть уже ПОСЛЕ показа карточки, и
+  // тогда она встала над ней (см. raise). Геометрия приезжает постоянно, поэтому это самый
+  // надёжный момент проверить порядок слоёв — а сама проверка стоит сравнения двух ссылок.
+  if (st.queue.length > 0) raise(st);
 }
 
 /**
@@ -190,8 +254,9 @@ export function askMcp(req: Omit<McpPromptRequest, 'id'>): Promise<McpAnswer> {
   const full: McpPromptRequest = { ...req, id: randomUUID() };
   const st = stateFor(win);
   st.queue.push(full);
-  if (isAttached(st)) pushCurrent(st);
+  if (isAttached(st)) { raise(st); pushCurrent(st); }
   else show(st);
+  keepOnTop(st);
   remeasureLater(st);
   callAttention(win);
 
@@ -254,7 +319,7 @@ export function answer(id: string, a: McpAnswer): void {
     const idx = st.queue.findIndex((q) => q.id === id);
     if (idx === -1) continue;
     st.queue.splice(idx, 1);
-    if (st.queue.length === 0) { detach(st); stopAttention(st.win); }
+    if (st.queue.length === 0) { detach(st); stopAttention(st.win); stopKeepOnTop(st); }
     else pushCurrent(st);
     return;
   }

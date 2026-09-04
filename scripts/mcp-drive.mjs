@@ -241,6 +241,19 @@ await withStand(async (ctx) => {
   check('карточка вопроса встала в окно браузера', inBrowser, placed);
   check('и НЕ в служебное окно (выпадашка подсказок)', !inService, placed);
 
+  // ⚠️ И ВТОРАЯ ПОЛОВИНА ТОГО ЖЕ СЛУЧАЯ: карточку показали, а потом агент открыл вкладку. Порядок
+  // в contentView.children — это и есть порядок слоёв, и addChildView ставит вкладку НАД вопросом.
+  // Замер до починки: [хром 1280, карточка 428] → [1280, 428, вкладка]. Человек при этом видел
+  // метку «Внешний агент» и ни одного вопроса — «появляется плашка, но не всплывает поповер».
+  await ctx.chrome.evaluate(`window.oblako.createTab('about:blank')`);
+  await wait(2500);
+  const layers = await ctx.evalMain(`
+    JSON.stringify(${E}.BrowserWindow.getAllWindows()
+      .filter((w) => w.getParentWindow() === null)[0].contentView.children.map((v) => v.getBounds().width))
+  `);
+  const stack = JSON.parse(layers);
+  check('карточка осталась поверх открывшейся вкладки', stack[stack.length - 1] === CARD, layers);
+
   // Снимаем вопрос: висящая карточка мешала бы следующим проверкам и осталась бы на экране.
   await ctx.evalMain(`(() => { ${MOD('McpPromptManager.js')}.dropMcpPrompts(); return true; })()`);
   await wait(300);
