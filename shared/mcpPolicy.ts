@@ -69,6 +69,58 @@ export interface McpTool {
   };
 }
 
+/**
+ * Белый список сайтов, на которые программе позволено смотреть.
+ *
+ * ⚠️ ОБЕЩАНИЕ СИЛЬНОЕ И ПРОСТОЕ: «этой программе — только docs и github». Агенту нельзя в почту,
+ * даже если он попросит и человек машинально нажмёт «разрешить», — потому что спрашивать его
+ * никто не будет: адрес вне списка просто не существует для этого клиента.
+ *
+ * ⚠️ ПУСТОЙ СПИСОК ОЗНАЧАЕТ «БЕЗ ОГРАНИЧЕНИЙ», а не «ничего нельзя». Иначе включение фильтра
+ * задним числом отняло бы доступ у всех, кто уже подключён, и человек прочитал бы это как
+ * поломку. Ограничение — осознанный шаг, а не состояние по умолчанию.
+ *
+ * ⚠️ Правило = ДОМЕН, и оно покрывает поддомены: `github.com` пропускает `api.github.com`, но не
+ * `github.com.evil.ru` — сравнение идёт по МЕТКАМ имени, а не по подстроке. Подстрочное сравнение
+ * здесь и есть классическая дыра: `endsWith('github.com')` пропускает `nastoyashiy-github.com`.
+ *
+ * ⚠️ Шаблонов вида `docs.*` НЕТ намеренно, хотя просить их будут. Такое правило совпадает с
+ * `docs.любой-сайт.ru` — то есть выглядит ограничением, а работает как дыра. Нужен доступ к
+ * нескольким доменам — они перечисляются.
+ */
+export function normalizeDomainRule(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  let s = raw.trim().toLowerCase();
+  if (!s) return null;
+  // Человек копирует адрес целиком — принимаем и его: «https://github.com/user» → «github.com».
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, '').replace(/^www\./, '');
+  s = s.split('/')[0] ?? '';
+  s = s.split('?')[0] ?? '';
+  s = s.split(':')[0] ?? '';       // порт правилу не нужен
+  s = s.replace(/^\*\./, '');       // «*.github.com» — то же, что «github.com»
+  if (!s || s.includes('*') || s.includes(' ')) return null;
+  // Домен обязан состоять хотя бы из двух меток: «com» правилом быть не может.
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(s)) return null;
+  return s;
+}
+
+/** Разрешён ли адрес белым списком. Пустой список — без ограничений. */
+export function domainAllowed(url: string, rules: readonly string[]): boolean {
+  if (rules.length === 0) return true;
+  const host = hostOfUrl(url);
+  if (!host) return false;
+  return rules.some((rule) => host === rule || host.endsWith(`.${rule}`));
+}
+
+function hostOfUrl(url: string): string | null {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h.startsWith('www.') ? h.slice(4) : h;
+  } catch {
+    return null;
+  }
+}
+
 /** Сколько записей истории отдаём максимум и сколько по умолчанию. */
 export const MCP_HISTORY_MAX = 50;
 export const MCP_HISTORY_DEFAULT = 10;

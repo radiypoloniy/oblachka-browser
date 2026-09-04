@@ -3,7 +3,7 @@ import { contextForWindow, mainContext } from '../WindowRegistry';
 import { activeBookmarks } from '../ProfileData';
 import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
-import { clampHistoryLimit, visibleTabs } from '../../shared/mcpPolicy';
+import { clampHistoryLimit, domainAllowed, visibleTabs } from '../../shared/mcpPolicy';
 import {
   batchTextLimit, bookmarkTargets, clampPageText, groupTargets, readUrlTargets, safeOpenUrl,
   tidyLinks, trackingFreeUrl,
@@ -23,6 +23,16 @@ import type { HistoryManager } from '../HistoryManager';
 // звать его, а не повторять условия своими словами: приватная вкладка, просочившаяся мимо
 // фильтра, — это не баг отображения, это чужая почта в чужих руках.
 
+/**
+ * Отказ по белому списку — ОДНОЙ ФРАЗОЙ на все инструменты.
+ *
+ * ⚠️ Формулировка важна: агент перескажет её человеку. «Нет доступа» тот прочитает как поломку
+ * браузера, а «этой программе открыты только такие-то сайты» — как своё же решение, которое он
+ * может изменить.
+ */
+const OUT_OF_SCOPE = 'This page is outside the sites the user allowed for this client. '
+  + 'The list is in the browser: Library → Agents → this program.';
+
 export interface McpTabView {
   id: string;
   title: string;
@@ -41,11 +51,14 @@ function activeContext() {
   return contextForWindow(BrowserWindow.getFocusedWindow()) ?? mainContext();
 }
 
-export function listTabs(): McpTabView[] {
+export function listTabs(domains: readonly string[] = []): McpTabView[] {
   const ctx = activeContext();
   if (!ctx) return [];
+  // ⚠️ Белый список фильтрует и СПИСОК, а не только чтение: адрес вкладки сам по себе говорит,
+  // где человек сидит. «Только docs и github» без этого означало бы «читать нельзя, а видеть, что
+  // ты в почте, — можно».
   // snapshot() отдаёт и хаб, и псевдо-вкладки; наружу идёт только то, что прошло политику.
-  return visibleTabs(ctx.tabs.snapshot()).map((t) => ({
+  return visibleTabs(ctx.tabs.snapshot()).filter((t) => domainAllowed(t.url, domains)).map((t) => ({
     id: t.id,
     title: t.title,
     url: t.url,
@@ -85,7 +98,7 @@ export interface McpPageText {
  * интерфейс, страница, которая ещё грузится, — для агента это разные ситуации, и «пусто» он
  * прочитает как «страница пустая» и уверенно соврёт человеку.
  */
-export async function activePageText(): Promise<McpPageText> {
+export async function activePageText(domains: readonly string[] = []): Promise<McpPageText> {
   const ctx = activeContext();
   if (!ctx) return { ok: false, error: 'No browser window is open.' };
 
@@ -95,6 +108,10 @@ export async function activePageText(): Promise<McpPageText> {
   if (visibleTabs([tab]).length === 0) {
     return { ok: false, error: 'The active tab is private or an internal browser page; its content is not exposed.' };
   }
+
+  // ⚠️ Белый список действует и на АКТИВНУЮ вкладку: человек мог открыть почту сам, но разрешение
+  // «только docs и github» дано этой программе, а не этой странице.
+  if (!domainAllowed(tab.url, domains)) return { ok: false, error: OUT_OF_SCOPE };
 
   const wc = ctx.tabs.getActiveWebContents();
   if (!wc) return { ok: false, error: 'The active tab has no live page yet (still loading or asleep).' };
@@ -151,7 +168,7 @@ export interface McpShot {
  * Полная страница — это прокрутка со склейкой кадров, то есть заметное время и вмешательство в
  * то, что человек сейчас читает.
  */
-export async function screenshotActiveTab(): Promise<McpShot> {
+export async function screenshotActiveTab(domains: readonly string[] = []): Promise<McpShot> {
   const ctx = activeContext();
   if (!ctx) return { ok: false, error: 'No browser window is open.' };
 
@@ -160,6 +177,8 @@ export async function screenshotActiveTab(): Promise<McpShot> {
   if (visibleTabs([tab]).length === 0) {
     return { ok: false, error: 'The active tab is private or an internal browser page; it is not exposed.' };
   }
+
+  if (!domainAllowed(tab.url, domains)) return { ok: false, error: OUT_OF_SCOPE };
 
   const wc = ctx.tabs.getActiveWebContents();
   if (!wc) return { ok: false, error: 'The active tab has no live page yet (still loading or asleep).' };
@@ -237,7 +256,7 @@ export interface McpLinks {
  *
  * ⚠️ Границы те же, что у page_text и снимка: активная вкладка и политика видимости.
  */
-export async function activePageLinks(): Promise<McpLinks> {
+export async function activePageLinks(domains: readonly string[] = []): Promise<McpLinks> {
   const ctx = activeContext();
   if (!ctx) return { ok: false, error: 'No browser window is open.' };
 
@@ -247,13 +266,16 @@ export async function activePageLinks(): Promise<McpLinks> {
     return { ok: false, error: 'The active tab is private or an internal browser page; it is not exposed.' };
   }
 
+  if (!domainAllowed(tab.url, domains)) return { ok: false, error: OUT_OF_SCOPE };
+
   const wc = ctx.tabs.getActiveWebContents();
   if (!wc) return { ok: false, error: 'The active tab has no live page yet (still loading or asleep).' };
 
   try {
     // true — исполнить как жест пользователя: часть страниц иначе не отдаёт DOM целиком.
     const raw: unknown = await wc.executeJavaScript(LINKS_SCRIPT, true);
-    const links = tidyLinks(raw, tab.url);
+    // ⚠️ И сами ссылки фильтруем: страница разрешена, а ведёт она куда угодно.
+    const links = tidyLinks(raw, tab.url).filter((l) => domainAllowed(l.url, domains));
     if (links.length === 0) return { ok: false, error: 'No links found on this page.' };
     return { ok: true, url: tab.url, title: tab.title, links };
   } catch {
@@ -277,10 +299,14 @@ export function searchHistory(
   history: HistoryManager,
   query: string,
   limit: unknown,
+  domains: readonly string[] = [],
 ): McpHistoryHit[] {
   const q = query.trim();
   if (!q) return [];
-  return history.search(q).slice(0, clampHistoryLimit(limit)).map((h) => ({
+  // ⚠️ Фильтр ДО обрезки по лимиту: иначе десять запрещённых адресов съедают всю выдачу, и
+  // человек видит «ничего не нашлось» там, где нашлось.
+  return history.search(q).filter((h) => domainAllowed(h.url, domains))
+    .slice(0, clampHistoryLimit(limit)).map((h) => ({
     title: h.title,
     url: h.url,
     lastVisit: new Date(h.lastVisit).toISOString(),
@@ -305,10 +331,16 @@ export interface McpBookmarkHit {
  * захваченный объект пережил бы переключение профиля — то есть агент искал бы в чужих закладках.
  * Тот же довод, что у истории (см. McpDeps.history).
  */
-export function searchBookmarks(query: string, limit: unknown): McpBookmarkHit[] {
+export function searchBookmarks(
+  query: string,
+  limit: unknown,
+  domains: readonly string[] = [],
+): McpBookmarkHit[] {
   const q = query.trim();
   if (!q) return [];
-  return activeBookmarks().search(q, clampHistoryLimit(limit)).map((b) => ({
+  // ⚠️ Берём с запасом и фильтруем: иначе запрещённые адреса вытесняют разрешённые из выдачи.
+  return activeBookmarks().search(q, 100).filter((b) => domainAllowed(b.url, domains))
+    .slice(0, clampHistoryLimit(limit)).map((b) => ({
     title: b.title,
     url: b.url,
     savedAt: new Date(b.createdAt).toISOString(),
@@ -335,9 +367,14 @@ export interface McpWriteResult {
  *
  * ⚠️ Папка ищется/создаётся ПО ИМЕНИ (folderByName): номеров наших папок у агента нет и не будет.
  */
-export function addBookmarks(args: Record<string, unknown>): McpWriteResult {
+export function addBookmarks(
+  args: Record<string, unknown>,
+  domains: readonly string[] = [],
+): McpWriteResult {
   const targets = bookmarkTargets(args);
   if (!targets.ok) return { ok: false, note: targets.error };
+  const permitted = targets.items.filter((i) => domainAllowed(i.url, domains));
+  if (permitted.length === 0) return { ok: false, note: OUT_OF_SCOPE };
 
   const store = activeBookmarks();
   const parentId = targets.folder ? store.folderByName(targets.folder) : null;
@@ -345,7 +382,7 @@ export function addBookmarks(args: Record<string, unknown>): McpWriteResult {
   // хуже, чем потерять папку, и человек всё равно найдёт закладку поиском.
   let saved = 0;
   const skipped: string[] = [];
-  for (const item of targets.items) {
+  for (const item of permitted) {
     const entry = store.add(item.url, item.title || item.url, parentId);
     if (entry) saved++;
     else skipped.push(item.url);
@@ -368,11 +405,16 @@ export function addBookmarks(args: Record<string, unknown>): McpWriteResult {
  * клиента, и повтор вызова с другим адресом обязан упереться в ту же проверку, а не в память о
  * том, что «пользователь уже согласился».
  */
-export function openTab(rawUrl: unknown, background: unknown): McpWriteResult {
+export function openTab(
+  rawUrl: unknown,
+  background: unknown,
+  domains: readonly string[] = [],
+): McpWriteResult {
   const ctx = activeContext();
   if (!ctx) return { ok: false, note: 'No browser window is open.' };
   const url = safeOpenUrl(rawUrl);
   if (!url) return { ok: false, note: 'Only http(s) addresses can be opened.' };
+  if (!domainAllowed(url, domains)) return { ok: false, note: OUT_OF_SCOPE };
   const id = ctx.tabs.createTab(url, background === true);
   return { ok: !!id, note: id ? `Opened ${url}` : 'The browser refused to open this address.' };
 }
@@ -408,13 +450,20 @@ function findGroupByLabel(nodes: readonly SidebarNode[], name: string): string |
  * ⚠️ Кладём ТОЛЬКО ВИДИМЫЕ снаружи вкладки (visibleTabs), даже если id прислали чужой: приватная
  * вкладка, утащенная в группу, — это не перестановка, а раскрытие того, что человек прятал.
  */
-export function groupTabs(args: Record<string, unknown>): McpWriteResult {
+export function groupTabs(
+  args: Record<string, unknown>,
+  domains: readonly string[] = [],
+): McpWriteResult {
   const ctx = activeContext();
   if (!ctx) return { ok: false, note: 'No browser window is open.' };
   const target = groupTargets(args);
   if (!target.ok) return { ok: false, note: target.error };
 
-  const visible = new Set(visibleTabs(ctx.tabs.snapshot()).map((t) => t.id));
+  // ⚠️ Двигать можно только то, что этой программе вообще видно: вкладка вне белого списка для
+  // неё не существует, и утащить её в группу она не должна даже зная id.
+  const visible = new Set(
+    visibleTabs(ctx.tabs.snapshot()).filter((t) => domainAllowed(t.url, domains)).map((t) => t.id),
+  );
   const ids = target.tabIds.filter((id) => visible.has(id));
   if (ids.length === 0) return { ok: false, note: 'No such tabs. Call tabs_list first.' };
 
@@ -446,22 +495,26 @@ export function groupTabs(args: Record<string, unknown>): McpWriteResult {
  * ⚠️ Переключать можно ТОЛЬКО то, что и так видно снаружи: приватная вкладка и наш интерфейс
  * недоступны и здесь. Иначе агент, знающий чужой id, вытаскивал бы на экран спрятанное.
  */
-export function activateTab(rawId: unknown): McpWriteResult {
+export function activateTab(rawId: unknown, domains: readonly string[] = []): McpWriteResult {
   const ctx = activeContext();
   if (!ctx) return { ok: false, note: 'No browser window is open.' };
   const id = typeof rawId === 'string' ? rawId : '';
-  const tab = visibleTabs(ctx.tabs.snapshot()).find((t) => t.id === id);
+  // ⚠️ Тот же фильтр, что у списка: вкладки вне белого списка для этой программы не существует.
+  const tab = visibleTabs(ctx.tabs.snapshot())
+    .filter((t) => domainAllowed(t.url, domains)).find((t) => t.id === id);
   if (!tab) return { ok: false, note: 'No such tab. Call tabs.list first.' };
   ctx.tabs.activate(id);
   return { ok: true, note: `Switched to ${tab.title || tab.url}` };
 }
 
 /** Закрыть вкладку. ⚠️ Необратимо отсюда — потому и destructiveHint, и вопрос человеку. */
-export function closeTab(rawId: unknown): McpWriteResult {
+export function closeTab(rawId: unknown, domains: readonly string[] = []): McpWriteResult {
   const ctx = activeContext();
   if (!ctx) return { ok: false, note: 'No browser window is open.' };
   const id = typeof rawId === 'string' ? rawId : '';
-  const tab = visibleTabs(ctx.tabs.snapshot()).find((t) => t.id === id);
+  // ⚠️ Тот же фильтр, что у списка: вкладки вне белого списка для этой программы не существует.
+  const tab = visibleTabs(ctx.tabs.snapshot())
+    .filter((t) => domainAllowed(t.url, domains)).find((t) => t.id === id);
   if (!tab) return { ok: false, note: 'No such tab. Call tabs.list first.' };
   ctx.tabs.closeTab(id);
   return { ok: true, note: `Closed ${tab.title || tab.url}` };
@@ -484,15 +537,23 @@ function clampTo(text: string, limit: number): string {
  * ⚠️ Ничего нового не считаем: extractUrlText сперва пробует УЖЕ ОТКРЫТУЮ вкладку (она прошла
  * антибот и логин), и только потом открывает скрытую вью. Тот же путь, что у блокнота.
  */
-export async function readUrl(args: Record<string, unknown>): Promise<McpPageBatch> {
+export async function readUrl(
+  args: Record<string, unknown>,
+  domains: readonly string[] = [],
+): Promise<McpPageBatch> {
   const targets = readUrlTargets(args);
   if (!targets.ok) return { pages: [], dropped: 0, error: targets.error };
+  // ⚠️ Отсекаем ЗАПРЕЩЁННЫЕ адреса поштучно, как и битые: в списке из восьми ссылок одна может
+  // вести на почту, и ронять из-за неё семь разрешённых незачем.
+  const allowed = targets.urls.filter((u) => domainAllowed(u, domains));
+  if (allowed.length === 0) return { pages: [], dropped: targets.dropped, error: OUT_OF_SCOPE };
+  const blocked = targets.urls.length - allowed.length;
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
   if (!win) return { pages: [], dropped: targets.dropped, error: 'No browser window is open.' };
 
-  const limit = batchTextLimit(targets.urls.length);
-  const pages = await inLanes(targets.urls, READ_LANES, (url) => readOne(win, url, limit));
-  return { pages, dropped: targets.dropped };
+  const limit = batchTextLimit(allowed.length);
+  const pages = await inLanes(allowed, READ_LANES, (url) => readOne(win, url, limit));
+  return { pages, dropped: targets.dropped + blocked };
 }
 
 /**

@@ -221,6 +221,80 @@ function ClientRights({ state, clientKey, onChange }: {
           );
         })}
       </div>
+      <AllowedSites client={client} onChange={onChange} />
+    </div>
+  );
+}
+
+/**
+ * Белый список сайтов программы.
+ *
+ * ⚠️ ОБЕЩАНИЕ СИЛЬНОЕ И ПРОСТОЕ: «этой программе — только docs и github». Агенту нельзя в почту,
+ * даже если он попросит и человек машинально нажмёт «разрешить»: спрашивать никто не будет —
+ * адреса вне списка для этого клиента просто не существует.
+ *
+ * ⚠️ ПУСТО ОЗНАЧАЕТ «БЕЗ ОГРАНИЧЕНИЙ», и это сказано прямо. Иначе человек, увидев пустое поле,
+ * решит, что программа уже ограничена, — и это худший вид неправды в интерфейсе про доступ.
+ *
+ * ⚠️ Правки применяются ПО КНОПКЕ, а не по каждому нажатию клавиши: список правил — не тумблер,
+ * а текст, и записывать его в момент, когда человек ещё дописывает домен, значило бы применять
+ * половину его решения.
+ */
+function AllowedSites({ client, onChange }: {
+  client: McpServerState['clients'][number];
+  onChange: (s: McpServerState) => void;
+}) {
+  const saved = (client.domains ?? []).join('\n');
+  const [text, setText] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  // Программу переключили слева — показываем её список, а не остатки прошлой.
+  useEffect(() => { setText((client.domains ?? []).join('\n')); }, [client.key, client.domains]);
+
+  const dirty = text.trim() !== saved.trim();
+  const apply = () => {
+    setBusy(true);
+    const rules = text.split(/[\n,;]+/).map((r) => r.trim()).filter(Boolean);
+    void window.oblako.setMcpDomains(client.key, rules).then((s) => { onChange(s); setBusy(false); });
+  };
+
+  return (
+    <div style={{ padding: pad(2, 4), display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+      <GroupCap
+        title="Разрешённые сайты"
+        note={client.domains?.length
+          ? 'программа не видит ничего, кроме перечисленного'
+          : 'пусто — ограничений нет, программе видны любые сайты'}
+      />
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={Math.min(6, Math.max(2, text.split('\n').length + 1))}
+        placeholder={'github.com\ndocs.python.org'}
+        spellCheck={false}
+        style={{
+          ...TEXT.body, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xs)',
+          padding: pad(2, 3), borderRadius: RADIUS.control, resize: 'vertical',
+          border: '1.5px solid var(--divider-strong)', background: 'transparent',
+          color: 'var(--text-strong)', outline: 'none',
+        }}
+      />
+      <div style={{ display: 'flex', gap: sp(3), alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          onClick={apply}
+          disabled={!dirty || busy}
+          style={{
+            ...TEXT.body, padding: pad(1, 3), borderRadius: RADIUS.control, cursor: 'default',
+            border: '1px solid var(--divider-strong)', background: 'transparent',
+            opacity: !dirty || busy ? 0.5 : 1, transition: motion.hover('background'),
+          }}
+        >{busy ? 'Применяю…' : 'Применить'}</button>
+        {/* ⚠️ Про поддомены и про звёздочку сказано здесь, а не в документации: человек пишет
+            правила прямо тут, и узнать про них он может только отсюда. */}
+        <span style={{ ...TEXT.caption, color: 'var(--text-faint)' }}>
+          По домену на строку. Поддомены входят: github.com покрывает api.github.com.
+          Звёздочки не поддерживаются — «docs.*» совпал бы с docs.чей-угодно-сайт.
+        </span>
+      </div>
     </div>
   );
 }

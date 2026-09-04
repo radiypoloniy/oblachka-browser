@@ -92,6 +92,17 @@ const MOD = (tail) => `(() => {
   return key ? cache[key].exports : null;
 })()`;
 
+
+/**
+ * Окно браузера в контексте main.
+ *
+ * ⚠️ Опознаём через РЕЕСТР ОКОН, а не по URL и не по «первое без родителя». У окна браузера
+ * собственный webContents пустой — страницу грузит вью внутри, — а «первое без родителя» после
+ * переезда карточки вопроса в своё окно стало ловить именно её. Обе ошибки уже стоили пары часов
+ * ложных провалов снимка.
+ */
+const BROWSER_WIN = `${E}.BrowserWindow.getAllWindows().find((w) => !!${MOD('WindowRegistry.js')}.contextForWindow(w))`;
+
 /** Текст результата инструмента — то, что увидит модель. */
 const textOf = (res) => res?.result?.content?.[0]?.text ?? '';
 
@@ -285,9 +296,7 @@ await withStand(async (ctx) => {
 
   const sidebar = await ctx.evalMain(`
     (() => {
-      const tabs = ${E}.BrowserWindow.getAllWindows()
-        .filter((w) => w.getParentWindow() === null)[0];
-      const ctx2 = ${MOD('WindowRegistry.js')}.contextForWindow(tabs);
+      const ctx2 = ${MOD('WindowRegistry.js')}.contextForWindow(${BROWSER_WIN});
       const node = ctx2.tabs.sidebarNodesSnapshot().find((n) => n.type === 'group' && n.label === 'Кресла');
       return node ? String(ctx2.tabs.getGroupContents(node.id).length) : 'группы нет';
     })()
@@ -303,8 +312,7 @@ await withStand(async (ctx) => {
     await c.send('tools/call', { name: 'tabs_group', arguments: { tabIds: more, name: 'кресла' } });
     const same = await ctx.evalMain(`
       (() => {
-        const win = ${E}.BrowserWindow.getAllWindows().filter((w) => w.getParentWindow() === null)[0];
-        const ctx2 = ${MOD('WindowRegistry.js')}.contextForWindow(win);
+        const ctx2 = ${MOD('WindowRegistry.js')}.contextForWindow(${BROWSER_WIN});
         const node = ctx2.tabs.sidebarNodesSnapshot().find((n) => n.type === 'group' && n.label === 'Кресла');
         return node ? String(ctx2.tabs.getGroupContents(node.id).length) : 'группы нет';
       })()
@@ -558,8 +566,22 @@ await withStand(async (ctx) => {
   // surface not available for capture» — снять можно только то, что отрисовано. В бою это честный
   // отказ (человек свернул браузер), а в прогоне — ложное красное.
   await ctx.evalMain(`(() => {
-    const w = ${E}.BrowserWindow.getAllWindows().filter((x) => x.getParentWindow() === null)[0];
-    if (w) { w.show(); w.focus(); }
+    const w = ${BROWSER_WIN};
+    if (w) {
+      w.restore(); w.show(); w.focus();
+      // ⚠️ Поверх всего НА ВРЕМЯ СНИМКА: окно, ушедшее в фон за время долгого прогона, Windows
+      // перестаёт композитить, и capturePage отвечает «current display surface not available» —
+      // для ВСЕХ вью сразу. В бою этого не бывает (человек смотрит на браузер), но прогон идёт
+      // из терминала, и окно всё это время в фоне.
+      w.setAlwaysOnTop(true, 'screen-saver');
+      w.moveTop();
+    }
+    // ⚠️ Прячем окно вопроса: оно висит поверх всего (уровень screen-saver), и перекрытое им окно
+    // браузера композитор перестаёт отдавать — capturePage отвечает «current display surface not
+    // available». Проверка снимка не должна краснеть из-за оставшейся на экране карточки.
+    ${E}.BrowserWindow.getAllWindows()
+      .filter((x) => x.webContents.getURL().indexOf('mcpprompt.html') !== -1)
+      .forEach((x) => x.hide());
     return true;
   })()`);
   // ⚠️ Ждём САМУ СТРАНИЦУ, а не время: пока её таргет не поднялся, снимать нечего, и слепая пауза
@@ -581,20 +603,20 @@ await withStand(async (ctx) => {
     shotCall = await c.send('tools/call', { name: 'page_screenshot', arguments: {} });
     if ((shotCall?.result?.content ?? []).some((p) => p.type === 'image')) break;
     await ctx.evalMain(`(() => {
-      const w = ${E}.BrowserWindow.getAllWindows().filter((x) => x.getParentWindow() === null)[0];
+      const w = ${BROWSER_WIN};
       if (w) { w.restore(); w.show(); w.focus(); }
       return true;
     })()`);
     await wait(1500);
   }
+  await ctx.evalMain(`(() => { const w = ${BROWSER_WIN}; if (w) w.setAlwaysOnTop(false); return true; })()`);
   const parts = shotCall?.result?.content ?? [];
   const image = parts.find((p) => p.type === 'image');
   if (!image) {
     // Диагностика ровно в момент отказа: что с активной вью и снимается ли она напрямую.
     const why = await ctx.evalMain(`
       (async () => {
-        const win = ${E}.BrowserWindow.getAllWindows()
-          .find((w) => w.webContents.getURL().indexOf('index.html') !== -1);
+        const win = ${BROWSER_WIN};
         if (!win) return JSON.stringify({ окноБраузера: 'не найдено' });
         const c2 = ${MOD('WindowRegistry.js')}.contextForWindow(win);
         const wc = c2 ? c2.tabs.getActiveWebContents() : null;
@@ -606,6 +628,10 @@ await withStand(async (ctx) => {
         }
         const views = win.contentView.children;
         out.вью = views.length;
+        out.размеры = JSON.stringify(views.map((v) => v.getBounds()));
+        out.видимость = JSON.stringify(views.map((v) => (typeof v.getVisible === 'function' ? v.getVisible() : 'нет метода')));
+        out.окноНаЭкране = JSON.stringify(win.getBounds());
+        out.свёрнуто = win.isMinimized();
         try { const s2 = await views[views.length - 1].webContents.capturePage(); out.последняя = s2.isEmpty() ? 'пусто' : JSON.stringify(s2.getSize()); }
         catch (e) { out.последняя = 'ошибка: ' + e.message; }
         return JSON.stringify(out);
@@ -630,6 +656,51 @@ await withStand(async (ctx) => {
   // ⚠️ Машинной копии у снимка нет намеренно: туда уехал бы тот же base64 вторым экземпляром.
   check('машинной копии снимка нет', shotCall?.result?.structuredContent === undefined,
     JSON.stringify(shotCall?.result?.structuredContent ?? null).slice(0, 80));
+
+  // ── Белый список сайтов ───────────────────────────────────────────────────
+  //
+  // ⚠️ Обещание, ради которого всё и делалось: «этой программе — только такие-то сайты». Агенту
+  // нельзя в почту, даже если он попросит и человек машинально нажмёт «разрешить»: спрашивать
+  // никто не будет — адреса вне списка для него не существует.
+  //
+  // ⚠️ Проверяем ВСЕ ПУТИ, а не только чтение по адресу: список вкладок, ссылки со страницы,
+  // историю. Фильтр, закрывающий одну дверь из четырёх, — это не фильтр.
+  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setDomains(${JSON.stringify(CLIENT.toLowerCase())}, ['example.org']); return true; })()`);
+
+  const restricted = await c.send('tools/call', {
+    name: 'page_read_url',
+    arguments: { url: ctx.echo.url('/?blocked=1') },
+  });
+  check('чтение вне списка не проходит', /outside the sites the user allowed/.test(textOf(restricted)),
+    textOf(restricted).slice(0, 160));
+
+  const listUnderLimit = await c.send('tools/call', { name: 'tabs_list', arguments: {} });
+  check('вкладки вне списка не видны вовсе',
+    (JSON.parse(textOf(listUnderLimit) || '{}').tabs ?? []).length === 0,
+    textOf(listUnderLimit).slice(0, 200));
+
+  const linksUnderLimit = await c.send('tools/call', { name: 'page_links', arguments: {} });
+  check('ссылки со страницы вне списка тоже закрыты',
+    /outside the sites the user allowed/.test(textOf(linksUnderLimit)),
+    textOf(linksUnderLimit).slice(0, 160));
+
+  const histUnderLimit = await c.send('tools/call', { name: 'history_search', arguments: { query: 'links' } });
+  check('история отфильтрована по списку',
+    JSON.parse(textOf(histUnderLimit) || '{}').count === 0, textOf(histUnderLimit).slice(0, 160));
+
+  // ⚠️ Разрешённый адрес обязан проходить: фильтр, который закрывает всё, — не ограничение, а
+  // поломка, и человек прочитает его именно так.
+  const allowedCall = await c.send('tools/call', {
+    name: 'bookmarks_add',
+    arguments: { url: 'https://example.org/allowed', title: 'Разрешённая' },
+  });
+  check('разрешённый сайт проходит', /Сохранено 1/.test(textOf(allowedCall)), textOf(allowedCall).slice(0, 160));
+
+  // ⚠️ Пустой список снимает ограничение целиком: иначе «выключить фильтр» было бы невозможно.
+  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setDomains(${JSON.stringify(CLIENT.toLowerCase())}, []); return true; })()`);
+  const openAgain = await c.send('tools/call', { name: 'tabs_list', arguments: {} });
+  check('пустой список снова открывает всё',
+    (JSON.parse(textOf(openAgain) || '{}').tabs ?? []).length > 0, textOf(openAgain).slice(0, 160));
 
   // ── Граница профиля ───────────────────────────────────────────────────────
   //

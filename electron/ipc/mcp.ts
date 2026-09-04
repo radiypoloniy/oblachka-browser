@@ -5,7 +5,9 @@ import { MCP_TOOLS, type McpStance } from '../../shared/mcpPolicy';
 import { connectCommand, initMcp, mcpState, setMcpEnabled, stopMcp } from '../mcp';
 import { recentCalls } from '../mcp/McpLog';
 import { answer, closeMcpPromptWindow, setMcpPromptHeight } from '../McpPromptManager';
-import { approveClient, listClients, revokeClient, setStance } from '../mcp/McpClients';
+import {
+  approveClient, listClients, revokeClient, setDomains, setStance,
+} from '../mcp/McpClients';
 import { installClient, scanClients } from '../mcp/McpInstall';
 import { forgetApprovals } from '../mcp/McpConfirm';
 import type { IpcDeps } from './deps';
@@ -71,6 +73,10 @@ export function registerMcpIpc(d: IpcDeps): void {
   // руками. То же согласие, что на карточке, только не в секунду вызова (см. approveClient).
   ipcMain.handle(IPC.MCP_APPROVE, (_e, key: string, label: string) => {
     approveClient(String(key ?? ''), String(label ?? ''));
+    return state();
+  });
+  ipcMain.handle(IPC.MCP_DOMAINS_SET, (_e, key: string, domains: unknown) => {
+    setDomains(String(key ?? ''), Array.isArray(domains) ? domains : []);
     return state();
   });
   ipcMain.handle(IPC.MCP_TOOL_SET, (_e, key: string, tool: string, stance: McpStance) => {

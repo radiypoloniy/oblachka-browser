@@ -8,8 +8,8 @@ import {
   MCP_TOOLS, MCP_CLOSED_PREFIXES, MCP_SUPPORTED_VERSIONS, MCP_VERSION,
   MCP_HISTORY_MAX, MCP_CONFIRM_TTL_MS,
   annotationsFor, approvalFits, canonicalToolName, canRemember, clampHistoryLimit, clientKey,
-  clientLabel, decide, defaultStance, eraOf, findTool, isClosedName, mustAsk,
-  pickVersion, stanceFor, visibleTabs,
+  clientLabel, decide, defaultStance, domainAllowed, eraOf, findTool, isClosedName, mustAsk,
+  normalizeDomainRule, pickVersion, stanceFor, visibleTabs,
 } from '../shared/mcpPolicy.ts';
 // ⚠️ Разбор аргументов и тексты карточек живут в своём модуле (см. его шапку): политика решает,
 // КОМУ И ЧТО позволено, а он — ЧТО ИМЕННО просят в этом вызове.
@@ -229,6 +229,35 @@ check('пустая строка — то же самое', pickVersion('').ok, 
 check('неизвестная — отказ со списком', pickVersion('2030-01-01'), { ok: false, supported: MCP_SUPPORTED_VERSIONS });
 check('не строка — отказ', pickVersion(42).ok, false);
 check('рубеж эпох', [eraOf('2026-07-28'), eraOf('2025-11-25')], ['modern', 'legacy']);
+
+console.log('\n— белый список сайтов —');
+// ⚠️ Обещание сильное и простое: «этой программе — только docs и github». Агенту нельзя в почту,
+// даже если он попросит и человек машинально нажмёт «разрешить»: спрашивать никто не будет —
+// адреса вне списка для этого клиента не существует.
+//
+// ⚠️ ПУСТОЙ СПИСОК — «БЕЗ ОГРАНИЧЕНИЙ», а не «ничего нельзя»: иначе включение фильтра задним
+// числом отняло бы доступ у всех, кто уже подключён, и это прочиталось бы как поломка.
+check('пустой список пропускает всё', domainAllowed('https://mail.ru/inbox', []), true);
+check('домен из списка проходит', domainAllowed('https://github.com/user', ['github.com']), true);
+check('поддомен тоже', domainAllowed('https://api.github.com/x', ['github.com']), true);
+check('www не мешает', domainAllowed('https://www.github.com/', ['github.com']), true);
+check('чужой домен не проходит', domainAllowed('https://mail.ru/', ['github.com']), false);
+// ⚠️ КЛАССИЧЕСКАЯ ДЫРА: сравнение подстрокой пропускает «nastoyashiy-github.com» и
+// «github.com.evil.ru». Сравниваем по МЕТКАМ имени, а не по вхождению.
+check('подделка суффиксом не проходит', domainAllowed('https://nastoyashiy-github.com/', ['github.com']), false);
+check('домен-приставка не проходит', domainAllowed('https://github.com.evil.ru/', ['github.com']), false);
+check('битый адрес не проходит при ограничении', domainAllowed('не адрес', ['github.com']), false);
+// ⚠️ Правило человек пишет руками — принимаем и адрес целиком, и с www, и с портом.
+check('адрес приводится к домену', normalizeDomainRule('https://www.GitHub.com/user?x=1'), 'github.com');
+check('порт отбрасывается', normalizeDomainRule('localhost.local:3000'), 'localhost.local');
+check('звёздочка в начале — тот же домен', normalizeDomainRule('*.github.com'), 'github.com');
+// ⚠️ Шаблонов вида «docs.*» НЕТ намеренно: такое правило совпадает с docs.любой-сайт.ru, то есть
+// выглядит ограничением, а работает как дыра.
+check('шаблон в середине не принимается', normalizeDomainRule('docs.*'), null);
+check('одна метка правилом быть не может', normalizeDomainRule('com'), null);
+check('пустое правило отбрасывается', normalizeDomainRule('   '), null);
+check('не строка отбрасывается', normalizeDomainRule(7), null);
+
 
 console.log('\n— какой адрес позволено открыть —');
 // ⚠️ Белый список схем, как у гостевой навигации после аудита 21.08: чёрный обходится записью,

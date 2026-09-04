@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
 import { getActiveProfile } from '../ProfileStore';
-import { canonicalToolName, MCP_TOOLS, type McpStance } from '../../shared/mcpPolicy';
+import {
+  canonicalToolName, normalizeDomainRule, MCP_TOOLS, type McpStance,
+} from '../../shared/mcpPolicy';
 import { askMcp, dropMcpPrompts } from '../McpPromptManager';
 
 // Кто подключён к браузеру и что ему позволено.
@@ -52,6 +54,14 @@ export interface McpClientRecord {
   profileId?: string;
   /** Имя профиля на момент подключения — для интерфейса. Id переживает переименование, имя нет. */
   profileName?: string;
+  /**
+   * Белый список сайтов. ПУСТО — без ограничений (см. разбор в shared/mcpPolicy.ts).
+   *
+   * ⚠️ Хранится нормализованным: правила приводятся к домену при записи, а не при каждой проверке.
+   * Иначе одно и то же ограничение живёт в файле в трёх видах («https://github.com/», «GitHub.com»,
+   * «github.com»), и человек, глядя в список, не понимает, почему два одинаковых правила.
+   */
+  domains?: string[];
   /**
    * Решения человека по инструментам: 'ask' | 'allow' | 'deny'.
    *
@@ -145,6 +155,32 @@ export function profileMatches(key: string): { ok: true } | { ok: false; connect
     return { ok: true };
   }
   return { ok: false, connected: c.profileName ?? c.profileId, now: profile.name };
+}
+
+/** Белый список сайтов клиента. Пустой — без ограничений. */
+export function domainsFor(key: string): string[] {
+  load();
+  return [...(clients.find((c) => c.key === key)?.domains ?? [])];
+}
+
+/**
+ * Задать белый список.
+ *
+ * ⚠️ Правила нормализуем ЗДЕСЬ и молча выбрасываем негодные: человек пишет их руками, копируя
+ * адрес целиком или с опечаткой, и падать на этом нельзя — иначе одна кривая строка стоит ему
+ * всего списка. Что осталось, он видит в интерфейсе.
+ */
+export function setDomains(key: string, raw: readonly unknown[]): void {
+  load();
+  const c = clients.find((x) => x.key === key);
+  if (!c) return;
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const rule = normalizeDomainRule(item);
+    if (rule) seen.add(rule);
+  }
+  c.domains = [...seen];
+  save();
 }
 
 export function stancesFor(key: string): Record<string, McpStance> {

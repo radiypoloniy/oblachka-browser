@@ -11,7 +11,9 @@ import {
 import {
   MCP_PROMPTS, findPrompt, missingArgs, promptArgs,
 } from '../../shared/mcpPrompts';
-import { askToConnect, isApproved, profileMatches, stancesFor, touchClient } from './McpClients';
+import {
+  askToConnect, domainsFor, isApproved, profileMatches, stancesFor, touchClient,
+} from './McpClients';
 import { confirmWrite } from './McpConfirm';
 import type { HistoryManager } from '../HistoryManager';
 
@@ -324,7 +326,10 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession)
   }
 
   try {
-    const result = await run(verdict.tool.name, args, deps);
+    // ⚠️ Белый список — свойство КЛИЕНТА, поэтому доезжает до инструментов параметром, а не
+    // читается ими из хранилища: инструмент не должен знать, кто его позвал, иначе он начнёт
+    // принимать решения о доступе, которые живут в политике.
+    const result = await run(verdict.tool.name, args, deps, domainsFor(key));
     note(true);
     // ⚠️ Снимок уходит КАРТИНКОЙ протокола, а не JSON'ом с base64 внутри текста. Разница
     // принципиальная: в первом случае модель видит изображение, во втором получает полмегабайта
@@ -340,20 +345,25 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession)
   }
 }
 
-async function run(name: string, args: Record<string, unknown>, deps: McpDeps): Promise<unknown> {
+async function run(
+  name: string,
+  args: Record<string, unknown>,
+  deps: McpDeps,
+  domains: readonly string[],
+): Promise<unknown> {
   switch (name) {
     case 'tabs_list': {
-      const tabs = listTabs();
+      const tabs = listTabs(domains);
       return { tabs, count: tabs.length };
     }
     case 'page_text': {
-      const page = await activePageText();
+      const page = await activePageText(domains);
       // Не «пусто», а причина словами — см. разбор в McpTools.ts.
       if (!page.ok) throw new Error(page.error ?? 'unavailable');
       return { title: page.title, url: page.url, text: page.text };
     }
     case 'page_read_url': {
-      const batch = await readUrl(args);
+      const batch = await readUrl(args, domains);
       if (batch.error) throw new Error(batch.error);
       // ⚠️ Одиночный вызов отвечает ТАК ЖЕ, как отвечал раньше, — плоским объектом. Клиенты и
       // промпты, написанные под прежний ответ, никуда не делись, и заворачивать одну страницу в
@@ -374,36 +384,36 @@ async function run(name: string, args: Record<string, unknown>, deps: McpDeps): 
       };
     }
     case 'page_screenshot': {
-      const shot = await screenshotActiveTab();
+      const shot = await screenshotActiveTab(domains);
       if (!shot.ok) throw new Error(shot.error ?? 'unavailable');
       return shot;
     }
     case 'page_links': {
-      const found = await activePageLinks();
+      const found = await activePageLinks(domains);
       if (!found.ok) throw new Error(found.error ?? 'unavailable');
       return { url: found.url, title: found.title, links: found.links, count: found.links?.length ?? 0 };
     }
     case 'bookmarks_search': {
       const query = typeof args.query === 'string' ? args.query : '';
       if (!query.trim()) throw new Error('Argument "query" is required.');
-      const hits = searchBookmarks(query, args.limit);
+      const hits = searchBookmarks(query, args.limit, domains);
       return { query, hits, count: hits.length };
     }
     case 'history_search': {
       const query = typeof args.query === 'string' ? args.query : '';
       if (!query.trim()) throw new Error('Argument "query" is required.');
-      const hits = searchHistory(deps.history(), query, args.limit);
+      const hits = searchHistory(deps.history(), query, args.limit, domains);
       return { query, hits, count: hits.length };
     }
     case 'bookmarks_add':
-      return addBookmarks(args);
+      return addBookmarks(args, domains);
     case 'tabs_open': {
       const res = openTab(args.url, args.background);
       if (!res.ok) throw new Error(res.note);
       return { opened: true, note: res.note };
     }
     case 'tabs_group':
-      return groupTabs(args);
+      return groupTabs(args, domains);
     case 'tabs_activate': {
       const res = activateTab(args.id);
       if (!res.ok) throw new Error(res.note);

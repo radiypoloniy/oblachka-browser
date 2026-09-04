@@ -408,6 +408,8 @@ export interface AiApi {
   /** Подключить программу из журнала обращений. ⚠️ Имя не подтверждено — она назвалась им сама. */
   approveMcpClient(key: string, label: string): Promise<McpServerState>;
   setMcpStance(key: string, tool: string, stance: 'ask' | 'allow' | 'deny'): Promise<McpServerState>;
+  /** Белый список сайтов программы. Пустой массив — снять ограничение. */
+  setMcpDomains(key: string, domains: string[]): Promise<McpServerState>;
   /** Кого из MCP-клиентов нашли на этой машине и что будет с его конфигом по нажатию. */
   scanMcpClients(): Promise<McpClientTarget[]>;
   /** Дописать нашу запись в конфиг клиента. ⚠️ Правит чужой файл — только по действию человека. */

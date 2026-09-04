@@ -20,6 +20,8 @@ export const mcpBridge = {
     ipcRenderer.invoke(IPC.MCP_APPROVE, key, label) as Promise<McpServerState>,
   revokeMcpClient: (key: string) =>
     ipcRenderer.invoke(IPC.MCP_REVOKE, key) as Promise<McpServerState>,
+  setMcpDomains: (key: string, domains: string[]) =>
+    ipcRenderer.invoke(IPC.MCP_DOMAINS_SET, key, domains) as Promise<McpServerState>,
   setMcpStance: (key: string, tool: string, stance: 'ask' | 'allow' | 'deny') =>
     ipcRenderer.invoke(IPC.MCP_TOOL_SET, key, tool, stance) as Promise<McpServerState>,
   scanMcpClients: () => ipcRenderer.invoke(IPC.MCP_CLIENTS_SCAN) as Promise<McpClientTarget[]>,
