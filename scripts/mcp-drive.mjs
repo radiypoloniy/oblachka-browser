@@ -657,6 +657,27 @@ await withStand(async (ctx) => {
   check('машинной копии снимка нет', shotCall?.result?.structuredContent === undefined,
     JSON.stringify(shotCall?.result?.structuredContent ?? null).slice(0, 80));
 
+  // ── Открыть вкладки пачкой ────────────────────────────────────────────────
+  //
+  // ⚠️ Восемь вкладок по одной — это восемь карточек подтверждения подряд, и на третьей человек
+  // перестаёт читать, что в них написано. Одна карточка со списком адресов и открытие в фоне.
+  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setStance(${JSON.stringify(CLIENT.toLowerCase())}, 'tabs_open', 'allow'); return true; })()`);
+  const beforeOpen = JSON.parse(textOf(await c.send('tools/call', { name: 'tabs_list', arguments: {} })) || '{}').count ?? 0;
+  const openedBatch = await c.send('tools/call', {
+    name: 'tabs_open',
+    arguments: { urls: [ctx.echo.url('/?p=1'), ctx.echo.url('/?p=2'), ctx.echo.url('/?p=3')] },
+  });
+  check('пачка открывается одним вызовом', /Открыто 3 вкладок/.test(textOf(openedBatch)),
+    textOf(openedBatch).slice(0, 160));
+  await wait(2000);
+  const afterOpen = JSON.parse(textOf(await c.send('tools/call', { name: 'tabs_list', arguments: {} })) || '{}').count ?? 0;
+  check('вкладок стало на три больше', afterOpen - beforeOpen === 3, `было ${beforeOpen}, стало ${afterOpen}`);
+  // ⚠️ Фон, а не перехват экрана: активной остаётся та вкладка, на которую смотрит человек.
+  const activeStill = JSON.parse(textOf(await c.send('tools/call', { name: 'tabs_list', arguments: {} })) || '{}')
+    .tabs?.find((t) => t.active);
+  check('активная вкладка не перехвачена', !!activeStill && !activeStill.url.includes('p=3'),
+    JSON.stringify(activeStill ?? null).slice(0, 160));
+
   // ── Белый список сайтов ───────────────────────────────────────────────────
   //
   // ⚠️ Обещание, ради которого всё и делалось: «этой программе — только такие-то сайты». Агенту

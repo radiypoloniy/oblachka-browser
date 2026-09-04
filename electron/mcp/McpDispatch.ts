@@ -408,7 +408,7 @@ async function run(
     case 'bookmarks_add':
       return addBookmarks(args, domains);
     case 'tabs_open': {
-      const res = openTab(args.url, args.background);
+      const res = openTab(args, domains);
       if (!res.ok) throw new Error(res.note);
       return { opened: true, note: res.note };
     }

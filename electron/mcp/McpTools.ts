@@ -5,7 +5,7 @@ import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
 import { clampHistoryLimit, domainAllowed, visibleTabs } from '../../shared/mcpPolicy';
 import {
-  batchTextLimit, bookmarkTargets, clampPageText, groupTargets, readUrlTargets, safeOpenUrl,
+  batchTextLimit, bookmarkTargets, clampPageText, groupTargets, openTargets, readUrlTargets,
   tidyLinks, trackingFreeUrl,
   MCP_SHOT_QUALITY, MCP_SHOT_WIDTH, type McpLink,
 } from '../../shared/mcpArgs';
@@ -400,23 +400,40 @@ export function addBookmarks(
 /**
  * Открыть адрес новой вкладкой.
  *
- * ⚠️ Адрес проходит через safeOpenUrl ЗДЕСЬ ЖЕ, ещё раз, хотя карточка подтверждения показывала
- * человеку уже проверенный. Это не дубль: между показом и выполнением лежит целый круг через
- * клиента, и повтор вызова с другим адресом обязан упереться в ту же проверку, а не в память о
- * том, что «пользователь уже согласился».
+ * ⚠️ Адреса проходят проверку ЗДЕСЬ ЖЕ, ещё раз (openTargets), хотя карточка подтверждения
+ * показывала человеку уже проверенные. Это не дубль: между показом и выполнением лежит целый круг
+ * через клиента, и повтор вызова с другим адресом обязан упереться в ту же проверку, а не в
+ * память о том, что «пользователь уже согласился».
  */
 export function openTab(
-  rawUrl: unknown,
-  background: unknown,
+  args: Record<string, unknown>,
   domains: readonly string[] = [],
 ): McpWriteResult {
   const ctx = activeContext();
   if (!ctx) return { ok: false, note: 'No browser window is open.' };
-  const url = safeOpenUrl(rawUrl);
-  if (!url) return { ok: false, note: 'Only http(s) addresses can be opened.' };
-  if (!domainAllowed(url, domains)) return { ok: false, note: OUT_OF_SCOPE };
-  const id = ctx.tabs.createTab(url, background === true);
-  return { ok: !!id, note: id ? `Opened ${url}` : 'The browser refused to open this address.' };
+  const targets = openTargets(args);
+  if (!targets.ok) return { ok: false, note: targets.error };
+  const allowed = targets.urls.filter((u) => domainAllowed(u, domains));
+  if (allowed.length === 0) return { ok: false, note: OUT_OF_SCOPE };
+
+  // ⚠️ ПАЧКА ВСЕГДА В ФОНЕ, и это не мелочь: восемь вкладок, каждая из которых выпрыгивает на
+  // экран, — это не помощь, а перехват работы. Человек видит их в сайдбаре и открывает сам.
+  // Одиночное открытие оставляет прежнее поведение: там `background` — осознанный аргумент.
+  const many = allowed.length > 1;
+  const background = many ? true : args.background === true;
+  let opened = 0;
+  for (const url of allowed) {
+    if (ctx.tabs.createTab(url, background)) opened++;
+  }
+  const blocked = targets.urls.length - allowed.length;
+  const tail = blocked > 0 ? `, ${blocked} вне разрешённых сайтов` : '';
+  if (opened === 0) return { ok: false, note: 'The browser refused to open these addresses.' };
+  return {
+    ok: true,
+    note: many
+      ? `Открыто ${opened} вкладок в фоне${tail}`
+      : `Opened ${allowed[0]}${tail}`,
+  };
 }
 
 /**

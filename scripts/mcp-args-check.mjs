@@ -7,9 +7,9 @@
 //
 // Запуск: node scripts/mcp-args-check.mjs
 import {
-  MCP_BATCH_MAX, MCP_BOOKMARKS_MAX, MCP_GROUP_MAX, MCP_LINKS_MAX,
-  batchTextLimit, bookmarkTargets, confirmSubject, groupTargets, readUrlTargets, tidyLinks,
-  trackingFreeUrl,
+  MCP_BATCH_MAX, MCP_BOOKMARKS_MAX, MCP_GROUP_MAX, MCP_LINKS_MAX, MCP_OPEN_MAX,
+  batchTextLimit, bookmarkTargets, confirmSubject, groupTargets, openTargets, readUrlTargets,
+  tidyLinks, trackingFreeUrl,
 } from '../shared/mcpArgs.ts';
 import { findTool } from '../shared/mcpPolicy.ts';
 
@@ -101,6 +101,34 @@ check('то же в ссылках со страницы',
     { url: 'https://shop.ru/p/1?advert=x', text: 'товар' },
     { url: 'https://shop.ru/p/1?advert=y', text: 'он же' },
   ], 'https://shop.ru/search').length, 1);
+console.log('\n— открыть вкладки пачкой —');
+// ⚠️ Потолок про ПАМЯТЬ, а не про удобство: каждая вкладка — живой рендерер, и на маркетплейсе это
+// сотни мегабайт. Десять человек платит осознанно (он видит список в карточке), сотня по
+// недосмотру модели положила бы машину.
+const opens = (args) => openTargets(args);
+check('одиночный адрес', opens({ url: 'https://a.ru' }).urls, ['https://a.ru/']);
+check('список адресов', opens({ urls: ['https://a.ru', 'https://b.ru'] }).urls.length, 2);
+check('битый выброшен и сосчитан',
+  [opens({ urls: ['не адрес', 'https://a.ru'] }).urls.length, opens({ urls: ['не адрес', 'https://a.ru'] }).dropped],
+  [1, 1]);
+check('чужая схема не открывается', opens({ url: 'file:///c:/secret.txt' }).ok, false);
+check('сверх предела отсекается',
+  opens({ urls: Array.from({ length: MCP_OPEN_MAX + 4 }, (_, i) => `https://s${i}.ru`) }).urls.length,
+  MCP_OPEN_MAX);
+// ⚠️ Один товар не открываем тремя вкладками: в выдаче маркетплейса он приходит несколькими
+// ссылками, отличающимися только рекламной меткой.
+check('дубли по меткам схлопываются',
+  opens({ urls: ['https://shop.ru/p/1?advert=x', 'https://shop.ru/p/1?advert=y'] }).urls.length, 1);
+// ⚠️ Карточка перечисляет ВСЕ адреса и говорит про фон: «открыть 8 вкладок» — вопрос, на который
+// нельзя ответить осмысленно, а перехват экрана восемью прыжками человек не простит.
+const openSubj = confirmSubject(findTool('tabs_open'), { urls: ['https://a.ru', 'https://b.ru'] });
+check('в карточке оба адреса',
+  openSubj.includes('https://a.ru/') && openSubj.includes('https://b.ru/'), true);
+check('и сказано, что откроются в фоне', openSubj.includes('в фоне'), true);
+check('одиночный остаётся коротким',
+  confirmSubject(findTool('tabs_open'), { url: 'https://a.ru' }), 'https://a.ru/');
+
+
 
 console.log('\n— вкладки в группу —');
 // ⚠️ Имя обязательно: безымянная группа в сайдбаре называется «Новая группа», и человек,

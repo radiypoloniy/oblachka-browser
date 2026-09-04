@@ -275,11 +275,18 @@ export const MCP_TOOLS: readonly McpTool[] = [
     mode: 'write',
     title: 'Открыть вкладку',
     description:
-      'Open a URL in a new tab of the browser. The user is asked to confirm every call; '
-      + 'only http and https addresses are accepted.',
+      'Open pages in new tabs of the browser. Pass SEVERAL at once in `urls` when the user should '
+      + 'look at more than one — a comparison, a shortlist, several search results: they open in '
+      + 'the background in one confirmation, instead of interrupting the user once per page. '
+      + 'Only http and https addresses are accepted.',
     input: {
       type: 'object',
       properties: {
+        urls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Several addresses to open at once. Prefer this over repeated calls.',
+        },
         url: { type: 'string', description: 'Address to open, http(s) only.' },
         background: { type: 'boolean', description: 'Open without switching to it. Default false.' },
       },

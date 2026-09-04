@@ -231,6 +231,50 @@ function cleanFolder(raw: unknown): string | null {
   return name || null;
 }
 
+/**
+ * Сколько вкладок открываем за один вызов.
+ *
+ * ⚠️ Потолок про ПАМЯТЬ, а не про удобство: каждая вкладка — живой рендерер, и на маркетплейсе это
+ * сотни мегабайт, а не наши 28 МБ из замера на пустых страницах. Десять — цена, которую человек
+ * платит осознанно (он видит список в карточке); сотня по недосмотру модели положила бы машину.
+ */
+export const MCP_OPEN_MAX = 10;
+
+export type OpenTargets =
+  | { ok: true; urls: string[]; dropped: number }
+  | { ok: false; error: string };
+
+/**
+ * Какие адреса просят открыть.
+ *
+ * ⚠️ Тот же разбор, что у чтения (`url` строкой или `urls` списком) и по той же причине: клиенты
+ * присылают разное, а отказ «не то поле» человек читает как «браузер не работает».
+ *
+ * ⚠️ Дубликаты схлопываются БЕЗ МЕТОК СЛЕЖЕНИЯ: в выдаче маркетплейса один товар приходит
+ * несколькими ссылками, и открыть его тремя вкладками — не помощь, а мусор в сайдбаре.
+ */
+export function openTargets(args: Record<string, unknown>): OpenTargets {
+  const raw: unknown[] = Array.isArray(args.urls)
+    ? [...args.urls]
+    : args.urls !== undefined ? [args.urls] : [];
+  if (args.url !== undefined) raw.unshift(args.url);
+
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  let dropped = 0;
+  for (const item of raw) {
+    const safe = safeOpenUrl(item);
+    if (!safe) { dropped++; continue; }
+    const key = trackingFreeUrl(safe);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (urls.length < MCP_OPEN_MAX) urls.push(safe);
+    else dropped++;
+  }
+  if (urls.length === 0) return { ok: false, error: 'Only http(s) addresses can be opened.' };
+  return { ok: true, urls, dropped };
+}
+
 /** Сколько вкладок кладём в группу за вызов. Больше — это уже не «разложи», а «перетасуй всё». */
 export const MCP_GROUP_MAX = 30;
 
@@ -308,10 +352,16 @@ export function confirmSubject(tool: McpTool, args: Record<string, unknown>): st
     case 'tabs_open': {
       // ⚠️ Пустого предмета не бывает: карточка без адреса — вопрос ни о чём, и человек ответит
       // «да» просто потому, что читать нечего. Негодный адрес показываем как есть и словами.
-      const safe = safeOpenUrl(args.url);
-      if (safe) return safe;
-      const raw = String(args.url ?? '').trim();
-      return raw ? `Адрес не годится: ${raw.slice(0, 200)}` : 'Программа не назвала адрес.';
+      const targets = openTargets(args);
+      if (!targets.ok) {
+        const raw = String(args.url ?? '').trim();
+        return raw ? `Адрес не годится: ${raw.slice(0, 200)}` : 'Программа не назвала адрес.';
+      }
+      // ⚠️ Перечисляем ВСЕ адреса: «открыть 8 вкладок» — вопрос, на который нельзя ответить
+      // осмысленно, а список читается за пару секунд. Про фон говорим прямо: человек должен
+      // понимать, что работу ему не перебьют.
+      if (targets.urls.length === 1) return targets.urls[0] as string;
+      return `${targets.urls.join('\n')}\n\n${targets.urls.length} вкладок откроются в фоне — текущая останется на экране.`;
     }
     case 'bookmarks_add': {
       const targets = bookmarkTargets(args);
