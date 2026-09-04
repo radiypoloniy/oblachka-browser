@@ -1,0 +1,29 @@
+{
+  "name": "@oblako/mcp",
+  "version": "0.1.0",
+  "description": "MCP server for the Oblako browser: the user's real, logged-in Chromium — tabs, page text, screenshots, history, bookmarks, price tracking. Requires Oblako installed and running.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "oblako-mcp": "shim.mjs"
+  },
+  "files": [
+    "shim.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "browser",
+    "oblako"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/radiypoloniy/oblachka-browser.git",
+    "directory": "resources/mcp"
+  },
+  "homepage": "https://github.com/radiypoloniy/oblachka-browser#readme"
+}

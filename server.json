@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.radiypoloniy/oblako-browser",
+  "description": "The user's real logged-in browser as a tool: open tabs, page text and screenshots, links, history, bookmarks, price tracking. Requires the Oblako browser installed and running.",
+  "version": "0.7.5",
+  "repository": {
+    "url": "https://github.com/radiypoloniy/oblachka-browser",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/radiypoloniy/oblachka-browser",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@oblako/mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
