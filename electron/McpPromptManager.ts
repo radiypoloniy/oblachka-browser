@@ -1,55 +1,47 @@
-import { app, BrowserWindow, WebContentsView } from 'electron';
+import { BrowserWindow, screen } from 'electron';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { ContentBounds, McpPromptRequest } from '../shared/ipc';
-import { closeWindowView } from './viewTeardown';
+import type { McpPromptRequest } from '../shared/ipc';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
-// Вопрос внешнего агента — своей карточкой в интерфейсе браузера.
+// Вопрос внешнего агента — карточкой в СВОЁМ окне поверх всех программ.
 //
-// ⚠️ ЭТО ЗАМЕНА СИСТЕМНОГО ОКНА, и замена по делу. Сначала вопрос задавался нативным
-// dialog.showMessageBox — с обоснованием «страница не может его подделать». Обоснование верное, а
-// вывод был неверным: наш поповер живёт в ОТДЕЛЬНОЙ WebContentsView поверх страницы, и страница
-// туда не дотянется ровно так же. То есть анти-подделка не требовала системного окна — а оно,
-// в отличие от карточки, выглядит чужим и предупреждает голосом Windows, а не голосом браузера.
+// ⚠️ ЭТО ТРЕТЬЕ РЕШЕНИЕ ПОДРЯД, и предыдущие два были неверны каждое по-своему. Сначала вопрос
+// задавался нативным dialog.showMessageBox — его рисует Windows, и настроить там можно только
+// текст, иконку и подписи кнопок: сообщение от браузера говорило чужим голосом. Потом карточка
+// переехала внутрь окна браузера отдельной WebContentsView — вид стал наш, но появился порок
+// куда хуже вида.
 //
-// ⚠️ Устройство — как у PermissionPopoverManager: вью на окно, ленивое создание, очередь в main,
-// высота меряется в самой вью. Не переиспользуем ту напрямую намеренно: там вопрос ЗАДАЁТ САЙТ,
-// и вся её механика (снятие вопросов при уходе со страницы, ключ «сайт + разрешение») к внешнему
-// агенту не относится.
+// ⚠️ ПОРОК БЫЛ В МЕСТЕ, А НЕ В ОФОРМЛЕНИИ. Вопрос от внешней программы приходит ровно тогда, когда
+// человек СМОТРИТ НЕ В БРАУЗЕР: он сидит в Cursor или Claude Desktop — оттуда и спрашивает. Всё,
+// что живёт внутри окна браузера, в этот момент невидимо, и починить это нельзя ничем: за один
+// день 04.09.2026 из этого выросли три разные поломки подряд — карточка уезжала в окно выпадашки
+// подсказок (`getAllWindows()[0]` оказывался им), карточку накрывала собой открывшаяся вкладка
+// (порядок в `contentView.children` — это и есть порядок слоёв), карточка обрезалась по начальной
+// высоте. Все три — следствия одного: вопрос лежал ВНУТРИ окна, которого человек не видит.
 //
-// ⚠️ Угол ЛЕВЫЙ верхний — тот же, что у разрешений сайта, и это правка прежнего решения. Сначала
-// карточка выходила справа, «из-под метки внешнего агента»; связь красивая, но неверная: для
-// человека это ОДИН И ТОТ ЖЕ вид сообщения — «у тебя просят разрешение», — и появляться он обязан
-// в одном месте. Разные углы у одинаковых по смыслу карточек учат искать вопрос глазами.
+// ⚠️ Своё окно поверх всего снимает весь этот класс разом. Ни слоёв, ни привязки к геометрии
+// контента, ни борьбы за верхний уровень: карточку видно из любой программы, и рисуем её мы сами.
+// Прецедент в проекте есть — заставка (SplashWindow.ts): прозрачное безрамочное окно alwaysOnTop
+// со своей вёрсткой.
+//
+// ⚠️ ФОКУС НЕ ЗАБИРАЕМ (`focusable: false` — на Windows это WS_EX_NOACTIVATE): окно принимает мышь,
+// но не выдёргивает человека из программы, где он печатает. Тот же приём и по той же причине, что
+// у выпадашки подсказок омнибокса.
+//
+// ⚠️ Угол ПРАВЫЙ НИЖНИЙ — там, где Windows показывает свои уведомления: глаз туда приучен, и
+// карточка не накрывает то, что человек читает в чужом окне.
 
 const CARD_WIDTH = 380;
 const INITIAL_HEIGHT = 170;
-/** Через сколько переспросить высоту у вью. Дольше — человек успеет увидеть обрезанную карточку. */
-const REMEASURE_MS = 400;
-const EDGE_GAP = 12;
-
-interface PromptState {
-  win: BrowserWindow;
-  view: WebContentsView | null;
-  resizeBound: boolean;
-  contentBounds: ContentBounds;
-  /** Приезжала ли хоть раз НАСТОЯЩАЯ геометрия контента (не нулевой сентинел). */
-  hasBounds: boolean;
-  height: number;
-  queue: McpPromptRequest[];
-  /** Пока висит вопрос — сторож верхнего слоя (см. keepOnTop). */
-  onTop: NodeJS.Timeout | null;
-}
-
 /**
- * Запасной отступ сверху, пока настоящая геометрия ни разу не приезжала.
+ * Отступ ВИДИМОЙ карточки от краёв рабочей области.
  *
- * ⚠️ Нужен ровно для одного случая: вопрос пришёл в окно, где человек ещё не открывал ни одной
- * страницы. Число приблизительное намеренно — как только контент сообщит свои bounds, карточка
- * встанет точно; лучше показать её чуть не на месте, чем не показать вовсе.
+ * ⚠️ Не меньше SHADOW_MARGIN, и это не вкусовщина: вокруг карточки лежит прозрачный запас под
+ * тень, поэтому физический край окна проходит на SHADOW_MARGIN дальше видимого. При меньшем
+ * отступе окно вылезало бы за рабочую область — живой драйвер это и поймал.
  */
-const FALLBACK_TOP = 96;
+const EDGE_GAP = 24;
 
 export interface McpAnswer {
   granted: boolean;
@@ -57,257 +49,105 @@ export interface McpAnswer {
   remember: boolean;
 }
 
-const states = new Map<number, PromptState>();
+/**
+ * ⚠️ Окно ОДНО НА ПРИЛОЖЕНИЕ, а не на окно браузера, и это следствие того же разбора: вопрос
+ * задаёт программа снаружи — ей всё равно, сколько окон человек открыл и открыто ли хоть одно.
+ */
+let win: BrowserWindow | null = null;
+let height = INITIAL_HEIGHT;
+const queue: McpPromptRequest[] = [];
 const waiting = new Map<string, (a: McpAnswer) => void>();
 
-function stateFor(win: BrowserWindow): PromptState {
-  const existing = states.get(win.id);
-  if (existing) return existing;
-  const created: PromptState = {
-    win, view: null, resizeBound: false,
-    contentBounds: { x: 0, y: 0, width: 0, height: 0 },
-    hasBounds: false,
-    height: INITIAL_HEIGHT, queue: [], onTop: null,
-  };
-  states.set(win.id, created);
-  // ⚠️ Вью закрываем сами: окно не уносит дочерние WebContentsView с собой (см. viewTeardown.ts).
-  win.once('closed', () => {
-    const st = states.get(win.id);
-    // Окно закрыли, не ответив: ждущие вызовы обязаны получить «нет», иначе агент ждёт вечно.
-    for (const q of st?.queue ?? []) answer(q.id, { granted: false, remember: false });
-    closeWindowView(st?.view);
-    states.delete(win.id);
-  });
-  return created;
-}
-
-function bounds(st: PromptState): { x: number; y: number; width: number; height: number } {
-  // ⚠️ Пока настоящей геометрии не было, считаем от окна: вопрос от внешней программы приходит
-  // независимо от того, открыта ли под ним страница.
-  const wb = st.win.getContentBounds();
-  const cb = st.hasBounds
-    ? st.contentBounds
-    : { x: 0, y: FALLBACK_TOP, width: wb.width, height: wb.height - FALLBACK_TOP };
+function bounds(): { x: number; y: number; width: number; height: number } {
+  const area = screen.getPrimaryDisplay().workArea;
+  const width = CARD_WIDTH + SHADOW_MARGIN * 2;
+  const full = height + SHADOW_MARGIN * 2;
+  // ⚠️ Прозрачный запас под тень (SHADOW_MARGIN) прибавляется к размеру и вычитается из отступа:
+  // иначе карточка встала бы от края на EDGE_GAP плюс невидимое поле, то есть заметно дальше, чем
+  // задумано, — и это было бы видно рядом с системными уведомлениями.
   return {
-    x: cb.x + EDGE_GAP - SHADOW_MARGIN,
-    y: cb.y + EDGE_GAP - SHADOW_MARGIN,
-    width: CARD_WIDTH + SHADOW_MARGIN * 2,
-    height: st.height + SHADOW_MARGIN * 2,
+    width,
+    height: full,
+    x: Math.round(area.x + area.width - width - EDGE_GAP + SHADOW_MARGIN),
+    y: Math.round(area.y + area.height - full - EDGE_GAP + SHADOW_MARGIN),
   };
 }
 
-function isAttached(st: PromptState): boolean {
-  return !!st.view && !st.win.isDestroyed() && st.win.contentView.children.includes(st.view);
-}
-
-function layout(st: PromptState): void {
-  if (isAttached(st)) st.view!.setBounds(bounds(st));
-}
-
-function ensureView(st: PromptState): WebContentsView {
-  if (st.view) return st.view;
-  const view = new WebContentsView({
+function ensureWindow(): BrowserWindow {
+  if (win && !win.isDestroyed()) return win;
+  const created = new BrowserWindow({
+    ...bounds(),
+    frame: false,
+    transparent: true,
+    // Тень рисует сама карточка (см. SHADOW_MARGIN): системная легла бы по прямоугольнику окна,
+    // то есть по прозрачному запасу вокруг неё.
+    hasShadow: false,
+    // ⚠️ Мышь принимает, фокус не забирает — человек в этот момент печатает в другой программе.
+    focusable: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload-mcpprompt.js'),
       contextIsolation: true,
       sandbox: false, // preload использует ipcRenderer
     },
   });
-  st.view = view;
-  // Прозрачность на самой вью, а не только в CSS, — иначе вокруг карточки непрозрачный
-  // прямоугольник (тот же инвариант, что у остальных поповеров).
-  view.setBackgroundColor('#00000000');
-  view.webContents.once('did-finish-load', () => { pushCurrent(st); });
-  void view.webContents.loadURL('oblako-chrome://localhost/mcpprompt.html');
-  return view;
+  win = created;
+  created.setMenuBarVisibility(false);
+  // ⚠️ Уровень 'screen-saver', а не просто alwaysOnTop: иначе полноэкранное приложение (редактор
+  // на весь экран, видео) окажется выше — и вопрос снова станет невидимым.
+  created.setAlwaysOnTop(true, 'screen-saver');
+  // Карточка никуда не навигирует сама; если что-то попробует — окно интерфейса не должно
+  // превратиться в страницу сайта (тот же гвард, что у выпадашки подсказок и AI-панели).
+  created.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('oblako-chrome://')) e.preventDefault();
+  });
+  created.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  created.webContents.once('did-finish-load', () => { pushCurrent(); });
+  created.on('closed', () => {
+    win = null;
+    // Окно закрыли, не ответив: ждущие вызовы обязаны получить «нет», иначе агент ждёт вечно.
+    for (const q of [...queue]) answer(q.id, { granted: false, remember: false });
+  });
+  void created.loadURL('oblako-chrome://localhost/mcpprompt.html');
+  return created;
 }
 
-function pushCurrent(st: PromptState): void {
-  const wc = st.view?.webContents;
+function pushCurrent(): void {
+  const wc = win?.webContents;
   if (!wc || wc.isDestroyed()) return;
-  wc.send('mcp-prompt:request', st.queue[0] ?? null);
+  wc.send('mcp-prompt:request', queue[0] ?? null);
 }
 
-/**
- * Второй шанс измерить карточку.
- *
- * ⚠️ Заведён по живому случаю: карточка показалась обрезанной ровно по INITIAL_HEIGHT — высота от
- * вью не пришла ни разу, и переспросить было некому. Повторный запрос приезжает НОВЫМ объектом,
- * поэтому эффект измерения в mcpprompt.tsx перезапускается и меряет уже отрисованную карточку;
- * если высота та же, main её отбросит сравнением (см. setMcpPromptHeight) — то есть цена этой
- * страховки нулевая, а цена её отсутствия — нечитаемый вопрос на экране.
- */
-function remeasureLater(st: PromptState): void {
-  setTimeout(() => {
-    if (st.queue.length > 0 && isAttached(st)) pushCurrent(st);
-  }, REMEASURE_MS);
-}
-
-/**
- * Держать карточку сверху, пока на неё не ответили.
- *
- * ⚠️ Поднять ОДИН РАЗ при показе мало, и это показал замер: вкладка, открытая через две секунды
- * после вопроса, встала над карточкой — а геометрия контента при этом не менялась, то есть
- * подъём по syncMcpPromptBounds не сработал. Событие «слои изменились» перехватить негде:
- * addChildView зовут TabManager (шесть мест), AI-панель, findbar, зоны перетаскивания и поповеры,
- * и перечислять их все — список, который разъедется на первой же новой вью.
- *
- * ⚠️ Поэтому сторож по времени, и живёт он РОВНО пока висит вопрос. Работы у него на сравнение
- * двух ссылок (raise выходит сразу, если карточка и так наверху), а отсутствие вопроса гасит его
- * совсем — постоянного таймера в приложении не появляется.
- */
-const ON_TOP_MS = 600;
-
-function keepOnTop(st: PromptState): void {
-  if (st.onTop) return;
-  st.onTop = setInterval(() => {
-    if (st.queue.length === 0 || st.win.isDestroyed()) { stopKeepOnTop(st); return; }
-    raise(st);
-  }, ON_TOP_MS);
-}
-
-function stopKeepOnTop(st: PromptState): void {
-  if (!st.onTop) return;
-  clearInterval(st.onTop);
-  st.onTop = null;
-}
-
-function show(st: PromptState): void {
-  if (st.queue.length === 0 || st.win.isDestroyed()) return;
-  if (!st.resizeBound) {
-    st.win.on('resize', () => layout(st));
-    st.resizeBound = true;
-  }
-  const firstTime = st.view === null;
-  const view = ensureView(st);
-  view.setBounds(bounds(st));
-  if (!isAttached(st)) st.win.contentView.addChildView(view);
-  else raise(st); // вью осталась с прошлого вопроса и могла уйти под вкладку
-  if (!firstTime) pushCurrent(st);
-}
-
-function detach(st: PromptState): void {
-  if (!isAttached(st)) return;
-  try { st.win.contentView.removeChildView(st.view!); } catch { /* окно могло закрыться */ }
-}
-
-/**
- * Поднять карточку на верхний слой.
- *
- * ⚠️ ПОРЯДОК В `contentView.children` — ЭТО И ЕСТЬ ПОРЯДОК СЛОЁВ, и «добавили последними, значит
- * поверх вкладки» верно ровно в момент добавления. Остальные поповеры этим и живут: их открывает
- * человек, когда вью вкладки уже в списке. Наша карточка приходит СНАРУЖИ и висит минутами — а за
- * это время агент открывает вкладку, TabManager делает addChildView, и вкладка встаёт НАД
- * вопросом. Замер: [хром 1280, карточка 428] → после открытия вкладки [1280, 428, 1000].
- *
- * ⚠️ Дальше становилось только хуже: следующий вопрос шёл по ветке «вью уже прикреплена» — то есть
- * пушил содержимое, ничего не переклеивая, — и карточка оставалась под контентом навсегда. Человек
- * видел метку «Внешний агент» в тулбаре и ни одного вопроса: живая жалоба 04.09.2026 «появляется
- * плашка внешний агент, но не всплывает поповер».
- *
- * ⚠️ Проверка «уже наверху» не косметическая: без неё мы переклеивали бы вью на КАЖДОМ обновлении
- * геометрии (а оно приезжает постоянно), то есть дёргали бы живую WebContentsView десятки раз в
- * секунду ради ничего.
- */
-function raise(st: PromptState): void {
-  if (!isAttached(st)) return;
-  const kids = st.win.contentView.children;
-  if (kids[kids.length - 1] === st.view) return;
-  try {
-    st.win.contentView.removeChildView(st.view!);
-    st.win.contentView.addChildView(st.view!);
-  } catch { /* окно могло закрыться между проверкой и переклейкой */ }
-}
-
-/** Та же геометрия, что двигает вкладку: карточка привязана к контентной зоне. */
-export function syncMcpPromptBounds(win: BrowserWindow, b: ContentBounds): void {
-  // ⚠️ stateFor, а не states.get: геометрия приезжает ПОСТОЯННО, а состояние окна создавалось бы
-  // только при первом вопросе — и создавалось бы с нулевыми bounds, то есть карточка не
-  // показалась бы ни разу. Ровно этот пропуск и дал «подтверждения нет, а через минуту отказ».
-  const st = stateFor(win);
-  // ⚠️ Нулевые bounds — сентинел «под нами настройки, история или загрузки». У поповера
-  // разрешений он означает «прятать»: там спрашивает САЙТ, и без страницы вопрос теряет смысл.
-  // Здесь наоборот — спрашивает программа снаружи, и человек, сидящий в настройках, обязан
-  // увидеть вопрос. Поэтому сентинел только не двигает карточку, а не убирает её.
-  if (b.width === 0 || b.height === 0) { layout(st); return; }
-  st.contentBounds = b;
-  st.hasBounds = true;
-  if (st.queue.length > 0 && !isAttached(st)) { show(st); return; }
-  layout(st);
-  // ⚠️ Пока вопрос висит, держим его поверх: вкладку могли открыть уже ПОСЛЕ показа карточки, и
-  // тогда она встала над ней (см. raise). Геометрия приезжает постоянно, поэтому это самый
-  // надёжный момент проверить порядок слоёв — а сама проверка стоит сравнения двух ссылок.
-  if (st.queue.length > 0) raise(st);
+function layout(): void {
+  if (win && !win.isDestroyed()) win.setBounds(bounds());
 }
 
 /**
  * Задать вопрос и дождаться ответа.
  *
- * ⚠️ Окно берётся сфокусированное, а если его нет — первое: вызов пришёл СНАРУЖИ браузера, и
- * своего окна у него не бывает. Когда окон нет вовсе, ответ «нет» — единственный честный: спросить
- * некого.
+ * ⚠️ Окна браузера здесь нет вовсе — ни выбора, ни привязки к нему. Прежняя версия искала
+ * «правильное» окно среди всех открытых и однажды выбрала окно выпадашки подсказок; выбирать
+ * больше не из чего, и ошибиться негде.
  */
 export function askMcp(req: Omit<McpPromptRequest, 'id'>): Promise<McpAnswer> {
-  const win = windowForPrompt();
-  if (!win || win.isDestroyed()) return Promise.resolve({ granted: false, remember: false });
-
   const full: McpPromptRequest = { ...req, id: randomUUID() };
-  const st = stateFor(win);
-  st.queue.push(full);
-  if (isAttached(st)) { raise(st); pushCurrent(st); }
-  else show(st);
-  keepOnTop(st);
-  remeasureLater(st);
-  callAttention(win);
+  queue.push(full);
+
+  const w = ensureWindow();
+  layout();
+  pushCurrent();
+  // ⚠️ showInactive(), а не show(): show() просит у системы активацию. Окно и так неактивируемое,
+  // но просить активацию и не получать её — лишний повод системе дёрнуть фокус чужой программы.
+  if (!w.isVisible()) w.showInactive();
 
   return new Promise<McpAnswer>((resolve) => { waiting.set(full.id, resolve); });
-}
-
-/**
- * В какое окно класть вопрос.
- *
- * ⚠️ БРАТЬ ПЕРВОЕ ИЗ getAllWindows() НЕЛЬЗЯ, и это стоило фиче применимости. Вопрос приходит
- * ровно тогда, когда браузер НЕ в фокусе (человек в Cursor, оттуда и спрашивает), то есть
- * сфокусированного окна нет и работает запасная ветка. А в списке окон лежит не только браузер:
- * выпадашка подсказок омнибокса — отдельное BrowserWindow, и замер показал её ПЕРВОЙ. Карточка
- * уезжала в крошечное неактивируемое окно списка, человек не видел ничего, вызов истекал молча —
- * живая жалоба 04.09.2026: «мне не высвечивались никакие окна с подтверждениями».
- *
- * ⚠️ Признак настоящего окна — оно ПРИСЫЛАЕТ ГЕОМЕТРИЮ КОНТЕНТА (syncMcpPromptBounds зовётся из
- * слоя хрома), поэтому реестр уже есть и заводить второй не нужно: `states` наполняется только
- * окнами браузера. Запасной путь — окно без родителя: у служебных popup'ов родитель есть всегда.
- */
-function windowForPrompt(): BrowserWindow | null {
-  const focused = BrowserWindow.getFocusedWindow();
-  if (focused && !focused.isDestroyed() && states.has(focused.id)) return focused;
-  for (const st of states.values()) {
-    if (!st.win.isDestroyed()) return st.win;
-  }
-  return BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.getParentWindow() === null) ?? null;
-}
-
-/**
- * Позвать человека к окну браузера.
- *
- * ⚠️ Заведено по живому случаю, и случай этот — не мелочь, а порок конструкции. Вопрос задаёт
- * программа СНАРУЖИ: человек в этот момент по определению смотрит в неё, а не в браузер. Карточка
- * появлялась в фоновом окне и молчала — агент получал «не подключено», человек не видел ничего и
- * заключал, что фича не работает. Так и было: «не работает, какие вкладки у меня открыты».
- *
- * ⚠️ ФОКУС НЕ ВОРУЕМ. `win.focus()` выдернул бы человека из другой программы посреди набора текста
- * — это хуже, чем незамеченная карточка. Мигание кнопки в панели задач (на macOS — подскок значка
- * в доке) говорит «тебя зовут», не отнимая ввод.
- */
-function callAttention(win: BrowserWindow): void {
-  if (win.isFocused()) return;
-  if (process.platform === 'darwin') app.dock?.bounce('informational');
-  else win.flashFrame(true);
-}
-
-/** Мигание гасим, как только вопросов не осталось: оно про «ждут тебя», а не про «тут был вопрос». */
-function stopAttention(win: BrowserWindow): void {
-  if (win.isDestroyed()) return;
-  if (process.platform !== 'darwin') win.flashFrame(false);
 }
 
 /** Ответ из карточки (или снятие вопроса). Снимаем с очереди и показываем следующий. */
@@ -315,31 +155,40 @@ export function answer(id: string, a: McpAnswer): void {
   const resolve = waiting.get(id);
   waiting.delete(id);
   resolve?.(a);
-  for (const st of states.values()) {
-    const idx = st.queue.findIndex((q) => q.id === id);
-    if (idx === -1) continue;
-    st.queue.splice(idx, 1);
-    if (st.queue.length === 0) { detach(st); stopAttention(st.win); stopKeepOnTop(st); }
-    else pushCurrent(st);
+  const idx = queue.findIndex((q) => q.id === id);
+  if (idx === -1) return;
+  queue.splice(idx, 1);
+  if (queue.length === 0) {
+    // ⚠️ Прячем, а не закрываем: следующий вопрос покажется мгновенно, без загрузки страницы.
+    // Живое окно поверх всего при этом ничего не стоит — оно скрыто и ничего не рисует.
+    if (win && !win.isDestroyed()) win.hide();
     return;
   }
+  pushCurrent();
 }
 
-/** Высота карточки, измеренная в самой вью: длинный адрес переносится на вторую строку. */
+/**
+ * Высота карточки, измеренная в самой вью: длинный адрес переносится на вторую строку.
+ *
+ * ⚠️ Окно РАСТЁТ ВВЕРХ, а не вниз: оно прижато к нижнему краю рабочей области, и рост вниз уводил
+ * бы кнопки под панель задач.
+ */
 export function setMcpPromptHeight(sender: Electron.WebContents, px: number): void {
-  for (const st of states.values()) {
-    if (st.view?.webContents !== sender) continue;
-    const next = Math.max(80, Math.round(px));
-    if (next === st.height) return;
-    st.height = next;
-    layout(st);
-    return;
-  }
+  if (!win || win.isDestroyed() || win.webContents !== sender) return;
+  const next = Math.max(80, Math.round(px));
+  if (next === height) return;
+  height = next;
+  layout();
 }
 
 /** Снять все висящие вопросы — при выключении сервера и отзыве клиента. */
 export function dropMcpPrompts(): void {
-  for (const st of [...states.values()]) {
-    for (const q of [...st.queue]) answer(q.id, { granted: false, remember: false });
-  }
+  for (const q of [...queue]) answer(q.id, { granted: false, remember: false });
+}
+
+/** Закрыть окно вопроса совсем — при выходе из приложения. */
+export function closeMcpPromptWindow(): void {
+  dropMcpPrompts();
+  if (win && !win.isDestroyed()) win.destroy();
+  win = null;
 }

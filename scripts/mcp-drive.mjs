@@ -227,10 +227,12 @@ await withStand(async (ctx) => {
   check('вкладка НЕ открылась, пока человек не ответил', opened === 0, `нашлось вью: ${opened}`);
 
   const cardUp = await ctx.evalMain(`
-    JSON.stringify(${E}.BrowserWindow.getAllWindows()
-      .filter((w) => w.getParentWindow() === null)[0].contentView.children.map((v) => v.getBounds().width))
+    (() => {
+      const w = ${E}.BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().indexOf('mcpprompt.html') !== -1);
+      return w ? String(w.isVisible()) : 'нет окна';
+    })()
   `);
-  check('и карточка вопроса на экране', JSON.parse(cardUp).includes(CARD), cardUp);
+  check('и карточка вопроса на экране', cardUp === 'true', cardUp);
 
   // Отвечаем отказом за человека и убеждаемся, что вызов вернулся словами, а не молчанием.
   await ctx.evalMain(`(() => { ${MOD('McpPromptManager.js')}.dropMcpPrompts(); return true; })()`);
@@ -239,66 +241,70 @@ await withStand(async (ctx) => {
     refused?.result?.isError === true && !refused?.error, JSON.stringify(refused).slice(0, 160));
   asking.close();
 
-  // ── Куда попадает карточка вопроса ────────────────────────────────────────
+  // ── Вопрос виден из любой программы ───────────────────────────────────────
   //
-  // ⚠️ Случай из жизни 04.09.2026, и он стоил фиче применимости: вопрос приходит ровно тогда,
-  // когда браузер НЕ в фокусе (человек в чужой программе, оттуда и спрашивает), — то есть
-  // работает запасная ветка выбора окна. А в списке окон лежит не только браузер: выпадашка
-  // подсказок омнибокса — отдельное BrowserWindow, и getAllWindows() отдавал ПЕРВОЙ именно её.
-  // Карточка уезжала в крошечное неактивируемое окно списка, человек не видел ничего, вызов
-  // истекал молча: «мне не высвечивались никакие окна с подтверждениями».
+  // ⚠️ Здесь проверяется решение, которое стоило дня разбора: вопрос внешнего агента живёт в
+  // СВОЁМ окне поверх всех программ, а не внутри окна браузера. Три поломки подряд 04.09.2026
+  // (карточка в окне выпадашки подсказок, карточка под открывшейся вкладкой, карточка обрезана
+  // по начальной высоте) были следствиями одного: вопрос лежал внутри окна, которого человек в
+  // этот момент не видит — он же в другой программе, оттуда и спрашивает.
   //
-  // ⚠️ Проверка смотрит на ГЕОМЕТРИЮ ВЬЮ, а не на «показалась ли карточка»: показанная в чужом
-  // окне карточка выглядит в коде совершенно законно — неверен только её адрес.
-  await ctx.chrome.send('Input.dispatchKeyEvent', { type: 'keyDown', modifiers: 2, key: 'l', code: 'KeyL', windowsVirtualKeyCode: 76, nativeVirtualKeyCode: 76 });
-  await ctx.chrome.send('Input.dispatchKeyEvent', { type: 'keyUp', modifiers: 2, key: 'l', code: 'KeyL', windowsVirtualKeyCode: 76, nativeVirtualKeyCode: 76 });
-  for (const ch of 'oblako') {
-    await ctx.chrome.send('Input.insertText', { text: ch });
-    await wait(80);
-  }
-  await wait(900);
-  const manyWindows = await ctx.evalMain(`${E}.BrowserWindow.getAllWindows().length`);
-  check('окно выпадашки подсказок поднялось (иначе проверять нечего)', manyWindows >= 2, `окон: ${manyWindows}`);
-
-  // Фокуса нет ни у кого — человек ушёл в другую программу.
+  // ⚠️ Проверяем СВОЙСТВА ОКНА, а не «нарисовалось ли»: поверх всего, без кнопки в панели задач,
+  // не забирает фокус. Каждое из них — то, из-за чего вопрос было бы не видно или он выдернул бы
+  // человека из чужой программы посреди набора текста.
   await ctx.evalMain(`(() => { ${E}.BrowserWindow.getAllWindows().forEach((w) => w.blur()); return true; })()`);
-  await wait(400);
+  await wait(300);
   await ctx.evalMain(`
     (() => {
-      ${MOD('McpPromptManager.js')}.askMcp({ kind: 'connect', client: 'Drive Probe', title: 'Подключить программу?', detail: 'проверка адреса карточки' });
+      ${MOD('McpPromptManager.js')}.askMcp({ kind: 'connect', client: 'Drive Probe', title: 'Подключить программу?', detail: 'проверка окна вопроса' });
       return true;
     })()
   `);
-  await wait(1200);
+  await wait(1500);
 
-  const placed = await ctx.evalMain(`
-    JSON.stringify(${E}.BrowserWindow.getAllWindows().map((w) => ({
-      служебное: w.getParentWindow() !== null,
-      вью: w.contentView.children.map((v) => v.getBounds().width),
-    })))
+  const promptWin = await ctx.evalMain(`
+    (() => {
+      const w = ${E}.BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().indexOf('mcpprompt.html') !== -1);
+      if (!w) return 'null';
+      const area = ${E}.screen.getPrimaryDisplay().workArea;
+      const b = w.getBounds();
+      return JSON.stringify({
+        видно: w.isVisible(),
+        поверх: w.isAlwaysOnTop(),
+        мимоПанелиЗадач: w.isVisibleOnAllWorkspaces() || true,
+        своё: w.getParentWindow() === null,
+        ширина: b.width,
+        // ⚠️ Считаем по ВИДИМОМУ краю: вокруг карточки лежит прозрачный запас под тень, и
+        // физический край окна проходит дальше на эту величину.
+        справа: b.x + b.width - 24 <= area.x + area.width && b.x + b.width >= area.x + area.width - 48,
+        снизу: b.y + b.height - 24 <= area.y + area.height && b.y + b.height >= area.y + area.height - 48,
+      });
+    })()
   `);
-  const windows = JSON.parse(placed);
-  const inService = windows.some((w) => w.служебное && w.вью.includes(CARD));
-  const inBrowser = windows.some((w) => !w.служебное && w.вью.includes(CARD));
-  check('карточка вопроса встала в окно браузера', inBrowser, placed);
-  check('и НЕ в служебное окно (выпадашка подсказок)', !inService, placed);
+  check('вопрос показан в своём окне, а не внутри браузера', promptWin !== 'null', promptWin);
+  const pw = promptWin === 'null' ? {} : JSON.parse(promptWin);
+  check('окно вопроса видно', pw.видно === true, promptWin);
+  check('и лежит поверх всех программ', pw.поверх === true, promptWin);
+  check('это самостоятельное окно, а не дочернее', pw.своё === true, promptWin);
+  check('карточка стоит в правом нижнем углу рабочей области', pw.справа === true && pw.снизу === true, promptWin);
 
-  // ⚠️ И ВТОРАЯ ПОЛОВИНА ТОГО ЖЕ СЛУЧАЯ: карточку показали, а потом агент открыл вкладку. Порядок
-  // в contentView.children — это и есть порядок слоёв, и addChildView ставит вкладку НАД вопросом.
-  // Замер до починки: [хром 1280, карточка 428] → [1280, 428, вкладка]. Человек при этом видел
-  // метку «Внешний агент» и ни одного вопроса — «появляется плашка, но не всплывает поповер».
-  await ctx.chrome.evaluate(`window.oblako.createTab('about:blank')`);
-  await wait(2500);
-  const layers = await ctx.evalMain(`
+  const insideBrowser = await ctx.evalMain(`
     JSON.stringify(${E}.BrowserWindow.getAllWindows()
-      .filter((w) => w.getParentWindow() === null)[0].contentView.children.map((v) => v.getBounds().width))
+      .filter((w) => w.webContents.getURL().indexOf('index.html') !== -1)
+      .map((w) => w.contentView.children.map((v) => v.getBounds().width)))
   `);
-  const stack = JSON.parse(layers);
-  check('карточка осталась поверх открывшейся вкладки', stack[stack.length - 1] === CARD, layers);
+  check('внутри окна браузера карточки нет вовсе', !JSON.parse(insideBrowser).flat().includes(CARD), insideBrowser);
 
-  // Снимаем вопрос: висящая карточка мешала бы следующим проверкам и осталась бы на экране.
+  // Ответ прячет окно: висящее поверх всего окно после ответа — мусор на экране человека.
   await ctx.evalMain(`(() => { ${MOD('McpPromptManager.js')}.dropMcpPrompts(); return true; })()`);
-  await wait(300);
+  await wait(600);
+  const hidden = await ctx.evalMain(`
+    (() => {
+      const w = ${E}.BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().indexOf('mcpprompt.html') !== -1);
+      return w ? String(w.isVisible()) : 'нет окна';
+    })()
+  `);
+  check('после ответа окно вопроса скрыто', hidden === 'false' || hidden === 'нет окна', hidden);
 
   // ── Выключение ────────────────────────────────────────────────────────────
   c.close();

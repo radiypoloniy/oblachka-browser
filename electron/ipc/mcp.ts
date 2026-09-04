@@ -4,7 +4,7 @@ import type { McpServerState } from '../../shared/ipc';
 import { MCP_TOOLS, type McpStance } from '../../shared/mcpPolicy';
 import { connectCommand, initMcp, mcpState, setMcpEnabled, stopMcp } from '../mcp';
 import { recentCalls } from '../mcp/McpLog';
-import { answer, setMcpPromptHeight } from '../McpPromptManager';
+import { answer, closeMcpPromptWindow, setMcpPromptHeight } from '../McpPromptManager';
 import { approveClient, listClients, revokeClient, setStance } from '../mcp/McpClients';
 import { installClient, scanClients } from '../mcp/McpInstall';
 import { forgetApprovals } from '../mcp/McpConfirm';
@@ -24,7 +24,9 @@ export function registerMcpIpc(d: IpcDeps): void {
   // файлам, они однажды разойдутся и по смыслу (настройка включена, сервер не поднят).
   initMcp({ history, enabled: settings.getMcpEnabled() });
   // Канал закрываем явно: иначе он переживёт окно и останется висеть вместе с процессом.
-  app.once('before-quit', stopMcp);
+  // ⚠️ Окно вопроса — своё, поверх всего: если его не закрыть, оно переживёт выход и останется
+  // висеть на экране без приложения (см. McpPromptManager).
+  app.once('before-quit', () => { stopMcp(); closeMcpPromptWindow(); });
 
   const state = (): McpServerState => ({
     enabled: settings.getMcpEnabled(),
