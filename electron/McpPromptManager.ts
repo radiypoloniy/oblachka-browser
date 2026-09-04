@@ -1,4 +1,4 @@
-import { BrowserWindow, WebContentsView } from 'electron';
+import { app, BrowserWindow, WebContentsView } from 'electron';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ContentBounds, McpPromptRequest } from '../shared/ipc';
@@ -175,8 +175,33 @@ export function askMcp(req: Omit<McpPromptRequest, 'id'>): Promise<McpAnswer> {
   st.queue.push(full);
   if (isAttached(st)) pushCurrent(st);
   else show(st);
+  callAttention(win);
 
   return new Promise<McpAnswer>((resolve) => { waiting.set(full.id, resolve); });
+}
+
+/**
+ * Позвать человека к окну браузера.
+ *
+ * ⚠️ Заведено по живому случаю, и случай этот — не мелочь, а порок конструкции. Вопрос задаёт
+ * программа СНАРУЖИ: человек в этот момент по определению смотрит в неё, а не в браузер. Карточка
+ * появлялась в фоновом окне и молчала — агент получал «не подключено», человек не видел ничего и
+ * заключал, что фича не работает. Так и было: «не работает, какие вкладки у меня открыты».
+ *
+ * ⚠️ ФОКУС НЕ ВОРУЕМ. `win.focus()` выдернул бы человека из другой программы посреди набора текста
+ * — это хуже, чем незамеченная карточка. Мигание кнопки в панели задач (на macOS — подскок значка
+ * в доке) говорит «тебя зовут», не отнимая ввод.
+ */
+function callAttention(win: BrowserWindow): void {
+  if (win.isFocused()) return;
+  if (process.platform === 'darwin') app.dock?.bounce('informational');
+  else win.flashFrame(true);
+}
+
+/** Мигание гасим, как только вопросов не осталось: оно про «ждут тебя», а не про «тут был вопрос». */
+function stopAttention(win: BrowserWindow): void {
+  if (win.isDestroyed()) return;
+  if (process.platform !== 'darwin') win.flashFrame(false);
 }
 
 /** Ответ из карточки (или снятие вопроса). Снимаем с очереди и показываем следующий. */
@@ -188,7 +213,7 @@ export function answer(id: string, a: McpAnswer): void {
     const idx = st.queue.findIndex((q) => q.id === id);
     if (idx === -1) continue;
     st.queue.splice(idx, 1);
-    if (st.queue.length === 0) detach(st);
+    if (st.queue.length === 0) { detach(st); stopAttention(st.win); }
     else pushCurrent(st);
     return;
   }

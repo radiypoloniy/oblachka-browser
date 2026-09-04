@@ -405,6 +405,8 @@ export interface AiApi {
   setMcpEnabled(enabled: boolean): Promise<McpServerState>;
   getMcpCalls(): Promise<McpCallLog[]>;
   revokeMcpClient(key: string): Promise<McpServerState>;
+  /** Подключить программу из журнала обращений. ⚠️ Имя не подтверждено — она назвалась им сама. */
+  approveMcpClient(key: string, label: string): Promise<McpServerState>;
   setMcpStance(key: string, tool: string, stance: 'ask' | 'allow' | 'deny'): Promise<McpServerState>;
   /** Кого из MCP-клиентов нашли на этой машине и что будет с его конфигом по нажатию. */
   scanMcpClients(): Promise<McpClientTarget[]>;

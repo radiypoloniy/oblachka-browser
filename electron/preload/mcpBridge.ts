@@ -16,6 +16,8 @@ export const mcpBridge = {
   setMcpEnabled: (enabled: boolean) =>
     ipcRenderer.invoke(IPC.MCP_SET, enabled) as Promise<McpServerState>,
   getMcpCalls: () => ipcRenderer.invoke(IPC.MCP_CALLS) as Promise<McpCallLog[]>,
+  approveMcpClient: (key: string, label: string) =>
+    ipcRenderer.invoke(IPC.MCP_APPROVE, key, label) as Promise<McpServerState>,
   revokeMcpClient: (key: string) =>
     ipcRenderer.invoke(IPC.MCP_REVOKE, key) as Promise<McpServerState>,
   setMcpStance: (key: string, tool: string, stance: 'ask' | 'allow' | 'deny') =>

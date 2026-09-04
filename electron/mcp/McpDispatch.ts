@@ -194,8 +194,15 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession)
   // чтобы повторными вызовами нельзя было выбить согласие измором (см. McpClients.ts).
   if (!isApproved(key) && !(await askToConnect(key, who))) {
     note(false, 'not-connected');
+    // ⚠️ Говорим, ЧТО СДЕЛАТЬ, а не только что случилось. Прежний текст («карточка показана в
+    // окне браузера») агент честно пересказывал человеку, а тот не знал, куда смотреть: карточка
+    // висит в окне Oblako, которое в этот момент за спиной у той самой программы, из которой он
+    // спрашивает. Живой случай — «не работает, какие вкладки у меня открыты».
     return ok(req.id, content(
-      'The user has not connected this client to the browser. A card was shown in the browser window.',
+      'The user has not connected this client to the browser yet. Ask the user to switch to the '
+      + 'Oblako browser window: a card is waiting there in the top-left corner. They can also '
+      + 'connect this client afterwards from the browser: Library → Agents → the call log. '
+      + 'Once connected, call this tool again.',
       true,
     ));
   }

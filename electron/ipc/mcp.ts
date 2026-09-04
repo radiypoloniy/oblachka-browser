@@ -5,7 +5,7 @@ import { MCP_TOOLS, type McpStance } from '../../shared/mcpPolicy';
 import { connectCommand, initMcp, mcpState, setMcpEnabled, stopMcp } from '../mcp';
 import { recentCalls } from '../mcp/McpLog';
 import { answer, setMcpPromptHeight } from '../McpPromptManager';
-import { listClients, revokeClient, setStance } from '../mcp/McpClients';
+import { approveClient, listClients, revokeClient, setStance } from '../mcp/McpClients';
 import { installClient, scanClients } from '../mcp/McpInstall';
 import { forgetApprovals } from '../mcp/McpConfirm';
 import type { IpcDeps } from './deps';
@@ -63,6 +63,12 @@ export function registerMcpIpc(d: IpcDeps): void {
     // ⚠️ И выданные подтверждения на запись: без этого отключённая программа успела бы доиграть
     // минуту чужого «разрешаю».
     forgetApprovals(key0);
+    return state();
+  });
+  // ⚠️ Подключение задним числом: человек увидел в журнале, кто стучался, и решил в браузере
+  // руками. То же согласие, что на карточке, только не в секунду вызова (см. approveClient).
+  ipcMain.handle(IPC.MCP_APPROVE, (_e, key: string, label: string) => {
+    approveClient(String(key ?? ''), String(label ?? ''));
     return state();
   });
   ipcMain.handle(IPC.MCP_TOOL_SET, (_e, key: string, tool: string, stance: McpStance) => {

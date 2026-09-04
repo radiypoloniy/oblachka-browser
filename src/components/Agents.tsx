@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plug } from 'lucide-react';
 import type { McpCallLog, McpServerState } from '../../shared/ipc';
 import {
   FactGrid, GroupCap, Row, Rows, SideNav, SplitView, type LibrarySummary,
 } from './library/kit';
 import { RADIUS, TEXT, motion, pad, sp } from '../styles/system';
+import { clientKey } from '../../shared/mcpPolicy';
 
 // Раздел «Агенты» — что внешние программы делали с браузером и что им позволено.
 //
@@ -45,6 +46,27 @@ export default function Agents({ query, onSummary }: {
   }, []);
 
   const clients = state?.clients ?? [];
+
+  /**
+   * Кто стучался и остался неподключённым.
+   *
+   * ⚠️ Считается из ЖУРНАЛА, а не из отдельного списка «ожидающих», и это осознанно: список
+   * ожидающих был бы третьим хранилищем состояния о клиентах рядом с двумя имеющимися, причём
+   * состоянием, которое некому чистить. В журнале ответ уже есть — «звали, отказали в подключении».
+   */
+  const pending = useMemo(() => {
+    // ⚠️ Список берём из state, а не из `clients` выше: тот пересобирается на каждом рендере, и
+    // memo с ним в зависимостях не держал бы ничего (см. react-hooks/exhaustive-deps).
+    const approved = new Set((state?.clients ?? []).map((c) => c.key));
+    const seen = new Map<string, string>();
+    for (const c of calls) {
+      if (c.note !== 'not-connected') continue;
+      const key = clientKey(c.client);
+      if (!approved.has(key)) seen.set(key, c.client);
+    }
+    return [...seen].map(([key, label]) => ({ key, label }));
+  }, [calls, state]);
+
   const shown = calls.filter((c) => {
     if (picked && c.client.toLowerCase() !== picked) return false;
     if (!query.trim()) return true;
@@ -104,6 +126,10 @@ export default function Agents({ query, onSummary }: {
         {picked
           ? <ClientRights state={state} clientKey={picked} onChange={setState} />
           : null}
+
+        {picked === null && pending.length > 0 && (
+          <PendingClients items={pending} onChange={setState} />
+        )}
         <GroupCap
           title={picked ? 'Обращения этой программы' : 'Все обращения'}
           note={shown.length === 0 ? 'пока пусто' : undefined}
@@ -205,3 +231,51 @@ function isSensitive(name: string): boolean {
 
 /** Значок раздела для рельсы библиотеки. */
 export const AgentsIcon = Plug;
+
+/**
+ * Программы, которые стучались и остались за дверью.
+ *
+ * ⚠️ Заведено по живому случаю, и случай вскрыл порок конструкции, а не мелочь. Карточка
+ * подтверждения появляется в окне браузера — а человек в момент вызова смотрит в ту программу, из
+ * которой спрашивает. Он не видит карточки, агент отвечает «не подключено», и фича выглядит
+ * сломанной: «не работает, какие вкладки у меня открыты».
+ *
+ * ⚠️ Кнопка даёт ТО ЖЕ САМОЕ согласие, что и карточка, — просто позже и там, куда человек дошёл
+ * сам. Поэтому рядом стоит та же оговорка, что и в правах: имя программы ничем не подтверждено,
+ * она назвалась им сама. Предлагать доверять строке из чужого запроса, не сказав этого, нельзя.
+ */
+function PendingClients({ items, onChange }: {
+  items: { key: string; label: string }[];
+  onChange: (s: McpServerState) => void;
+}) {
+  return (
+    <div style={{ marginBottom: sp(4) }}>
+      <GroupCap
+        title="Стучались, но не подключены"
+        note="карточка ждала в окне браузера — можно подключить и отсюда"
+      />
+      <Rows>
+        {items.map((p) => (
+          <Row
+            key={p.key}
+            lead={<Plug size={16} style={{ color: 'var(--text-faint)' }} />}
+            title={p.label}
+            subtitle="назвалась так сама · проверить это мы не можем"
+            actions={(
+              <button
+                onClick={() => { void window.oblako.approveMcpClient(p.key, p.label).then(onChange); }}
+                style={{
+                  ...TEXT.body, padding: pad(1, 3), border: '1px solid var(--divider-strong)',
+                  borderRadius: RADIUS.control, background: 'transparent', cursor: 'default',
+                  transition: motion.hover('background'),
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >Подключить</button>
+            )}
+          />
+        ))}
+      </Rows>
+    </div>
+  );
+}
