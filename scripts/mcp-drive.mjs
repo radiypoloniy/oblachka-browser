@@ -162,7 +162,7 @@ await withStand(async (ctx) => {
 
   const list = await c.send('tools/list', {});
   const tools = list?.result?.tools ?? [];
-  check('инструменты отдаются', tools.length === 14, `их ${tools.length}`);
+  check('инструменты отдаются', tools.length === 15, `их ${tools.length}`);
   check('у каждого есть схема и аннотации',
     tools.every((t) => t.inputSchema?.type === 'object' && typeof t.annotations?.readOnlyHint === 'boolean'));
   check('чтение помечено чтением',
@@ -677,6 +677,36 @@ await withStand(async (ctx) => {
     .tabs?.find((t) => t.active);
   check('активная вкладка не перехвачена', !!activeStill && !activeStill.url.includes('p=3'),
     JSON.stringify(activeStill ?? null).slice(0, 160));
+
+  // ── Выделение и группы в списке вкладок ───────────────────────────────────
+  //
+  // ⚠️ «Объясни вот это» — самый частый жест при чтении, и без инструмента человек копирует кусок
+  // руками в чужое окно, то есть делает работу, ради которой браузер и отдают наружу.
+  const noSelection = await c.send('tools/call', { name: 'page_selection', arguments: {} });
+  // ⚠️ Пустое выделение — НОРМАЛЬНЫЙ ответ, и он обязан быть словами: пустую строку агент
+  // прочитает как «на странице ничего нет».
+  check('без выделения отвечает словами, а не пустотой',
+    /Nothing is selected/.test(textOf(noSelection)), textOf(noSelection).slice(0, 160));
+
+  await ctx.evalMain(`
+    (() => {
+      const ctx2 = ${MOD('WindowRegistry.js')}.contextForWindow(${BROWSER_WIN});
+      const wc = ctx2 ? ctx2.tabs.getActiveWebContents() : null;
+      if (wc) wc.executeJavaScript('(() => { const r = document.createRange(); r.selectNodeContents(document.body); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); return true; })()', true);
+      return true;
+    })()
+  `);
+  await wait(800);
+  const selected = await c.send('tools/call', { name: 'page_selection', arguments: {} });
+  check('выделенный текст отдаётся', (JSON.parse(textOf(selected) || '{}').text ?? '').length > 0,
+    textOf(selected).slice(0, 160));
+
+  // ⚠️ Группа в списке вкладок нужна, чтобы агент видел СТРУКТУРУ: без неё он заводит вторую
+  // «Кресла» рядом с существующей или предлагает разложить уже разложенное.
+  const withGroups = await c.send('tools/call', { name: 'tabs_list', arguments: {} });
+  const inGroup = (JSON.parse(textOf(withGroups) || '{}').tabs ?? []).filter((t) => t.group);
+  check('вкладки в группе помечены её именем', inGroup.length >= 2 && inGroup[0].group === 'Кресла',
+    JSON.stringify(inGroup.slice(0, 3)));
 
   // ── Следить за ценой ──────────────────────────────────────────────────────
   //

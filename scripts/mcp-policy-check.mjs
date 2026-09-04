@@ -30,9 +30,14 @@ const ALL = { connected: true, stances: {} };
 console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
 check('состав каталога', MCP_TOOLS.map((t) => t.name),
-  ['tabs_list', 'page_text', 'page_screenshot', 'page_links', 'history_search', 'bookmarks_search',
+  ['tabs_list', 'page_text', 'page_selection', 'page_screenshot', 'page_links', 'history_search',
+    'bookmarks_search',
     'page_read_url', 'tracking_list', 'tracking_add', 'bookmarks_add', 'tabs_open', 'tabs_group',
     'tabs_activate', 'tabs_close']);
+// ⚠️ Выделение — то, на что человек показывает пальцем: «объясни это». Читается молча, как и
+// остальное чтение активной вкладки.
+check('выделение — чтение', findTool('page_selection').mode, 'read');
+check('и не спрашивает', defaultStance(findTool('page_selection')), 'allow');
 // ⚠️ Отслеживание — ЕДИНСТВЕННОЕ, что продолжает работать после ухода агента: браузер ходит на
 // страницу неделями. Поэтому оно спрашивает, как всякая запись, но разрешается навсегда — снять
 // отслеживание человек может в своём разделе одним движением.

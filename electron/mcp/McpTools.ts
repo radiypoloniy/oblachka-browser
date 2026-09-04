@@ -4,6 +4,7 @@ import { activeBookmarks, activeTracking } from '../ProfileData';
 import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
 import { clampHistoryLimit, domainAllowed, visibleTabs } from '../../shared/mcpPolicy';
+import type { SidebarNode } from '../../shared/ipc';
 import {
   batchTextLimit, clampPageText, readUrlTargets, tidyLinks, trackingFreeUrl,
   MCP_SHOT_QUALITY, MCP_SHOT_WIDTH, type McpLink,
@@ -39,6 +40,8 @@ export interface McpTabView {
   title: string;
   url: string;
   active: boolean;
+  /** Имя группы сайдбара, если вкладка в ней лежит. Нет поля — вкладка сама по себе. */
+  group?: string;
 }
 
 /**
@@ -52,9 +55,27 @@ function activeContext() {
   return contextForWindow(BrowserWindow.getFocusedWindow()) ?? mainContext();
 }
 
+/**
+ * Имя группы для каждой вкладки.
+ *
+ * ⚠️ Без этого агент не видит СТРУКТУРУ сайдбара: он не знает, что группа «Кресла» уже есть, и на
+ * просьбу «разложи» заводит вторую с тем же именем или предлагает разложить уже разложенное.
+ */
+function groupNames(nodes: readonly SidebarNode[]): Map<string, string> {
+  const byTab = new Map<string, string>();
+  for (const node of nodes) {
+    if (node.type !== 'group') continue;
+    for (const child of node.children) {
+      if (child.type === 'single') byTab.set(child.tabId, node.label);
+    }
+  }
+  return byTab;
+}
+
 export function listTabs(domains: readonly string[] = []): McpTabView[] {
   const ctx = activeContext();
   if (!ctx) return [];
+  const groups = groupNames(ctx.tabs.sidebarNodesSnapshot());
   // ⚠️ Белый список фильтрует и СПИСОК, а не только чтение: адрес вкладки сам по себе говорит,
   // где человек сидит. «Только docs и github» без этого означало бы «читать нельзя, а видеть, что
   // ты в почте, — можно».
@@ -64,6 +85,7 @@ export function listTabs(domains: readonly string[] = []): McpTabView[] {
     title: t.title,
     url: t.url,
     active: t.isActive,
+    ...(groups.has(t.id) ? { group: groups.get(t.id) as string } : {}),
   }));
 }
 
@@ -139,6 +161,42 @@ async function tryCapture(wc: Electron.WebContents): Promise<Electron.NativeImag
     return await wc.capturePage();
   } catch {
     return null;
+  }
+}
+
+/**
+ * Что человек выделил на странице.
+ *
+ * ⚠️ Самый частый жест при чтении — «объясни вот это». Без инструмента человек копирует кусок
+ * руками в чужое окно, то есть делает работу, ради которой браузер и отдают наружу.
+ *
+ * ⚠️ Пустое выделение — НЕ ошибка, а обычный ответ, и сказать это надо словами: «ничего не
+ * выделено» агент передаст человеку, а пустая строка будет прочитана как «на странице пусто».
+ */
+export async function activeSelection(domains: readonly string[] = []): Promise<McpPageText> {
+  const ctx = activeContext();
+  if (!ctx) return { ok: false, error: 'No browser window is open.' };
+
+  const tab = ctx.tabs.snapshot().find((t) => t.isActive);
+  if (!tab) return { ok: false, error: 'No active tab.' };
+  if (visibleTabs([tab]).length === 0) {
+    return { ok: false, error: 'The active tab is private or an internal browser page; it is not exposed.' };
+  }
+  if (!domainAllowed(tab.url, domains)) return { ok: false, error: OUT_OF_SCOPE };
+
+  const wc = ctx.tabs.getActiveWebContents();
+  if (!wc) return { ok: false, error: 'The active tab has no live page yet (still loading or asleep).' };
+
+  try {
+    // ⚠️ Скрипт предельно прост — он исполняется в чужом документе на любом сайте мира.
+    const raw: unknown = await wc.executeJavaScript('String(window.getSelection() || "")', true);
+    const text = typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim() : '';
+    if (!text) {
+      return { ok: false, error: 'Nothing is selected on the page right now. Ask the user to select the text they mean.' };
+    }
+    return { ok: true, title: tab.title, url: tab.url, text: clampPageText(text) };
+  } catch {
+    return { ok: false, error: 'Could not read the selection from this page.' };
   }
 }
 

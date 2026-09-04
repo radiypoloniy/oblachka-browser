@@ -4,7 +4,8 @@ import {
   annotationsFor, canonicalToolName, clientKey, clientLabel, decide, mustAsk, pickVersion,
 } from '../../shared/mcpPolicy';
 import {
-  activePageLinks, activePageText, listTabs, listTracked, readUrl, screenshotActiveTab,
+  activePageLinks, activePageText, activeSelection, listTabs, listTracked, readUrl,
+  screenshotActiveTab,
   searchBookmarks, searchHistory, type McpShot,
 } from './McpTools';
 // ⚠️ Действия отдельным модулем: чтение идёт молча по согласию при подключении, а каждое из этих
@@ -386,6 +387,11 @@ async function run(
         failed: batch.pages.filter((p) => !p.ok).length,
         ...(batch.dropped > 0 ? { droppedAddresses: batch.dropped } : {}),
       };
+    }
+    case 'page_selection': {
+      const sel = await activeSelection(domains);
+      if (!sel.ok) throw new Error(sel.error ?? 'unavailable');
+      return { title: sel.title, url: sel.url, text: sel.text };
     }
     case 'page_screenshot': {
       const shot = await screenshotActiveTab(domains);

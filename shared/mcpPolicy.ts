@@ -159,6 +159,16 @@ export const MCP_TOOLS: readonly McpTool[] = [
     input: { type: 'object', properties: {} },
   },
   {
+    name: 'page_selection',
+    mode: 'read',
+    title: 'Выделенный текст',
+    description:
+      'Return the text the user has SELECTED on the tab they are looking at. Use it whenever they '
+      + 'say "this", "here", "explain that" — the selection is what they mean. Nothing selected is '
+      + 'a normal answer, not an error: ask them to select the passage.',
+    input: { type: 'object', properties: {} },
+  },
+  {
     name: 'page_screenshot',
     mode: 'read',
     title: 'Снимок страницы',
