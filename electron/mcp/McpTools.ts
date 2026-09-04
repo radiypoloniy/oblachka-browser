@@ -2,7 +2,10 @@ import { BrowserWindow } from 'electron';
 import { contextForWindow, mainContext } from '../WindowRegistry';
 import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
-import { batchTextLimit, clampHistoryLimit, clampPageText, readUrlTargets, safeOpenUrl, visibleTabs } from '../../shared/mcpPolicy';
+import {
+  batchTextLimit, clampHistoryLimit, clampPageText, readUrlTargets, safeOpenUrl, visibleTabs,
+  MCP_SHOT_QUALITY, MCP_SHOT_WIDTH,
+} from '../../shared/mcpPolicy';
 import type { HistoryManager } from '../HistoryManager';
 
 // Три инструмента на чтение — тела вызовов MCP-сервера.
@@ -97,6 +100,70 @@ export async function activePageText(): Promise<McpPageText> {
     return { ok: false, error: 'Could not extract readable text from this page.' };
   }
   return { ok: true, title: tab.title, url: tab.url, text: clampPageText(extracted.text) };
+}
+
+export interface McpShot {
+  ok: boolean;
+  error?: string;
+  /** base64 без префикса data: — протокол ждёт голые байты в поле data. */
+  data?: string;
+  mime?: string;
+  width?: number;
+  height?: number;
+  title?: string;
+  url?: string;
+}
+
+/**
+ * Снимок активной вкладки.
+ *
+ * ⚠️ ЭТО ТО, ЧЕГО ЧУЖОЙ FETCH НЕ МОЖЕТ В ПРИНЦИПЕ. Текст страницы агент ещё как-то добудет сам,
+ * а увидеть дашборд за логином, график, карту или форму, на которой человек застрял, — нет.
+ * Снимок идёт через ЕГО сессию и показывает ровно то, что у него на экране.
+ *
+ * ⚠️ Границы те же, что у page_text: только АКТИВНАЯ вкладка и только если она проходит политику
+ * видимости. Приватная вкладка и наш собственный интерфейс не снимаются — иначе «покажи, что у
+ * меня открыто» однажды отдаст наружу чужую почту.
+ *
+ * ⚠️ Снимаем ВИДИМУЮ ОБЛАСТЬ, а не страницу целиком, и говорим об этом в описании инструмента.
+ * Полная страница — это прокрутка со склейкой кадров, то есть заметное время и вмешательство в
+ * то, что человек сейчас читает.
+ */
+export async function screenshotActiveTab(): Promise<McpShot> {
+  const ctx = activeContext();
+  if (!ctx) return { ok: false, error: 'No browser window is open.' };
+
+  const tab = ctx.tabs.snapshot().find((t) => t.isActive);
+  if (!tab) return { ok: false, error: 'No active tab.' };
+  if (visibleTabs([tab]).length === 0) {
+    return { ok: false, error: 'The active tab is private or an internal browser page; it is not exposed.' };
+  }
+
+  const wc = ctx.tabs.getActiveWebContents();
+  if (!wc) return { ok: false, error: 'The active tab has no live page yet (still loading or asleep).' };
+
+  try {
+    // ⚠️ capturePage ждёт следующего скомпонованного кадра и на загруженной машине занимает
+    // заметное время — урок оплачен в ScreenshotManager.ts.
+    const shot = await wc.capturePage();
+    if (shot.isEmpty()) return { ok: false, error: 'The page produced an empty frame (still rendering?).' };
+    const size = shot.getSize();
+    // Только ширина — высоту NativeImage считает сам, по пропорции кадра. Кадр уже, чем предел,
+    // не растягиваем: увеличенный снимок не добавляет модели ни одной детали, только байты.
+    const scaled = size.width > MCP_SHOT_WIDTH ? shot.resize({ width: MCP_SHOT_WIDTH }) : shot;
+    const out = scaled.getSize();
+    return {
+      ok: true,
+      data: scaled.toJPEG(MCP_SHOT_QUALITY).toString('base64'),
+      mime: 'image/jpeg',
+      width: out.width,
+      height: out.height,
+      title: tab.title,
+      url: tab.url,
+    };
+  } catch {
+    return { ok: false, error: 'The tab died while taking the screenshot.' };
+  }
 }
 
 export interface McpHistoryHit {

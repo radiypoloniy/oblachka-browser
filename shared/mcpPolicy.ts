@@ -96,6 +96,20 @@ export const MCP_TEXT_LIMIT = 12_000;
  * страница, обрезанная до пары абзацев, бесполезна — честнее прочитать меньше адресов целиком.
  */
 export const MCP_BATCH_MAX = 8;
+
+/**
+ * Снимок страницы: ширина и качество.
+ *
+ * ⚠️ Кадр УМЕНЬШАЕМ и жмём JPEG'ом, а не отдаём как снят. Снимок окна 1600×1000 в PNG — это
+ * несколько мегабайт, которые поедут строкой через канал и лягут в контекст модели целиком.
+ * 1152 пикселя по ширине хватает, чтобы модель прочитала интерфейс и подписи на графиках, а
+ * весит такой кадр в десять раз меньше.
+ *
+ * ⚠️ JPEG, а не PNG, хотя текст на нём чуть мягче: разница в размере втрое, и платит за неё
+ * человек — картинка занимает место в его контексте при каждом обращении к ней.
+ */
+export const MCP_SHOT_WIDTH = 1152;
+export const MCP_SHOT_QUALITY = 70;
 const MCP_BATCH_BUDGET = 24_000;
 const MCP_BATCH_MIN_PER_PAGE = 3_000;
 
@@ -176,6 +190,22 @@ export const MCP_TOOLS: readonly McpTool[] = [
     // по номеру — это уже управление чужим браузером вслепую: агент выбирает, во что заглянуть, а
     // человек об этом не знает. Пока нет карточек подтверждения (следующий заход), наружу отдаётся
     // ровно то, что человек и так видит на экране.
+    input: { type: 'object', properties: {} },
+  },
+  {
+    name: 'page_screenshot',
+    mode: 'read',
+    title: 'Снимок страницы',
+    description:
+      'Take a screenshot of the tab the user is looking at right now and return it as an image. '
+      + 'Use it when the ANSWER IS IN THE LAYOUT and not in the text: charts, dashboards, maps, '
+      + 'tables, design work, a form the user is stuck on, or a page whose text extraction came '
+      + 'back empty. The shot goes through the user\'s logged-in session, so it shows what THEY '
+      + 'see — something your own web fetching cannot reach at all. '
+      + 'Takes no arguments: it always captures the ACTIVE tab, visible area only.',
+    // ⚠️ Аргумента tabId здесь нет по той же причине, что у page_text: снимок произвольной
+    // вкладки по номеру — это уже разглядывание чужого браузера вслепую. Отдаём ровно то, что
+    // человек и так видит на экране в эту секунду.
     input: { type: 'object', properties: {} },
   },
   {

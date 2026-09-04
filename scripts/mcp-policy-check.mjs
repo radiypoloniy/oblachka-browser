@@ -27,8 +27,15 @@ const ALL = { connected: true, stances: {} };
 console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
 check('состав каталога', MCP_TOOLS.map((t) => t.name),
-  ['tabs_list', 'page_text', 'history_search', 'page_read_url',
+  ['tabs_list', 'page_text', 'page_screenshot', 'history_search', 'page_read_url',
     'tabs_open', 'tabs_activate', 'tabs_close']);
+// ⚠️ Снимок — ЧТЕНИЕ, и по умолчанию идёт молча, как page_text: он показывает ровно ту страницу,
+// которую человек и так видит на экране. Отдельного вопроса это не стоит, а вот отдать снимок
+// приватной вкладки нельзя (проверяется живьём — в снимке участвует политика видимости).
+check('снимок страницы — чтение', findTool('page_screenshot').mode, 'read');
+check('и не помечен чувствительным', findTool('page_screenshot').sensitive, undefined);
+check('снимок по умолчанию не спрашивает', defaultStance(findTool('page_screenshot')), 'allow');
+check('аргументов у снимка нет', Object.keys(findTool('page_screenshot').input.properties), []);
 // ⚠️ Главный инвариант захода 2: КАЖДЫЙ инструмент на запись проходит через вопрос человеку.
 // Забытое подтверждение — это чужая программа, меняющая браузер молча.
 // ⚠️ Главный инвариант захода 3: пока человек не решил иначе, ЛЮБАЯ запись спрашивает, а чтение

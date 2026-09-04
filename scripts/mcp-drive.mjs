@@ -151,7 +151,7 @@ await withStand(async (ctx) => {
 
   const list = await c.send('tools/list', {});
   const tools = list?.result?.tools ?? [];
-  check('инструменты отдаются', tools.length === 7, `их ${tools.length}`);
+  check('инструменты отдаются', tools.length === 8, `их ${tools.length}`);
   check('у каждого есть схема и аннотации',
     tools.every((t) => t.inputSchema?.type === 'object' && typeof t.annotations?.readOnlyHint === 'boolean'));
   check('чтение помечено чтением',
@@ -204,6 +204,37 @@ await withStand(async (ctx) => {
   check('неподдержанная версия отбивается со списком',
     badVersion?.error?.code === -32602 && Array.isArray(badVersion?.error?.data?.supported),
     JSON.stringify(badVersion));
+
+  // ── Снимок страницы ───────────────────────────────────────────────────────
+  //
+  // ⚠️ Проверяется то, ради чего инструмент заведён: агент получает КАРТИНКУ протокола, а не
+  // JSON с base64 внутри текста. Разница принципиальная — во втором случае модель видит полмега
+  // мусорных символов, за которые платит человек, и ничего на них не разглядит.
+  // ⚠️ Снимаем НАСТОЯЩУЮ страницу: активная вкладка стенда — наш собственный интерфейс, а его
+  // политика видимости наружу не отдаёт (и правильно делает). Открываем эхо-страницу и ждём
+  // кадра: capturePage возвращает пустоту, пока страница не скомпонована.
+  await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(ctx.echo.url('/?shot=1'))})`);
+  await wait(2500);
+  const shotCall = await c.send('tools/call', { name: 'page_screenshot', arguments: {} });
+  const parts = shotCall?.result?.content ?? [];
+  const image = parts.find((p) => p.type === 'image');
+  check('снимок приходит картинкой протокола', !!image, JSON.stringify(parts).slice(0, 160));
+  check('и это JPEG', image?.mimeType === 'image/jpeg', String(image?.mimeType));
+  check('рядом есть текст с адресом страницы',
+    parts.some((p) => p.type === 'text' && p.text.includes('127.0.0.1')),
+    JSON.stringify(parts.filter((p) => p.type === 'text')).slice(0, 200));
+  // ⚠️ Размер под контролем: снимок окна в PNG — это мегабайты, которые поедут строкой через
+  // канал и лягут в контекст модели целиком. Уменьшенный JPEG обязан быть заметно меньше.
+  const shotBytes = (image?.data?.length ?? 0) * 3 / 4;
+  check('снимок ужат до разумного размера', shotBytes > 1000 && shotBytes < 900_000,
+    `${Math.round(shotBytes / 1024)} КБ`);
+  // ⚠️ base64 отдаётся ГОЛЫМ, без префикса data: — так требует протокол, и клиенты, добавляющие
+  // префикс сами, получили бы битую картинку.
+  check('данные без префикса data:', !String(image?.data ?? '').startsWith('data:'),
+    String(image?.data ?? '').slice(0, 24));
+  // ⚠️ Машинной копии у снимка нет намеренно: туда уехал бы тот же base64 вторым экземпляром.
+  check('машинной копии снимка нет', shotCall?.result?.structuredContent === undefined,
+    JSON.stringify(shotCall?.result?.structuredContent ?? null).slice(0, 80));
 
   // ── Пакетное чтение и кеш ─────────────────────────────────────────────────
   //

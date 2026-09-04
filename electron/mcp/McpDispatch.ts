@@ -4,7 +4,8 @@ import {
   annotationsFor, canonicalToolName, clientKey, clientLabel, decide, mustAsk, pickVersion,
 } from '../../shared/mcpPolicy';
 import {
-  activateTab, activePageText, closeTab, listTabs, openTab, readUrl, searchHistory,
+  activateTab, activePageText, closeTab, listTabs, openTab, readUrl, screenshotActiveTab,
+  searchHistory, type McpShot,
 } from './McpTools';
 import { askToConnect, isApproved, stancesFor, touchClient } from './McpClients';
 import { confirmWrite } from './McpConfirm';
@@ -100,6 +101,33 @@ function content(value: unknown, isError = false) {
     content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }],
     ...(isError ? { isError: true } : { structuredContent: value }),
   };
+}
+
+/**
+ * Ответ-картинка.
+ *
+ * ⚠️ Текстовая часть рядом с изображением ОБЯЗАТЕЛЬНА: модель должна знать, чью страницу ей
+ * показали. Картинка без адреса — это «вот какой-то экран», и пересказ человеку получится
+ * уверенным и безымянным.
+ *
+ * ⚠️ `structuredContent` здесь НЕ отдаём, хотя у остальных инструментов он есть: туда уехал бы
+ * base64 целиком, то есть тот же снимок вторым экземпляром — и весь выигрыш от сжатия пропал бы.
+ */
+function imageContent(shot: McpShot) {
+  const where = [shot.title, shot.url].filter(Boolean).join('\n');
+  return {
+    content: [
+      { type: 'text', text: `${where}\n${shot.width}×${shot.height}, снимок видимой области.` },
+      { type: 'image', data: shot.data, mimeType: shot.mime },
+    ],
+  };
+}
+
+/** Похоже ли на снимок: распознаём по форме, чтобы не заводить второй список имён инструментов. */
+function asShot(value: unknown): McpShot | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as McpShot;
+  return typeof v.data === 'string' && typeof v.mime === 'string' ? v : null;
 }
 
 function toolList() {
@@ -247,6 +275,11 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession)
   try {
     const result = await run(verdict.tool.name, args, deps);
     note(true);
+    // ⚠️ Снимок уходит КАРТИНКОЙ протокола, а не JSON'ом с base64 внутри текста. Разница
+    // принципиальная: в первом случае модель видит изображение, во втором получает полмегабайта
+    // мусорных символов, за которые платит человек, и ничего на них не разглядит.
+    const shot = asShot(result);
+    if (shot) return ok(req.id, imageContent(shot));
     return ok(req.id, content(result));
   } catch (e) {
     const message = (e as Error).message || String(e);
@@ -288,6 +321,11 @@ async function run(name: string, args: Record<string, unknown>, deps: McpDeps): 
         failed: batch.pages.filter((p) => !p.ok).length,
         ...(batch.dropped > 0 ? { droppedAddresses: batch.dropped } : {}),
       };
+    }
+    case 'page_screenshot': {
+      const shot = await screenshotActiveTab();
+      if (!shot.ok) throw new Error(shot.error ?? 'unavailable');
+      return shot;
     }
     case 'history_search': {
       const query = typeof args.query === 'string' ? args.query : '';
