@@ -1,6 +1,7 @@
 {
   "name": "@oblako/mcp",
   "version": "0.1.0",
+  "mcpName": "io.github.radiypoloniy/oblako-browser",
   "description": "MCP server for the Oblako browser: the user's real, logged-in Chromium — tabs, page text, screenshots, history, bookmarks, price tracking. Requires Oblako installed and running.",
   "license": "Apache-2.0",
   "type": "module",
@@ -9,7 +10,8 @@
   },
   "files": [
     "shim.mjs",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18"
