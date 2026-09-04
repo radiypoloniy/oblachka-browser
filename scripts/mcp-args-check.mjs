@@ -7,9 +7,9 @@
 //
 // Запуск: node scripts/mcp-args-check.mjs
 import {
-  MCP_BATCH_MAX, MCP_BOOKMARKS_MAX, MCP_GROUP_MAX, MCP_LINKS_MAX, MCP_OPEN_MAX,
+  MCP_BATCH_MAX, MCP_BOOKMARKS_MAX, MCP_GROUP_MAX, MCP_LINKS_MAX, MCP_OPEN_MAX, MCP_TRACK_MAX,
   batchTextLimit, bookmarkTargets, confirmSubject, groupTargets, openTargets, readUrlTargets,
-  tidyLinks, trackingFreeUrl,
+  tidyLinks, trackTargets, trackingFreeUrl,
 } from '../shared/mcpArgs.ts';
 import { findTool } from '../shared/mcpPolicy.ts';
 
@@ -148,6 +148,24 @@ check('сверх предела отсекается',
 const groupSubj = confirmSubject(findTool('tabs_group'), { tabIds: ['a', 'b'], name: 'Кресла' });
 check('в карточке видно имя группы', groupSubj.includes('Кресла'), true);
 check('и сколько вкладок уедет', groupSubj.includes('2'), true);
+console.log('\n— следить за ценой —');
+// ⚠️ Адреса приходят из выдачи магазина — с теми же рекламными метками и дублями, что у чтения.
+// Схлопнуть их надо здесь: иначе один товар встанет на отслеживание трижды и человек трижды
+// получит уведомление о падении одной и той же цены.
+check('дубли по меткам схлопываются',
+  trackTargets({ urls: ['https://shop.ru/p/1?advert=x', 'https://shop.ru/p/1?advert=y'] }).urls.length, 1);
+check('чужая схема не отслеживается', trackTargets({ url: 'file:///c:/price.txt' }).ok, false);
+check('сверх предела отсекается',
+  trackTargets({ urls: Array.from({ length: MCP_TRACK_MAX + 4 }, (_, i) => `https://s${i}.ru/p`) }).urls.length,
+  MCP_TRACK_MAX);
+// ⚠️ Карточка говорит ПРЯМО, что браузер будет ходить сам и после ухода программы: человек
+// соглашается не на разовое действие, и молчать об этом нельзя.
+const trackSubj = confirmSubject(findTool('tracking_add'), { urls: ['https://shop.ru/p/1'] });
+check('в карточке есть адрес', trackSubj.includes('https://shop.ru/p/1'), true);
+check('и сказано про работу после ухода программы',
+  trackSubj.includes('давно закончит работу'), true);
+
+
 
 console.log('\n— сохранение в закладки —');
 // ⚠️ Пачкой, а не по одной: восемь находок — это восемь карточек подтверждения подряд, и на

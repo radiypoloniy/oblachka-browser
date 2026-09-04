@@ -31,7 +31,15 @@ console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
 check('состав каталога', MCP_TOOLS.map((t) => t.name),
   ['tabs_list', 'page_text', 'page_screenshot', 'page_links', 'history_search', 'bookmarks_search',
-    'page_read_url', 'bookmarks_add', 'tabs_open', 'tabs_group', 'tabs_activate', 'tabs_close']);
+    'page_read_url', 'tracking_list', 'tracking_add', 'bookmarks_add', 'tabs_open', 'tabs_group',
+    'tabs_activate', 'tabs_close']);
+// ⚠️ Отслеживание — ЕДИНСТВЕННОЕ, что продолжает работать после ухода агента: браузер ходит на
+// страницу неделями. Поэтому оно спрашивает, как всякая запись, но разрешается навсегда — снять
+// отслеживание человек может в своём разделе одним движением.
+check('поставить на отслеживание — запись', findTool('tracking_add').mode, 'write');
+check('спрашивает по умолчанию', defaultStance(findTool('tracking_add')), 'ask');
+check('и разрешается навсегда', canRemember(findTool('tracking_add')), true);
+check('список отслеживаемого — чтение', findTool('tracking_list').mode, 'read');
 // ⚠️ Группировка вкладок — запись, и обратимая: группу видно в сайдбаре и можно расформировать
 // одним движением, поэтому «разрешать всегда» у неё есть.
 check('группировка — запись', findTool('tabs_group').mode, 'write');

@@ -1,18 +1,19 @@
 import { BrowserWindow } from 'electron';
 import { contextForWindow, mainContext } from '../WindowRegistry';
-import { activeBookmarks } from '../ProfileData';
+import { activeBookmarks, activeTracking } from '../ProfileData';
 import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
 import { clampHistoryLimit, domainAllowed, visibleTabs } from '../../shared/mcpPolicy';
 import {
-  batchTextLimit, bookmarkTargets, clampPageText, groupTargets, openTargets, readUrlTargets,
-  tidyLinks, trackingFreeUrl,
+  batchTextLimit, clampPageText, readUrlTargets, tidyLinks, trackingFreeUrl,
   MCP_SHOT_QUALITY, MCP_SHOT_WIDTH, type McpLink,
 } from '../../shared/mcpArgs';
-import type { GroupNode, SidebarNode } from '../../shared/ipc';
 import type { HistoryManager } from '../HistoryManager';
 
-// Три инструмента на чтение — тела вызовов MCP-сервера.
+// Чтение: что браузер РАССКАЗЫВАЕТ о себе внешнему агенту.
+//
+// ⚠️ Действия живут отдельно (McpActions.ts), и граница проходит там же, где в политике: чтение
+// идёт молча по согласию, данному при подключении, а каждое изменение проходит через карточку.
 //
 // ⚠️ НИЧЕГО НОВОГО ЗДЕСЬ НЕ СЧИТАЕТСЯ. Вкладки уже знает TabManager, текст страницы — тот же
 // extractPageText, что кормит AI-панель и индексатор истории, поиск — тот же HistoryManager, что
@@ -30,7 +31,7 @@ import type { HistoryManager } from '../HistoryManager';
  * браузера, а «этой программе открыты только такие-то сайты» — как своё же решение, которое он
  * может изменить.
  */
-const OUT_OF_SCOPE = 'This page is outside the sites the user allowed for this client. '
+export const OUT_OF_SCOPE = 'This page is outside the sites the user allowed for this client. '
   + 'The list is in the browser: Library → Agents → this program.';
 
 export interface McpTabView {
@@ -347,194 +348,43 @@ export function searchBookmarks(
   }));
 }
 
-// ── Запись. ⚠️ Сюда попадают только после подтверждения человеком (см. McpConfirm.ts). ──
-
-export interface McpWriteResult {
-  ok: boolean;
-  note: string;
+export interface McpTracked {
+  title: string;
+  url: string;
+  shop: string;
+  price: number | null;
+  currency: string;
+  /** Изменение с первой известной цены: «-3000» дешевле, «+500» дороже, null — точек мало. */
+  changed: number | null;
+  lastCheckOk: boolean;
 }
 
 /**
- * Сохранить страницы в закладки.
+ * Что человек уже отслеживает.
  *
- * ⚠️ Закрывает круг, который до сих пор обрывался: агент находил нужное и не мог его никуда
- * положить — «папку создать не смог, вот ссылки» (живая жалоба 04.09.2026). Найденное без места
- * хранения человек переносит руками, то есть делает ровно ту работу, ради которой звал агента.
+ * ⚠️ Отдаём ПОСЛЕДНЮЮ и ПЕРВУЮ цену, а не всю историю точек: агенту нужно ответить «подешевело
+ * ли», а полная кривая — это сотни чисел в его контексте, за которые платит человек.
  *
- * ⚠️ Пачкой, а не по одной: восемь находок — это восемь карточек подтверждения подряд, и на
- * третьей человек перестаёт читать, что в них написано. Одна карточка перечисляет всё (см.
- * confirmSubject в shared/mcpArgs.ts).
- *
- * ⚠️ Папка ищется/создаётся ПО ИМЕНИ (folderByName): номеров наших папок у агента нет и не будет.
+ * ⚠️ Неудачную проверку показываем флагом. Иначе последняя известная цена выглядит свежей, и
+ * решение о покупке принимается по данным непонятной давности — тот же довод, что в интерфейсе.
  */
-export function addBookmarks(
-  args: Record<string, unknown>,
-  domains: readonly string[] = [],
-): McpWriteResult {
-  const targets = bookmarkTargets(args);
-  if (!targets.ok) return { ok: false, note: targets.error };
-  const permitted = targets.items.filter((i) => domainAllowed(i.url, domains));
-  if (permitted.length === 0) return { ok: false, note: OUT_OF_SCOPE };
-
-  const store = activeBookmarks();
-  const parentId = targets.folder ? store.folderByName(targets.folder) : null;
-  // ⚠️ Папку не создали (база не открылась) — кладём в корень, а не бросаем всё: потерять место
-  // хуже, чем потерять папку, и человек всё равно найдёт закладку поиском.
-  let saved = 0;
-  const skipped: string[] = [];
-  for (const item of permitted) {
-    const entry = store.add(item.url, item.title || item.url, parentId);
-    if (entry) saved++;
-    else skipped.push(item.url);
-  }
-  const where = targets.folder && parentId !== null ? ` в папку «${targets.folder}»` : '';
-  const tail = skipped.length > 0 ? `, пропущено ${skipped.length} (уже были или не открылась база)` : '';
-  return {
-    ok: saved > 0,
-    note: saved > 0
-      ? `Сохранено ${saved}${where}${tail}`
-      : 'Ни одной закладки сохранить не удалось.',
-  };
-}
-
-/**
- * Открыть адрес новой вкладкой.
- *
- * ⚠️ Адреса проходят проверку ЗДЕСЬ ЖЕ, ещё раз (openTargets), хотя карточка подтверждения
- * показывала человеку уже проверенные. Это не дубль: между показом и выполнением лежит целый круг
- * через клиента, и повтор вызова с другим адресом обязан упереться в ту же проверку, а не в
- * память о том, что «пользователь уже согласился».
- */
-export function openTab(
-  args: Record<string, unknown>,
-  domains: readonly string[] = [],
-): McpWriteResult {
-  const ctx = activeContext();
-  if (!ctx) return { ok: false, note: 'No browser window is open.' };
-  const targets = openTargets(args);
-  if (!targets.ok) return { ok: false, note: targets.error };
-  const allowed = targets.urls.filter((u) => domainAllowed(u, domains));
-  if (allowed.length === 0) return { ok: false, note: OUT_OF_SCOPE };
-
-  // ⚠️ ПАЧКА ВСЕГДА В ФОНЕ, и это не мелочь: восемь вкладок, каждая из которых выпрыгивает на
-  // экран, — это не помощь, а перехват работы. Человек видит их в сайдбаре и открывает сам.
-  // Одиночное открытие оставляет прежнее поведение: там `background` — осознанный аргумент.
-  const many = allowed.length > 1;
-  const background = many ? true : args.background === true;
-  let opened = 0;
-  for (const url of allowed) {
-    if (ctx.tabs.createTab(url, background)) opened++;
-  }
-  const blocked = targets.urls.length - allowed.length;
-  const tail = blocked > 0 ? `, ${blocked} вне разрешённых сайтов` : '';
-  if (opened === 0) return { ok: false, note: 'The browser refused to open these addresses.' };
-  return {
-    ok: true,
-    note: many
-      ? `Открыто ${opened} вкладок в фоне${tail}`
-      : `Opened ${allowed[0]}${tail}`,
-  };
-}
-
-/**
- * Группа с таким именем в сайдбаре — или ничего.
- *
- * ⚠️ ПО ИМЕНИ, а не по id: наших идентификаторов у агента нет и быть не должно, он видит ровно то
- * же, что человек в сайдбаре. Регистр не важен — «Кресла» и «кресла» это одна группа, заводить
- * вторую глупо.
- *
- * ⚠️ Живёт ЗДЕСЬ, а не в TabManager: «найти группу по имени, которое назвала чужая программа» —
- * это про наш фасад наружу, а не про управление вкладками. Дерево у менеджера и так спрашивается
- * публично (sidebarNodesSnapshot).
- */
-function findGroupByLabel(nodes: readonly SidebarNode[], name: string): string | null {
-  const want = name.trim().toLowerCase();
-  if (!want) return null;
-  const hit = nodes.find((n): n is GroupNode => n.type === 'group' && n.label.trim().toLowerCase() === want);
-  return hit?.id ?? null;
-}
-
-/**
- * Собрать вкладки в группу сайдбара.
- *
- * ⚠️ Заведено по прямой просьбе: складывать найденное можно не только в закладки — у сайдбара есть
- * группы, и для «разбери, что открыто» они уместнее. Закладка это «сохранить на потом», группа —
- * «прибраться сейчас».
- *
- * ⚠️ Группа ищется ПО ИМЕНИ и создаётся, если её нет: у агента нет наших идентификаторов, он
- * видит только то же, что человек в сайдбаре.
- *
- * ⚠️ Кладём ТОЛЬКО ВИДИМЫЕ снаружи вкладки (visibleTabs), даже если id прислали чужой: приватная
- * вкладка, утащенная в группу, — это не перестановка, а раскрытие того, что человек прятал.
- */
-export function groupTabs(
-  args: Record<string, unknown>,
-  domains: readonly string[] = [],
-): McpWriteResult {
-  const ctx = activeContext();
-  if (!ctx) return { ok: false, note: 'No browser window is open.' };
-  const target = groupTargets(args);
-  if (!target.ok) return { ok: false, note: target.error };
-
-  // ⚠️ Двигать можно только то, что этой программе вообще видно: вкладка вне белого списка для
-  // неё не существует, и утащить её в группу она не должна даже зная id.
-  const visible = new Set(
-    visibleTabs(ctx.tabs.snapshot()).filter((t) => domainAllowed(t.url, domains)).map((t) => t.id),
-  );
-  const ids = target.tabIds.filter((id) => visible.has(id));
-  if (ids.length === 0) return { ok: false, note: 'No such tabs. Call tabs_list first.' };
-
-  let groupId = findGroupByLabel(ctx.tabs.sidebarNodesSnapshot(), target.name);
-  let moved = 0;
-  if (groupId === null) {
-    // ⚠️ Группа создаётся ИЗ ПЕРВОЙ вкладки — другого способа завести её нет (createGroup берёт
-    // вкладку и оборачивает её узлом), поэтому первая уже внутри и второй раз не добавляется.
-    const first = ids[0] as string;
-    groupId = ctx.tabs.createGroup(first);
-    if (groupId === null) return { ok: false, note: 'The browser refused to create a group.' };
-    ctx.tabs.renameGroup(groupId, target.name);
-    moved = 1;
-  }
-  for (const id of ids.slice(moved)) {
-    ctx.tabs.addTabToGroup(groupId, id);
-    moved++;
-  }
-  const skipped = target.tabIds.length - ids.length;
-  return {
-    ok: true,
-    note: `Собрано ${moved} в группу «${target.name}»${skipped > 0 ? `, пропущено ${skipped} (таких вкладок нет)` : ''}`,
-  };
-}
-
-/**
- * Переключиться на уже открытую вкладку.
- *
- * ⚠️ Переключать можно ТОЛЬКО то, что и так видно снаружи: приватная вкладка и наш интерфейс
- * недоступны и здесь. Иначе агент, знающий чужой id, вытаскивал бы на экран спрятанное.
- */
-export function activateTab(rawId: unknown, domains: readonly string[] = []): McpWriteResult {
-  const ctx = activeContext();
-  if (!ctx) return { ok: false, note: 'No browser window is open.' };
-  const id = typeof rawId === 'string' ? rawId : '';
-  // ⚠️ Тот же фильтр, что у списка: вкладки вне белого списка для этой программы не существует.
-  const tab = visibleTabs(ctx.tabs.snapshot())
-    .filter((t) => domainAllowed(t.url, domains)).find((t) => t.id === id);
-  if (!tab) return { ok: false, note: 'No such tab. Call tabs.list first.' };
-  ctx.tabs.activate(id);
-  return { ok: true, note: `Switched to ${tab.title || tab.url}` };
-}
-
-/** Закрыть вкладку. ⚠️ Необратимо отсюда — потому и destructiveHint, и вопрос человеку. */
-export function closeTab(rawId: unknown, domains: readonly string[] = []): McpWriteResult {
-  const ctx = activeContext();
-  if (!ctx) return { ok: false, note: 'No browser window is open.' };
-  const id = typeof rawId === 'string' ? rawId : '';
-  // ⚠️ Тот же фильтр, что у списка: вкладки вне белого списка для этой программы не существует.
-  const tab = visibleTabs(ctx.tabs.snapshot())
-    .filter((t) => domainAllowed(t.url, domains)).find((t) => t.id === id);
-  if (!tab) return { ok: false, note: 'No such tab. Call tabs.list first.' };
-  ctx.tabs.closeTab(id);
-  return { ok: true, note: `Closed ${tab.title || tab.url}` };
+export function listTracked(domains: readonly string[] = []): McpTracked[] {
+  return activeTracking().list()
+    .filter((t) => domainAllowed(t.url, domains))
+    .map((t) => {
+      const points = t.points ?? [];
+      const last = points[points.length - 1];
+      const first = points[0];
+      return {
+        title: t.title,
+        url: t.url,
+        shop: t.host,
+        price: last?.price ?? null,
+        currency: t.currency,
+        changed: last && first && points.length > 1 ? last.price - first.price : null,
+        lastCheckOk: t.lastCheckOk === 1,
+      };
+    });
 }
 
 /** Обрезать текст под бюджет вызова — вслух, как clampPageText (см. shared/mcpPolicy.ts). */

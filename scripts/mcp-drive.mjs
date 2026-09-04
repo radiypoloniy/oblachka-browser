@@ -162,7 +162,7 @@ await withStand(async (ctx) => {
 
   const list = await c.send('tools/list', {});
   const tools = list?.result?.tools ?? [];
-  check('инструменты отдаются', tools.length === 12, `их ${tools.length}`);
+  check('инструменты отдаются', tools.length === 14, `их ${tools.length}`);
   check('у каждого есть схема и аннотации',
     tools.every((t) => t.inputSchema?.type === 'object' && typeof t.annotations?.readOnlyHint === 'boolean'));
   check('чтение помечено чтением',
@@ -677,6 +677,48 @@ await withStand(async (ctx) => {
     .tabs?.find((t) => t.active);
   check('активная вкладка не перехвачена', !!activeStill && !activeStill.url.includes('p=3'),
     JSON.stringify(activeStill ?? null).slice(0, 160));
+
+  // ── Следить за ценой ──────────────────────────────────────────────────────
+  //
+  // ⚠️ ЕДИНСТВЕННОЕ, ЧТО ПРОДОЛЖАЕТ РАБОТАТЬ ПОСЛЕ УХОДА АГЕНТА: он закрыл разговор, а браузер сам
+  // ходит на страницу неделями и скажет человеку о падении цены. Проверяем, что путь от вызова до
+  // хранилища замкнут: инструмент кладёт запись туда же, куда кнопка «Отслеживать цену».
+  //
+  // ⚠️ Товар распознаётся на ЖИВОЙ странице, поэтому у эхо-сервера есть страница с разметкой
+  // товара: без неё детектор честно ответит «товара нет», и проверять будет нечего.
+  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setStance(${JSON.stringify(CLIENT.toLowerCase())}, 'tracking_add', 'allow'); return true; })()`);
+  await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(ctx.echo.url('/product'))})`);
+  await ctx.findTarget((t) => t.url?.includes('/product'));
+  await wait(2500);
+
+  const tracked = await c.send('tools/call', {
+    name: 'tracking_add',
+    arguments: { url: ctx.echo.url('/product') },
+  });
+  check('товар встал на отслеживание', /Отслеживается 1/.test(textOf(tracked)), textOf(tracked).slice(0, 200));
+
+  const trackedList = await c.send('tools/call', { name: 'tracking_list', arguments: {} });
+  const watched = JSON.parse(textOf(trackedList) || '{}');
+  check('и виден в списке отслеживаемого', watched.count === 1, textOf(trackedList).slice(0, 200));
+  check('с ценой и магазином',
+    typeof watched.tracked?.[0]?.price === 'number' && !!watched.tracked?.[0]?.shop,
+    JSON.stringify(watched.tracked ?? []).slice(0, 200));
+
+  // ⚠️ Повтор не плодит записей: агент, потерявший ответ, зовёт инструмент снова — обычное дело.
+  const twice = await c.send('tools/call', {
+    name: 'tracking_add',
+    arguments: { url: ctx.echo.url('/product') },
+  });
+  check('повтор не создаёт вторую запись', /уже отслеживались/.test(textOf(twice)), textOf(twice).slice(0, 200));
+
+  // ⚠️ Неоткрытая страница — отказ СЛОВАМИ: детектор работает на живой странице, и агент должен
+  // понять, что сначала нужен tabs_open, а не что «браузер не смог».
+  const notOpen = await c.send('tools/call', {
+    name: 'tracking_add',
+    arguments: { url: 'https://example.org/never-opened' },
+  });
+  check('неоткрытая страница объясняет причину', /не открыты во вкладках/.test(textOf(notOpen)),
+    textOf(notOpen).slice(0, 200));
 
   // ── Белый список сайтов ───────────────────────────────────────────────────
   //

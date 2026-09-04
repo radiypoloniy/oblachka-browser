@@ -312,6 +312,23 @@ export function groupTargets(args: Record<string, unknown>): GroupTargets {
   return { ok: true, tabIds, name };
 }
 
+/** Сколько товаров ставим на отслеживание за вызов: тот же порядок, что у открытия вкладок. */
+export const MCP_TRACK_MAX = 10;
+
+/**
+ * Какие страницы просят поставить на отслеживание.
+ *
+ * ⚠️ Разбор тот же, что у открытия вкладок, и это не копипаста ради симметрии: агент получает эти
+ * адреса из выдачи магазина, то есть с теми же рекламными метками и теми же дублями. Схлопывать их
+ * надо здесь — иначе один товар встанет на отслеживание трижды и человек трижды получит
+ * уведомление о падении одной и той же цены.
+ */
+export function trackTargets(args: Record<string, unknown>): OpenTargets {
+  const picked = openTargets(args);
+  if (!picked.ok) return { ok: false, error: 'Only http(s) product pages can be tracked.' };
+  return { ok: true, urls: picked.urls.slice(0, MCP_TRACK_MAX), dropped: picked.dropped };
+}
+
 /**
  * Заголовок карточки — ВОПРОС, а не название действия.
  *
@@ -326,6 +343,7 @@ export function confirmTitle(tool: McpTool): string {
     case 'tabs_activate': return 'Переключить вкладку?';
     case 'tabs_close': return 'Закрыть вкладку?';
     case 'bookmarks_add': return 'Сохранить в закладки?';
+    case 'tracking_add': return 'Следить за ценой?';
     case 'tabs_group': return 'Собрать вкладки в группу?';
     default: return `Разрешить «${tool.title}»?`;
   }
@@ -383,6 +401,16 @@ export function confirmSubject(tool: McpTool, args: Record<string, unknown>): st
       return `Группа «${g.name}»
 
 В неё уйдёт ${many} ${many === 1 ? 'вкладка' : 'вкладок'}. Разобрать группу можно в сайдбаре.`;
+    }
+    case 'tracking_add': {
+      const t = trackTargets(args);
+      if (!t.ok) return 'Программа не назвала пригодный адрес.';
+      // ⚠️ Про «после того, как программа уйдёт» сказано ПРЯМО: человек соглашается не на разовое
+      // действие, а на то, что браузер будет ходить на эти страницы сам — неделями. Это другое
+      // решение, и молчать о нём нельзя.
+      return `${t.urls.join('\n')}\n\nБраузер будет проверять цену сам и сообщит об изменении — `
+        + 'в том числе когда эта программа давно закончит работу. Снять можно в разделе '
+        + '«Отслеживание».';
     }
     case 'tabs_activate':
       return 'Браузер переключится на другую открытую вкладку.';

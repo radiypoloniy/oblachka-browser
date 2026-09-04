@@ -241,6 +241,38 @@ export const MCP_TOOLS: readonly McpTool[] = [
     },
   },
   {
+    name: 'tracking_list',
+    mode: 'read',
+    title: 'Что отслеживается',
+    description:
+      'List the products the user is tracking: title, shop, current price and how it moved. '
+      + 'Use it before suggesting to track something — it may already be there — and to answer '
+      + '"did anything get cheaper".',
+    input: { type: 'object', properties: {} },
+  },
+  {
+    name: 'tracking_add',
+    mode: 'write',
+    title: 'Следить за ценой',
+    description:
+      'Start watching a product page for price and availability changes. THIS IS THE ONE THING '
+      + 'THAT KEEPS WORKING AFTER YOU ARE GONE: the browser rechecks on its own and tells the '
+      + 'user when the price drops, long after this conversation ended. '
+      + 'The page must be OPEN in a tab — open it with tabs_open first (it takes a list), then '
+      + 'pass the same addresses here. Pages without a detectable price are skipped and named.',
+    input: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Single product page, already open in a tab.' },
+        urls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Several product pages at once. Prefer this over repeated calls.',
+        },
+      },
+    },
+  },
+  {
     name: 'bookmarks_add',
     mode: 'write',
     title: 'Сохранить в закладки',

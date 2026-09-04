@@ -4,10 +4,14 @@ import {
   annotationsFor, canonicalToolName, clientKey, clientLabel, decide, mustAsk, pickVersion,
 } from '../../shared/mcpPolicy';
 import {
-  activateTab, activePageLinks, activePageText, addBookmarks, closeTab, groupTabs, listTabs,
-  openTab, readUrl,
-  screenshotActiveTab, searchBookmarks, searchHistory, type McpShot,
+  activePageLinks, activePageText, listTabs, listTracked, readUrl, screenshotActiveTab,
+  searchBookmarks, searchHistory, type McpShot,
 } from './McpTools';
+// ⚠️ Действия отдельным модулем: чтение идёт молча по согласию при подключении, а каждое из этих
+// проходит через карточку подтверждения (см. McpActions.ts).
+import {
+  activateTab, addBookmarks, closeTab, groupTabs, openTab, trackProducts,
+} from './McpActions';
 import {
   MCP_PROMPTS, findPrompt, missingArgs, promptArgs,
 } from '../../shared/mcpPrompts';
@@ -405,6 +409,12 @@ async function run(
       const hits = searchHistory(deps.history(), query, args.limit, domains);
       return { query, hits, count: hits.length };
     }
+    case 'tracking_list': {
+      const tracked = listTracked(domains);
+      return { tracked, count: tracked.length };
+    }
+    case 'tracking_add':
+      return trackProducts(args, domains);
     case 'bookmarks_add':
       return addBookmarks(args, domains);
     case 'tabs_open': {

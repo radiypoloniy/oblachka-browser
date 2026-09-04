@@ -152,6 +152,19 @@ fetch('/echo').then(r=>r.json()).then(j=>{document.getElementById('out').textCon
       json({ ip, ua, url: raw, method: req.method, via: 'loopback-echo' });
       return;
     }
+    // Страница товара — для проверки отслеживания цены (mcp-drive). ⚠️ Разметка НАСТОЯЩАЯ
+    // (JSON-LD Product/Offer): детектор ищет именно её, и «похожая на вид» страница ему не годится.
+    if (pathname === '/product') {
+      html(`<!doctype html><meta charset="utf-8"><title>Кресло рабочее — стенд</title>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Product","name":"Кресло рабочее СТЕНД",
+ "brand":{"@type":"Brand","name":"Oblako"},"sku":"STAND-1","gtin13":"4600000000017",
+ "offers":{"@type":"Offer","price":"18990","priceCurrency":"RUB",
+ "availability":"https://schema.org/InStock"}}
+</script>
+<h1>Кресло рабочее СТЕНД</h1><div>18 990 ₽</div>`);
+      return;
+    }
     // Страница со ссылками — для проверки page_links (mcp-drive). ⚠️ Нарочно с мусором: якорь на
     // саму себя и javascript: обязаны отсеяться, иначе агент пойдёт читать страницу, которую и
     // так читает, или получит адрес, по которому идти некуда.
