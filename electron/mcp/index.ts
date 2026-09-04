@@ -3,6 +3,7 @@ import { app } from 'electron';
 import { endpointPath, mcpRunning, startMcpServer, stopMcpServer } from './McpPipe';
 import { rememberCall } from './McpLog';
 import { forgetApprovals } from './McpConfirm';
+import { forgetReadCache } from './McpTools';
 import { dropMcpPrompts } from '../McpPromptManager';
 import type { HistoryManager } from '../HistoryManager';
 
@@ -27,6 +28,9 @@ export function setMcpEnabled(on: boolean): void {
     // движением — отвечать на них уже некому.
     forgetApprovals();
     dropMcpPrompts();
+    // ⚠️ И прочитанные страницы: кеш живёт ради кругов внутри одной задачи, а выключенный сервер
+    // задачи не продолжает. Держать чужой текст в памяти дольше, чем он нужен, незачем.
+    forgetReadCache();
     return;
   }
   startMcpServer({

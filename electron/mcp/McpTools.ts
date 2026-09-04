@@ -2,7 +2,7 @@ import { BrowserWindow } from 'electron';
 import { contextForWindow, mainContext } from '../WindowRegistry';
 import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
-import { clampHistoryLimit, clampPageText, safeOpenUrl, visibleTabs } from '../../shared/mcpPolicy';
+import { batchTextLimit, clampHistoryLimit, clampPageText, readUrlTargets, safeOpenUrl, visibleTabs } from '../../shared/mcpPolicy';
 import type { HistoryManager } from '../HistoryManager';
 
 // Три инструмента на чтение — тела вызовов MCP-сервера.
@@ -44,6 +44,23 @@ export function listTabs(): McpTabView[] {
     url: t.url,
     active: t.isActive,
   }));
+}
+
+/** Одна прочитанная страница в ответе. `cached` — отдана из памяти, браузер её не открывал. */
+export interface McpPage {
+  ok: boolean;
+  url: string;
+  title?: string;
+  text?: string;
+  error?: string;
+  cached?: boolean;
+}
+
+/** Ответ пакетного чтения: сколько прочитали и сколько адресов выбросили негодными. */
+export interface McpPageBatch {
+  pages: McpPage[];
+  dropped: number;
+  error?: string;
 }
 
 export interface McpPageText {
@@ -160,6 +177,12 @@ export function closeTab(rawId: unknown): McpWriteResult {
   return { ok: true, note: `Closed ${tab.title || tab.url}` };
 }
 
+/** Обрезать текст под бюджет вызова — вслух, как clampPageText (см. shared/mcpPolicy.ts). */
+function clampTo(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n\n[… обрезано: страница длиннее ${limit} знаков]`;
+}
+
 /**
  * Прочитать страницу по адресу — профилем человека.
  *
@@ -171,15 +194,92 @@ export function closeTab(rawId: unknown): McpWriteResult {
  * ⚠️ Ничего нового не считаем: extractUrlText сперва пробует УЖЕ ОТКРЫТУЮ вкладку (она прошла
  * антибот и логин), и только потом открывает скрытую вью. Тот же путь, что у блокнота.
  */
-export async function readUrl(rawUrl: unknown): Promise<McpPageText> {
-  const url = safeOpenUrl(rawUrl);
-  if (!url) return { ok: false, error: 'Only http(s) addresses can be read.' };
+export async function readUrl(args: Record<string, unknown>): Promise<McpPageBatch> {
+  const targets = readUrlTargets(args);
+  if (!targets.ok) return { pages: [], dropped: 0, error: targets.error };
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
-  if (!win) return { ok: false, error: 'No browser window is open.' };
+  if (!win) return { pages: [], dropped: targets.dropped, error: 'No browser window is open.' };
+
+  const limit = batchTextLimit(targets.urls.length);
+  const pages = await inLanes(targets.urls, READ_LANES, (url) => readOne(win, url, limit));
+  return { pages, dropped: targets.dropped };
+}
+
+/**
+ * Одна страница: сперва кеш, потом браузер.
+ *
+ * ⚠️ Кеш держит СЫРОЙ текст, а обрезаем при выдаче: тот же адрес в пачке из восьми и в одиночном
+ * вызове получает разный бюджет знаков, и хранить уже обрезанное значило бы отдать второму
+ * вызову огрызок от первого.
+ */
+async function readOne(win: BrowserWindow, url: string, limit: number): Promise<McpPage> {
+  const hit = cached(url);
+  if (hit) return { ok: true, url, title: hit.title, text: clampTo(hit.text, limit), cached: true };
 
   const res = await extractUrlText(win, url);
   if (!res.ok || !res.text?.trim()) {
-    return { ok: false, error: 'Could not read this page (it did not load, or has no readable text).' };
+    return { ok: false, url, error: 'Could not read this page (it did not load, or has no readable text).' };
   }
-  return { ok: true, title: res.title, url, text: clampPageText(res.text) };
+  remember(url, res.title, res.text);
+  return { ok: true, url, title: res.title, text: clampTo(res.text, limit) };
+}
+
+/**
+ * Читаем несколько страниц одновременно, но не все сразу.
+ *
+ * ⚠️ Каждый непрочитанный адрес — это скрытая WebContentsView, то есть настоящий рендерер со своей
+ * памятью (замер: ~28 МБ на вкладку, см. `npm run memory`). Восемь сразу — четверть гигабайта ради
+ * одного вызова; полосы держат цену круга в разумных рамках, почти не теряя в скорости: время
+ * упирается в загрузку страницы, а не в наш код.
+ */
+async function inLanes<T, R>(items: T[], lanes: number, run: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await run(items[i] as T);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(lanes, items.length) }, worker));
+  return out;
+}
+
+/**
+ * Кеш прочитанного — ТОЛЬКО В ПАМЯТИ и ненадолго.
+ *
+ * ⚠️ На диск он не поедет никогда: файл со списком прочитанных адресов и их текстом — это вторая
+ * история посещений рядом с той, которую человек умеет чистить, и заводить её мимо его ведома
+ * нельзя. Тот же довод, что у журнала обращений (см. McpLog.ts).
+ *
+ * ⚠️ Живёт минуты, а не часы. Агент читает одни и те же страницы в пределах одной задачи — там
+ * повтор обычен и стоит круга; через час это уже другой вопрос человека, и отвечать на него
+ * вчерашним снимком страницы значит тихо соврать.
+ */
+const CACHE_TTL_MS = 5 * 60_000;
+const CACHE_MAX = 32;
+const READ_LANES = 3;
+
+const cache = new Map<string, { title?: string; text: string; at: number }>();
+
+function cached(url: string): { title?: string; text: string } | null {
+  const hit = cache.get(url);
+  if (!hit) return null;
+  if (Date.now() - hit.at > CACHE_TTL_MS) { cache.delete(url); return null; }
+  return hit;
+}
+
+function remember(url: string, title: string | undefined, text: string): void {
+  // Самая давняя запись уходит первой: Map хранит порядок вставки, и этого здесь достаточно.
+  if (cache.size >= CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(url, { title, text, at: Date.now() });
+}
+
+/** Забыть прочитанное — при выключении сервера и отзыве клиента. */
+export function forgetReadCache(): void {
+  cache.clear();
 }

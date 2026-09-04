@@ -205,6 +205,51 @@ await withStand(async (ctx) => {
     badVersion?.error?.code === -32602 && Array.isArray(badVersion?.error?.data?.supported),
     JSON.stringify(badVersion));
 
+  // ── Пакетное чтение и кеш ─────────────────────────────────────────────────
+  //
+  // ⚠️ Проверяется то, ради чего пакет заведён: несколько адресов стоят ОДНОГО круга через агента.
+  // Раньше десять страниц означали десять оборотов «модель → клиент → браузер → модель», и каждый
+  // человек оплачивал контекстом заново.
+  //
+  // ⚠️ Читаем эхо-сервер стенда, а не живой сайт: проверка про пакет обязана краснеть от пакета,
+  // а не от чужого сайта, который сегодня отвечает медленно.
+  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setStance(${JSON.stringify(CLIENT.toLowerCase())}, 'page_read_url', 'allow'); return true; })()`);
+  const two = await c.send('tools/call', {
+    name: 'page_read_url',
+    arguments: { urls: [`${ctx.echo.url('/?a=1')}`, `${ctx.echo.url('/?b=2')}`] },
+  });
+  const batch = JSON.parse(textOf(two) || '{}');
+  check('пакет читает оба адреса за один вызов', batch.read === 2, textOf(two).slice(0, 200));
+  check('и отдаёт их отдельными записями', Array.isArray(batch.pages) && batch.pages.length === 2,
+    textOf(two).slice(0, 200));
+  check('у каждой страницы свой адрес и текст',
+    (batch.pages ?? []).every((p) => typeof p.url === 'string' && typeof p.text === 'string'),
+    textOf(two).slice(0, 200));
+
+  // ⚠️ Кеш живёт минуты и только в памяти (файл со списком прочитанных адресов был бы второй
+  // историей посещений). Повтор в пределах задачи обязан прийти из него, а не открывать страницу.
+  const again = await c.send('tools/call', {
+    name: 'page_read_url',
+    arguments: { urls: [`${ctx.echo.url('/?a=1')}`, `${ctx.echo.url('/?b=2')}`] },
+  });
+  const cachedBatch = JSON.parse(textOf(again) || '{}');
+  check('повтор берётся из памяти, а не из сети',
+    (cachedBatch.pages ?? []).every((p) => p.cached === true), textOf(again).slice(0, 200));
+
+  // Одиночный вызов отвечает по-прежнему плоско: клиенты, написанные под старый ответ, живы.
+  const single = await c.send('tools/call', { name: 'page_read_url', arguments: { url: `${ctx.echo.url('/?a=1')}` } });
+  const one = JSON.parse(textOf(single) || '{}');
+  check('одиночный адрес отвечает плоским объектом', typeof one.text === 'string' && !one.pages,
+    textOf(single).slice(0, 160));
+
+  // ⚠️ Битый адрес в списке не роняет пачку целиком.
+  const mixed = await c.send('tools/call', {
+    name: 'page_read_url',
+    arguments: { urls: ['не адрес', `${ctx.echo.url('/?c=3')}`] },
+  });
+  const mix = JSON.parse(textOf(mixed) || '{}');
+  check('битый адрес не роняет остальные', mix.text !== undefined || mix.read >= 1, textOf(mixed).slice(0, 160));
+
   // ── Запись НЕ проходит без ответа человека ────────────────────────────────
   //
   // ⚠️ Единственная проверка драйвера, которая намеренно поднимает карточку на экран, — и она же

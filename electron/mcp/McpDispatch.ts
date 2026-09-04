@@ -269,9 +269,25 @@ async function run(name: string, args: Record<string, unknown>, deps: McpDeps): 
       return { title: page.title, url: page.url, text: page.text };
     }
     case 'page_read_url': {
-      const page = await readUrl(args.url);
-      if (!page.ok) throw new Error(page.error ?? 'unavailable');
-      return { title: page.title, url: page.url, text: page.text };
+      const batch = await readUrl(args);
+      if (batch.error) throw new Error(batch.error);
+      // ⚠️ Одиночный вызов отвечает ТАК ЖЕ, как отвечал раньше, — плоским объектом. Клиенты и
+      // промпты, написанные под прежний ответ, никуда не делись, и заворачивать одну страницу в
+      // список ради единообразия значило бы сломать их без всякой пользы.
+      const only = batch.pages.length === 1 ? batch.pages[0] : null;
+      if (only) {
+        if (!only.ok) throw new Error(only.error ?? 'unavailable');
+        return { title: only.title, url: only.url, text: only.text, cached: only.cached };
+      }
+      // ⚠️ Неудача ОДНОГО адреса не роняет пачку: в списке из восьми ссылок одна битая — обычное
+      // дело, и терять из-за неё семь прочитанных страниц незачем. Ошибка едет рядом со своим
+      // адресом, чтобы агент мог сказать человеку, что именно не открылось.
+      return {
+        pages: batch.pages,
+        read: batch.pages.filter((p) => p.ok).length,
+        failed: batch.pages.filter((p) => !p.ok).length,
+        ...(batch.dropped > 0 ? { droppedAddresses: batch.dropped } : {}),
+      };
     }
     case 'history_search': {
       const query = typeof args.query === 'string' ? args.query : '';

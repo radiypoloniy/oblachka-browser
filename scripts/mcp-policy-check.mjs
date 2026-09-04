@@ -9,8 +9,8 @@ import {
   MCP_HISTORY_MAX, MCP_TEXT_LIMIT,
   MCP_CONFIRM_TTL_MS,
   annotationsFor, approvalFits, clampHistoryLimit, clampPageText, clientKey, clientLabel,
-  canonicalToolName, canRemember, confirmSubject, confirmTitle, decide, defaultStance, eraOf,
-  findTool, isClosedName, mustAsk,
+  batchTextLimit, canonicalToolName, canRemember, confirmSubject, confirmTitle, decide,
+  defaultStance, eraOf, findTool, isClosedName, mustAsk, readUrlTargets, MCP_BATCH_MAX,
   pickVersion, safeOpenUrl, stanceFor, visibleTabs,
 } from '../shared/mcpPolicy.ts';
 
@@ -59,6 +59,50 @@ check('закрытая категория ловит подчёркивание
 check('и точку', isClosedName('passwords.list'), true);
 check('и составной префикс в обоих видах',
   [isClosedName('downloads_file'), isClosedName('downloads.file')], [true, true]);
+
+// ── Пакетное чтение: адреса и бюджет ответа ─────────────────────────────────────────────────
+//
+// ⚠️ Заведено ради КРУГОВ: десять страниц по одной — это десять оборотов «модель → клиент →
+// браузер → модель», и каждый человек оплачивает контекстом заново.
+//
+// ⚠️ Бюджет ответа ОБЩИЙ. Иначе восемь адресов дают сотню тысяч знаков за вызов — десятки тысяч
+// токенов, за которые платит человек, а прочитана будет первая треть.
+const targets = (args) => readUrlTargets(args);
+check('одиночный url принимается', targets({ url: 'https://a.ru' }).urls, ['https://a.ru/']);
+check('список urls принимается',
+  targets({ urls: ['https://a.ru', 'https://b.ru'] }).urls, ['https://a.ru/', 'https://b.ru/']);
+check('оба поля разом — url идёт первым',
+  targets({ url: 'https://a.ru', urls: ['https://b.ru'] }).urls, ['https://a.ru/', 'https://b.ru/']);
+check('одиночная строка в urls тоже годится', targets({ urls: 'https://a.ru' }).urls, ['https://a.ru/']);
+check('дубликаты не читаем дважды',
+  targets({ urls: ['https://a.ru', 'https://a.ru/'] }).urls, ['https://a.ru/']);
+// ⚠️ Одна битая ссылка в списке — обычное дело; терять из-за неё остальные семь незачем.
+check('битый адрес выбрасывается поштучно',
+  targets({ urls: ['не адрес', 'https://a.ru'] }).urls, ['https://a.ru/']);
+check('и сосчитан вслух', targets({ urls: ['не адрес', 'https://a.ru'] }).dropped, 1);
+check('чужая схема не проходит',
+  targets({ urls: ['file:///c:/secret.txt', 'javascript:alert(1)'] }).ok, false);
+check('пустой список — отказ словами', targets({ urls: [] }).ok, false);
+check('лишние адреса сверх предела отсекаются',
+  targets({ urls: Array.from({ length: MCP_BATCH_MAX + 3 }, (_, i) => `https://s${i}.ru`) }).urls.length,
+  MCP_BATCH_MAX);
+check('и они тоже сосчитаны',
+  targets({ urls: Array.from({ length: MCP_BATCH_MAX + 3 }, (_, i) => `https://s${i}.ru`) }).dropped, 3);
+
+check('одна страница получает полный лимит', batchTextLimit(1), 12000);
+check('восемь делят общий бюджет', batchTextLimit(8), 3000);
+// ⚠️ Ниже минимума не опускаемся: страница, обрезанная до пары абзацев, бесполезна — честнее
+// прочитать меньше адресов целиком.
+check('мельче минимума не режем', batchTextLimit(50), 3000);
+check('бюджет не растёт от числа адресов', batchTextLimit(2) <= 12000, true);
+
+// ⚠️ Карточка называет ВСЕ адреса: человек решает, пускать ли программу на конкретные сайты своим
+// профилем, и разница между списком документации и списком, куда затесалась почта, видна только
+// в самих адресах.
+const subj = confirmSubject(findTool('page_read_url'), { urls: ['https://a.ru', 'https://mail.ru'] });
+check('в карточке перечислены все адреса',
+  subj.includes('https://a.ru/') && subj.includes('https://mail.ru/'), true);
+check('и сказано про профиль во множественном числе', subj.includes('Страницы будут открыты'), true);
 
 check('чтение чужого адреса спрашивает', defaultStance(findTool('page_read_url')), 'ask');
 check('и его можно разрешить навсегда', canRemember(findTool('page_read_url')), true);

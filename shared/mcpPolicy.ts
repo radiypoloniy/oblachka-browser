@@ -82,6 +82,65 @@ export interface McpTool {
  * и «прочитать по адресу» человек не поймёт, а разойтись они успеют на первой же правке.
  */
 export const MCP_TEXT_LIMIT = 12_000;
+
+/**
+ * Сколько адресов читаем за один вызов и как делим на них бюджет ответа.
+ *
+ * ⚠️ ПАКЕТ ЗАВЕДЁН РАДИ КРУГОВ, А НЕ РАДИ КРАСОТЫ. Десять страниц по одной — это десять полных
+ * оборотов «модель → клиент → браузер → модель», и каждый оборот человек оплачивает контекстом
+ * заново. Один вызов на список адресов убирает девять из них.
+ *
+ * ⚠️ БЮДЖЕТ ОТВЕТА ОБЩИЙ, а не «лимит на страницу × число страниц». Иначе восемь адресов дают
+ * сотню тысяч знаков в одном ответе — десятки тысяч токенов, за которые платит человек, а
+ * прочитана будет первая треть. Делим общий потолок между адресами, но не мельче минимума:
+ * страница, обрезанная до пары абзацев, бесполезна — честнее прочитать меньше адресов целиком.
+ */
+export const MCP_BATCH_MAX = 8;
+const MCP_BATCH_BUDGET = 24_000;
+const MCP_BATCH_MIN_PER_PAGE = 3_000;
+
+/** Сколько знаков достаётся каждой странице, когда их читают пачкой. */
+export function batchTextLimit(count: number): number {
+  if (count <= 1) return MCP_TEXT_LIMIT;
+  return Math.max(MCP_BATCH_MIN_PER_PAGE, Math.floor(MCP_BATCH_BUDGET / count));
+}
+
+export type BatchTargets =
+  | { ok: true; urls: string[]; dropped: number }
+  | { ok: false; error: string };
+
+/**
+ * Какие адреса просит прочитать программа.
+ *
+ * ⚠️ Принимаем ОБА ВИДА аргумента — `url` строкой и `urls` списком. Модель зовёт инструмент по
+ * описанию схемы, а не по нашим намерениям: увидев в схеме оба поля, разные клиенты пришлют
+ * разное, и отказ «не то поле» человек прочитает как «браузер не работает».
+ *
+ * ⚠️ Негодные адреса ОТСЕИВАЕМ ПОШТУЧНО, а не роняем весь вызов: в списке из восьми ссылок одна
+ * битая — обычное дело, и терять из-за неё семь прочитанных страниц незачем. Сколько выброшено,
+ * говорим вслух: молчание тут читается как «столько и было».
+ */
+export function readUrlTargets(args: Record<string, unknown>): BatchTargets {
+  const raw: unknown[] = Array.isArray(args.urls)
+    ? [...args.urls]
+    : args.urls !== undefined ? [args.urls] : [];
+  if (args.url !== undefined) raw.unshift(args.url);
+
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  let dropped = 0;
+  for (const item of raw) {
+    const safe = safeOpenUrl(item);
+    if (!safe) { dropped++; continue; }
+    // Дубликаты в списке — не повод читать одно и то же дважды.
+    if (seen.has(safe)) continue;
+    seen.add(safe);
+    if (urls.length < MCP_BATCH_MAX) urls.push(safe);
+    else dropped++;
+  }
+  if (urls.length === 0) return { ok: false, error: 'Only http(s) addresses can be read.' };
+  return { ok: true, urls, dropped };
+}
 /** Сколько записей истории отдаём максимум и сколько по умолчанию. */
 export const MCP_HISTORY_MAX = 50;
 export const MCP_HISTORY_DEFAULT = 10;
@@ -145,13 +204,19 @@ export const MCP_TOOLS: readonly McpTool[] = [
       + 'PREFER THIS over your own web fetching whenever the page needs the user to be logged in, '
       + 'blocks bots or datacenter IPs, or when the user asked you to use their browser: the '
       + "request goes through the user's profile, cookies, ad blocker and VPN. "
+      + 'Pass SEVERAL addresses at once in `urls` when you need more than one page: they are read '
+      + 'in parallel and cost the user one confirmation and one round trip instead of many. '
       + 'The user is asked to confirm the first time.',
     input: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: 'Address to read, http(s) only.' },
+        url: { type: 'string', description: 'Single address to read, http(s) only.' },
+        urls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Several addresses to read in one call, http(s) only. Prefer this over repeated calls.',
+        },
       },
-      required: ['url'],
     },
   },
   {
@@ -476,12 +541,16 @@ export function confirmTitle(tool: McpTool): string {
 export function confirmSubject(tool: McpTool, args: Record<string, unknown>): string {
   switch (tool.name) {
     case 'page_read_url': {
-      const safe = safeOpenUrl(args.url);
-      // ⚠️ Про куки сказано ПРЯМО: человек решает не «дать почитать сайт», а «дать почитать
-      // сайт от моего имени» — и это разные вопросы.
-      return safe
-        ? `${safe}\n\nСтраница будет открыта вашим профилем — с вашими логинами.`
-        : 'Программа не назвала пригодный адрес.';
+      const targets = readUrlTargets(args);
+      if (!targets.ok) return 'Программа не назвала пригодный адрес.';
+      // ⚠️ Показываем ВСЕ адреса, а не «5 страниц»: человек решает, пускать ли программу на
+      // КОНКРЕТНЫЕ сайты своим профилем, и разница между списком документации и списком, куда
+      // затесалась почта, видна только в самих адресах.
+      //
+      // ⚠️ Про куки сказано ПРЯМО: человек решает не «дать почитать сайт», а «дать почитать сайт
+      // от моего имени» — и это разные вопросы.
+      const many = targets.urls.length > 1;
+      return `${targets.urls.join('\n')}\n\n${many ? 'Страницы будут открыты' : 'Страница будет открыта'} вашим профилем — с вашими логинами.`;
     }
     case 'tabs_open': {
       // ⚠️ Пустого предмета не бывает: карточка без адреса — вопрос ни о чём, и человек ответит
