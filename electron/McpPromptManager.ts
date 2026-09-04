@@ -184,7 +184,7 @@ export function syncMcpPromptBounds(win: BrowserWindow, b: ContentBounds): void 
  * некого.
  */
 export function askMcp(req: Omit<McpPromptRequest, 'id'>): Promise<McpAnswer> {
-  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+  const win = windowForPrompt();
   if (!win || win.isDestroyed()) return Promise.resolve({ granted: false, remember: false });
 
   const full: McpPromptRequest = { ...req, id: randomUUID() };
@@ -196,6 +196,29 @@ export function askMcp(req: Omit<McpPromptRequest, 'id'>): Promise<McpAnswer> {
   callAttention(win);
 
   return new Promise<McpAnswer>((resolve) => { waiting.set(full.id, resolve); });
+}
+
+/**
+ * В какое окно класть вопрос.
+ *
+ * ⚠️ БРАТЬ ПЕРВОЕ ИЗ getAllWindows() НЕЛЬЗЯ, и это стоило фиче применимости. Вопрос приходит
+ * ровно тогда, когда браузер НЕ в фокусе (человек в Cursor, оттуда и спрашивает), то есть
+ * сфокусированного окна нет и работает запасная ветка. А в списке окон лежит не только браузер:
+ * выпадашка подсказок омнибокса — отдельное BrowserWindow, и замер показал её ПЕРВОЙ. Карточка
+ * уезжала в крошечное неактивируемое окно списка, человек не видел ничего, вызов истекал молча —
+ * живая жалоба 04.09.2026: «мне не высвечивались никакие окна с подтверждениями».
+ *
+ * ⚠️ Признак настоящего окна — оно ПРИСЫЛАЕТ ГЕОМЕТРИЮ КОНТЕНТА (syncMcpPromptBounds зовётся из
+ * слоя хрома), поэтому реестр уже есть и заводить второй не нужно: `states` наполняется только
+ * окнами браузера. Запасной путь — окно без родителя: у служебных popup'ов родитель есть всегда.
+ */
+function windowForPrompt(): BrowserWindow | null {
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && !focused.isDestroyed() && states.has(focused.id)) return focused;
+  for (const st of states.values()) {
+    if (!st.win.isDestroyed()) return st.win;
+  }
+  return BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.getParentWindow() === null) ?? null;
 }
 
 /**

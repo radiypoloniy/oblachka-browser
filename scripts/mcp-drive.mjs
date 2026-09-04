@@ -34,6 +34,9 @@ const check = (what, good, detail = '') => {
 /** Имя, которым драйвер представляется. Ключ клиента — оно же в нижнем регистре (clientKey). */
 const CLIENT = 'Drive Probe';
 
+/** Electron в контексте main-процесса. */
+const E = "process.mainModule.require('electron')";
+
 /** Разговор по каналу: строка на сообщение, ответы сопоставляются по id. */
 function talk(pipe, token) {
   const socket = net.connect(pipe);
@@ -192,6 +195,55 @@ await withStand(async (ctx) => {
   check('неподдержанная версия отбивается со списком',
     badVersion?.error?.code === -32602 && Array.isArray(badVersion?.error?.data?.supported),
     JSON.stringify(badVersion));
+
+  // ── Куда попадает карточка вопроса ────────────────────────────────────────
+  //
+  // ⚠️ Случай из жизни 04.09.2026, и он стоил фиче применимости: вопрос приходит ровно тогда,
+  // когда браузер НЕ в фокусе (человек в чужой программе, оттуда и спрашивает), — то есть
+  // работает запасная ветка выбора окна. А в списке окон лежит не только браузер: выпадашка
+  // подсказок омнибокса — отдельное BrowserWindow, и getAllWindows() отдавал ПЕРВОЙ именно её.
+  // Карточка уезжала в крошечное неактивируемое окно списка, человек не видел ничего, вызов
+  // истекал молча: «мне не высвечивались никакие окна с подтверждениями».
+  //
+  // ⚠️ Проверка смотрит на ГЕОМЕТРИЮ ВЬЮ, а не на «показалась ли карточка»: показанная в чужом
+  // окне карточка выглядит в коде совершенно законно — неверен только её адрес.
+  await ctx.chrome.send('Input.dispatchKeyEvent', { type: 'keyDown', modifiers: 2, key: 'l', code: 'KeyL', windowsVirtualKeyCode: 76, nativeVirtualKeyCode: 76 });
+  await ctx.chrome.send('Input.dispatchKeyEvent', { type: 'keyUp', modifiers: 2, key: 'l', code: 'KeyL', windowsVirtualKeyCode: 76, nativeVirtualKeyCode: 76 });
+  for (const ch of 'oblako') {
+    await ctx.chrome.send('Input.insertText', { text: ch });
+    await wait(80);
+  }
+  await wait(900);
+  const manyWindows = await ctx.evalMain(`${E}.BrowserWindow.getAllWindows().length`);
+  check('окно выпадашки подсказок поднялось (иначе проверять нечего)', manyWindows >= 2, `окон: ${manyWindows}`);
+
+  // Фокуса нет ни у кого — человек ушёл в другую программу.
+  await ctx.evalMain(`(() => { ${E}.BrowserWindow.getAllWindows().forEach((w) => w.blur()); return true; })()`);
+  await wait(400);
+  await ctx.evalMain(`
+    (() => {
+      ${MOD('McpPromptManager.js')}.askMcp({ kind: 'connect', client: 'Drive Probe', title: 'Подключить программу?', detail: 'проверка адреса карточки' });
+      return true;
+    })()
+  `);
+  await wait(1200);
+
+  const placed = await ctx.evalMain(`
+    JSON.stringify(${E}.BrowserWindow.getAllWindows().map((w) => ({
+      служебное: w.getParentWindow() !== null,
+      вью: w.contentView.children.map((v) => v.getBounds().width),
+    })))
+  `);
+  const windows = JSON.parse(placed);
+  const CARD = 380 + 24 * 2; // CARD_WIDTH + поля под тень, см. McpPromptManager
+  const inService = windows.some((w) => w.служебное && w.вью.includes(CARD));
+  const inBrowser = windows.some((w) => !w.служебное && w.вью.includes(CARD));
+  check('карточка вопроса встала в окно браузера', inBrowser, placed);
+  check('и НЕ в служебное окно (выпадашка подсказок)', !inService, placed);
+
+  // Снимаем вопрос: висящая карточка мешала бы следующим проверкам и осталась бы на экране.
+  await ctx.evalMain(`(() => { ${MOD('McpPromptManager.js')}.dropMcpPrompts(); return true; })()`);
+  await wait(300);
 
   // ── Выключение ────────────────────────────────────────────────────────────
   c.close();
