@@ -34,6 +34,9 @@ const check = (what, good, detail = '') => {
 /** Имя, которым драйвер представляется. Ключ клиента — оно же в нижнем регистре (clientKey). */
 const CLIENT = 'Drive Probe';
 
+/** Ширина вью карточки вопроса: CARD_WIDTH + поля под тень (см. McpPromptManager). */
+const CARD = 380 + 24 * 2;
+
 /** Electron в контексте main-процесса. */
 const E = "process.mainModule.require('electron')";
 
@@ -196,6 +199,46 @@ await withStand(async (ctx) => {
     badVersion?.error?.code === -32602 && Array.isArray(badVersion?.error?.data?.supported),
     JSON.stringify(badVersion));
 
+  // ── Запись НЕ проходит без ответа человека ────────────────────────────────
+  //
+  // ⚠️ Единственная проверка драйвера, которая намеренно поднимает карточку на экран, — и она же
+  // самая важная: всё остальное здесь про удобство, а это про то, ради чего разрешения вообще
+  // существуют. Повод завести — живое подозрение 04.09.2026, что чужая программа открывала сайты
+  // без спроса (не подтвердилось: она ходила мимо браузера своими средствами, а наши вызовы
+  // упирались в невидимую карточку).
+  //
+  // ⚠️ Клиент здесь ПОДТВЕРЖДЁН, а право на открытие вкладки возвращено в 'ask' — ровно то
+  // состояние, в котором живёт только что подключённая программа.
+  //
+  // ⚠️ Через МОДУЛЬ, а не перезаписью файла: список читается лениво и к этому моменту уже загружен
+  // в память, то есть правка на диске не доехала бы вовсе. Первая версия этой проверки так и
+  // ошиблась — файл менялся, в памяти оставался прежний 'deny', и «вкладка не открылась» проходило
+  // по отказу политики, а не потому, что браузер спросил человека.
+  await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setStance(${JSON.stringify(CLIENT.toLowerCase())}, 'tabs.open', 'ask'); return true; })()`);
+  const asking = talk(endpoint.pipe, endpoint.token);
+  await asking.ready;
+  await asking.send('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: CLIENT, version: '1' } });
+  const pendingCall = asking.send('tools/call', { name: 'tabs.open', arguments: { url: 'https://example.com/never' } });
+  await wait(4000);
+
+  const opened = await ctx.evalMain(`
+    ${E}.webContents.getAllWebContents().filter((w) => w.getURL().indexOf('example.com/never') !== -1).length
+  `);
+  check('вкладка НЕ открылась, пока человек не ответил', opened === 0, `нашлось вью: ${opened}`);
+
+  const cardUp = await ctx.evalMain(`
+    JSON.stringify(${E}.BrowserWindow.getAllWindows()
+      .filter((w) => w.getParentWindow() === null)[0].contentView.children.map((v) => v.getBounds().width))
+  `);
+  check('и карточка вопроса на экране', JSON.parse(cardUp).includes(CARD), cardUp);
+
+  // Отвечаем отказом за человека и убеждаемся, что вызов вернулся словами, а не молчанием.
+  await ctx.evalMain(`(() => { ${MOD('McpPromptManager.js')}.dropMcpPrompts(); return true; })()`);
+  const refused = await pendingCall;
+  check('отказ доезжает до программы результатом, а не ошибкой протокола',
+    refused?.result?.isError === true && !refused?.error, JSON.stringify(refused).slice(0, 160));
+  asking.close();
+
   // ── Куда попадает карточка вопроса ────────────────────────────────────────
   //
   // ⚠️ Случай из жизни 04.09.2026, и он стоил фиче применимости: вопрос приходит ровно тогда,
@@ -235,7 +278,6 @@ await withStand(async (ctx) => {
     })))
   `);
   const windows = JSON.parse(placed);
-  const CARD = 380 + 24 * 2; // CARD_WIDTH + поля под тень, см. McpPromptManager
   const inService = windows.some((w) => w.служебное && w.вью.includes(CARD));
   const inBrowser = windows.some((w) => !w.служебное && w.вью.includes(CARD));
   check('карточка вопроса встала в окно браузера', inBrowser, placed);
