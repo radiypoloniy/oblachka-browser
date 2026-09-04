@@ -25,6 +25,8 @@ import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics
 
 const CARD_WIDTH = 380;
 const INITIAL_HEIGHT = 170;
+/** Через сколько переспросить высоту у вью. Дольше — человек успеет увидеть обрезанную карточку. */
+const REMEASURE_MS = 400;
 const EDGE_GAP = 12;
 
 interface PromptState {
@@ -124,6 +126,21 @@ function pushCurrent(st: PromptState): void {
   wc.send('mcp-prompt:request', st.queue[0] ?? null);
 }
 
+/**
+ * Второй шанс измерить карточку.
+ *
+ * ⚠️ Заведён по живому случаю: карточка показалась обрезанной ровно по INITIAL_HEIGHT — высота от
+ * вью не пришла ни разу, и переспросить было некому. Повторный запрос приезжает НОВЫМ объектом,
+ * поэтому эффект измерения в mcpprompt.tsx перезапускается и меряет уже отрисованную карточку;
+ * если высота та же, main её отбросит сравнением (см. setMcpPromptHeight) — то есть цена этой
+ * страховки нулевая, а цена её отсутствия — нечитаемый вопрос на экране.
+ */
+function remeasureLater(st: PromptState): void {
+  setTimeout(() => {
+    if (st.queue.length > 0 && isAttached(st)) pushCurrent(st);
+  }, REMEASURE_MS);
+}
+
 function show(st: PromptState): void {
   if (st.queue.length === 0 || st.win.isDestroyed()) return;
   if (!st.resizeBound) {
@@ -175,6 +192,7 @@ export function askMcp(req: Omit<McpPromptRequest, 'id'>): Promise<McpAnswer> {
   st.queue.push(full);
   if (isAttached(st)) pushCurrent(st);
   else show(st);
+  remeasureLater(st);
   callAttention(win);
 
   return new Promise<McpAnswer>((resolve) => { waiting.set(full.id, resolve); });

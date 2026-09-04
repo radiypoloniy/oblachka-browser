@@ -40,14 +40,35 @@ function McpPromptApp() {
 
   // Высоту меряем и сообщаем main: длинный адрес переносится на вторую строку, и карточка
   // подросла бы за границу вью — WebContentsView обрезает всё, что вышло за её прямоугольник.
+  //
+  // ⚠️ ПОВОДОВ СООБЩИТЬ НЕСКОЛЬКО. Живой случай 04.09.2026: карточка на экране была обрезана ровно
+  // по INITIAL_HEIGHT из McpPromptManager — то есть высота от вью до main не доехала, а второй
+  // попытки конструкция не давала. Сам сценарий воспроизвести не удалось: на стенде высота
+  // приходит стабильно и при свёрнутом окне тоже. Поэтому лечим не найденный сценарий, а
+  // зависимость от единственного шанса — цена промаха тут нечитаемый вопрос на экране, цена
+  // лишнего сообщения — сравнение двух чисел в main (см. setMcpPromptHeight).
+  //
+  // ⚠️ `document.fonts.ready` из них самый содержательный: до подгрузки Golos текст набран запасным
+  // шрифтом, и карточка ниже настоящей.
   useEffect(() => {
     const el = cardRef.current;
     if (!el) return;
     const report = () => window.mcpPrompt.reportHeight(el.offsetHeight);
     report();
+    // Следующий кадр: к этому моменту карточка уже прошла первую раскладку.
+    const raf = requestAnimationFrame(report);
     const ro = new ResizeObserver(report);
     ro.observe(el);
-    return () => ro.disconnect();
+    void document.fonts?.ready.then(report).catch(() => { /* шрифты не наша забота */ });
+    // Вернулись к окну после другой программы — вью могла всё это время не рисоваться вовсе.
+    document.addEventListener('visibilitychange', report);
+    window.addEventListener('resize', report);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      document.removeEventListener('visibilitychange', report);
+      window.removeEventListener('resize', report);
+    };
   }, [request]);
 
   return (
