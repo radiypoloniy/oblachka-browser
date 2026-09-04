@@ -151,7 +151,7 @@ await withStand(async (ctx) => {
 
   const list = await c.send('tools/list', {});
   const tools = list?.result?.tools ?? [];
-  check('инструменты отдаются', tools.length === 8, `их ${tools.length}`);
+  check('инструменты отдаются', tools.length === 9, `их ${tools.length}`);
   check('у каждого есть схема и аннотации',
     tools.every((t) => t.inputSchema?.type === 'object' && typeof t.annotations?.readOnlyHint === 'boolean'));
   check('чтение помечено чтением',
@@ -235,6 +235,25 @@ await withStand(async (ctx) => {
   // ⚠️ Машинной копии у снимка нет намеренно: туда уехал бы тот же base64 вторым экземпляром.
   check('машинной копии снимка нет', shotCall?.result?.structuredContent === undefined,
     JSON.stringify(shotCall?.result?.structuredContent ?? null).slice(0, 80));
+
+  // ── Ссылки со страницы ────────────────────────────────────────────────────
+  //
+  // ⚠️ Пара к пакетному чтению: агент видит оглавление раздела ЗА ЛОГИНОМ, выбирает нужное и
+  // читает выбранное одним вызовом. Его собственный fetch туда не попадёт вовсе.
+  await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(ctx.echo.url('/links'))})`);
+  await wait(2000);
+  const links = await c.send('tools/call', { name: 'page_links', arguments: {} });
+  const linked = JSON.parse(textOf(links) || '{}');
+  check('ссылки со страницы отдаются', Array.isArray(linked.links) && linked.links.length > 0,
+    textOf(links).slice(0, 200));
+  check('у каждой есть адрес',
+    (linked.links ?? []).every((l) => typeof l.url === 'string' && l.url.startsWith('http')),
+    JSON.stringify(linked.links ?? []).slice(0, 200));
+  // ⚠️ Ссылка на саму себя не отдаётся: страница ссылается на свои же якоря десятками, и агент
+  // пошёл бы читать то, что уже читает.
+  check('ссылки на саму страницу нет',
+    (linked.links ?? []).every((l) => l.url.split('#')[0] !== String(linked.url).split('#')[0]),
+    JSON.stringify(linked.links ?? []).slice(0, 200));
 
   // ── Пакетное чтение и кеш ─────────────────────────────────────────────────
   //

@@ -3,8 +3,8 @@ import { contextForWindow, mainContext } from '../WindowRegistry';
 import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
 import {
-  batchTextLimit, clampHistoryLimit, clampPageText, readUrlTargets, safeOpenUrl, visibleTabs,
-  MCP_SHOT_QUALITY, MCP_SHOT_WIDTH,
+  batchTextLimit, clampHistoryLimit, clampPageText, readUrlTargets, safeOpenUrl, tidyLinks,
+  visibleTabs, MCP_SHOT_QUALITY, MCP_SHOT_WIDTH, type McpLink,
 } from '../../shared/mcpPolicy';
 import type { HistoryManager } from '../HistoryManager';
 
@@ -102,6 +102,9 @@ export async function activePageText(): Promise<McpPageText> {
   return { ok: true, title: tab.title, url: tab.url, text: clampPageText(extracted.text) };
 }
 
+/** Пауза перед второй попыткой снимка: столько занимает первая компоновка кадра. */
+const EMPTY_FRAME_RETRY_MS = 400;
+
 export interface McpShot {
   ok: boolean;
   error?: string;
@@ -145,7 +148,17 @@ export async function screenshotActiveTab(): Promise<McpShot> {
   try {
     // ⚠️ capturePage ждёт следующего скомпонованного кадра и на загруженной машине занимает
     // заметное время — урок оплачен в ScreenshotManager.ts.
-    const shot = await wc.capturePage();
+    //
+    // ⚠️ ОДНА ПОВТОРНАЯ ПОПЫТКА, и это не перестраховка: у страницы, открытой секунду назад,
+    // первый кадр приходит пустым — живой драйвер поймал это плавающим провалом. Агент просит
+    // снимок ровно тогда, когда вкладку только открыли, и «пустой кадр» он прочитает как
+    // «страница пустая» и уверенно соврёт человеку.
+    let shot = await wc.capturePage();
+    if (shot.isEmpty()) {
+      await new Promise((r) => setTimeout(r, EMPTY_FRAME_RETRY_MS));
+      if (wc.isDestroyed()) return { ok: false, error: 'The tab died while taking the screenshot.' };
+      shot = await wc.capturePage();
+    }
     if (shot.isEmpty()) return { ok: false, error: 'The page produced an empty frame (still rendering?).' };
     const size = shot.getSize();
     // Только ширина — высоту NativeImage считает сам, по пропорции кадра. Кадр уже, чем предел,
@@ -163,6 +176,66 @@ export async function screenshotActiveTab(): Promise<McpShot> {
     };
   } catch {
     return { ok: false, error: 'The tab died while taking the screenshot.' };
+  }
+}
+
+/**
+ * Скрипт сбора ссылок.
+ *
+ * ⚠️ Прост до предела намеренно: он исполняется в ЧУЖОМ документе, на любом сайте мира, и падать
+ * ему нельзя — упавший скрипт вернёт агенту пустоту, которую тот прочитает как «ссылок нет».
+ * Разбор, отсев и потолок живут в политике (tidyLinks), где их видно и где они проверяются без
+ * браузера. Здесь только `href` (уже абсолютный — так его отдаёт DOM) и видимый текст.
+ */
+const LINKS_SCRIPT = `(() => {
+  try {
+    const out = [];
+    for (const a of document.querySelectorAll('a[href]')) {
+      out.push({ url: a.href, text: (a.innerText || a.textContent || '').slice(0, 300) });
+      if (out.length >= 600) break;
+    }
+    return out;
+  } catch (e) { return []; }
+})()`;
+
+export interface McpLinks {
+  ok: boolean;
+  error?: string;
+  url?: string;
+  title?: string;
+  links?: McpLink[];
+}
+
+/**
+ * Ссылки с активной вкладки.
+ *
+ * ⚠️ Заведено в пару к пакетному чтению: агент видит оглавление раздела за логином, выбирает
+ * нужное и читает выбранное ОДНИМ вызовом. Без этого «обойди сайт» превращается в угадывание
+ * адресов, а его собственный fetch туда не попадёт вовсе — страница за логином.
+ *
+ * ⚠️ Границы те же, что у page_text и снимка: активная вкладка и политика видимости.
+ */
+export async function activePageLinks(): Promise<McpLinks> {
+  const ctx = activeContext();
+  if (!ctx) return { ok: false, error: 'No browser window is open.' };
+
+  const tab = ctx.tabs.snapshot().find((t) => t.isActive);
+  if (!tab) return { ok: false, error: 'No active tab.' };
+  if (visibleTabs([tab]).length === 0) {
+    return { ok: false, error: 'The active tab is private or an internal browser page; it is not exposed.' };
+  }
+
+  const wc = ctx.tabs.getActiveWebContents();
+  if (!wc) return { ok: false, error: 'The active tab has no live page yet (still loading or asleep).' };
+
+  try {
+    // true — исполнить как жест пользователя: часть страниц иначе не отдаёт DOM целиком.
+    const raw: unknown = await wc.executeJavaScript(LINKS_SCRIPT, true);
+    const links = tidyLinks(raw, tab.url);
+    if (links.length === 0) return { ok: false, error: 'No links found on this page.' };
+    return { ok: true, url: tab.url, title: tab.title, links };
+  } catch {
+    return { ok: false, error: 'Could not read links from this page.' };
   }
 }
 

@@ -152,6 +152,19 @@ fetch('/echo').then(r=>r.json()).then(j=>{document.getElementById('out').textCon
       json({ ip, ua, url: raw, method: req.method, via: 'loopback-echo' });
       return;
     }
+    // Страница со ссылками — для проверки page_links (mcp-drive). ⚠️ Нарочно с мусором: якорь на
+    // саму себя и javascript: обязаны отсеяться, иначе агент пойдёт читать страницу, которую и
+    // так читает, или получит адрес, по которому идти некуда.
+    if (pathname === '/links') {
+      html(`<!doctype html><meta charset="utf-8"><title>oblako-links</title>
+<a href="/a">Первая глава</a>
+<a href="/b">Вторая глава</a>
+<a href="/links">Эта же страница</a>
+<a href="/links#top">Её же якорь</a>
+<a href="javascript:void(0)">Меню</a>
+<a href="mailto:a@b.ru">Написать</a>`);
+      return;
+    }
     if (pathname === '/show-cookie') {
       json({ cookie });
       return;

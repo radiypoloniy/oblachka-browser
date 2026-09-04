@@ -10,7 +10,8 @@ import {
   MCP_CONFIRM_TTL_MS,
   annotationsFor, approvalFits, clampHistoryLimit, clampPageText, clientKey, clientLabel,
   batchTextLimit, canonicalToolName, canRemember, confirmSubject, confirmTitle, decide,
-  defaultStance, eraOf, findTool, isClosedName, mustAsk, readUrlTargets, MCP_BATCH_MAX,
+  defaultStance, eraOf, findTool, isClosedName, mustAsk, readUrlTargets, tidyLinks,
+  MCP_BATCH_MAX, MCP_LINKS_MAX,
   pickVersion, safeOpenUrl, stanceFor, visibleTabs,
 } from '../shared/mcpPolicy.ts';
 
@@ -27,7 +28,7 @@ const ALL = { connected: true, stances: {} };
 console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
 check('состав каталога', MCP_TOOLS.map((t) => t.name),
-  ['tabs_list', 'page_text', 'page_screenshot', 'history_search', 'page_read_url',
+  ['tabs_list', 'page_text', 'page_screenshot', 'page_links', 'history_search', 'page_read_url',
     'tabs_open', 'tabs_activate', 'tabs_close']);
 // ⚠️ Снимок — ЧТЕНИЕ, и по умолчанию идёт молча, как page_text: он показывает ровно ту страницу,
 // которую человек и так видит на экране. Отдельного вопроса это не стоит, а вот отдать снимок
@@ -66,6 +67,36 @@ check('закрытая категория ловит подчёркивание
 check('и точку', isClosedName('passwords.list'), true);
 check('и составной префикс в обоих видах',
   [isClosedName('downloads_file'), isClosedName('downloads.file')], [true, true]);
+
+// ── Ссылки со страницы ──────────────────────────────────────────────────────────────────────
+//
+// ⚠️ Отсев живёт ЗДЕСЬ, а не в скрипте, который бегает по чужому DOM: тот исполняется на любом
+// сайте мира и обязан быть простым до предела, иначе упадёт и вернёт агенту пустоту — а тот
+// прочитает её как «ссылок на странице нет».
+const here = 'https://site.ru/article';
+check('ссылка на саму себя выброшена',
+  tidyLinks([{ url: 'https://site.ru/article', text: 'сюда' }], here), []);
+check('и её же якорь на этой странице',
+  tidyLinks([{ url: 'https://site.ru/article#comments', text: 'к комментариям' }], here), []);
+check('чужая схема не проходит',
+  tidyLinks([{ url: 'javascript:void(0)', text: 'меню' }, { url: 'mailto:a@b.ru', text: 'почта' }], here), []);
+check('обычная ссылка проходит с текстом',
+  tidyLinks([{ url: 'https://site.ru/next', text: '  Следующая\n глава ' }], here),
+  [{ url: 'https://site.ru/next', text: 'Следующая глава' }]);
+check('дубликаты схлопываются',
+  tidyLinks([{ url: 'https://a.ru/x', text: 'раз' }, { url: 'https://a.ru/x#top', text: 'два' }], here).length, 1);
+check('ссылка без текста остаётся — адрес важнее подписи',
+  tidyLinks([{ url: 'https://a.ru/x', text: '' }], here), [{ url: 'https://a.ru/x', text: '' }]);
+check('мусор в списке пропускается поштучно',
+  tidyLinks(['строка', null, 7, { url: 'https://a.ru/x' }], here).length, 1);
+check('не массив — пустой список', tidyLinks('ссылки', here), []);
+// ⚠️ Потолок нужен: на ленте новостей ссылок под тысячу, и список целиком — это тысячи токенов
+// ради пары нужных строк.
+check('список обрезан по потолку',
+  tidyLinks(Array.from({ length: MCP_LINKS_MAX + 30 }, (_, i) => ({ url: `https://a.ru/${i}`, text: 'x' })), here).length,
+  MCP_LINKS_MAX);
+check('ссылки — чтение', findTool('page_links').mode, 'read');
+check('и не спрашивают', defaultStance(findTool('page_links')), 'allow');
 
 // ── Пакетное чтение: адреса и бюджет ответа ─────────────────────────────────────────────────
 //

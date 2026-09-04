@@ -4,7 +4,8 @@ import {
   annotationsFor, canonicalToolName, clientKey, clientLabel, decide, mustAsk, pickVersion,
 } from '../../shared/mcpPolicy';
 import {
-  activateTab, activePageText, closeTab, listTabs, openTab, readUrl, screenshotActiveTab,
+  activateTab, activePageLinks, activePageText, closeTab, listTabs, openTab, readUrl,
+  screenshotActiveTab,
   searchHistory, type McpShot,
 } from './McpTools';
 import { askToConnect, isApproved, stancesFor, touchClient } from './McpClients';
@@ -326,6 +327,11 @@ async function run(name: string, args: Record<string, unknown>, deps: McpDeps): 
       const shot = await screenshotActiveTab();
       if (!shot.ok) throw new Error(shot.error ?? 'unavailable');
       return shot;
+    }
+    case 'page_links': {
+      const found = await activePageLinks();
+      if (!found.ok) throw new Error(found.error ?? 'unavailable');
+      return { url: found.url, title: found.title, links: found.links, count: found.links?.length ?? 0 };
     }
     case 'history_search': {
       const query = typeof args.query === 'string' ? args.query : '';
