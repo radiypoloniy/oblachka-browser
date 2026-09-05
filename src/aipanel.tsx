@@ -9,14 +9,15 @@
 // целиком при каждом onContext (переключили вкладку → другая лента, не дописывание к старой).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Sparkles, X, LayoutGrid, Plus } from 'lucide-react';
+import { Sparkles, LayoutGrid, Plus } from 'lucide-react';
 import './styles/global.css';
 import { AiActivityPill } from './aipanel/AiActivityPill';
 import { Composer } from './aipanel/parts/Composer';
-import { AppsMode, loadWallpaper, saveWallpaper, wallpaperBackground } from './components/aiApps';
-import { subscribeMeshes } from './newtab/gradients';
-import { SHELL_MARGIN } from '../shared/layout';
+import { AppsMode, wallpaperBackground } from './components/aiApps';
 import { installOverlayReveal } from './overlayReveal';
+import { PanelShell, PanelCloseButton } from './aipanel/parts/PanelShell';
+import { useEscapeClose, useWallpaper } from './aipanel/usePanelShell';
+import { AppsPanel } from './aipanel/AppsPanel';
 import { useAiChat } from './aipanel/useAiChat';
 import { ActionsRow } from './aipanel/parts/ActionsRow'
 import { MessageList } from './aipanel/parts/MessageList'
@@ -31,20 +32,6 @@ import './aipanel/contract';
  * работают на любой странице. Пятно цвета осталось только здесь — на девяти карточках оно было
  * не различением, а витриной.
  */
-
-// Воздух вокруг карточки — bounds самой WebContentsView его не выделяют (см.
-// AiPanelManager.ts::computeBounds — flush), это чистый CSS-padding внутри вью, и заодно зона
-// под CSS box-shadow — WebContentsView обрезает всё, что рисуется за границей.
-//
-// Все 4 стороны сведены к SHELL_MARGIN не для единообразия ради единообразия, а из geometry:
-// AI-view занимает ровно диапазон [TOOLBAR_HEIGHT..низ окна] (computeBounds), и этот же диапазон
-// по высоте занимает aiPanelContainerRef в App.tsx (flex-строка сразу под тулбаром высотой
-// TOOLBAR_HEIGHT, без своего margin) — тот самый ряд, где живёт contentRef/split-остров.
-// Единственное, что внутри этого совпадающего диапазона отступает верх/низ contentRef от его
-// границ — это marginTop/marginBottom: var(--gutter-shell) на самом contentRef (App.tsx). Чтобы
-// верх/низ AI-карточки легли на одну линию с верхом/низом split-острова, паддинг карточки должен
-// быть НЕ произвольным (было 14/26 с оптической подгонкой под старый попап-дизайн), а тем же
-// SHELL_MARGIN — старые 14/26 расходились со split-островом на +2px сверху и +14px снизу.
 
 // Кнопки-подсказки над полем ввода (как у Яндекса) — Коммит 1 (реестр скиллов): prompt-кнопки
 // (Объяснить/Саммари, позже пользовательские) больше не хардкод здесь, а приходят из main
@@ -90,31 +77,9 @@ function AiPanel() {
     setMode('apps')
     setRequestedApp(appId)
   }), [])
-  // Обои «Приложений» — стейт здесь, а не в AppsMode: обоями красится ВЕСЬ остров панели
-  // (включая фон за шапкой, см. стиль острова ниже), не только область под сеткой.
-  const [wallpaper, setWallpaper] = useState<string>(loadWallpaper)
-  // rev — форс-перерисовка острова, когда id НЕ меняется, а картинка под ним — да: повторная
-  // загрузка своего фото при уже выбранном 'custom' (setState тем же 'custom' React бы съел,
-  // и wallpaperBackground не перечитал бы обновлённый кэш).
-  const [, setWallpaperRev] = useState(0)
-  const selectWallpaper = (id: string) => {
-    setWallpaper(id)
-    setWallpaperRev((r) => r + 1)
-    saveWallpaper(id)
-  }
-  useEffect(() => subscribeMeshes(() => setWallpaperRev((r) => r + 1)), [])
-  useEffect(() => {
-    const el = document.documentElement
-    const obs = new MutationObserver(() => setWallpaperRev((r) => r + 1))
-    obs.observe(el, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => obs.disconnect()
-  }, [])
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') window.aiPanel.close(); };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+  // Обои острова и закрытие по Escape — общее с панелью лёгкого окна (см. usePanelShell.ts).
+  const { wallpaper, selectWallpaper } = useWallpaper()
+  useEscapeClose()
 
   // Смена favicon (переключение вкладки/навигация) — сбрасываем прошлую ошибку загрузки,
   // иначе новая иконка не покажется, если старая когда-то не загрузилась.
@@ -212,38 +177,7 @@ function AiPanel() {
   )
 
   return (
-    <div className="ai-panel-root" style={{
-      // Верх/низ = SHELL_MARGIN — совпадает с верхом/низом split-острова (см. комментарий выше).
-      paddingTop: SHELL_MARGIN,
-      paddingBottom: SHELL_MARGIN,
-      // Слева — 0: зазор до split-контента теперь целиком у DOM-хэндла в App.tsx (ISLAND_GAP),
-      // карточка вплотную к левому краю своей вью. Справа — SHELL_MARGIN: тот же отступ, что у
-      // сайдбара от края окна (симметрия «остров — край окна»).
-      paddingLeft: 0,
-      paddingRight: SHELL_MARGIN,
-      boxSizing: 'border-box', width: '100%', height: '100vh',
-    }}>
-      <div style={{
-        width: '100%', height: '100%', boxSizing: 'border-box',
-        display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
-        backgroundColor: 'var(--surface-solid)',
-        // Режим «Приложения»: весь остров целиком заливается обоями (фикс-холст с кропом при
-        // ресайзе — см. wallpaperBackground), шапка с переключателем просто парит поверх.
-        ...(mode === 'apps' ? wallpaperBackground(wallpaper) : null),
-        // var(--radius-island) — заметно круглее var(--radius-card): остров, а не карточка.
-        borderRadius: 'var(--radius-island)',
-        // НЕ var(--shadow-overlay) — тот рассчитан на щедрый симметричный SHADOW_MARGIN=40
-        // (suggestdropdown.tsx/translatepopover.tsx), а тут padding теперь 0/12/12/12
-        // (см. paddingLeft/Top/Right/Bottom выше — заход про зазоры и SHELL_MARGIN ужал его).
-        // shadow-overlay при offset:10/blur:28 требует до 38px запаса на сторону — с 12px
-        // (и 0 слева) она обрезалась WebContentsView в жёсткий угловатый блок вместо мягкой
-        // тени. Своя маленькая асимметричная тень, подогнанная под фактический паддинг:
-        // offsetX:5/blur:5 — 0 слева (карточка и так вплотную к хэндлу, там нечему растворяться)
-        // и 10 справа (запас 2px); offsetY:2/blur:5 — 3 сверху и 7 снизу (запас 9/5px).
-        boxShadow: '5px 2px 5px rgba(40,30,80,0.20)',
-        fontFamily: 'var(--font-sans)',
-      }}>
+    <PanelShell wallpaper={mode === 'apps' ? wallpaperBackground(wallpaper) : null}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: 'var(--pad-island)',
@@ -252,18 +186,7 @@ function AiPanel() {
         }}>
           <ModeToggle mode={mode} onChange={setMode} />
           <div style={{ flex: 1 }} />
-          <button
-            onClick={() => window.aiPanel.close()}
-            title="Закрыть (Esc)"
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 30, height: 30, flexShrink: 0,
-              background: 'var(--surface-sunken)', border: 'none', borderRadius: '50%',
-              color: 'var(--text-muted)', cursor: 'pointer', padding: 0,
-            }}
-          >
-            <X size={15} strokeWidth={2} />
-          </button>
+          <PanelCloseButton />
         </div>
 
         {/* ⚠️ Полосой под шапкой, а не пилюлей В шапке: панель узкая, а рядом с переключателем
@@ -378,8 +301,7 @@ function AiPanel() {
             onRequestHandled={() => setRequestedApp(null)}
           />
         </div>
-      </div>
-    </div>
+    </PanelShell>
   );
 }
 
@@ -510,8 +432,18 @@ function ModeButton({ active, onClick, icon, label, refCb }: {
 
 installOverlayReveal();
 
+/**
+ * Какая панель тут живёт, решает MAIN, а не renderer: документ лёгкого окна грузится с ?kind=apps
+ * (см. AiPanelManager.ensurePanelView).
+ *
+ * ⚠️ Ветка стоит НАД деревом, а не внутри AiPanel: в лёгком окне чат не должен монтироваться
+ * вовсе. Иначе он всё равно подписался бы на свои каналы и грел бы модель по фокусу в поле
+ * ввода — ради интерфейса, которого там не видно.
+ */
+const APPS_ONLY = new URLSearchParams(window.location.search).get('kind') === 'apps';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AiPanel />
+    {APPS_ONLY ? <AppsPanel /> : <AiPanel />}
   </React.StrictMode>,
 );

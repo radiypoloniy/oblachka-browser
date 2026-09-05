@@ -19,11 +19,17 @@ export function useAiPanel() {
   const [aiPanelWidth, setAiPanelWidthState] = useState(360);
   const [isAiPanelDragging, setIsAiPanelDragging] = useState(false);
 
-  // Персистентная ширина — читаем один раз при маунте (как hubMode/searchEngine в Settings.tsx),
-  // дальше живёт в локальном стейте и обновляется во время драга.
+  // Персистентная ширина — читаем при маунте (как hubMode/searchEngine в Settings.tsx), дальше
+  // живёт в локальном стейте и обновляется во время драга.
+  //
+  // ⚠️ И ПЕРЕЧИТЫВАЕМ НА КАЖДОЕ ОТКРЫТИЕ. Ширина одна на приложение, а окон несколько: потянув
+  // панель в одном окне, человек меняет её и для другого — а то, прочитав значение при своём
+  // запуске, зарезервировало бы под панель прежнюю полосу и разъехалось бы с ней на экране.
+  // Открытие — единственный момент, когда это вообще видно, и лишнего канала он не требует.
   useEffect(() => {
+    if (!aiPanelOpen) return;
     void window.oblako.getAiPanelWidth().then(setAiPanelWidthState);
-  }, []);
+  }, [aiPanelOpen]);
 
   useEffect(() => {
     const unsub = window.oblako.onAiPanelStateChanged(setAiPanelOpen);

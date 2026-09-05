@@ -19,8 +19,19 @@ import { closeWindowView } from '../viewTeardown'
 import { contextForWindow, mainContext } from '../WindowRegistry'
 import type { TabManager } from '../TabManager'
 
+/**
+ * Вид панели у окна.
+ *
+ * ⚠️ Решает РОЛЬ ОКНА, а не человек: 'full' — панель с чатом и приложениями, 'apps' — только
+ * домашний экран приложений. В лёгком окне беседы быть не может по устройству: она привязана к
+ * вкладкам главного окна (см. AiPanelManager.onTabsSynced), а извлечение страницы и модель
+ * обслуживают его же. Приложения при этом ни от чего этого не зависят — они и едут.
+ */
+export type PanelKind = 'full' | 'apps'
+
 export interface PanelInstance {
   win: BrowserWindow
+  kind: PanelKind
   /** null — вью ещё не создана: панель ни разу не открывали и прогрев до неё не доехал. */
   view: WebContentsView | null
   /** Показана в окне прямо сейчас (то есть добавлена в contentView). */
@@ -35,7 +46,11 @@ const panels = new Map<number, PanelInstance>()
 export function panelFor(win: BrowserWindow): PanelInstance {
   const existing = panels.get(win.id)
   if (existing) return existing
-  const created: PanelInstance = { win, view: null, open: false, resizeBound: false }
+  const created: PanelInstance = {
+    win,
+    kind: contextForWindow(win)?.role === 'light' ? 'apps' : 'full',
+    view: null, open: false, resizeBound: false,
+  }
   panels.set(win.id, created)
   // ⚠️ Вью закрываем сами: окно не уносит с собой дочерние WebContentsView, и панель закрытого
   // окна осталась бы жить отдельным процессом рендерера (замер и разбор — viewTeardown.ts).

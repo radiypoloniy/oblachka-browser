@@ -737,7 +737,11 @@ function ensurePanelView(st: PanelInstance): WebContentsView {
   // увидел бы пустую панель и мог попробовать снова). Теперь ensurePanelView зовётся ЕЩЁ и из
   // фонового прогрева (prewarmPanel, без пользователя на экране) — там сбой обязан хотя бы
   // залогироваться, иначе первый клик по AI тихо откатится к прежнему ленивому пути без объяснения.
-  view.webContents.loadURL('oblako-chrome://localhost/aipanel.html')
+  // ⚠️ Документ ОДИН на оба вида, разводит их параметр адреса: renderer по нему решает, собирать
+  // ли дерево с чатом (см. src/aipanel.tsx::APPS_ONLY). Второй html-вход и второй бандл были бы
+  // второй копией одного и того же острова — расходиться они начали бы на первой же правке.
+  const url = 'oblako-chrome://localhost/aipanel.html' + (st.kind === 'apps' ? '?kind=apps' : '')
+  view.webContents.loadURL(url)
     .catch((e) => console.error('[ai-panel] loadURL упал:', e))
   st.view = view
   return view

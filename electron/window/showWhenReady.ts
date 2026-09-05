@@ -91,6 +91,14 @@ export function showWhenReady({
       // сама не блокирует и не бросает наружу — ensureLoaded() внутри дедуплицирует конкурентные
       // вызовы (см. её же комментарий), так что ранний клик пользователя по AI-функции просто
       // дождётся ЭТОЙ ЖЕ загрузки, а не запустит вторую.
+      // Прогрев AI-панели — своя, более ранняя задержка (см. AI_PANEL_PREWARM_DELAY_MS): лёгкий
+      // прогрев (не модель), staggered отдельно от прогрева Qwen ниже, чтобы не бить оба прогрева
+      // в одну точку старта.
+      // ⚠️ ДО отсечки isMain: панель своя у КАЖДОГО окна (см. aipanel/instances.ts), в лёгком она
+      // показывает домашний экран приложений. Без прогрева первый клик там строил бы вью с нуля.
+      setTimeout(() => {
+        if (!thisWin.isDestroyed()) prewarmPanel(thisWin);
+      }, AI_PANEL_PREWARM_DELAY_MS);
       // Прогревы — про приложение, а не про окно: второй показ не должен запускать их заново.
       if (!isMain) return;
       setTimeout(() => {
@@ -116,12 +124,6 @@ export function showWhenReady({
         // (ensureActiveEngineWarm в TranslationEngineRegistry.ts).
         probeBergamot();
       }, TRANSLATION_WARMUP_DELAY_MS);
-      // Прогрев AI-панели — своя, более ранняя задержка (см. AI_PANEL_PREWARM_DELAY_MS): лёгкий
-      // прогрев (не модель), staggered отдельно от прогрева Qwen выше, чтобы не
-      // бить оба прогрева в одну точку старта.
-      setTimeout(() => {
-        if (!thisWin.isDestroyed()) prewarmPanel(thisWin);
-      }, AI_PANEL_PREWARM_DELAY_MS);
       // Поповеры — общие на приложение (одна вью на все окна), поэтому под тем же `isMain`, что
       // и прогревы выше: второе окно не должно строить их заново.
       setTimeout(() => {
