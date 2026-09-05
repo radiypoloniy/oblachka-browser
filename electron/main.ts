@@ -70,7 +70,7 @@ import { startModelIdleWatcher, stopModelIdleWatcher } from './ModelIdleWatcher'
 import { firstUrlFromArgv } from './startUrlArgv';
 import { isExternalAppUrl, openExternalWithConsent, setExternalConsentAsk } from './ExternalProtocol';
 import { installCertificateTrust } from './CertificateTrust';
-import { setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
+import { setSettingsManager as setAiPanelSettingsManager } from './AiPanelManager';
 import { setActiveEngineId, registerEngine, setCacheManager } from './TranslationEngineRegistry';
 import { BergamotTranslationEngine } from './BergamotTranslationEngine';
 import { TranslationCacheManager } from './TranslationCacheManager';
@@ -874,9 +874,9 @@ function createWindow(role: WindowRole = 'main') {
     },
   });
   win.contentView.addChildView(chromeView);
-  // AI-панель пока одна на приложение — её пуши состояния дока идут в главное окно (заход 3:
-  // не в win.webContents, а в слой хрома).
-  if (isMain) setAiPanelChromeView(chromeView);
+  // ⚠️ Слой хрома AI-панели здесь БОЛЬШЕ НЕ РЕГИСТРИРУЕТСЯ: панель своя у каждого окна и берёт
+  // его у реестра окон сама (см. AiPanelManager.chromeOf). Единственная ссылка означала бы
+  // «о закрытии панели узнаёт всегда главное окно», хотя резерв ширины держит то, где её открыли.
   // Дефолтный фон WebContentsView — белый, и он перекрывает backgroundColor окна на всю площадь.
   // Красим под --app-bg, чтобы кадры до первой отрисовки React были цветом интерфейса.
   chromeView.setBackgroundColor('#F2F2F7');

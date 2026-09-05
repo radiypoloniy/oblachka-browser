@@ -55,7 +55,7 @@ export interface WindowShell {
 export function createWindowTabManager(
   shell: WindowShell, deps: WindowDeps,
 ): { tabs: TabManager; forget: () => void } {
-  const { win, chromeView, sess } = shell;
+  const { win, chromeView, isMain, sess } = shell;
   const {
     PRODUCT_DETECT_DELAY_MS, downloads, hubChat, incognitoSession, isShuttingDown,
     permissions, pushProductState, refreshProductForWebContents, searchTargets, startedAt,
@@ -86,7 +86,11 @@ export function createWindowTabManager(
       // Тот же снапшот — источник правды для привязки чата AI-панели к вкладке (переключение/
       // закрытие/смена URL), без новых колбэков в TabManager.ts (см. AiPanelManager.ts). Не во
       // время выхода — AI-панель и так исчезает вместе с окном, синкать её незачем.
-      if (!isShuttingDown()) onTabsSynced(tabsSnapshot);
+      // ⚠️ ТОЛЬКО от главного окна: беседа одна на приложение и привязана к его вкладкам.
+      // Раньше сюда попадал снапшот ЛЮБОГО окна, и переключение вкладки в лёгком окне молча
+      // подменяло активную вкладку чата — панель показывала беседу про страницу, которой
+      // перед ней нет.
+      if (isMain && !isShuttingDown()) onTabsSynced(tabsSnapshot);
       // Тот же снапшот — привязка полностраничного перевода к активной вкладке (сброс состояния
       // на навигацию/закрытие, см. PageTranslateManager.ts::onTabsSynced), тот же принцип.
       if (!isShuttingDown()) onPageTranslateTabsSynced(tabsSnapshot);

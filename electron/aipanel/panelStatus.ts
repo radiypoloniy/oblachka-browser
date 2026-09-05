@@ -5,9 +5,13 @@
 // Здесь же видно, что это ОДНА вещь — снимок общего состояния приложения, который панель не может
 // получить сама: её мост знает только про свои каналы, а источники живут в разных хранилищах.
 //
-// ⚠️ Панель приходит ГЕТТЕРОМ, а не ссылкой. WebContentsView пересоздаётся (закрыли панель —
+// ⚠️ Панели приходят ГЕТТЕРОМ, а не ссылкой. WebContentsView пересоздаётся (закрыли панель —
 // прежний вид уничтожен), и захваченная при загрузке модуля ссылка указывала бы на мёртвый вид:
 // send() в него молча ничего не делает, а снаружи это выглядит как «настройки не доезжают».
+//
+// ⚠️ Адресатов НЕСКОЛЬКО: панель своя у каждого окна (см. aipanel/instances.ts), а всё, что
+// рассылается отсюда, — состояние ПРИЛОЖЕНИЯ (ключ, поиск, скиллы, подключения). Окно, не
+// получившее пуш, показывало бы устаревшее — та же причина, что у broadcastToChrome.
 //
 // ⚠️ ПОДПИСКИ ЗДЕСЬ, А НЕ В ВЫЗЫВАЮЩЕМ. Модуль импортируется один раз за жизнь процесса, поэтому
 // регистрация на верхнем уровне безопасна и, главное, не забывается: добавляя пуш, ты в одном
@@ -21,16 +25,16 @@ import * as KeyStore from '../ai/KeyStore'
 import { connectionsState } from '../ai/connections'
 import { IPC } from '../../shared/ipc'
 
-let getPanel: () => WebContentsView | null = () => null
+let getPanels: () => WebContentsView[] = () => []
 
-export function setPanelSource(get: () => WebContentsView | null): void {
-  getPanel = get
+export function setPanelViews(get: () => WebContentsView[]): void {
+  getPanels = get
 }
 
 function send(channel: string, payload: unknown): void {
-  const view = getPanel()
-  if (!view || view.webContents.isDestroyed()) return
-  view.webContents.send(channel, payload)
+  for (const view of getPanels()) {
+    if (!view.webContents.isDestroyed()) view.webContents.send(channel, payload)
+  }
 }
 
 /** Ключ Gemini: по нему панель показывает или прячет кнопку фактчека. Сам ключ сюда не попадает. */

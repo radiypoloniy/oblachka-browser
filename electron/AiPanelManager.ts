@@ -14,13 +14,19 @@ import { TRANSCRIPT_SCRIPT, composeTranscript, isVideoPage } from './videoTransc
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
 import { runFactCheck } from './GeminiFactCheck'
 import { searxngSearch, buildGroundingPrompt, appendSearxngSources } from './SearxngSearch'
-import { setPanelSource, sendPanelStatuses } from './aipanel/panelStatus'
+import { setPanelViews, sendPanelStatuses } from './aipanel/panelStatus'
+import {
+  anyPanelOpen, chatPanel, chromeOf, existingPanel, panelAlive, panelBySender, panelFor,
+  panelViews, tabsOf, type PanelInstance,
+} from './aipanel/instances'
+import { registerWebAppChannels } from './aipanel/webAppBridge'
 import { getCurrencyRates } from './CurrencyRates'
 import { getWeather } from './WeatherService'
 import * as webApps from './WebAppManager'
 import { IPC, type TabState } from '../shared/ipc'
 import type { AiFileMeta } from '../shared/aiAttachments'
 import type { TabManager } from './TabManager'
+import { contextFromSender } from './WindowRegistry'
 import type { SettingsManager } from './SettingsManager'
 
 // html→markdown ТОЛЬКО для ветки чата (см. extractPageText/buildFirstTurnPrompt ниже) —
@@ -53,10 +59,9 @@ function clampPanelWidth(w: number): number {
 // перекрывала кнопку, которой её открыли).
 const TOOLBAR_HEIGHT = 56
 
-let panelView: WebContentsView | null = null
-let attachedWin: BrowserWindow | null = null
-let resizeBoundWin: BrowserWindow | null = null
-let isOpen = false
+// ⚠️ Состояние панели — ПООКОННОЕ (см. aipanel/instances.ts): вью, флаг показа и привязка к
+// resize принадлежат конкретному окну. Здесь остаётся только общее на приложение — однократная
+// регистрация обработчиков IPC.
 let ipcRegistered = false
 
 // Аналог TabManager-ref ниже — тем же путём (main.ts::setSettingsManager после инстанцирования)
@@ -80,9 +85,10 @@ export function setTabManager(tm: TabManager): void {
   // Фокус ушёл в сайт веб-слота — сообщаем панели, какой слот стал активным. Панель сама этого не
   // видит: сайт лежит поверх неё отдельной вью и её событий не порождает (см. WebAppManager).
   webApps.setOnWebAppFocus((appId) => {
-    if (panelView && !panelView.webContents.isDestroyed()) {
-      panelView.webContents.send('ai-panel:webapp-focused', appId)
-    }
+    // ⚠️ Адресата вычислить пока не из чего: веб-слоты общие на приложение (WebAppManager.ts
+    // держит их одним списком по appId), поэтому сообщаем всем живым панелям — фокус в слоте
+    // касается той, что его показывает.
+    for (const view of panelViews()) view.webContents.send('ai-panel:webapp-focused', appId)
   })
 }
 
@@ -93,10 +99,7 @@ export function setTabManager(tm: TabManager): void {
 // обслуживаемый дефолтный webContents окна — chrome его никогда не получит. Тот же приём, что
 // main.ts уже использует для ADBLOCK_STATE_CHANGED/DOWNLOADS_CHANGED/SYNC_CHANGED и т.п.
 // (chromeView?.webContents.send(...), не win.webContents.send(...)).
-let chromeViewRef: WebContentsView | null = null
-export function setChromeView(view: WebContentsView): void {
-  chromeViewRef = view
-}
+// Кто есть кто (панель окна, её слой хрома, её вкладки) — в aipanel/instances.ts.
 
 // Прогрев модели по намерению поговорить (см. ai-panel:chat-intent ниже). Политику прогрева
 // (режим загрузки, наличие модели, отсрочка) знает main — сюда приходит только готовый колбэк,
@@ -317,16 +320,18 @@ function buildFirstTurnPrompt(pageText: string, pageTitle: string, userText: str
 // Пушит панели (если открыта и загружена) беседу текущей активной вкладки — чипс страницы +
 // накопленные сообщения. Вызывается и при переключении вкладки, и при (пере)открытии панели.
 function sendCurrentContext(): void {
-  if (!panelView || !activeTabId) return
+  const view = chatPanel()?.view
+  if (!view || view.webContents.isDestroyed() || !activeTabId) return
   const ctx = getOrCreateContext(activeTabId, activeTabUrl)
-  panelView.webContents.send('ai-panel:context', {
+  view.webContents.send('ai-panel:context', {
     tabId: activeTabId, url: activeTabUrl, title: activeTabTitle, favicon: activeTabFavicon, messages: ctx.messages,
   })
 }
 
-// Статусы приложения (ключ фактчека, веб-поиск, скиллы, подключения) панель получает из
-// aipanel/panelStatus.ts — там же лежат и подписки на их изменение.
-setPanelSource(() => panelView)
+// Статусы приложения (ключ фактчека, веб-поиск, скиллы, подключения) панели получают из
+// aipanel/panelStatus.ts — там же лежат и подписки на их изменение. Адресаты — ВСЕ живые панели:
+// это состояние приложения, а не окна.
+setPanelViews(panelViews)
 
 // Единственная точка входа из main.ts — вызывается из УЖЕ существующего onChange (тот, что шлёт
 // SYNC_CHANGED в чром), TabManager.ts НЕ трогаем и новых колбэков туда не добавляем. onChange и
@@ -379,9 +384,9 @@ function computeBounds(win: BrowserWindow) {
   }
 }
 
-function layoutPanel(): void {
-  if (!panelView || !attachedWin) return
-  panelView.setBounds(computeBounds(attachedWin))
+function layoutPanel(st: PanelInstance): void {
+  if (!st.view || st.win.isDestroyed()) return
+  st.view.setBounds(computeBounds(st.win))
 }
 
 // Единственное место, где меняется isOpen — гарантирует, что chrome (App.tsx) узнаёт о
@@ -389,19 +394,19 @@ function layoutPanel(): void {
 // тоггл в тулбаре, будущие пути). Раньше isOpen менялся напрямую в двух местах — крестик/Escape
 // не долетали до chrome (свой ad-hoc ai-panel:close, не трогает окно), из-за чего резерв
 // ширины в App.tsx оставался висеть после закрытия панели не через тулбар.
-function setOpenState(open: boolean): void {
-  isOpen = open
-  chromeViewRef?.webContents.send(IPC.AI_PANEL_STATE_CHANGED, open)
+function setOpenState(st: PanelInstance, open: boolean): void {
+  st.open = open
+  chromeOf(st.win)?.send(IPC.AI_PANEL_STATE_CHANGED, open)
 }
 
-function closePanel(win: BrowserWindow): void {
-  webApps.setPanelVisible(win, false) // веб-слоты прячутся вместе с панелью (но живут в памяти)
-  if (panelView) win.contentView.removeChildView(panelView)
-  setOpenState(false)
+function closePanel(st: PanelInstance): void {
+  webApps.setPanelVisible(st.win, false) // веб-слоты прячутся вместе с панелью (но живут в памяти)
+  if (st.view) st.win.contentView.removeChildView(st.view)
+  setOpenState(st, false)
   // Панель забирала фокус при открытии (см. toggleAiPanel) — отдаём его обратно странице, иначе
   // после закрытия им не владеет никто и клавиатура молчит уже на самой странице. Тот же возврат
   // делает FindBar при закрытии.
-  tabManagerRef?.focusActiveView()
+  tabsOf(st.win)?.focusActiveView()
 }
 
 // Живой ресайз — драг разделителя в App.tsx шлёт сюда каждый тик (ad-hoc ai-panel:resize,
@@ -410,7 +415,8 @@ function closePanel(win: BrowserWindow): void {
 // без дебаунса, см. комментарий в SettingsManager.ts).
 export function resizeAiPanel(win: BrowserWindow, widthPx: number): void {
   panelWidth = clampPanelWidth(widthPx)
-  if (panelView && attachedWin === win) panelView.setBounds(computeBounds(win))
+  const st = existingPanel(win)
+  if (st?.open && st.view) st.view.setBounds(computeBounds(win))
   settingsRef?.setAiPanelWidth(panelWidth)
 }
 
@@ -418,14 +424,14 @@ export function resizeAiPanel(win: BrowserWindow, widthPx: number): void {
 // пока человек в диалоге, пауза между вопросами не значит, что диалог кончился, — а выгрузка
 // стоила бы ему тридцати секунд ожидания на следующем сообщении.
 export function isAiPanelOpen(): boolean {
-  return isOpen
+  return anyPanelOpen()
 }
 
 // Read-only геометрия для координации с FindBarManager.ts (чтобы FindBar не центрировался под
 // открытым доком). Сообщает, сколько px справа окна он реально занимает прямо сейчас (0 — если
 // закрыт или для другого окна).
 export function getAiPanelReservedWidth(win: BrowserWindow): number {
-  return (isOpen && attachedWin === win) ? panelWidth : 0
+  return existingPanel(win)?.open ? panelWidth : 0
 }
 
 // Регистрируется один раз, лениво — на первое открытие панели, не на старте.
@@ -434,8 +440,9 @@ function ensureIpcRegistered(): void {
   ipcRegistered = true
   // Крестик в шапке панели — свой маленький канал (как у поповера перевода), не shared/ipc.ts:
   // это внутренняя механика панели, а не контракт хром-обвязки.
-  ipcMain.on('ai-panel:close', () => {
-    if (attachedWin) closePanel(attachedWin)
+  ipcMain.on('ai-panel:close', (event: IpcMainEvent) => {
+    const st = panelBySender(event.sender)
+    if (st) closePanel(st)
   })
 
   // Человек встал в поле ввода чата. ⚠️ Прогрев модели повешен ИМЕННО СЮДА, а не на открытие
@@ -446,11 +453,12 @@ function ensureIpcRegistered(): void {
     onChatIntentCb?.()
   })
 
-  // Драг разделителя дока (chrome, App.tsx) — приложение одно-оконное (см. остальные
-  // module-level синглтоны этого файла), поэтому применяем к attachedWin напрямую, как и
-  // layoutPanel/closePanel выше, без BrowserWindow.fromWebContents.
-  ipcMain.on('ai-panel:resize', (_event: IpcMainEvent, widthPx: number) => {
-    if (attachedWin) resizeAiPanel(attachedWin, widthPx)
+  // ⚠️ Драг разделителя приходит из СЛОЯ ХРОМА (App.tsx), а не из самой панели, — окно ищется
+  // не по panelBySender, а обычным путём реестра. BrowserWindow.fromWebContents тут не годится:
+  // хром — дочерняя вью, для неё Electron возвращает null (см. WindowRegistry.contextFromSender).
+  ipcMain.on('ai-panel:resize', (event: IpcMainEvent, widthPx: number) => {
+    const win = contextFromSender(event.sender)?.win
+    if (win) resizeAiPanel(win, widthPx)
   })
 
   // Чат — та же труба, что у поповера: runChatMessage стримит чанки по мере генерации, затем
@@ -479,14 +487,14 @@ function ensureIpcRegistered(): void {
       void (async () => {
         const search = await searxngSearch(text)
         if (!search.ok) {
-          if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+          if (panelAlive(wc) && activeTabId === tabId) {
             wc.send('ai-panel:chat-result', { ok: false, error: search.error })
           }
           return
         }
         const promptText = buildGroundingPrompt(text, search.results)
         const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
-          if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+          if (panelAlive(wc) && activeTabId === tabId) {
             wc.send('ai-panel:chat-chunk', chunkText)
           }
         })
@@ -494,10 +502,10 @@ function ensureIpcRegistered(): void {
           const withSources = appendSearxngSources(outcome.out, search.results)
           ctx.messages.push({ role: 'assistant', text: withSources, files: outcome.files })
           ctx.history = outcome.history
-          if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+          if (panelAlive(wc) && activeTabId === tabId) {
             wc.send('ai-panel:chat-result', { ...outcome, out: withSources })
           }
-        } else if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+        } else if (panelAlive(wc) && activeTabId === tabId) {
           wc.send('ai-panel:chat-result', outcome)
         }
       })()
@@ -529,7 +537,7 @@ function ensureIpcRegistered(): void {
       }
 
       const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
-        if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+        if (panelAlive(wc) && activeTabId === tabId) {
           wc.send('ai-panel:chat-chunk', chunkText)
         }
       })
@@ -538,7 +546,7 @@ function ensureIpcRegistered(): void {
         ctx.messages.push({ role: 'assistant', text: outcome.out, files: outcome.files })
         ctx.history = outcome.history
       }
-      if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+      if (panelAlive(wc) && activeTabId === tabId) {
         wc.send('ai-panel:chat-result', outcome)
       }
     })()
@@ -592,7 +600,7 @@ function ensureIpcRegistered(): void {
       }
 
       const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
-        if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+        if (panelAlive(wc) && activeTabId === tabId) {
           wc.send('ai-panel:chat-chunk', chunkText)
         }
       })
@@ -601,7 +609,7 @@ function ensureIpcRegistered(): void {
         ctx.messages.push({ role: 'assistant', text: outcome.out, files: outcome.files })
         ctx.history = outcome.history
       }
-      if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+      if (panelAlive(wc) && activeTabId === tabId) {
         wc.send('ai-panel:chat-result', outcome)
       }
     })()
@@ -639,7 +647,7 @@ function ensureIpcRegistered(): void {
       if (outcome.ok) {
         ctx.messages.push({ role: 'assistant', text: outcome.out })
       }
-      if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+      if (panelAlive(wc) && activeTabId === tabId) {
         wc.send('ai-panel:chat-result', outcome)
       }
     })()
@@ -652,8 +660,9 @@ function ensureIpcRegistered(): void {
   // section (опционально) — начальный раздел Settings, см. TabManager.createSpecialTab. Кнопка "+"
   // в ряду действий панели зовёт этот же канал с 'ai'; вызов без аргумента (глобус выше) остаётся
   // как раньше — открывает Settings на дефолтном разделе.
-  ipcMain.on('ai-panel:open-settings', (_event: IpcMainEvent, section?: string) => {
-    tabManagerRef?.createSpecialTab('settings', section)
+  ipcMain.on('ai-panel:open-settings', (event: IpcMainEvent, section?: string) => {
+    const st = panelBySender(event.sender)
+    if (st) tabsOf(st.win)?.createSpecialTab('settings', section)
   })
 
   // Курсы валют для конвертера раздела «Приложения» (aiApps.tsx) — invoke/handle, не пуш:
@@ -670,44 +679,22 @@ function ensureIpcRegistered(): void {
   // Погода для виджета «Приложений» — та же схема, что курсы выше (fetch/кэш в WeatherService.ts).
   ipcMain.handle('ai-panel:weather', (_event, city: unknown) => getWeather(typeof city === 'string' ? city : ''))
 
-  // Веб-приложения (заход 3): чужой сайт в слоте — отдельная WebContentsView (WebAppManager.ts).
-  // Панель шлёт прямоугольник «дырки» В СВОЁМ вьюпорте; в координаты окна он переводится
-  // ЗДЕСЬ — только этот модуль знает ширину дока (panelWidth) и высоту тулбара, WebAppManager
-  // про геометрию панели не знает намеренно.
-  ipcMain.on('ai-panel:webapp-open', (_event: IpcMainEvent, appId: unknown, url: unknown) => {
-    if (attachedWin && typeof appId === 'string' && typeof url === 'string') {
-      webApps.openWebApp(attachedWin, appId, url)
-    }
-  })
-  ipcMain.on('ai-panel:webapp-bounds', (_event: IpcMainEvent, appId: unknown, rect: unknown) => {
-    if (!attachedWin || typeof appId !== 'string') return
-    const r = rect as { x?: unknown; y?: unknown; width?: unknown; height?: unknown } | null
-    if (!r || typeof r.x !== 'number' || typeof r.y !== 'number'
-      || typeof r.width !== 'number' || typeof r.height !== 'number') return
-    const { width } = attachedWin.getContentBounds()
-    webApps.setWebAppBounds(attachedWin, appId, {
-      x: Math.round(width - panelWidth + r.x),
-      y: Math.round(TOOLBAR_HEIGHT + r.y),
-      width: Math.round(r.width),
-      height: Math.round(r.height),
-    })
-  })
-  ipcMain.on('ai-panel:webapp-focus', (_event: IpcMainEvent, appId: unknown) => {
-    if (typeof appId === 'string') webApps.focusWebApp(appId)
-  })
-
-  ipcMain.on('ai-panel:webapp-close', (_event: IpcMainEvent, appId: unknown) => {
-    if (attachedWin && typeof appId === 'string') webApps.closeWebApp(attachedWin, appId)
-  })
+  // Веб-приложения раздела «Приложения» — четыре канала в aipanel/webAppBridge.ts. Отсюда
+  // туда уходит ТОЛЬКО геометрия: угол панели в координатах окна знает этот модуль (ширина дока
+  // и высота тулбара), а сами слоты — WebAppManager.
+  registerWebAppChannels((win) => ({
+    x: win.getContentBounds().width - panelWidth,
+    y: TOOLBAR_HEIGHT,
+  }))
 }
 
 // Создаётся лениво на первый вызов (клик по кнопке AI ЛИБО фоновый прогрев — см. prewarmPanel
 // ниже, main.ts вызывает его заранее после показа окна). Идемпотентна — повторный вызов (в
 // т.ч. из toggleAiPanel на реальном клике после прогрева) просто возвращает уже готовый view.
-function ensurePanelView(): WebContentsView {
-  if (panelView) return panelView
+function ensurePanelView(st: PanelInstance): WebContentsView {
+  if (st.view) return st.view
   ensureIpcRegistered()
-  panelView = new WebContentsView({
+  const view = new WebContentsView({
     webPreferences: {
       preload: path.join(__dirname, 'preload-aipanel.js'),
       contextIsolation: true,
@@ -716,13 +703,13 @@ function ensurePanelView(): WebContentsView {
   })
   // Прозрачный фон вида — страница сама красит себя в токен темы (см. aipanel.tsx), без
   // риска мигнуть белым мимо текущей темы (светлой/тёмной) до применения CSS.
-  panelView.setBackgroundColor('#00000000')
+  view.setBackgroundColor('#00000000')
   // Первый показ беседы активной вкладки — только после did-finish-load: раньше renderer ещё не
   // навесил обработчик onContext, сообщение потерялось бы. Статус ключа — тем же приёмом.
-  panelView.webContents.once('did-finish-load', () => { sendCurrentContext(); sendPanelStatuses() })
+  view.webContents.once('did-finish-load', () => { sendCurrentContext(); sendPanelStatuses() })
 
   // Клик в панель = «мимо поповера тулбара», см. setOnPanelFocus выше.
-  panelView.webContents.on('focus', () => { onPanelFocusCb?.() })
+  view.webContents.on('focus', () => { onPanelFocusCb?.() })
 
   // Ссылки из ответа модели — обычные <a href> (react-markdown их не оборачивает, см. задачу):
   // без перехвата клик навигирует ЭТУ ЖЕ webContents на внешний сайт, затирая aipanel.html —
@@ -731,18 +718,18 @@ function ensurePanelView(): WebContentsView {
   // обычную вкладку Oblako, а не остаться внутри панели. Свою же загрузку (oblako-chrome://...
   // aipanel.html) пропускаем — иначе сломаем первичную загрузку/возможный релоад панели.
   // Отдельно и независимо от TabManager.wirePageEvents/isOAuthPopup (OAuth-поток обычных вкладок
-  // тут не участвует — panelView никогда не проходит через wirePageEvents).
-  panelView.webContents.on('will-navigate', (e, url) => {
+  // тут не участвует — вью панели никогда не проходит через wirePageEvents).
+  view.webContents.on('will-navigate', (e, url) => {
     if (url.startsWith('oblako-chrome://')) return // легитимная (пере)загрузка самой панели
     if (/^https?:\/\//i.test(url)) {
       e.preventDefault()
-      tabManagerRef?.createTab(url)
+      tabsOf(st.win)?.createTab(url)
     }
   })
   // Страховка на случай target=_blank/window.open в тексте ответа (не обычная навигация, а
   // запрос нового окна) — тот же исход: новая вкладка Oblako, Chromium своё окно не создаёт.
-  panelView.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) tabManagerRef?.createTab(url)
+  view.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) tabsOf(st.win)?.createTab(url)
     return { action: 'deny' }
   })
 
@@ -751,9 +738,10 @@ function ensurePanelView(): WebContentsView {
   // увидел бы пустую панель и мог попробовать снова). Теперь ensurePanelView зовётся ЕЩЁ и из
   // фонового прогрева (prewarmPanel, без пользователя на экране) — там сбой обязан хотя бы
   // залогироваться, иначе первый клик по AI тихо откатится к прежнему ленивому пути без объяснения.
-  panelView.webContents.loadURL('oblako-chrome://localhost/aipanel.html')
+  view.webContents.loadURL('oblako-chrome://localhost/aipanel.html')
     .catch((e) => console.error('[ai-panel] loadURL упал:', e))
-  return panelView
+  st.view = view
+  return view
 }
 
 // Фоновый прогрев — вызывается ЗАРАНЕЕ (main.ts, после показа окна, с задержкой), ДО первого
@@ -766,9 +754,9 @@ function ensurePanelView(): WebContentsView {
 // Не бросает наружу — тот же приём, что warmupTranslation в main.ts: сбой прогрева
 // не должен ронять старт браузера, в худшем случае первый клик по AI останется таким же ленивым,
 // как до этого коммита.
-export function prewarmPanel(): void {
+export function prewarmPanel(win: BrowserWindow): void {
   try {
-    ensurePanelView()
+    ensurePanelView(panelFor(win))
   } catch (e) {
     console.error('[ai-panel] прогрев упал:', e)
   }
@@ -779,8 +767,9 @@ export function prewarmPanel(): void {
 // ⚠️ Панель может быть закрыта, только что созданной или уже открытой: во всех трёх случаях
 // сообщение шлём ПОСЛЕ того, как вью существует, иначе первый клик по иконке уходил бы в никуда.
 export function openAiPanelApp(win: BrowserWindow, appId: string): void {
-  if (!isOpen) toggleAiPanel(win)
-  const view = ensurePanelView()
+  const st = panelFor(win)
+  if (!st.open) toggleAiPanel(win)
+  const view = ensurePanelView(st)
   const send = (): void => {
     if (!view.webContents.isDestroyed()) view.webContents.send('ai-panel:open-app', appId)
   }
@@ -789,24 +778,26 @@ export function openAiPanelApp(win: BrowserWindow, appId: string): void {
 }
 
 export function toggleAiPanel(win: BrowserWindow): boolean {
-  attachedWin = win
-  if (resizeBoundWin !== win) {
-    win.on('resize', layoutPanel)
-    resizeBoundWin = win
+  const st = panelFor(win)
+  // ⚠️ Слушатель resize вешается ОДИН раз на окно и двигает панель ИМЕННО ЭТОГО окна: раньше он
+  // переезжал вместе с единственной панелью, и окно, из которого она ушла, продолжало её двигать.
+  if (!st.resizeBound) {
+    win.on('resize', () => layoutPanel(st))
+    st.resizeBound = true
   }
 
-  if (isOpen) {
-    closePanel(win)
+  if (st.open) {
+    closePanel(st)
     return false
   }
 
-  const alreadyLoaded = panelView !== null // false только на самый первый показ панели вообще
-  const view = ensurePanelView()
+  const alreadyLoaded = st.view !== null // false только на самый первый показ панели этого окна
+  const view = ensurePanelView(st)
   view.setBounds(computeBounds(win))
   win.contentView.addChildView(view) // последней → поверх вкладки, а не под ней
   // Веб-слоты — ПОСЛЕ панели: их view должны лечь поверх неё (в дырки), см. WebAppManager.
   webApps.setPanelVisible(win, true)
-  setOpenState(true)
+  setOpenState(st, true)
   // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
   // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.
   if (alreadyLoaded) { sendCurrentContext(); sendPanelStatuses() }

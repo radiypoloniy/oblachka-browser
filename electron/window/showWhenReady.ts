@@ -120,7 +120,7 @@ export function showWhenReady({
       // прогрев (не модель), staggered отдельно от прогрева Qwen выше, чтобы не
       // бить оба прогрева в одну точку старта.
       setTimeout(() => {
-        if (!thisWin.isDestroyed()) prewarmPanel();
+        if (!thisWin.isDestroyed()) prewarmPanel(thisWin);
       }, AI_PANEL_PREWARM_DELAY_MS);
       // Поповеры — общие на приложение (одна вью на все окна), поэтому под тем же `isMain`, что
       // и прогревы выше: второе окно не должно строить их заново.
