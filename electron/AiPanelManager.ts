@@ -79,16 +79,15 @@ export function setSettingsManager(sm: SettingsManager): void {
 let tabManagerRef: TabManager | null = null
 export function setTabManager(tm: TabManager): void {
   tabManagerRef = tm
-  // Форвард в WebAppManager (веб-приложения раздела «Приложения») — чтобы main.ts не пришлось
-  // знать о ещё одном модуле: window.open из веб-слота уходит обычной вкладкой через тот же tm.
-  webApps.setTabManager(tm)
   // Фокус ушёл в сайт веб-слота — сообщаем панели, какой слот стал активным. Панель сама этого не
   // видит: сайт лежит поверх неё отдельной вью и её событий не порождает (см. WebAppManager).
-  webApps.setOnWebAppFocus((appId) => {
-    // ⚠️ Адресата вычислить пока не из чего: веб-слоты общие на приложение (WebAppManager.ts
-    // держит их одним списком по appId), поэтому сообщаем всем живым панелям — фокус в слоте
-    // касается той, что его показывает.
-    for (const view of panelViews()) view.webContents.send('ai-panel:webapp-focused', appId)
+  webApps.setOnWebAppFocus((win, appId) => {
+    // ⚠️ Адресно, панели ТОГО ЖЕ окна: слоты пооконные, и рамку активного слота обязана
+    // нарисовать та панель, в чьей дырке лежит сайт, а не все сразу.
+    const view = existingPanel(win)?.view
+    if (view && !view.webContents.isDestroyed()) {
+      view.webContents.send('ai-panel:webapp-focused', appId)
+    }
   })
 }
 

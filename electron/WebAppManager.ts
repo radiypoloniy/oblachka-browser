@@ -11,9 +11,15 @@
 //
 // Координаты сюда приходят уже АБСОЛЮТНЫЕ (окно) — перевод из вьюпорта панели делает
 // AiPanelManager.ts (только он знает ширину дока и высоту тулбара).
+//
+// ⚠️ Слоты СВОИ У КАЖДОГО ОКНА, как и сама панель (см. aipanel/instances.ts). Список по одному
+// appId на приложение держался ровно до второго окна: WebContentsView — ребёнок конкретного
+// contentView, и «Переводчик», открытый в двух окнах, был бы одной вью, которую окна перетягивают
+// друг у друга — в том, что не выиграло, на месте слота осталась бы дырка в обоях.
 import { WebContentsView } from 'electron'
 import type { BrowserWindow, Rectangle } from 'electron'
-import type { TabManager } from './TabManager'
+import { closeWindowView } from './viewTeardown'
+import { contextForWindow } from './WindowRegistry'
 
 interface WebAppEntry {
   view: WebContentsView
@@ -21,23 +27,40 @@ interface WebAppEntry {
   visible: boolean         // view сейчас добавлена в contentView
 }
 
-const apps = new Map<string, WebAppEntry>()
-// Панель открыта (setPanelVisible) — только тогда view добавляются в окно; при закрытой панели
-// bounds продолжают копиться (renderer панели жив в фоне), но ничего не показывается.
-let panelShown = false
-
-// Тот же путь, что у AiPanelManager: ссылка прокидывается из него (setTabManager там форвардит
-// сюда) — window.open/чужие target=_blank уходят обычной вкладкой Oblako, не новым окном.
-let tabManagerRef: TabManager | null = null
-export function setTabManager(tm: TabManager): void {
-  tabManagerRef = tm
+interface WindowApps {
+  win: BrowserWindow
+  apps: Map<string, WebAppEntry>
+  // Панель открыта (setPanelVisible) — только тогда view добавляются в окно; при закрытой панели
+  // bounds продолжают копиться (renderer панели жив в фоне), но ничего не показывается.
+  panelShown: boolean
 }
+
+const perWindow = new Map<number, WindowApps>()
+
+function stateFor(win: BrowserWindow): WindowApps {
+  const existing = perWindow.get(win.id)
+  if (existing) return existing
+  const created: WindowApps = { win, apps: new Map(), panelShown: false }
+  perWindow.set(win.id, created)
+  // ⚠️ Вью закрываем сами: окно не уносит с собой дочерние WebContentsView, и сайт слота остался
+  // бы жить отдельным процессом после закрытия окна (разбор и замер — viewTeardown.ts).
+  win.once('closed', () => {
+    for (const entry of created.apps.values()) closeWindowView(entry.view)
+    perWindow.delete(win.id)
+  })
+  return created
+}
+
+// window.open и чужие target=_blank уходят обычной вкладкой Oblako, а не новым окном Chromium.
+// ⚠️ Вкладкой ТОГО ЖЕ окна, где стоит слот: раньше сюда прокидывалась одна ссылка на менеджер
+// вкладок главного окна, и ссылка из слота в лёгком окне открывалась бы в другом окне — на глазах
+// у человека не происходит ничего.
 
 // Кому сообщить, что человек работает ИМЕННО в этом веб-приложении. ⚠️ Без этого сигнала панель
 // про такой клик не узнаёт вовсе: сайт живёт в своей WebContentsView поверх панели и её событий
 // мыши не порождает. А знать надо — по этому признаку рисуется рамка активного слота.
-let onFocusCb: ((appId: string) => void) | null = null
-export function setOnWebAppFocus(cb: (appId: string) => void): void {
+let onFocusCb: ((win: BrowserWindow, appId: string) => void) | null = null
+export function setOnWebAppFocus(cb: (win: BrowserWindow, appId: string) => void): void {
   onFocusCb = cb
 }
 
@@ -52,7 +75,8 @@ export const MOBILE_UA = `Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/5
 
 export function openWebApp(win: BrowserWindow, appId: string, url: string): void {
   if (!HTTP_SCHEME.test(url)) return // только http(s) — file:/oblako-chrome: и прочее не пускаем
-  if (apps.has(appId)) return // уже открыт (повторный маунт слота) — view переживает, не дублируем
+  const st = stateFor(win)
+  if (st.apps.has(appId)) return // уже открыт (повторный маунт слота) — view переживает, не дублируем
 
   const view = new WebContentsView({
     webPreferences: {
@@ -78,16 +102,15 @@ export function openWebApp(win: BrowserWindow, appId: string, url: string): void
   })
   // Новые окна (target=_blank/window.open) — обычной вкладкой браузера, Chromium-окно не даём.
   view.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (HTTP_SCHEME.test(target)) tabManagerRef?.createTab(target)
+    if (HTTP_SCHEME.test(target)) contextForWindow(win)?.tabs.createTab(target)
     return { action: 'deny' }
   })
 
   // Клик по сайту забирает фокус его вью — это и есть «человек работает здесь».
-  view.webContents.on('focus', () => onFocusCb?.(appId))
+  view.webContents.on('focus', () => onFocusCb?.(win, appId))
 
   view.webContents.loadURL(url).catch((e) => console.error('[webapp] loadURL упал:', e))
-  apps.set(appId, { view, bounds: null, visible: false })
-  void win // win понадобится при первом setWebAppBounds — здесь view ещё не показывается
+  st.apps.set(appId, { view, bounds: null, visible: false })
 }
 
 function hideEntry(win: BrowserWindow, entry: WebAppEntry): void {
@@ -99,14 +122,15 @@ function hideEntry(win: BrowserWindow, entry: WebAppEntry): void {
 
 // Нулевой прямоугольник (слот скрыт: режим чата/шит настроек поверх) → спрятать view.
 export function setWebAppBounds(win: BrowserWindow, appId: string, rect: Rectangle): void {
-  const entry = apps.get(appId)
-  if (!entry) return
+  const st = perWindow.get(win.id)
+  const entry = st?.apps.get(appId)
+  if (!st || !entry) return
   if (rect.width < 2 || rect.height < 2) {
     hideEntry(win, entry)
     return
   }
   entry.bounds = rect
-  if (!panelShown) return
+  if (!st.panelShown) return
   if (!entry.visible) {
     // addChildView ПОСЛЕ панели (она уже в contentView) → view поверх панели, в её дырке.
     win.contentView.addChildView(entry.view)
@@ -117,24 +141,27 @@ export function setWebAppBounds(win: BrowserWindow, appId: string, rect: Rectang
 
 // Отдать фокус сайту слота — панель зовёт это, когда слот стал активным с клавиатуры.
 // Молча ничего не делает, если вью не показана: фокусировать спрятанное нельзя.
-export function focusWebApp(appId: string): void {
-  const entry = apps.get(appId)
+export function focusWebApp(win: BrowserWindow, appId: string): void {
+  const entry = perWindow.get(win.id)?.apps.get(appId)
   if (entry?.visible && !entry.view.webContents.isDestroyed()) entry.view.webContents.focus()
 }
 
 export function closeWebApp(win: BrowserWindow, appId: string): void {
-  const entry = apps.get(appId)
-  if (!entry) return
+  const st = perWindow.get(win.id)
+  const entry = st?.apps.get(appId)
+  if (!st || !entry) return
   hideEntry(win, entry)
   entry.view.webContents.close() // штатное уничтожение webContents (Electron ≥25)
-  apps.delete(appId)
+  st.apps.delete(appId)
 }
 
 // Открытие/закрытие всей AI-панели (AiPanelManager.toggleAiPanel/closePanel): веб-view живут
 // и умирают ВМЕСТЕ с ней на экране, но переживают закрытие в памяти (как и renderer панели).
 export function setPanelVisible(win: BrowserWindow, visible: boolean): void {
-  panelShown = visible
-  for (const entry of apps.values()) {
+  const st = visible ? stateFor(win) : perWindow.get(win.id)
+  if (!st) return // в этом окне слотов и не было — прятать нечего
+  st.panelShown = visible
+  for (const entry of st.apps.values()) {
     if (!visible) {
       hideEntry(win, entry)
     } else if (entry.bounds) {

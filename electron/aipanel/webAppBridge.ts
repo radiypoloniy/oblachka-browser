@@ -39,8 +39,9 @@ export function registerWebAppChannels(originOf: (win: Electron.BrowserWindow) =
     })
   })
 
-  ipcMain.on('ai-panel:webapp-focus', (_event: IpcMainEvent, appId: unknown) => {
-    if (typeof appId === 'string') webApps.focusWebApp(appId)
+  ipcMain.on('ai-panel:webapp-focus', (event: IpcMainEvent, appId: unknown) => {
+    const win = panelBySender(event.sender)?.win
+    if (win && typeof appId === 'string') webApps.focusWebApp(win, appId)
   })
 
   ipcMain.on('ai-panel:webapp-close', (event: IpcMainEvent, appId: unknown) => {
