@@ -14,20 +14,31 @@ import { TEXT, RADIUS, sp } from '../styles/system';
 // Правило текста: заголовок называет состояние без извинений («Загрузок пока нет», а не «Здесь
 // ничего нет»), подсказка объясняет, что появится здесь и откуда. Ни одного восклицательного
 // знака и ни одной шутки — их перечитывают каждый раз, а смешно бывает один.
-export function EmptyState({ icon, title, hint, action }: {
+export function EmptyState({ icon, title, hint, action, compact }: {
   icon: React.ReactNode;
   title: string;
   hint?: string;
   /** Кнопка или ссылка — только если человеку есть что нажать прямо сейчас. */
   action?: React.ReactNode;
+  /**
+   * Внутри БЛОКА, а не на весь экран: настройки, где пустой список — часть длинной страницы.
+   *
+   * ⚠️ Заведено потому, что полноэкранный вариант тут не подходит по размеру, а не по виду:
+   * `flex: 1` и отступ 72 px рассчитаны на пустую панель библиотеки. В подсекции настроек такое
+   * пустое состояние оказывается выше самого списка, ради которого стоит, — и раздел выглядит
+   * не «чистым», а раздутым. Правило: пустое состояние не крупнее того, что оно замещает.
+   */
+  compact?: boolean;
 }) {
   return (
     <div style={{
-      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'flex-start', textAlign: 'center', paddingTop: 72, gap: sp(2),
+      ...(compact ? {} : { flex: 1, paddingTop: 72 }),
+      ...(compact ? { paddingTop: sp(6), paddingBottom: sp(4) } : {}),
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'flex-start', textAlign: 'center', gap: sp(2),
     }}>
       <div style={{
-        width: 46, height: 46, borderRadius: RADIUS.box,
+        width: compact ? 38 : 46, height: compact ? 38 : 46, borderRadius: RADIUS.box,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: 'var(--card)', color: 'var(--accent)',
       }}>

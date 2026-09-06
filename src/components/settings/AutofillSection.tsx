@@ -6,6 +6,7 @@ import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, Subsection, LoadingNote,
   InlineError, TextField, InputRow, fieldFlex, OptionList, settingsBox,
 } from './kit';
+import { EmptyState } from '../EmptyState';
 
 // Секция «Автозаполнение» — адреса и банковские карты (electron/AutofillManager.ts). Только
 // хранилище/CRUD на этом шаге; подстановка в веб-формы — отдельными заходами. Номер карты в
@@ -61,8 +62,17 @@ export default function AutofillSection() {
           />
         ) : (
           <>
+            {/* ⚠️ Пустой список — единственное место, где раздел может объяснить, ЗАЧЕМ он нужен,
+                пока в нём ничего нет. И для приватного раздела это же место, где уместнее всего
+                сказать про шифрование: человек читает подсказку ровно в момент решения «доверять
+                или нет», а не когда данные уже введены. */}
             {addresses.length === 0 && (
-              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '4px' }}>Адресов пока нет.</div>
+              <EmptyState
+                compact
+                icon={<MapPin size={19} />}
+                title="Адресов пока нет"
+                hint="Добавьте один — и формы заказа будут заполняться сами. Данные шифруются на этом компьютере и наружу не уходят."
+              />
             )}
             <OptionList>
               {addresses.map((a) => (
@@ -95,7 +105,12 @@ export default function AutofillSection() {
         ) : (
           <>
             {cards.length === 0 && (
-              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '4px' }}>Карт пока нет.</div>
+              <EmptyState
+                compact
+                icon={<CreditCard size={19} />}
+                title="Карт пока нет"
+                hint="Номер карты выдаётся только после подтверждения личности через Windows Hello, а CVC не сохраняется вовсе — ни зашифрованным, ни каким-либо ещё."
+              />
             )}
             <OptionList>
               {cards.map((c) => (

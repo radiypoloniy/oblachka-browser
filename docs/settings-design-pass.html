@@ -1,0 +1,720 @@
+<title>Оживить настройки</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700;800&display=swap">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   ОЖИВИТЬ НАСТРОЙКИ — предложения, не правки.
+   Все находки ниже ИЗМЕРЕНЫ по коду src/components/settings/, а не взяты на
+   глаз: счётчики использования сущностей kit.tsx, пропов SectionHeader и
+   сырых контролов. Числа приведены прямо в тексте.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-standard:cubic-bezier(.2,0,.2,1);
+
+  --poster-tangerine:#E8611C; --poster-mustard:#E9BE1E; --poster-lime:#A9E86B;
+  --poster-tea:#1F5E52; --poster-sky:#9BD3DE; --poster-passion:#C63F3E;
+  --poster-neutral:#4C5665;
+  --on-poster-dark:#14140F; --on-poster-light:#F2EDE1;
+  --success:#34C759; --warning:#FF9500; --danger:#FF3B30;
+
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEEF1; --n4:#E2E3E8; --n5:#DBDCE3; --n7:#BBBECE;
+  --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --app-bg:var(--n5); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14); --divider-strong:rgba(60,60,67,.24);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n7:#55555E;
+    --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --on-accent:#121213;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+    --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+    --shadow-tint:#000000;
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n7:#55555E;
+  --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+  --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+  --shadow-tint:#000000;
+}
+:root {
+  --shadow-lvl1:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 5%, transparent),
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 5%, transparent);
+  --shadow-lvl2:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.55);
+}
+
+* { box-sizing:border-box; }
+body { margin:0; font-family:var(--font-ui); font-size:14px; line-height:1.5; color:var(--text-body); background:var(--app-bg); -webkit-font-smoothing:antialiased; }
+.ground { position:fixed; inset:0; z-index:0; pointer-events:none; background:linear-gradient(168deg,var(--ground-1) 0%,var(--ground-2) 46%,var(--ground-3) 100%); }
+.ground::after {
+  content:""; position:absolute; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:var(--grain-op); mix-blend-mode:overlay;
+}
+
+.wrap { position:relative; z-index:1; max-width:1120px; margin:0 auto; padding:var(--sp6) var(--sp4) 72px; }
+h1,h2,h3 { margin:0; text-wrap:balance; }
+.display { font-family:var(--font-display); font-weight:700; letter-spacing:-.03em; line-height:1.05; color:var(--text-strong); }
+.caps { font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); }
+.lede { max-width:68ch; color:var(--text-muted); margin:var(--sp3) 0 0; }
+p { margin:var(--sp3) 0 0; max-width:68ch; }
+b { color:var(--text-strong); }
+code { font-family:var(--font-mono); font-size:12px; background:var(--sunken); padding:1px 5px; border-radius:4px; }
+
+.head { padding:var(--sp8) 0 var(--sp6); }
+.head h1 { font-size:clamp(30px,4.4vw,50px); }
+.meta { display:flex; flex-wrap:wrap; gap:var(--sp2); margin-top:var(--sp6); }
+.pill { font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; padding:5px var(--sp3); border-radius:999px; background:var(--surface); color:var(--text-muted); box-shadow:var(--shadow-lvl1); }
+
+.section { margin-top:var(--sp8); padding:var(--sp8) var(--sp6); border-radius:20px; background:var(--surface); box-shadow:var(--shadow-lvl2), var(--inner-light); }
+.section > .caps { display:block; margin-bottom:var(--sp2); }
+.section h2 { font-size:26px; font-family:var(--font-display); font-weight:700; letter-spacing:-.025em; color:var(--text-strong); }
+
+/* ── Таблица замеров ───────────────────────────────────────────────────────── */
+.measure { margin-top:var(--sp6); display:grid; gap:0; }
+.mrow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--sp4); align-items:start; padding:var(--sp3) 0; border-top:1px solid var(--divider); }
+.mrow b { display:block; }
+.mrow span { font-size:13px; color:var(--text-muted); }
+.num { font-family:var(--font-mono); font-size:13px; font-variant-numeric:tabular-nums; color:var(--text-strong); white-space:nowrap; padding-top:2px; }
+.num.bad { color:var(--danger); }
+
+/* ══ МАКЕТ НАСТРОЕК ════════════════════════════════════════════════════════ */
+.mock {
+  margin-top:var(--sp6); border-radius:16px; overflow:hidden;
+  background:var(--n2); box-shadow:var(--shadow-lvl2);
+  display:grid; grid-template-columns:186px minmax(0,1fr);
+}
+:root[data-theme="dark"] .mock, @media (prefers-color-scheme: dark) { }
+.mock-nav { padding:var(--sp3) var(--sp2); border-right:1px solid var(--divider-strong); display:flex; flex-direction:column; gap:2px; background:var(--n1); }
+.mock-nav .grp { padding:var(--sp3) var(--sp2) var(--sp1); }
+.nav-item {
+  display:flex; align-items:center; gap:var(--sp2);
+  padding:7px var(--sp2); border-radius:8px; font-size:13px; color:var(--text-body);
+  transition:background 120ms var(--ease-standard);
+}
+.nav-item:hover { background:rgba(0,0,0,.05); }
+.nav-item.on { background:color-mix(in srgb, var(--tone,var(--accent)) 16%, var(--n1)); color:var(--text-strong); font-weight:600; }
+.nav-dot { width:8px; height:8px; border-radius:3px; flex:none; background:var(--tone,var(--n7)); }
+.nav-dot.flat { background:var(--n7); border-radius:999px; opacity:.5; }
+
+.mock-body { padding:0 0 var(--sp6); background:var(--n2); min-height:210px; }
+
+/* Шапка раздела — плакатная плашка с зерном, нижние углы скруглены */
+.plate {
+  position:relative; overflow:hidden;
+  padding:var(--sp6);
+  border-radius:0 0 24px 24px;
+  background:var(--tone); color:var(--tone-ink);
+  margin-bottom:var(--sp6);
+}
+.plate::after {
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:.45; mix-blend-mode:overlay;
+}
+.plate > * { position:relative; z-index:1; }
+.plate .t { font-family:var(--font-display); font-weight:700; font-size:22px; letter-spacing:-.02em; }
+.plate .t.solo { font-size:30px; }
+.plate .hero { font-family:var(--font-display); font-weight:800; font-size:52px; letter-spacing:-.04em; line-height:1.02; margin-top:var(--sp2); font-variant-numeric:tabular-nums; }
+.plate .herolab { font-size:14px; opacity:.72; }
+.plate .desc { font-size:14px; opacity:.78; margin-top:var(--sp2); max-width:56ch; }
+
+/* Полоса band — лента / шкала / график во всю ширину плашки */
+.band { margin-top:var(--sp3); }
+.band-ribbon { display:flex; align-items:flex-end; gap:3px; height:38px; }
+.band-ribbon i { flex:1; background:currentColor; opacity:.34; border-radius:2px 2px 0 0; }
+.band-ribbon i.hi { opacity:.85; }
+.band-legend { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:9.5px; opacity:.62; margin-top:5px; }
+.band-bar { height:10px; border-radius:999px; overflow:hidden; display:flex; background:rgba(255,255,255,.22); }
+.band-bar i { display:block; height:100%; }
+.band-scale { position:relative; height:26px; }
+.band-scale .ticks { display:flex; justify-content:space-between; align-items:flex-end; height:16px; }
+.band-scale .ticks i { width:1px; background:currentColor; opacity:.34; height:7px; }
+.band-scale .ticks i.tall { height:14px; opacity:.6; }
+.band-scale .needle { position:absolute; top:-2px; width:2px; height:22px; border-radius:2px; background:currentColor; }
+.band-scale .needle::after { content:""; position:absolute; top:-5px; left:-3px; border-left:4px solid transparent; border-right:4px solid transparent; border-top:5px solid currentColor; }
+
+/* Плитки фактов */
+.facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:var(--sp2); padding:0 var(--sp6); }
+.factt { padding:var(--sp3); border-radius:12px; border:1px solid var(--divider); }
+.factt .fl { font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-faint); }
+.factt .fv { font-family:var(--font-display); font-weight:700; font-size:17px; letter-spacing:-.015em; color:var(--text-strong); margin-top:4px; font-variant-numeric:tabular-nums; }
+.factt .fh { font-size:11px; color:var(--text-faint); margin-top:3px; }
+
+/* Подсекция */
+.sub { padding:var(--sp6) var(--sp6) 0; }
+.sub .rule { height:2px; background:color-mix(in srgb, var(--tone) 42%, transparent); border-radius:2px; }
+.sub h4 { margin:var(--sp3) 0 0; font-family:var(--font-display); font-weight:700; font-size:19px; letter-spacing:-.01em; color:var(--text-strong); }
+.sub p { margin:var(--sp1) 0 0; font-size:14px; color:var(--text-faint); }
+
+/* Ползунок-прибор */
+.slider { margin-top:var(--sp4); }
+.slider .track { position:relative; height:34px; }
+.slider .ticks { display:flex; justify-content:space-between; align-items:flex-end; height:20px; color:var(--text-faint); }
+.slider .ticks i { width:1px; background:currentColor; opacity:.4; height:8px; }
+.slider .ticks i.tall { height:16px; opacity:.7; }
+.slider .fill { position:absolute; left:0; bottom:0; height:3px; border-radius:2px; background:var(--tone); }
+.slider .rail { position:absolute; left:0; right:0; bottom:0; height:3px; border-radius:2px; background:var(--divider-strong); }
+.slider .knob {
+  position:absolute; bottom:-6px; width:15px; height:15px; border-radius:999px;
+  background:var(--n1); border:2px solid var(--tone); transform:translateX(-50%);
+  box-shadow:0 1px 4px rgba(0,0,0,.2);
+}
+.slider .val { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:10.5px; color:var(--text-faint); margin-top:var(--sp2); }
+.slider .val b { color:var(--text-strong); }
+
+/* Сырой ползунок — «как сейчас» */
+.raw { margin-top:var(--sp4); }
+.raw input { width:100%; }
+
+/* Пустое состояние */
+.empty {
+  margin:var(--sp4) var(--sp6) 0; padding:var(--sp8) var(--sp6);
+  border-radius:16px; border:1px dashed var(--divider-strong);
+  text-align:center;
+}
+.empty.poster { border:0; background:color-mix(in srgb, var(--tone) 14%, transparent); }
+.empty .eglyph { width:44px; height:44px; margin:0 auto var(--sp3); border-radius:12px; display:grid; place-items:center; background:color-mix(in srgb, var(--tone) 26%, transparent); color:var(--tone-strong,var(--text-strong)); }
+.empty .et { font-family:var(--font-display); font-weight:700; font-size:16px; letter-spacing:-.01em; color:var(--text-strong); }
+.empty .es { font-size:13px; color:var(--text-muted); margin-top:6px; max-width:44ch; margin-left:auto; margin-right:auto; }
+.empty .eplain { font-size:13.5px; color:var(--text-faint); }
+
+/* ── Идеи ──────────────────────────────────────────────────────────────────── */
+.idea { margin-top:var(--sp8); padding-top:var(--sp6); border-top:2px solid var(--divider-strong); }
+.idea:first-of-type { border-top:0; padding-top:0; }
+.idea-head { display:flex; align-items:baseline; gap:var(--sp3); flex-wrap:wrap; }
+.idea-num { font-family:var(--font-mono); font-size:11px; letter-spacing:.12em; color:var(--text-faint); }
+.idea h3 { font-family:var(--font-display); font-size:20px; font-weight:700; letter-spacing:-.02em; color:var(--text-strong); }
+.tag { font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border-radius:4px; border:1px solid var(--divider-strong); color:var(--text-muted); }
+.tag.free { border-color:transparent; background:var(--accent); color:var(--on-accent); }
+
+.facts-dl { margin-top:var(--sp4); display:grid; gap:var(--sp3); }
+.fact { display:grid; grid-template-columns:132px minmax(0,1fr); gap:var(--sp3); align-items:start; }
+.fact dt { font-family:var(--font-mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-faint); padding-top:3px; }
+.fact dd { margin:0; font-size:13.5px; color:var(--text-body); }
+
+.ba { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:var(--sp4); margin-top:var(--sp6); }
+.ba-lab { font-family:var(--font-mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-faint); margin-bottom:var(--sp2); }
+
+.bounds { margin-top:var(--sp6); display:grid; gap:var(--sp3); }
+.bound { display:grid; grid-template-columns:20px minmax(0,1fr); gap:var(--sp3); align-items:start; }
+.bound .x { color:var(--danger); font-family:var(--font-mono); font-size:15px; line-height:1.3; }
+.bound span { font-size:13.5px; color:var(--text-muted); }
+
+.order { margin-top:var(--sp6); display:grid; gap:var(--sp2); }
+.step { display:grid; grid-template-columns:26px minmax(0,1fr) auto; gap:var(--sp3); align-items:center; padding:var(--sp3) 0; border-top:1px solid var(--divider); }
+.step-n { font-family:var(--font-mono); font-size:11px; color:var(--text-faint); }
+.step .cost { font-family:var(--font-mono); font-size:10.5px; letter-spacing:.06em; color:var(--text-faint); white-space:nowrap; }
+
+.qs { margin-top:var(--sp6); display:grid; gap:var(--sp3); }
+.q { padding:var(--sp4); border-radius:16px; background:var(--sunken); }
+.q b { display:block; font-family:var(--font-display); font-size:15px; letter-spacing:-.01em; }
+.q span { display:block; margin-top:6px; font-size:13.5px; color:var(--text-muted); }
+
+.foot { margin-top:var(--sp8); text-align:center; }
+
+@media (prefers-reduced-motion: reduce) { * { transition-duration:1ms !important; animation:none !important; } }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+@media (max-width:760px) { .mock { grid-template-columns:minmax(0,1fr); } .mock-nav { flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid var(--divider-strong); } .mock-nav .grp { display:none; } .fact { grid-template-columns:minmax(0,1fr); gap:var(--sp1); } }
+</style>
+
+<div class="ground"></div>
+<div class="wrap">
+
+<header class="head">
+  <div class="caps">Дизайн · настройки · предложение</div>
+  <h1 class="display">Оживить настройки</h1>
+  <p class="lede">
+    Отходим от стола. В настройках одиннадцать разделов и собственный набор из двадцати с лишним
+    сущностей — и там нашлось кое-что интереснее украшательства: <b>готовые механизмы, которыми
+    никто не пользуется</b>, и обещание системы, которое она не выполняет. Всё, что ниже, — замеры
+    по коду, а не впечатления.
+  </p>
+  <div class="meta">
+    <span class="pill">6 правок</span>
+    <span class="pill">4 из 6 — включить уже написанное</span>
+    <span class="pill">новых цветов — ноль</span>
+    <span class="pill">правок кода в доке нет</span>
+  </div>
+</header>
+
+<!-- ══ ЗАМЕРЫ ════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 1</span>
+  <h2>Что показал замер</h2>
+  <p>
+    Я посчитал, как используется набор <code>settings/kit.tsx</code> и пропы шапки раздела по всем
+    одиннадцати секциям. Картина получилась неожиданная: беда настроек не в том, что чего-то не
+    хватает, а в том, что <b>половина уже построенного простаивает</b>.
+  </p>
+
+  <div class="measure">
+    <div class="mrow">
+      <div><b>Полоса в шапке раздела (<code>band</code>)</b><span>Проп есть, описан как «график, лента, шкала», рождён живым случаем в диспетчере — «абзац объясняет, полоса показывает».</span></div>
+      <span class="num bad">0 из 11</span>
+    </div>
+    <div class="mrow">
+      <div><b><code>Meter</code></b><span>Готовый индикатор-шкала в наборе.</span></div>
+      <span class="num bad">0 мест</span>
+    </div>
+    <div class="mrow">
+      <div><b><code>EmptyState</code> в настройках</b><span>Компонент пустого состояния в проекте есть и используется в библиотеке. В настройках — ни разу, хотя пустых списков там четыре.</span></div>
+      <span class="num bad">0 мест</span>
+    </div>
+    <div class="mrow">
+      <div><b>Сырые <code>&lt;input type="range"&gt;</code></b><span>Ползунок — единственный контрол без сущности в наборе, поэтому каждое место оформляет его само.</span></div>
+      <span class="num bad">4 места</span>
+    </div>
+    <div class="mrow">
+      <div><b>Разделы без геройского числа</b><span>«Браузер» (он же открывается по умолчанию), «Автозаполнение», «Правила».</span></div>
+      <span class="num">3 из 11</span>
+    </div>
+    <div class="mrow">
+      <div><b>Тон раздела в левом меню</b><span>Набор обещает: «Блокировка всегда мандариновая, и после третьего открытия её находят по цвету, не читая». В меню цвета нет — тон появляется только ПОСЛЕ открытия раздела.</span></div>
+      <span class="num bad">нет</span>
+    </div>
+    <div class="mrow">
+      <div><b>Пунктов в меню одним плоским списком</b><span>Без группировки: «Браузер» и «Справка» лежат в одном ряду, хотя это разные миры.</span></div>
+      <span class="num">11</span>
+    </div>
+  </div>
+
+  <p>
+    Последние две строки — про одно и то же: <b>меню настроек ничего не сообщает о себе</b>. Оно
+    выглядит как список из одиннадцати одинаковых серых строк, и найти в нём нужное можно только
+    прочитав все подписи. При этом цветовая система для этого уже построена и уже работает —
+    но включается на экран позже, чем нужна.
+  </p>
+</section>
+
+<!-- ══ ИДЕИ ══════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 2 · правки</span>
+  <h2>Шесть правок</h2>
+
+  <!-- 1 ──────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">01</span>
+      <h3>Тон раздела доезжает до меню</h3>
+      <span class="tag free">бесплатно</span>
+    </div>
+    <p>
+      Каждому разделу уже назначен плакатный тон, и он уже виден внутри — в шапке, в разделителях
+      подсекций, в подсветке поля. Не хватает одного: показать его <b>там, где раздел ищут</b>.
+      Метка тона слева от подписи, и выделение активного пункта — тоном раздела, а не общим
+      акцентом.
+    </p>
+
+    <div class="ba">
+      <div>
+        <div class="ba-lab">Как сейчас</div>
+        <div class="mock" style="grid-template-columns:minmax(0,1fr)">
+          <div class="mock-nav" style="border-right:0">
+            <span class="nav-item"><span class="nav-dot flat"></span>Браузер</span>
+            <span class="nav-item"><span class="nav-dot flat"></span>Интерфейс</span>
+            <span class="nav-item on" style="--tone:var(--accent)"><span class="nav-dot flat"></span>AI</span>
+            <span class="nav-item"><span class="nav-dot flat"></span>VPN</span>
+            <span class="nav-item"><span class="nav-dot flat"></span>Блокировка</span>
+            <span class="nav-item"><span class="nav-dot flat"></span>Пароли</span>
+            <span class="nav-item"><span class="nav-dot flat"></span>Автозаполнение</span>
+            <span class="nav-item"><span class="nav-dot flat"></span>Разрешения</span>
+            <span class="nav-item"><span class="nav-dot flat"></span>Профили</span>
+            <span class="nav-item"><span class="nav-dot flat"></span>Правила</span>
+            <span class="nav-item"><span class="nav-dot flat"></span>Справка</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="ba-lab">С тоном и группами</div>
+        <div class="mock" style="grid-template-columns:minmax(0,1fr)">
+          <div class="mock-nav" style="border-right:0">
+            <span class="caps grp">Основное</span>
+            <span class="nav-item" style="--tone:var(--poster-sky)"><span class="nav-dot"></span>Браузер</span>
+            <span class="nav-item" style="--tone:var(--poster-lime)"><span class="nav-dot"></span>Интерфейс</span>
+            <span class="caps grp">Приватность</span>
+            <span class="nav-item" style="--tone:var(--poster-passion)"><span class="nav-dot"></span>VPN</span>
+            <span class="nav-item" style="--tone:var(--poster-tangerine)"><span class="nav-dot"></span>Блокировка</span>
+            <span class="nav-item" style="--tone:var(--poster-tea)"><span class="nav-dot"></span>Пароли</span>
+            <span class="nav-item" style="--tone:var(--poster-sky)"><span class="nav-dot"></span>Автозаполнение</span>
+            <span class="nav-item" style="--tone:var(--poster-mustard)"><span class="nav-dot"></span>Разрешения</span>
+            <span class="caps grp">Искусственный интеллект</span>
+            <span class="nav-item on" style="--tone:var(--poster-tea)"><span class="nav-dot"></span>AI</span>
+            <span class="nav-item" style="--tone:var(--poster-tangerine)"><span class="nav-dot"></span>Правила</span>
+            <span class="caps grp">Прочее</span>
+            <span class="nav-item" style="--tone:var(--poster-sky)"><span class="nav-dot"></span>Профили</span>
+            <span class="nav-item" style="--tone:var(--poster-mustard)"><span class="nav-dot"></span>Справка</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <dl class="facts-dl">
+      <div class="fact"><dt>Где</dt><dd>Левое меню в <code>Settings.tsx</code>. Карта тонов <code>SECTION_TONE</code> уже есть и уже читается по id раздела.</dd></div>
+      <div class="fact"><dt>Почему это по делу</dt><dd>Система уже пообещала узнаваемость по цвету. Сейчас обещание выполняется только после того, как раздел открыт, — то есть ровно тогда, когда искать уже не надо.</dd></div>
+      <div class="fact"><dt>Группы заодно</dt><dd>Одиннадцать плоских пунктов разбиваются на четыре смысловые группы моношринной капсой — тем же приёмом, что уже держит группы в сайдбаре и в настройках.</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>Одиннадцать цветных точек рядом могут читаться пестро. Лечится размером метки: 8 px достаточно для узнавания и мало для пестроты.</dd></div>
+    </dl>
+  </div>
+
+  <!-- 2 ──────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">02</span>
+      <h3>Полоса в шапке: включить <code>band</code></h3>
+      <span class="tag free">механизм готов</span>
+    </div>
+    <p>
+      Шапка раздела умеет нести полосу во всю ширину — график, ленту, шкалу, — и это <b>не
+      использует ни один раздел</b>. Причём проп появился не сам по себе: его завели, когда график
+      внутри абзаца обрезался на двух третях. Механизм построили, а данные в него так и не завели.
+      Ниже — что каждый раздел может там показать.
+    </p>
+
+    <div class="mock">
+      <div class="mock-nav">
+        <span class="caps grp">Приватность</span>
+        <span class="nav-item on" style="--tone:var(--poster-tangerine)"><span class="nav-dot"></span>Блокировка</span>
+        <span class="nav-item" style="--tone:var(--poster-tea)"><span class="nav-dot"></span>Пароли</span>
+        <span class="nav-item" style="--tone:var(--poster-passion)"><span class="nav-dot"></span>VPN</span>
+      </div>
+      <div class="mock-body">
+        <div class="plate" style="--tone:var(--poster-tangerine);--tone-ink:var(--on-poster-light)">
+          <div class="t">Блокировка</div>
+          <div class="hero">2 050</div>
+          <div class="herolab">заблокировано сегодня</div>
+          <div class="band">
+            <div class="band-ribbon" id="ribbon"></div>
+            <div class="band-legend"><span>14 дней назад</span><span>сегодня</span></div>
+          </div>
+        </div>
+        <div class="sub">
+          <div class="rule"></div>
+          <h4>Списки фильтров</h4>
+          <p>Обновляются в фоне. Последняя проверка — 40 минут назад.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="ba">
+      <div>
+        <div class="ba-lab">Пароли · шкала здоровья хранилища</div>
+        <div class="plate" style="--tone:var(--poster-tea);--tone-ink:var(--on-poster-light);border-radius:16px">
+          <div class="t">Пароли</div>
+          <div class="hero" style="font-size:44px">48</div>
+          <div class="herolab">сохранено</div>
+          <div class="band">
+            <div class="band-bar">
+              <i style="width:73%;background:var(--on-poster-light);opacity:.85"></i>
+              <i style="width:17%;background:var(--on-poster-light);opacity:.5"></i>
+              <i style="width:10%;background:var(--on-poster-light);opacity:.25"></i>
+            </div>
+            <div class="band-legend"><span>35 надёжных</span><span>8 повторяются</span><span>5 слабых</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="ba-lab">AI · расход за месяц внутри бюджета</div>
+        <div class="plate" style="--tone:var(--poster-neutral);--tone-ink:var(--on-poster-light);border-radius:16px">
+          <div class="t">AI</div>
+          <div class="hero" style="font-size:44px">₽ 214</div>
+          <div class="herolab">потрачено в этом месяце</div>
+          <div class="band">
+            <div class="band-scale">
+              <div class="ticks">
+                <i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i class="tall"></i>
+              </div>
+              <span class="needle" style="left:43%"></span>
+            </div>
+            <div class="band-legend"><span>0</span><span>лимит ₽ 500</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <dl class="facts-dl">
+      <div class="fact"><dt>Где</dt><dd>Проп <code>band</code> у <code>SectionHeader</code>. Данные почти везде уже собираются: счётчик щита, расход в <code>AiUsageBlock</code>, список паролей.</dd></div>
+      <div class="fact"><dt>Что показывать</dt><dd>Блокировка — лента за две недели. Пароли — состав хранилища. VPN — состояние туннеля. AI — расход внутри лимита. Разрешения — сколько сайтов чего просили.</dd></div>
+      <div class="fact"><dt>Почему это функционально</dt><dd>Геройское число отвечает «сколько», полоса — «как это выглядит во времени» или «много ли это». Второй вопрос сейчас не отвечает никто.</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>Полоса на цветной плашке не должна брать статусные цвета: состав хранилища различается прозрачностью одной краски, а не зелёным-жёлтым-красным.</dd></div>
+    </dl>
+  </div>
+
+  <!-- 3 ──────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">03</span>
+      <h3>Ползунок-прибор вместо системного</h3>
+    </div>
+    <p>
+      Ползунок — единственный контрол, у которого нет сущности в наборе, поэтому его рисует
+      браузер: четыре места, четыре немного разных вида. И это именно тот контрол, которому
+      приборная шкала идёт по смыслу: у него есть диапазон, засечки и текущее положение.
+    </p>
+
+    <div class="ba">
+      <div>
+        <div class="ba-lab">Как сейчас — системный</div>
+        <div style="padding:var(--sp4);border-radius:12px;border:1px solid var(--divider)">
+          <div class="caps">Длина пароля</div>
+          <div class="raw"><input type="range" min="8" max="64" value="20" aria-label="Длина пароля"></div>
+        </div>
+      </div>
+      <div>
+        <div class="ba-lab">Прибор со шкалой</div>
+        <div style="padding:var(--sp4);border-radius:12px;border:1px solid var(--divider);--tone:var(--poster-tea)">
+          <div class="caps">Длина пароля</div>
+          <div class="slider">
+            <div class="track">
+              <div class="ticks">
+                <i class="tall"></i><i></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i></i><i class="tall"></i>
+              </div>
+              <span class="rail"></span>
+              <span class="fill" style="width:21%"></span>
+              <span class="knob" style="left:21%"></span>
+            </div>
+            <div class="val"><span>8</span><span><b>20 знаков</b></span><span>64</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <dl class="facts-dl">
+      <div class="fact"><dt>Где</dt><dd>Четыре места: длина пароля, ручки конструктора градиента, насыщенность фона, порог правила. Новая сущность в <code>kit.tsx</code> рядом с <code>Segmented</code>.</dd></div>
+      <div class="fact"><dt>Заодно чинит</dt><dd>Системный ползунок не знает про тон раздела и про наши размеры. Свой — знает, и одинаков во всех четырёх местах.</dd></div>
+      <div class="fact"><dt>Ретро тут по делу</dt><dd>Засечки — не декор: они показывают шаг. У длины пароля шаг единица, у насыщенности — проценты, и шкала об этом честно сообщает.</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>Свой ползунок обязан остаться доступным с клавиатуры. Делать поверх настоящего <code>input</code>, а не вместо — иначе теряются стрелки, Home/End и чтение с экрана.</dd></div>
+    </dl>
+  </div>
+
+  <!-- 4 ──────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">04</span>
+      <h3>Пустые состояния вместо пустоты</h3>
+      <span class="tag free">компонент готов</span>
+    </div>
+    <p>
+      В настройках четыре списка, которые у нового человека пусты: адреса, карты, правила,
+      пароли. Компонент пустого состояния в проекте есть и работает в библиотеке — в настройках
+      его нет ни разу. Пустой раздел сейчас выглядит как <b>сломанный</b>, а не как чистый.
+    </p>
+
+    <div class="ba">
+      <div>
+        <div class="ba-lab">Как сейчас</div>
+        <div style="--tone:var(--poster-sky);border-radius:12px;border:1px solid var(--divider);padding-bottom:var(--sp4)">
+          <div class="sub" style="padding-top:var(--sp4)">
+            <div class="rule"></div>
+            <h4>Адреса</h4>
+            <p>Имя, контакты и адрес доставки для форм заказа.</p>
+          </div>
+          <div class="empty" style="border:0;padding:var(--sp6) var(--sp6) 0">
+            <span class="eplain">Пока ничего не сохранено.</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="ba-lab">С пустым состоянием</div>
+        <div style="--tone:var(--poster-sky);border-radius:12px;border:1px solid var(--divider);padding-bottom:var(--sp4)">
+          <div class="sub" style="padding-top:var(--sp4)">
+            <div class="rule"></div>
+            <h4>Адреса</h4>
+            <p>Имя, контакты и адрес доставки для форм заказа.</p>
+          </div>
+          <div class="empty poster">
+            <div class="eglyph">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <div class="et">Адресов пока нет</div>
+            <div class="es">Добавьте один — и формы заказа будут заполняться сами. Данные шифруются на этом компьютере и наружу не уходят.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <dl class="facts-dl">
+      <div class="fact"><dt>Где</dt><dd>Адреса и карты в «Автозаполнении», список правил, пустое хранилище паролей.</dd></div>
+      <div class="fact"><dt>Что писать</dt><dd>Не «список пуст», а что это даст и что важно знать. Для приватных разделов пустое состояние — лучшее место сказать, что данные не уходят наружу: человек читает его именно в момент решения «доверить или нет».</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>Пустое состояние не должно быть больше самого списка из двух строк. Показывать только при полностью пустом списке.</dd></div>
+    </dl>
+  </div>
+
+  <!-- 5 ──────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">05</span>
+      <h3>Герой для «Автозаполнения» и «Правил»</h3>
+    </div>
+    <p>
+      Три раздела открываются без геройского числа. Для двух из них число есть и оно осмысленно.
+      Для «Браузера» — <b>нет, и я не буду его выдумывать</b>: этот раздел про настройки, а не про
+      количества, и придуманный счётчик там был бы украшением ради симметрии.
+    </p>
+
+    <div class="ba">
+      <div>
+        <div class="ba-lab">Автозаполнение</div>
+        <div class="plate" style="--tone:var(--poster-sky);--tone-ink:var(--on-poster-dark);border-radius:16px">
+          <div class="t">Автозаполнение</div>
+          <div class="hero" style="font-size:44px">6</div>
+          <div class="herolab">адресов и карт</div>
+          <div class="desc">CVC карт не хранится вовсе — ни зашифрованным, ни каким-либо ещё.</div>
+        </div>
+      </div>
+      <div>
+        <div class="ba-lab">Правила</div>
+        <div class="plate" style="--tone:var(--poster-tangerine);--tone-ink:var(--on-poster-light);border-radius:16px">
+          <div class="t">Правила</div>
+          <div class="hero" style="font-size:44px">137</div>
+          <div class="herolab">срабатываний за неделю</div>
+          <div class="desc">Четыре правила. Браузер сделал за вас 137 мелких действий и ни одного необратимого.</div>
+        </div>
+      </div>
+    </div>
+
+    <dl class="facts-dl">
+      <div class="fact"><dt>Почему «срабатывания», а не «сколько правил»</dt><dd>Количество правил человек и так помнит — он их сам завёл. А вот работают ли они, не видно никак. Число срабатываний отвечает на настоящий вопрос раздела.</dd></div>
+      <div class="fact"><dt>Что для этого нужно</dt><dd>Счётчик срабатываний правил сейчас, судя по коду, не хранится — это единственная идея в доке, требующая новых данных, а не только отрисовки.</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>Пока правил нет, герой покажет ноль — и раздел откроется большим нулём. Для пустого случая герой не показывается, работает идея №4.</dd></div>
+    </dl>
+  </div>
+
+  <!-- 6 ──────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">06</span>
+      <h3>Первый экран настроек</h3>
+    </div>
+    <p>
+      «Браузер» открывается по умолчанию и при этом самый тихий: заголовок, абзац и четыре плитки
+      фактов. Раз геройского числа у него быть не может, пусть у него будет другое — <b>полоса
+      быстрых ответов</b>: поисковик, браузер по умолчанию, куда падают загрузки. Это то, за чем
+      в него и заходят, и сейчас это спрятано в плитках ниже сгиба.
+    </p>
+
+    <div class="mock">
+      <div class="mock-nav">
+        <span class="caps grp">Основное</span>
+        <span class="nav-item on" style="--tone:var(--poster-sky)"><span class="nav-dot"></span>Браузер</span>
+        <span class="nav-item" style="--tone:var(--poster-lime)"><span class="nav-dot"></span>Интерфейс</span>
+      </div>
+      <div class="mock-body">
+        <div class="plate" style="--tone:var(--poster-sky);--tone-ink:var(--on-poster-dark)">
+          <div class="t solo">Браузер</div>
+          <div class="desc">Поиск из адресной строки, бэнги, загрузки и то, как браузер ведёт себя на этом компьютере.</div>
+        </div>
+        <div class="facts">
+          <div class="factt"><div class="fl">Поиск</div><div class="fv">Яндекс</div><div class="fh">из адресной строки</div></div>
+          <div class="factt"><div class="fl">По умолчанию</div><div class="fv">Oblako</div><div class="fh">ссылки из программ</div></div>
+          <div class="factt"><div class="fl">Загрузки</div><div class="fv">Спрашивать</div><div class="fh">куда сохранять</div></div>
+          <div class="factt"><div class="fl">Бэнги</div><div class="fv">37</div><div class="fh">и 4 своих</div></div>
+        </div>
+      </div>
+    </div>
+
+    <dl class="facts-dl">
+      <div class="fact"><dt>Что меняется</dt><dd>Плитки фактов уже есть — они просто уезжают под абзац. Предлагаю поднять их вплотную к шапке и дать им ширину, а описание раздела сократить до одной строки.</dd></div>
+      <div class="fact"><dt>Почему это важнее прочего</dt><dd>Это первый экран настроек. Как он выглядит — и есть ответ на вопрос «настройки в этом браузере сделаны или дописаны».</dd></div>
+    </dl>
+  </div>
+
+</section>
+
+<!-- ══ ГРАНИЦЫ ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 3</span>
+  <h2>Границы: чего я делать не буду</h2>
+  <div class="bounds">
+    <div class="bound"><span class="x">✕</span><span><b>Не выдумываю геройские числа ради симметрии.</b> У «Браузера» его быть не может, и пустой счётчик там был бы украшением, а не ответом.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не крашу статус.</b> Полоса состава хранилища различается прозрачностью одной краски, а не зелёным-жёлтым-красным: заливка — язык акцента, у неё значение «выбрано».</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не завожу новых цветов и не трогаю шкалы.</b> Тоны — те же шесть плакатных, отступы и радиусы — прежние ступени под машинной проверкой.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не заменяю системный ползунок своим целиком.</b> Только оформление поверх настоящего <code>input</code>: стрелки, Home/End и чтение с экрана обязаны продолжать работать.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не переставляю разделы местами.</b> Группировка добавляет заголовки, но порядок пунктов внутри остаётся прежним — люди уже помнят, где что лежит.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не трогаю стол и виджеты.</b> Прошлый заход закрыт, этот только про настройки.</span></div>
+  </div>
+</section>
+
+<!-- ══ ПОРЯДОК ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 4</span>
+  <h2>Порядок и что решаете вы</h2>
+  <p>
+    Сверху — то, что включает уже написанное и стоит почти ноль. Снизу — то, где нужны новые
+    данные или новая сущность.
+  </p>
+
+  <div class="order">
+    <div class="step"><span class="step-n">01</span><span><b>Тон и группы в меню.</b> Карта тонов уже есть, читается по id.</span><span class="cost">почти бесплатно</span></div>
+    <div class="step"><span class="step-n">06</span><span><b>Первый экран.</b> Плитки фактов поднять к шапке, описание сократить.</span><span class="cost">почти бесплатно</span></div>
+    <div class="step"><span class="step-n">02</span><span><b>Полоса в шапке.</b> Проп готов, данные почти везде уже собираются.</span><span class="cost">дёшево · заметно</span></div>
+    <div class="step"><span class="step-n">04</span><span><b>Пустые состояния.</b> Компонент готов, нужен текст под каждый случай.</span><span class="cost">дёшево · понятнее</span></div>
+    <div class="step"><span class="step-n">03</span><span><b>Ползунок-прибор.</b> Новая сущность набора, четыре места применения.</span><span class="cost">средне</span></div>
+    <div class="step"><span class="step-n">05</span><span><b>Герой «Правил».</b> Нужен счётчик срабатываний — новые данные.</span><span class="cost">средне · новые данные</span></div>
+  </div>
+
+  <div class="qs">
+    <div class="q">
+      <b>Группы в меню — да или нет?</b>
+      <span>Четыре заголовка добавляют высоты и на низком окне заставят листать. Можно взять только цветные метки без группировки — это уже закрывает главную проблему «одиннадцать одинаковых серых строк».</span>
+    </div>
+    <div class="q">
+      <b>Выделение активного пункта — тоном раздела или общим акцентом?</b>
+      <span>Тоном — экран становится цельным, меню и шапка одного цвета. Акцентом — выделение везде в браузере выглядит одинаково. Я склоняюсь к тону: в настройках это уже так внутри раздела.</span>
+    </div>
+    <div class="q">
+      <b>Что показывать полосой у VPN и «Разрешений»?</b>
+      <span>У «Блокировки», «Паролей» и AI данные очевидны. У VPN это может быть состояние туннеля за сутки, у «Разрешений» — сколько сайтов чего просили. Обе штуки требуют данных, которых сейчас нет; можно оставить эти два раздела без полосы.</span>
+    </div>
+    <div class="q">
+      <b>Считать ли срабатывания правил?</b>
+      <span>Это единственная идея, требующая писать новые данные на диск. Если не хочется — «Правила» останутся без героя, и это нормально.</span>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="caps">Oblako · настройки · предложение, не правка</div>
+</footer>
+
+</div>
+
+<script>
+/* Лента заблокированного за 14 дней — данные выдуманные, форма настоящая:
+   столбики одной краски, сегодняшний выделен непрозрачностью, а не цветом. */
+(function () {
+  var box = document.getElementById('ribbon');
+  if (!box) return;
+  var vals = [38, 52, 41, 66, 49, 72, 58, 63, 44, 81, 69, 55, 74, 92];
+  var max = Math.max.apply(null, vals);
+  vals.forEach(function (v, i) {
+    var el = document.createElement('i');
+    el.style.height = Math.round((v / max) * 100) + '%';
+    if (i === vals.length - 1) el.className = 'hi';
+    box.appendChild(el);
+  });
+})();
+</script>

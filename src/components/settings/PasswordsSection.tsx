@@ -6,7 +6,7 @@ import Toggle from '../Toggle';
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote, MasterSwitch,
   FactGrid, Fact, Subsection, StatusCard, Panel, Read,
-  InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex, Favicon, settingsBox,
+  InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex, Favicon, settingsBox, SliderRow,
 } from './kit';
 
 // Геометрия списка. LIST_VIEWPORT держит потолок высоты (см. комментарий у самого списка),
@@ -596,14 +596,10 @@ function PasswordForm({
           display: 'flex', flexDirection: 'column', gap: sp(3), padding: pad(3, 4),
           ...well,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: sp(3) }}>
-            <span style={{ ...TEXT.caption, color: 'var(--text-muted)', flex: 'none' }}>Длина: {genLength}</span>
-            <input
-              type="range" min={8} max={64} value={genLength}
-              onChange={(e) => onGenLength(Number(e.target.value))}
-              style={{ flex: 1 }}
-            />
-          </div>
+          <SliderRow
+            label="Длина" value={genLength} min={8} max={64} step={1}
+            onChange={onGenLength} format={(v) => `${v}`}
+          />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(3) }}>
             <GenToggle label="a-z" checked={genLower} onChange={() => onGenLower(!genLower)} />
             <GenToggle label="A-Z" checked={genUpper} onChange={() => onGenUpper(!genUpper)} />

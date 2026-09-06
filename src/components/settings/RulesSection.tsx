@@ -11,8 +11,9 @@ import type { AutomationRule, RuleTriggerKind, RuleActionKind } from '../../../s
 import {
   SectionHeader, Subsection, CapsLabel, TextField, InputRow, fieldFlex,
   btnPrimary, btnGhost, InlineError, InlineHint, Favicon, OptionList, OptionRow,
-  Panel, IconBtn, settingsBox,
+  Panel, IconBtn, settingsBox, SliderRow,
 } from './kit';
+import { EmptyState } from '../EmptyState';
 
 // Раздел «Правила» — правила-автоматизации (см. shared/rules.ts, RuleEngine.ts, RuleParser.ts).
 //
@@ -69,20 +70,28 @@ function GroupField({ value, onChange, onEnter }: {
 function ZoomField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <div style={{ marginTop: sp(3) }}>
-      <InputRow>
-        <input
-          type="range"
-          min={ZOOM_PERCENT_MIN}
-          max={ZOOM_PERCENT_MAX}
-          step={5}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          style={{ ...fieldFlex, accentColor: 'var(--accent)' }}
-          aria-label="Масштаб страницы"
-        />
-        <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-strong)' }}>{value}%</span>
-      </InputRow>
+      <SliderRow
+        label="Масштаб" value={value} min={ZOOM_PERCENT_MIN} max={ZOOM_PERCENT_MAX} step={5}
+        onChange={onChange} format={(v) => `${v}%`}
+      />
     </div>
+  );
+}
+
+/**
+ * Пустой список правил.
+ *
+ * ⚠️ Вынесен отдельным компонентом, а не оставлен разметкой на месте: функция RulesSection()
+ * стоит вплотную к порогу structure-check, и восемь строк подсказки её переполняли.
+ */
+function RulesEmpty() {
+  return (
+    <EmptyState
+      compact
+      icon={<Wand2 size={19} />}
+      title="Правил пока нет"
+      hint="Опишите фразой, что браузер должен делать сам — «ссылки с habr.com открывай в группе Чтение». Правило появится карточкой на подтверждение и заработает только после вашего «да»."
+    />
   );
 }
 
@@ -363,7 +372,7 @@ export default function RulesSection() {
           : `${rules.length} из ${RULES_MAX}. Выключенное правило остаётся в списке, но не выполняется.`}
       >
         {rules === null && <InlineHint>Загрузка…</InlineHint>}
-        {rules?.length === 0 && <InlineHint>Пока ни одного.</InlineHint>}
+        {rules?.length === 0 && <RulesEmpty />}
         {rules && rules.length > 0 && (
           <OptionList>
             {rules.map((rule) => (

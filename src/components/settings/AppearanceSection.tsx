@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2, RotateCcw, Plus, Shuffle } from 'lucide-react';
 import { SectionHeader, Subsection, InlineError, InlineHint, TextField, btnGhost, segBtnStyle, SegTrack,
-  FactGrid, Fact, SpotGrid, SpotCard, MasterSwitch, OptionList, OptionRow, CapsLabel,
+  FactGrid, Fact, SpotGrid, SpotCard, MasterSwitch, OptionList, OptionRow, SliderRow,
 } from './kit';
 import Toggle from '../Toggle';
 import { isDarkTheme } from '../../../shared/ipc';
@@ -20,7 +20,7 @@ import {
 import GradientEditor from './GradientEditor';
 
 import CryptoIcon from '../CryptoIcon';
-import { RADIUS, TEXT, pad, sp } from '../../styles/system';
+import { RADIUS, TEXT, sp } from '../../styles/system';
 
 // Раздел «Интерфейс» — оформление самого браузера (тема и палитра) и новой вкладки.
 // Настройки вкладки пишутся в localStorage-стор (saveNewTabSettings шлёт событие → открытая
@@ -696,19 +696,3 @@ function SwitchRow({ title, subtitle, checked, onChange }: {
 // ⚠️ accentColor обязателен: без него Chromium рисует системно-синий ползунок независимо от
 // палитры, и на «Мяте» он оказывался единственным синим элементом на экране — ровно та жалоба,
 // из-за которой акцент вообще переехал в палитру (см. цветовой закон).
-function SliderRow({ label, value, min, max, step, onChange, format }: {
-  label: string; value: number; min: number; max: number; step: number;
-  onChange: (v: number) => void; format: (v: number) => string;
-}) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(3, 4) }}>
-      <span style={{ flex: '0 0 120px', ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={{ flex: 1, minWidth: 0, accentColor: 'var(--accent)', cursor: 'default' }} />
-      <CapsLabel style={{ marginBottom: 0, flex: '0 0 46px', justifyContent: 'flex-end', fontVariantNumeric: 'tabular-nums' }}>
-        {format(value)}
-      </CapsLabel>
-    </div>
-  );
-}

@@ -7,7 +7,7 @@ import {
 } from '../../../shared/chromeGround';
 import { meshCss } from '../../newtab/gradients';
 import { RADIUS, sp, pad, TEXT, well } from '../../styles/system';
-import { btnGhost, btnPrimary, TextField } from './kit';
+import { btnGhost, btnPrimary, TextField, SliderRow } from './kit';
 import ColorField from './ColorField';
 
 export default function GradientEditor({
@@ -192,20 +192,20 @@ export default function GradientEditor({
       {/* ⚠️ Ручек по-прежнему ДВЕ на все режимы — меняется только их подпись. Заводить свои
           ползунки под дуплекс и ретро значило бы держать три набора состояний вместо одного,
           хотя смысл у ручек один и тот же: насколько сильно и насколько мягко. */}
-      <Slider
+      <SliderRow
         label={kind === 'duplex' ? 'Плотность второй краски' : kind === 'retro' ? 'Размах ступеней' : 'Насыщенность пятен'}
         value={mesh.intensity} min={20} max={100} step={1}
         format={(v) => `${v}%`}
         onChange={(intensity) => onChange({ ...mesh, ...mixFromSeeds(mesh.seeds, { intensity, softness: mesh.softness, blobs: mesh.blobs, kind }) })}
       />
-      <Slider
+      <SliderRow
         label={kind === 'retro' ? 'Ступеней' : 'Мягкость'}
         value={mesh.softness} min={MESH_SOFTNESS_MIN} max={MESH_SOFTNESS_MAX} step={1}
         format={(v) => kind === 'retro' ? String(retroSteps(v)) : `${v}%`}
         onChange={(softness) => onChange({ ...mesh, softness })}
       />
       {hasBlobs && (
-        <Slider
+        <SliderRow
           label={kind === 'duplex' ? 'Размер наложения' : 'Размер пятна'}
           value={mesh.blobs[seedIndex]?.size ?? 70} min={40} max={110} step={1}
           format={(v) => `${v}%`}
@@ -237,16 +237,3 @@ export default function GradientEditor({
   );
 }
 
-function Slider({ label, value, min, max, step, onChange, format }: {
-  label: string; value: number; min: number; max: number; step: number;
-  onChange: (v: number) => void; format: (v: number) => string;
-}) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: sp(3) }}>
-      <span style={{ flex: '0 0 140px', ...TEXT.body }}>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(Number(e.target.value))} style={{ flex: 1, minWidth: 0 }} />
-      <span style={{ flex: '0 0 44px', textAlign: 'right', ...TEXT.caption }}>{format(value)}</span>
-    </div>
-  );
-}

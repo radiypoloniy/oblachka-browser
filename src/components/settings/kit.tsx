@@ -683,7 +683,7 @@ export function MonoChip({ children, title, strong }: {
 
 // SpotLine и Meter переехали в rowKit.tsx (см. его шапку — почему). Реэкспорт держит
 // вызывающие стороны в неведении: импорт из './kit' продолжает работать.
-export { Meter, SpotLine } from './rowKit';
+export { Meter, SpotLine, SliderRow } from './rowKit';
 
 /**
  * Рамка настроек выбранной сущности. Не внутри карточки: карточка показывает КТО, рамка — ЧТО можно.

@@ -1,0 +1,833 @@
+<title>Ретро под стеклом</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700;800&display=swap">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   РЕТРО ПОД СТЕКЛОМ — предложения, не правки.
+   Заход второй. Первый ушёл в белые засветы и был отклонён по делу: в
+   референсах не «свечение», а РЕТРО-ПРИБОРЫ под СТЕКЛОМ. Обе половины в
+   проекте уже есть — см. раздел «Что у нас уже лежит».
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-standard:cubic-bezier(.2,0,.2,1);
+
+  --poster-tangerine:#E8611C; --poster-mustard:#E9BE1E; --poster-lime:#A9E86B;
+  --poster-tea:#1F5E52; --poster-sky:#9BD3DE; --poster-passion:#C63F3E;
+  --poster-neutral:#4C5665;
+  --on-poster-dark:#14140F; --on-poster-light:#F2EDE1;
+  --success:#34C759; --warning:#FF9500; --danger:#FF3B30;
+
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n3:#EEEEF1; --n5:#DBDCE3; --n7:#BBBECE;
+  --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --app-bg:var(--n5); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14); --divider-strong:rgba(60,60,67,.24);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12;
+  --grain-op:.45;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n3:#212123; --n5:#343439; --n7:#55555E;
+    --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --on-accent:#121213;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+    --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+    --shadow-tint:#000000;
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n3:#212123; --n5:#343439; --n7:#55555E;
+  --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+  --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+  --shadow-tint:#000000;
+}
+:root {
+  --shadow-lvl1:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 5%, transparent),
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 5%, transparent);
+  --shadow-lvl2:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.55);
+}
+
+* { box-sizing:border-box; }
+body {
+  margin:0; font-family:var(--font-ui); font-size:14px; line-height:1.5;
+  color:var(--text-body); background:var(--app-bg); -webkit-font-smoothing:antialiased;
+}
+.ground {
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:linear-gradient(168deg, var(--ground-1) 0%, var(--ground-2) 46%, var(--ground-3) 100%);
+}
+.ground::after {
+  content:""; position:absolute; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:var(--grain-op); mix-blend-mode:overlay;
+}
+
+.wrap { position:relative; z-index:1; max-width:1120px; margin:0 auto; padding:var(--sp6) var(--sp4) 72px; }
+h1,h2,h3 { margin:0; text-wrap:balance; }
+.display { font-family:var(--font-display); font-weight:700; letter-spacing:-.03em; line-height:1.05; color:var(--text-strong); }
+.caps { font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); }
+.lede { max-width:68ch; color:var(--text-muted); margin:var(--sp3) 0 0; }
+p { margin:var(--sp3) 0 0; max-width:68ch; }
+b { color:var(--text-strong); }
+
+.head { padding:var(--sp8) 0 var(--sp6); }
+.head h1 { font-size:clamp(30px,4.4vw,50px); }
+.meta { display:flex; flex-wrap:wrap; gap:var(--sp2); margin-top:var(--sp6); }
+.pill {
+  font-family:var(--font-mono); font-size:11px; letter-spacing:.06em;
+  padding:5px var(--sp3); border-radius:999px;
+  background:var(--surface); color:var(--text-muted); box-shadow:var(--shadow-lvl1);
+}
+
+.section {
+  margin-top:var(--sp8); padding:var(--sp8) var(--sp6);
+  border-radius:20px; background:var(--surface);
+  box-shadow:var(--shadow-lvl2), var(--inner-light);
+}
+.section > .caps { display:block; margin-bottom:var(--sp2); }
+.section h2 { font-size:26px; font-family:var(--font-display); font-weight:700; letter-spacing:-.025em; color:var(--text-strong); }
+
+/* Признание промаха — отдельной плашкой, а не абзацем в общем потоке */
+.miss {
+  margin-top:var(--sp6); padding:var(--sp4) var(--sp6);
+  border-left:3px solid var(--danger); border-radius:0 12px 12px 0;
+  background:var(--sunken);
+}
+.miss p { margin:var(--sp2) 0 0; font-size:13.5px; }
+.miss p:first-child { margin-top:0; }
+
+/* ── Инвентарь: что уже лежит ──────────────────────────────────────────────── */
+.inv { margin-top:var(--sp6); display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:var(--sp4); }
+.inv-col h3 { font-family:var(--font-display); font-size:17px; font-weight:700; letter-spacing:-.015em; color:var(--text-strong); margin-bottom:var(--sp3); }
+.inv-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--sp3); padding:var(--sp2) 0; border-top:1px solid var(--divider); align-items:start; }
+.inv-row div { font-size:13px; }
+.inv-row b { display:block; }
+.inv-row span { color:var(--text-muted); }
+.inv-where { font-family:var(--font-mono); font-size:10px; color:var(--text-faint); white-space:nowrap; padding-top:2px; }
+
+/* ── Идеи ──────────────────────────────────────────────────────────────────── */
+.idea { margin-top:var(--sp8); padding-top:var(--sp6); border-top:2px solid var(--divider-strong); }
+.idea:first-of-type { border-top:0; padding-top:0; }
+.idea-head { display:flex; align-items:baseline; gap:var(--sp3); flex-wrap:wrap; }
+.idea-num { font-family:var(--font-mono); font-size:11px; letter-spacing:.12em; color:var(--text-faint); }
+.idea h3 { font-family:var(--font-display); font-size:20px; font-weight:700; letter-spacing:-.02em; color:var(--text-strong); }
+.keep { font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border-radius:4px; background:var(--accent); color:var(--on-accent); }
+
+.facts { margin-top:var(--sp4); display:grid; gap:var(--sp3); }
+.fact { display:grid; grid-template-columns:132px minmax(0,1fr); gap:var(--sp3); align-items:start; }
+.fact dt { font-family:var(--font-mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-faint); padding-top:3px; }
+.fact dd { margin:0; font-size:13.5px; color:var(--text-body); }
+code { font-family:var(--font-mono); font-size:12px; background:var(--sunken); padding:1px 5px; border-radius:4px; }
+
+/* ══ СТЕНД: обои + плитки ═══════════════════════════════════════════════════
+   Обои — ретро-рампа: полосы по СВЕТЛОТЕ одного семени, ровно как retroRamp
+   в shared/chromeGround.ts. Плюс солнце и зерно. */
+.wall {
+  position:relative; overflow:hidden; border-radius:16px;
+  margin-top:var(--sp6); padding:var(--sp8) var(--sp6);
+  min-height:280px;
+  display:flex; flex-wrap:wrap; gap:var(--sp4); align-items:flex-start;
+  isolation:isolate;
+}
+.wall::before {
+  content:""; position:absolute; inset:0; z-index:-2;
+  background:
+    radial-gradient(46% 40% at 76% 78%, rgba(255,214,140,.55) 0%, transparent 62%),
+    linear-gradient(180deg,
+      #23324f 0%, #23324f 17%,
+      #3a4260 17%, #3a4260 34%,
+      #6b4a55 34%, #6b4a55 51%,
+      #a55c43 51%, #a55c43 68%,
+      #d4813c 68%, #d4813c 84%,
+      #e8a33d 84%, #e8a33d 100%);
+}
+.wall::after {
+  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:.5; mix-blend-mode:overlay;
+}
+.wall.day::before {
+  background:
+    radial-gradient(44% 38% at 22% 20%, rgba(255,255,255,.5) 0%, transparent 60%),
+    linear-gradient(180deg,
+      #cfe3e8 0%, #cfe3e8 20%,
+      #b7d2d9 20%, #b7d2d9 40%,
+      #9bc0cb 40%, #9bc0cb 60%,
+      #7fa9bb 60%, #7fa9bb 80%,
+      #63929f 80%, #63929f 100%);
+}
+.wall-note {
+  width:100%; font-family:var(--font-mono); font-size:10.5px; letter-spacing:.08em;
+  text-transform:uppercase; color:rgba(242,237,225,.6); margin-bottom:var(--sp2);
+}
+.wall.day .wall-note { color:rgba(20,20,15,.5); }
+
+/* ── Плитка ────────────────────────────────────────────────────────────────── */
+.tile {
+  position:relative; overflow:hidden; border-radius:24px;
+  padding:var(--sp4); display:flex; flex-direction:column; justify-content:space-between;
+  width:196px; height:196px;
+  box-shadow:0 2px 10px rgba(0,0,0,.24);
+}
+.tile.wide { width:312px; }
+.tile.bar { width:312px; height:96px; }
+.tile.tall { height:auto; min-height:196px; }
+.tile > * { position:relative; z-index:1; }
+.tile .cap { font-family:var(--font-mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; opacity:.72; }
+.tile .big { font-family:var(--font-display); font-weight:800; letter-spacing:-.04em; line-height:1; font-variant-numeric:tabular-nums; font-size:42px; }
+.tile .sub { font-size:11.5px; opacity:.78; margin-top:6px; }
+
+/* СТЕКЛО — рецепт cardGlass() из system.ts, только чернила светлые (над тёмными обоями) */
+.glass {
+  background:rgba(255,255,255,.13);
+  -webkit-backdrop-filter:blur(24px) saturate(140%);
+  backdrop-filter:blur(24px) saturate(140%);
+  border:1px solid rgba(255,255,255,.22);
+  color:var(--on-poster-light);
+  transform:translateZ(0); will-change:backdrop-filter; isolation:isolate;
+  box-shadow:0 8px 28px rgba(0,0,0,.28);
+}
+.wall.day .glass { background:rgba(255,255,255,.34); border-color:rgba(255,255,255,.5); color:var(--on-poster-dark); }
+
+/* Зерно поверх стекла — печатная фактура, та же, что у плиток */
+.grain::after {
+  content:""; position:absolute; inset:0; pointer-events:none; z-index:2;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:.3; mix-blend-mode:overlay;
+}
+
+/* РЕТРО-ЗАЛИВКА — полосы по светлоте одного семени (движок retroRamp) */
+.retro-tea    { background:linear-gradient(180deg,#3f8f7c 0%,#3f8f7c 20%,#348070 20%,#348070 40%,#296e60 40%,#296e60 60%,#1f5e52 60%,#1f5e52 80%,#164a41 80%,#164a41 100%); color:var(--on-poster-light); }
+.retro-tang   { background:linear-gradient(180deg,#f2a06a 0%,#f2a06a 20%,#ee8749 20%,#ee8749 40%,#e8611c 40%,#e8611c 60%,#c44f14 60%,#c44f14 80%,#9c3e0f 80%,#9c3e0f 100%); color:var(--on-poster-light); }
+.retro-sky    { background:linear-gradient(180deg,#d6ecf1 0%,#d6ecf1 20%,#bfe0e8 20%,#bfe0e8 40%,#9bd3de 40%,#9bd3de 60%,#7cbccb 60%,#7cbccb 80%,#5fa2b4 80%,#5fa2b4 100%); color:var(--on-poster-dark); }
+.retro-passion{ background:linear-gradient(180deg,#e07f7d 0%,#e07f7d 20%,#d66360 20%,#d66360 40%,#c63f3e 40%,#c63f3e 60%,#a53331 60%,#a53331 80%,#822726 80%,#822726 100%); color:var(--on-poster-light); }
+
+/* ── Приборная шкала ───────────────────────────────────────────────────────── */
+.dial { position:relative; margin-top:var(--sp3); }
+.dial .ticks { display:flex; justify-content:space-between; align-items:flex-end; height:18px; }
+.dial .ticks i { display:block; width:1px; background:currentColor; opacity:.34; height:7px; }
+.dial .ticks i.tall { height:15px; opacity:.55; }
+.dial .needle {
+  position:absolute; top:-3px; width:2px; height:24px; border-radius:2px;
+  background:var(--poster-mustard); box-shadow:0 0 10px var(--poster-mustard);
+}
+.dial .needle::after {
+  content:""; position:absolute; top:-5px; left:-3px;
+  border-left:4px solid transparent; border-right:4px solid transparent;
+  border-top:5px solid var(--poster-mustard);
+}
+.dial .ends { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:9.5px; opacity:.65; margin-top:5px; }
+
+/* ── Точечные цифры / халфтон ──────────────────────────────────────────────── */
+.dots { display:flex; gap:6px; align-items:flex-end; }
+.dots canvas { display:block; }
+.halftone::before {
+  content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
+  background-image:radial-gradient(currentColor 1px, transparent 1.2px);
+  background-size:6px 6px;
+  -webkit-mask-image:radial-gradient(58% 52% at 74% 26%, #000 0%, transparent 72%);
+  mask-image:radial-gradient(58% 52% at 74% 26%, #000 0%, transparent 72%);
+  opacity:.5;
+}
+
+/* ── Осциллограф ───────────────────────────────────────────────────────────── */
+.scope { width:100%; height:44px; display:block; margin-top:var(--sp2); overflow:visible; }
+
+/* ── Границы / порядок / вопросы ───────────────────────────────────────────── */
+.bounds { margin-top:var(--sp6); display:grid; gap:var(--sp3); }
+.bound { display:grid; grid-template-columns:20px minmax(0,1fr); gap:var(--sp3); align-items:start; }
+.bound .x { color:var(--danger); font-family:var(--font-mono); font-size:15px; line-height:1.3; }
+.bound span { font-size:13.5px; color:var(--text-muted); }
+
+.order { margin-top:var(--sp6); display:grid; gap:var(--sp2); }
+.step { display:grid; grid-template-columns:26px minmax(0,1fr) auto; gap:var(--sp3); align-items:center; padding:var(--sp3) 0; border-top:1px solid var(--divider); }
+.step-n { font-family:var(--font-mono); font-size:11px; color:var(--text-faint); }
+.step .cost { font-family:var(--font-mono); font-size:10.5px; letter-spacing:.06em; color:var(--text-faint); white-space:nowrap; }
+
+.qs { margin-top:var(--sp6); display:grid; gap:var(--sp3); }
+.q { padding:var(--sp4); border-radius:16px; background:var(--sunken); }
+.q b { display:block; font-family:var(--font-display); font-size:15px; letter-spacing:-.01em; }
+.q span { display:block; margin-top:6px; font-size:13.5px; color:var(--text-muted); }
+
+.foot { margin-top:var(--sp8); text-align:center; }
+
+@media (prefers-reduced-motion: reduce) { * { transition-duration:1ms !important; animation:none !important; } }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+@media (max-width:720px) { .fact { grid-template-columns:minmax(0,1fr); gap:var(--sp1); } }
+</style>
+
+<div class="ground"></div>
+
+<div class="wrap">
+
+<header class="head">
+  <div class="caps">Дизайн · заход второй · предложение</div>
+  <h1 class="display">Ретро-приборы<br>под стеклом</h1>
+  <p class="lede">
+    В референсах не «свечение», а два языка сразу: <b>ретро-измерительный прибор</b> — точечные
+    цифры, шкалы с засечками, полосы, халфтон — и <b>стекло</b>, сквозь которое видно подложку.
+    Главное открытие этого захода: обе половины у нас уже написаны и работают. Просто они никогда
+    не встречаются на одном экране.
+  </p>
+  <div class="meta">
+    <span class="pill">6 идей</span>
+    <span class="pill">новых движков — ноль</span>
+    <span class="pill">новых цветов — ноль</span>
+    <span class="pill">правок кода в доке нет</span>
+  </div>
+</header>
+
+<!-- ══ ПРОМАХ ════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Сначала</span>
+  <h2>Что было не так в первом заходе</h2>
+  <div class="miss">
+    <p>
+      Я прочитал референсы как «мягкое свечение внутри карточки» и нарисовал белые радиальные
+      засветы поверх плоской краски. Это мимо по двум причинам сразу.
+    </p>
+    <p>
+      <b>Первая.</b> В макетах светится не белое, а <b>цвет</b> — и всегда сквозь зерно, поэтому
+      читается как напечатанное, а не как включённая лампа. Белый вымыв поверх краски даёт ровно
+      обратное: грязь и потерю тона.
+    </p>
+    <p>
+      <b>Вторая, и она важнее.</b> Я записал стекло в «не берём», сославшись на то, что мы неделю
+      назад убрали его из кнопок в углу стола. Это подмена: там стекло было <b>на хроме поверх
+      обоев</b> — нечего размывать, нечему подчиняться. Референсы же используют стекло по прямому
+      назначению — <b>панель над насыщенной подложкой</b>, и ровно так оно описано в нашей
+      собственной системе высот: «ТУМАН — только там, где под слоем есть что размывать».
+    </p>
+  </div>
+</section>
+
+<!-- ══ ИНВЕНТАРЬ ═════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 1</span>
+  <h2>Что у нас уже лежит</h2>
+  <p>
+    Прежде чем что-то придумывать — перепись. Обе половины референсного языка в проекте есть, и
+    обе с проверками и разобранными граблями. Ни одного нового движка заводить не нужно.
+  </p>
+
+  <div class="inv">
+    <div class="inv-col">
+      <h3>Ретро</h3>
+      <div class="inv-row">
+        <div><b>Полосы по светлоте</b><span>3–7 ступеней от одного семени, ширина размаха — ручкой. Это буквально «ретро-закат» из ваших макетов.</span></div>
+        <span class="inv-where">retroRamp()</span>
+      </div>
+      <div class="inv-row">
+        <div><b>Двухтоновый режим</b><span>Две краски и переход между ними.</span></div>
+        <span class="inv-where">kind: 'duplex'</span>
+      </div>
+      <div class="inv-row">
+        <div><b>Плакатная краска + зерно</b><span>Шесть красок и фактура шелкографии: калибр 0.65, наложение overlay.</span></div>
+        <span class="inv-where">--poster-* · grain</span>
+      </div>
+      <div class="inv-row">
+        <div><b>Моноширинная капса</b><span>Приборная подпись: 11 px, трекинг 0.12em, верхний регистр.</span></div>
+        <span class="inv-where">CAPS</span>
+      </div>
+      <div class="inv-row">
+        <div><b>Аналоговый циферблат</b><span>Метки часов и тупые стрелки — уже нарисованы.</span></div>
+        <span class="inv-where">AnalogFace</span>
+      </div>
+      <div class="inv-row">
+        <div><b>Табличные цифры</b><span>Числа не пляшут по ширине — условие любой шкалы.</span></div>
+        <span class="inv-where">NUMERIC</span>
+      </div>
+    </div>
+
+    <div class="inv-col">
+      <h3>Стекло</h3>
+      <div class="inv-row">
+        <div><b>Готовый рецепт</b><span>Поверхность 62%, размытие 24 px, насыщенность 140%, светлая кромка.</span></div>
+        <span class="inv-where">cardGlass()</span>
+      </div>
+      <div class="inv-row">
+        <div><b>Своя ступень высоты</b><span>Уровень 1 «ТУМАН» с прописанным условием применения: только там, где есть что размывать.</span></div>
+        <span class="inv-where">ALTITUDE.mist</span>
+      </div>
+      <div class="inv-row">
+        <div><b>Артефакты композитинга уже побеждены</b><span>Полоса, «исчезающая по клику», лечится тремя строками — они в рецепте стоят. Это дорогое знание, добытое живой жалобой.</span></div>
+        <span class="inv-where">translateZ · isolation</span>
+      </div>
+      <div class="inv-row">
+        <div><b>Выключатель</b><span>Стекло гасится одной строкой, интерфейс остаётся рабочим.</span></div>
+        <span class="inv-where">GLASS_ENABLED</span>
+      </div>
+      <div class="inv-row">
+        <div><b>Обои под стеклом</b><span>У стола есть фон — фото, сетка или ретро-рампа. Подложка, ради которой стекло и существует, уже на месте.</span></div>
+        <span class="inv-where">newtab/settings</span>
+      </div>
+    </div>
+  </div>
+
+  <p>
+    <b>Где разрыв.</b> Ретро живёт <b>только в земле окна</b> — режим фона, который человек
+    выбирает в настройках. Стекло живёт <b>только в виджетах AI-панели</b>. А рабочий стол, где
+    как раз лежат обои и стоят плитки, не получает ни того ни другого: его плитки — плоская
+    заливка одной краской. Все шесть идей ниже закрывают ровно этот разрыв.
+  </p>
+</section>
+
+<!-- ══ ИДЕИ ══════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 2 · идеи</span>
+  <h2>Шесть правок</h2>
+
+  <!-- 1 ─────────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">01</span>
+      <h3>Плитка-стекло над обоями</h3>
+    </div>
+    <p>
+      Плитка перестаёт быть непрозрачной краской и становится <b>стеклом</b>, сквозь которое видны
+      обои. Обои человек выбирает сам, поэтому стол автоматически становится «его» — и ретро-рампа
+      под стеклом даёт ровно ту картинку, что в референсах. Выбор материала — по плитке: часть
+      оставить краской, часть пустить стеклом.
+    </p>
+
+    <div class="wall">
+      <div class="wall-note">Обои — ретро-рампа · плитки — стекло с зерном</div>
+
+      <div class="tile glass grain">
+        <span class="cap">Воскресенье</span>
+        <div><div class="big">15:48</div><div class="sub">6 сентября</div></div>
+      </div>
+
+      <div class="tile glass grain">
+        <span class="cap">Краснодар</span>
+        <div><div class="big">31°</div><div class="sub">малооблачно, ощущается 28°</div></div>
+      </div>
+
+      <div class="tile bar glass grain" style="flex-direction:column;justify-content:center">
+        <span class="cap">Защита</span>
+        <div class="big" style="font-size:30px;margin-top:4px">2 050</div>
+      </div>
+
+      <div class="tile wide glass grain" style="height:96px;flex-direction:row;align-items:center;justify-content:space-between">
+        <div>
+          <span class="cap">Отслеживание</span>
+          <div class="sub" style="margin-top:2px">ozon.ru · ещё 4 товара</div>
+        </div>
+        <div class="big" style="font-size:26px">30 807 ₽</div>
+      </div>
+    </div>
+
+    <div class="wall day">
+      <div class="wall-note">То же на светлых обоях — чернила переворачиваются</div>
+      <div class="tile glass grain">
+        <span class="cap">Воскресенье</span>
+        <div><div class="big">15:48</div><div class="sub">6 сентября</div></div>
+      </div>
+      <div class="tile bar glass grain" style="flex-direction:column;justify-content:center">
+        <span class="cap">Курс ЦБ · USD</span>
+        <div class="big" style="font-size:28px;margin-top:4px">86,59</div>
+      </div>
+    </div>
+
+    <dl class="facts">
+      <div class="fact"><dt>Где</dt><dd>Материал плитки в <code>DesktopTile.tsx</code>: третий вариант рядом с «краска» и «как тема».</dd></div>
+      <div class="fact"><dt>Почему можно</dt><dd>Это <b>прямое назначение</b> уровня «ТУМАН», записанное в системе высот: стекло там, где под слоем есть что размывать. У стола подложка есть всегда.</dd></div>
+      <div class="fact"><dt>Что уже решено</dt><dd>Рецепт, размытие, кромка и три строки против артефактов композитинга — всё в <code>cardGlass()</code>. Брать как есть.</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>Читаемость зависит от обоев: на пёстром фото подпись поплывёт. Нужен замер контраста по подложке и запасной путь — подмешивать краску в стекло, когда контраст не проходит.</dd></div>
+    </dl>
+  </div>
+
+  <!-- 2 ─────────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">02</span>
+      <h3>Ретро-полосы как заливка плитки</h3>
+    </div>
+    <p>
+      Тот же движок, что рисует ретро-режим земли окна, применяется к плитке: 3–7 ступеней по
+      светлоте от одной краски, жёсткие границы между полосами. Никакого нового цвета — плитка
+      по-прежнему «чайная» или «мандариновая», просто её краска разложена в рампу.
+    </p>
+
+    <div class="wall day">
+      <div class="wall-note">Заливка ретро-рампой · движок retroRamp, ступени 5</div>
+
+      <div class="tile retro-tea grain">
+        <span class="cap">Отслеживание</span>
+        <div><div class="big" style="font-size:28px">30 807 ₽</div><div class="sub">ozon.ru · ещё 4 товара</div></div>
+      </div>
+
+      <div class="tile retro-tang grain">
+        <span class="cap">Таймер</span>
+        <div><div class="big">19:59</div><div class="sub">до конца · пауза</div></div>
+      </div>
+
+      <div class="tile retro-sky grain">
+        <span class="cap">Воскресенье</span>
+        <div><div class="big">15:48</div><div class="sub">6 сентября</div></div>
+      </div>
+
+      <div class="tile retro-passion grain">
+        <span class="cap">Защита</span>
+        <div><div class="big">2 050</div><div class="sub">заблокировано сегодня</div></div>
+      </div>
+    </div>
+
+    <dl class="facts">
+      <div class="fact"><dt>Где</dt><dd>Заливка плитки. Движок <code>retroRamp()</code> и <code>retroSteps()</code> уже есть в <code>shared/chromeGround.ts</code> и уже под эталонной проверкой.</dd></div>
+      <div class="fact"><dt>Почему это дёшево</dt><dd>Функция принимает семя и отдаёт массив ступеней. Плитке нужен ровно этот массив, собранный в <code>linear-gradient</code> с жёсткими стопами.</dd></div>
+      <div class="fact"><dt>Сочетается</dt><dd>Ретро-плитка и стеклянная плитка на одном столе не спорят: одна — печать, другая — окно. Именно так устроены референсы.</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>Полосы на мелкой плитке 1×1 превращаются в кашу. Число ступеней придётся считать от высоты плитки, а не брать общим.</dd></div>
+    </dl>
+  </div>
+
+  <!-- 3 ─────────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">03</span>
+      <h3>Диапазоны: где мы внутри коридора</h3>
+      <span class="keep">оставлено с первого захода</span>
+    </div>
+    <p>
+      Единственная идея, которая делает виджеты <b>функциональнее</b>. Спарклайн отвечает «как
+      менялось», а у половины виджетов вопрос другой — «это много или мало»: 31° при сегодняшних
+      16…31, цена 30 807 при наблюдённых 28 100…41 000, курс внутри месячного коридора. И это
+      честный ретро-приём: шкала с засечками и стрелкой — радиоприёмник, а не абстракция.
+    </p>
+
+    <div class="wall">
+      <div class="wall-note">Шкала-прибор: засечки, стрелка, подписи концов диапазона</div>
+
+      <div class="tile tall glass grain" style="justify-content:flex-start;gap:var(--sp3)">
+        <span class="cap">Краснодар</span>
+        <div class="big" style="font-size:40px">31°</div>
+        <div class="dial">
+          <div class="ticks">
+            <i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i class="tall"></i>
+          </div>
+          <span class="needle" style="left:93%"></span>
+          <div class="ends"><span>16°</span><span>сегодня</span></div>
+        </div>
+      </div>
+
+      <div class="tile tall glass grain" style="justify-content:flex-start;gap:var(--sp3)">
+        <span class="cap">Отслеживание</span>
+        <div class="big" style="font-size:28px">30 807 ₽</div>
+        <div class="dial">
+          <div class="ticks">
+            <i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i><i class="tall"></i>
+          </div>
+          <span class="needle" style="left:19%"></span>
+          <div class="ends"><span>28 100</span><span>41 000</span></div>
+        </div>
+      </div>
+
+      <div class="tile wide bar retro-tea grain" style="height:auto;padding-bottom:var(--sp4)">
+        <span class="cap">Курс ЦБ · USD · 30 дней</span>
+        <div class="dial">
+          <div class="ticks">
+            <i class="tall"></i><i></i><i></i><i class="tall"></i><i></i><i></i><i class="tall"></i><i></i><i></i><i class="tall"></i><i></i><i></i><i class="tall"></i><i></i><i></i><i class="tall"></i><i></i><i></i><i class="tall"></i>
+          </div>
+          <span class="needle" style="left:64%"></span>
+          <div class="ends"><span>84,10</span><span>86,59 сейчас</span><span>88,90</span></div>
+        </div>
+      </div>
+    </div>
+
+    <dl class="facts">
+      <div class="fact"><dt>Где</dt><dd>Погода (коридор дня), отслеживание (наблюдённый коридор цены), курсы, крипта. Рядом со спарклайном, а не вместо: вопросы разные.</dd></div>
+      <div class="fact"><dt>Почему по правилам</dt><dd>Показываются <b>факты из собственных наблюдений</b> — то же, чем уже живёт раздел отслеживания («минимум за всё время»). Никаких советов и прогнозов.</dd></div>
+      <div class="fact"><dt>Честность</dt><dd>Пока наблюдений мало, диапазон рисовать нечестно: нужен пунктир-заглушка, как у спарклайна с одним наблюдением.</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>Стрелка у самого края обрезается — зажимать положение, как долю сплита в <code>shared/layout.ts</code>.</dd></div>
+    </dl>
+  </div>
+
+  <!-- 4 ─────────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">04</span>
+      <h3>Точечные цифры и халфтон</h3>
+    </div>
+    <p>
+      Табло из точек — самая узнаваемая ретро-подпись референсов, и она же связывает их с нашим
+      зерном: и то и другое про <b>растр</b>. Здесь два приёма сразу: цифры сеткой 5×7 и халфтон —
+      точечная растяжка вместо мягкой заливки. На превью ниже цифры честно считаются в canvas,
+      часы идут.
+    </p>
+
+    <div class="wall">
+      <div class="wall-note">Табло 5×7 · халфтон в углу плитки · всё одним растром</div>
+
+      <div class="tile glass grain halftone" style="color:var(--on-poster-light)">
+        <span class="cap">Воскресенье</span>
+        <div>
+          <div class="dots" data-dots="15:48" data-dot-size="5" data-dot-gap="2"></div>
+          <div class="sub" style="margin-top:10px">6 сентября</div>
+        </div>
+      </div>
+
+      <div class="tile retro-tang grain">
+        <span class="cap">Краснодар</span>
+        <div>
+          <div class="dots" data-dots="31" data-dot-size="8" data-dot-gap="3"></div>
+          <div class="sub" style="margin-top:10px">малооблачно</div>
+        </div>
+      </div>
+
+      <div class="tile bar glass grain" style="flex-direction:row;align-items:center;justify-content:space-between">
+        <div>
+          <span class="cap">Таймер</span>
+          <div class="sub" style="margin-top:2px">до конца</div>
+        </div>
+        <div class="dots" data-dots="19:59" data-dot-size="4" data-dot-gap="2"></div>
+      </div>
+    </div>
+
+    <dl class="facts">
+      <div class="fact"><dt>Где</dt><dd>Новый циферблат в <code>clockFaces.tsx</code> рядом с <code>AnalogFace</code> и <code>WideClusterClock</code>; халфтон — необязательный слой плитки.</dd></div>
+      <div class="fact"><dt>Как рисовать</dt><dd>Ни шрифта, ни картинки: цифра описана семью строками по пять бит, рисуется точками в размер. Цвет — чернила плитки. Ноль зависимостей.</dd></div>
+      <div class="fact"><dt>Почему только вариант</dt><dd>Точечный набор читается медленнее обычного. Как циферблат — уместно; для сумм и курсов, где важна точность с первого взгляда, — нет.</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>На мелкой плитке точки сливаются. Нужен нижний порог размера, ниже которого циферблат сам переключается на обычный.</dd></div>
+    </dl>
+  </div>
+
+  <!-- 5 ─────────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">05</span>
+      <h3>Осциллограф вместо спарклайна</h3>
+    </div>
+    <p>
+      Тот же ряд чисел, но нарисованный как след прибора: тонкая линия, светящаяся точка на
+      последнем значении, сетка-подложка из засечек. Данные ровно те же — меняется только язык
+      рисунка, и он попадает в ретро-приборную тему остального.
+    </p>
+
+    <div class="wall">
+      <div class="wall-note">Одни и те же данные · слева спарклайн, справа прибор</div>
+
+      <div class="tile wide glass grain" style="height:auto">
+        <span class="cap">Курс ЦБ · как сейчас</span>
+        <svg class="scope" viewBox="0 0 280 44" preserveAspectRatio="none" aria-hidden="true">
+          <polyline points="0,30 28,26 56,31 84,22 112,25 140,16 168,20 196,11 224,15 252,8 280,12"
+            fill="none" stroke="currentColor" stroke-width="1.5" opacity=".8"/>
+        </svg>
+      </div>
+
+      <div class="tile wide glass grain" style="height:auto">
+        <span class="cap">Курс ЦБ · прибором</span>
+        <svg class="scope" viewBox="0 0 280 44" preserveAspectRatio="none" aria-hidden="true">
+          <g opacity=".22" stroke="currentColor" stroke-width="1">
+            <line x1="0" y1="11" x2="280" y2="11"/><line x1="0" y1="22" x2="280" y2="22"/><line x1="0" y1="33" x2="280" y2="33"/>
+          </g>
+          <polyline points="0,30 28,26 56,31 84,22 112,25 140,16 168,20 196,11 224,15 252,8 280,12"
+            fill="none" stroke="var(--poster-mustard)" stroke-width="1.6"
+            style="filter:drop-shadow(0 0 4px var(--poster-mustard))"/>
+          <circle cx="280" cy="12" r="3" fill="var(--poster-mustard)" style="filter:drop-shadow(0 0 6px var(--poster-mustard))"/>
+        </svg>
+      </div>
+    </div>
+
+    <dl class="facts">
+      <div class="fact"><dt>Где</dt><dd>Курсы, крипта, отслеживание, «Чем занимался». Данные и подсчёт не меняются — только отрисовка.</dd></div>
+      <div class="fact"><dt>Осторожно с цветом</dt><dd>Свечение линии берётся из краски плитки, а не из статусных зелёного и красного: рост и падение по-прежнему говорят значком и словом.</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>Тонкая светящаяся линия на светлой плитке пропадает. Толщина и свечение — от светлоты подложки, а не константой.</dd></div>
+    </dl>
+  </div>
+
+  <!-- 6 ─────────────────────────────────────────────────────────────────── -->
+  <div class="idea">
+    <div class="idea-head">
+      <span class="idea-num">06</span>
+      <h3>Ретро-обои: рампу в набор фонов</h3>
+    </div>
+    <p>
+      Самая дешёвая правка из всех. Ретро-режим фона <b>уже написан</b> и уже проверяется эталоном
+      — но в готовом наборе обоев ретро-пресетов нет, и человек до него доберётся, только если сам
+      залезет в конструктор градиента. Достаточно добавить три-четыре готовых заката в список.
+    </p>
+
+    <div class="wall" style="min-height:120px;align-items:center">
+      <div class="wall-note">Эта подложка и есть ретро-рампа — шесть ступеней плюс солнце</div>
+    </div>
+
+    <dl class="facts">
+      <div class="fact"><dt>Где</dt><dd>Список встроенных фонов рядом с <code>BUILTIN_MESHES</code>. Движок, проверки и адаптация под тему уже на месте.</dd></div>
+      <div class="fact"><dt>Почему это важно для остального</dt><dd>Стекло без подложки бессмысленно. Ретро-обои — та самая подложка, ради которой идея №1 вообще работает: они дают стеклу что размывать.</dd></div>
+      <div class="fact"><dt>Риск</dt><dd>Практически нет: новый пресет — это данные, а не код. Проверить только читаемость островов над ним — тем же сторожем, что и остальные фоны.</dd></div>
+    </dl>
+  </div>
+
+</section>
+
+<!-- ══ ГРАНИЦЫ ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 3</span>
+  <h2>Границы: чего я делать не буду</h2>
+
+  <div class="bounds">
+    <div class="bound">
+      <span class="x">✕</span>
+      <span><b>Никаких белых засветов.</b> Приём из первого захода снят целиком: в референсах
+        светится цвет сквозь зерно, а не лампа поверх краски.</span>
+    </div>
+    <div class="bound">
+      <span class="x">✕</span>
+      <span><b>Стекло — только там, где есть что размывать.</b> Плитка над обоями — да. Кнопки в
+        углу, поповеры, сайдбар и настройки — нет: под ними ровная земля, и стекло там вырождается
+        в мутное пятно. Ровно этот случай мы и лечили неделю назад.</span>
+    </div>
+    <div class="bound">
+      <span class="x">✕</span>
+      <span><b>Не крашу хром.</b> Сайдбар, тулбар и настройки остаются тихими: там цвет означает
+        «нажимается» или «выбрано».</span>
+    </div>
+    <div class="bound">
+      <span class="x">✕</span>
+      <span><b>Не завожу новых цветов и не трогаю шкалы.</b> Всё из шести плакатных красок и
+        акцента палитры. Радиусы и отступы — прежние четыре ступени под машинной проверкой.</span>
+    </div>
+    <div class="bound">
+      <span class="x">✕</span>
+      <span><b>Не крашу статус.</b> Свечение линии прибора берётся из краски плитки; зелёный и
+        красный по-прежнему говорят значком и словом.</span>
+    </div>
+    <div class="bound">
+      <span class="x">✕</span>
+      <span><b>Не перевожу все числа на табло.</b> Только выбираемый вариант и только с нижним
+        порогом размера.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ══ ПОРЯДОК ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 4</span>
+  <h2>Порядок и что решаете вы</h2>
+  <p>
+    Порядок не по красоте, а по зависимости: стеклу нужна подложка, поэтому ретро-обои идут
+    первыми, хотя стоят меньше всего.
+  </p>
+
+  <div class="order">
+    <div class="step"><span class="step-n">06</span><span><b>Ретро-обои в набор.</b> Данные, а не код: движок уже есть.</span><span class="cost">почти бесплатно</span></div>
+    <div class="step"><span class="step-n">01</span><span><b>Плитка-стекло.</b> Третий материал плитки, рецепт готов.</span><span class="cost">дёшево · очень заметно</span></div>
+    <div class="step"><span class="step-n">02</span><span><b>Ретро-полосы в заливке плитки.</b> Переиспользование <code>retroRamp</code>.</span><span class="cost">дёшево · заметно</span></div>
+    <div class="step"><span class="step-n">03</span><span><b>Диапазоны.</b> Новый мелкий компонент плюс данные о коридоре у трёх виджетов.</span><span class="cost">средне · полезно</span></div>
+    <div class="step"><span class="step-n">04</span><span><b>Точечное табло.</b> Отдельный циферблат с порогом размера.</span><span class="cost">средне · характер</span></div>
+    <div class="step"><span class="step-n">05</span><span><b>Осциллограф.</b> Только отрисовка, данные прежние.</span><span class="cost">средне · характер</span></div>
+  </div>
+
+  <div class="qs">
+    <div class="q">
+      <b>Стекло — выбор человека или новое умолчание?</b>
+      <span>Можно сделать третьим материалом плитки рядом с краской, а можно перевести стол на стекло по умолчанию и оставить краску вариантом. Второе смелее и ближе к референсам, но затрагивает всех, у кого стол уже настроен.</span>
+    </div>
+    <div class="q">
+      <b>Насколько жёсткие полосы?</b>
+      <span>На превью границы ступеней резкие — это честный ретро-принт. Их можно смягчить до плавных переходов, и тогда плитка станет ближе к нынешней заливке. Ручка для этого в движке уже есть (<code>softness</code> задаёт число ступеней).</span>
+    </div>
+    <div class="q">
+      <b>Смешивать ли материалы на одном столе?</b>
+      <span>В референсах смешивают — и это работает: печать и стекло не спорят. Но если хочется строже, можно разрешить один материал на весь стол.</span>
+    </div>
+    <div class="q">
+      <b>Идти ли этим же языком в хаб и карточки AI?</b>
+      <span>Там тоже содержимое, приёмы лягут. Но это второй заход: сначала стол, где есть обои и где эффект виден сразу.</span>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="caps">Oblako · ретро под стеклом · предложение, не правка</div>
+</footer>
+
+</div>
+
+<script>
+/* ── Точечное табло: сетка 5×7, рисуется в canvas ───────────────────────────
+   Ни шрифта, ни картинки, ни зависимости: цифра описана семью строками по пять
+   бит. Цвет берётся у родителя, поэтому точки совпадают с чернилами плитки. */
+(function () {
+  var GLYPHS = {
+    '0': ['01110','10001','10011','10101','11001','10001','01110'],
+    '1': ['00100','01100','00100','00100','00100','00100','01110'],
+    '2': ['01110','10001','00001','00010','00100','01000','11111'],
+    '3': ['11111','00010','00100','00010','00001','10001','01110'],
+    '4': ['00010','00110','01010','10010','11111','00010','00010'],
+    '5': ['11111','10000','11110','00001','00001','10001','01110'],
+    '6': ['00110','01000','10000','11110','10001','10001','01110'],
+    '7': ['11111','00001','00010','00100','01000','01000','01000'],
+    '8': ['01110','10001','10001','01110','10001','10001','01110'],
+    '9': ['01110','10001','10001','01111','00001','00010','01100'],
+    ':': ['00000','00100','00100','00000','00100','00100','00000'],
+    ',': ['00000','00000','00000','00000','00110','00110','01100'],
+    '°': ['01100','10010','01100','00000','00000','00000','00000']
+  };
+
+  function draw(el) {
+    var text = el.getAttribute('data-dots') || '';
+    var dot = parseInt(el.getAttribute('data-dot-size') || '5', 10);
+    var gap = parseInt(el.getAttribute('data-dot-gap') || '2', 10);
+    var color = getComputedStyle(el).color;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var step = dot + gap;
+
+    el.innerHTML = '';
+    for (var i = 0; i < text.length; i++) {
+      var g = GLYPHS[text[i]];
+      if (!g) continue;
+      var cols = g[0].length, rows = g.length;
+      var w = cols * step - gap, h = rows * step - gap;
+      var cv = document.createElement('canvas');
+      cv.width = w * dpr; cv.height = h * dpr;
+      cv.style.width = w + 'px'; cv.style.height = h + 'px';
+      var ctx = cv.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      for (var r = 0; r < rows; r++) {
+        for (var c = 0; c < cols; c++) {
+          ctx.globalAlpha = g[r][c] === '1' ? 1 : 0.16;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(c * step + dot / 2, r * step + dot / 2, dot / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      el.appendChild(cv);
+    }
+  }
+
+  Array.prototype.slice.call(document.querySelectorAll('[data-dots]')).forEach(draw);
+
+  // Часы идут — иначе превью выглядит скриншотом, а не живым табло.
+  var clock = document.querySelector('[data-dots="15:48"]');
+  if (clock) {
+    setInterval(function () {
+      var d = new Date();
+      clock.setAttribute('data-dots',
+        String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'));
+      draw(clock);
+    }, 10000);
+  }
+})();
+</script>

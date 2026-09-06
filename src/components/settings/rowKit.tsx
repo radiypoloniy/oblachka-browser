@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { COL, RADIUS, TEXT, motion, pad, sp, well } from '../../styles/system';
+import { CAPS, COL, RADIUS, TEXT, motion, pad, sp, well } from '../../styles/system';
 
 // ── Строка списка и полоса-мера ───────────────────────────────────────────────
 //
@@ -77,6 +77,74 @@ export function SpotLine({ title, hint, control, cols, colWidths }: {
         <div key={i} style={{ minWidth: 0, textAlign: 'right' }}>{c}</div>
       ))}
       {control ?? <span />}
+    </div>
+  );
+}
+
+/**
+ * Ползунок со шкалой.
+ *
+ * ⚠️ Заведён по итогам переписи: ползунок был ЕДИНСТВЕННЫМ контролом настроек без сущности в
+ * наборе, и поэтому его рисовало каждое место само — четыре штуки, четыре чуть разных вида. В
+ * двух файлах при этом лежали почти дословно одинаковые локальные помощники с одинаковой
+ * сигнатурой. Это ровно то дублирование, ради предотвращения которого набор и существует.
+ *
+ * ⚠️ Внутри НАСТОЯЩИЙ `input type="range"`, а не своя дорожка с мышиными обработчиками. Своя
+ * реализация означала бы заново написать стрелки, Home/End, PageUp/PageDown, шаг с зажатым
+ * Shift и чтение с экрана — и однажды что-нибудь из этого потерять. Оформление добавляется
+ * ВОКРУГ штатного контрола, а не вместо него.
+ *
+ * ⚠️ Засечки — не украшение: они показывают ШАГ. У длины пароля шаг единица, у насыщенности —
+ * проценты, и шкала об этом честно сообщает, пока человек не начал тащить ручку.
+ *
+ * ⚠️ Цвет заполнения — ТОН РАЗДЕЛА, а не акцент палитры. Тот же приём, что у фокуса поля в
+ * kit.tsx: на цветной странице синяя дорожка читалась бы элементом чужого интерфейса.
+ */
+export function SliderRow({ label, value, min, max, step, onChange, format, majors = 5 }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  format: (v: number) => string;
+  /** Сколько крупных засечек. Мелкие расставляются между ними по четыре. */
+  majors?: number;
+}) {
+  // Засечки считаются от числа крупных, а не задаются списком: иначе диапазон 8…64 и диапазон
+  // 0…100 просили бы разные разметки руками, и одна из них рано или поздно разъехалась бы.
+  const marks = Array.from({ length: (majors - 1) * 5 + 1 }, (_, i) => i % 5 === 0);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(3, 4) }}>
+      <span style={{ flex: '0 0 120px', ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>{label}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+          height: 10, marginBottom: sp(1), color: 'var(--text-faint)',
+        }}>
+          {marks.map((major, i) => (
+            <span key={i} style={{
+              width: 1, background: 'currentColor',
+              height: major ? 9 : 5, opacity: major ? 0.55 : 0.3,
+            }} />
+          ))}
+        </div>
+        <input
+          type="range" min={min} max={max} step={step} value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          aria-label={label}
+          style={{
+            width: '100%', display: 'block', margin: 0,
+            accentColor: 'var(--section-tone, var(--accent))', cursor: 'default',
+          }}
+        />
+      </div>
+      {/* ⚠️ Капса набирается ЗДЕСЬ, а не берётся CapsLabel из kit.tsx: kit реэкспортирует этот
+          модуль, и импорт обратно замкнул бы круг зависимостей. */}
+      <span style={{
+        ...CAPS, flex: '0 0 52px', textAlign: 'right',
+        color: 'var(--text-strong)', fontVariantNumeric: 'tabular-nums',
+      }}>{format(value)}</span>
     </div>
   );
 }

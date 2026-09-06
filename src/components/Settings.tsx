@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { Fragment, useEffect, useRef, useState, type ComponentType } from 'react';
 import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, CreditCard, Wand2, Search, Sparkles, type LucideIcon, Users, BookOpen } from 'lucide-react';
 import { searchSettings, isEntryAvailable, SETTINGS_INDEX, type SettingsEntry, type SettingsAvailability } from '../../shared/settingsIndex';
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
-import { sp, pad, RADIUS, motion, selected, panelIsland } from '../styles/system';
+import { sp, pad, RADIUS, CAPS, motion, selected, panelIsland } from '../styles/system';
 import { SECTION_TONE, toneVars } from './settings/kit';
 import AdBlockSection from './settings/AdBlockSection';
 import VpnSection from './settings/VpnSection';
@@ -36,7 +36,7 @@ interface SettingsProps {
 // Секции левого меню — «Блокировка» и «AI» рабочие, VPN/Интерфейс — placeholder для будущих
 // этапов. soon — единственный флаг, гоняющий и активность, и клик, и стиль (см. рендер-цикл
 // ниже) — точечно снят только у 'ai', остальные пункты и их поведение не тронуты.
-type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean };
+type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean; group?: string };
 // Цвет значка — опознавательный знак раздела, как в настройках iOS: глаз находит нужную
 // строку по пятну раньше, чем прочитает подпись. Токены --tile-* живут в colors.css.
 // ⚠️ ПОРЯДОК ЗДЕСЬ — ЭТО РАНЖИРОВАНИЕ ПО ЧАСТОТЕ ОБРАЩЕНИЯ, а не история появления разделов.
@@ -50,16 +50,24 @@ type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean };
 // ⚠️ Первый пункт этого списка — раздел ПО УМОЛЧАНИЮ (см. FIRST_SECTION ниже). Отдельной
 // константы с именем раздела заводить нельзя: она уже расходилась с меню (см. isSectionId).
 const NAV_ITEMS: NavItem[] = [
-  { id: 'general',    label: 'Браузер',        Icon: SlidersHorizontal },
+  // ⚠️ ГРУППЫ РАССТАВЛЕНЫ ПО ДЕЙСТВУЮЩЕМУ ПОРЯДКУ, и ни один пункт ради них не переехал.
+  // Порядок здесь — не алфавит и не вкус: он выстрадан (импорт третьим, потому что за ним идут
+  // в первый день; правила последними, потому что реже всего). Группировка, требующая
+  // переставить пункты, ломала бы эти решения ради заголовков — цена не та.
+  //
+  // ⚠️ Заголовок группы несёт ПЕРВЫЙ пункт группы, а не отдельная структура рядом. Отдельный
+  // список групп разошёлся бы с меню молча — ровно та болезнь, от которой лечат isSectionId и
+  // FIRST_SECTION ниже.
+  { id: 'general',    label: 'Браузер',        Icon: SlidersHorizontal, group: 'Основное' },
   { id: 'appearance', label: 'Интерфейс',      Icon: Palette },
   { id: 'ai',         label: 'AI',             Icon: Cpu },
-  { id: 'vpn',        label: 'VPN',            Icon: Wifi },
+  { id: 'vpn',        label: 'VPN',            Icon: Wifi, group: 'Приватность' },
   { id: 'adblock',    label: 'Блокировка',     Icon: Shield },
   { id: 'passwords',  label: 'Пароли',         Icon: Lock },
   { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard },
   { id: 'permissions', label: 'Разрешения',    Icon: ShieldCheck },
   // Профили — рядом с разрешениями: и то и другое про «что этому окружению позволено».
-  { id: 'profiles',   label: 'Профили',        Icon: Users },
+  { id: 'profiles',   label: 'Профили',        Icon: Users, group: 'Прочее' },
   // Правила стоят последними как самое редкое, но по-прежнему отдельным разделом, а не блоком
   // внутри AI: фразу разбирает модель, а исполняются они обычным кодом и живут без модели.
   { id: 'rules',      label: 'Правила',        Icon: Wand2 },
@@ -340,11 +348,16 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
           width: 200, flex: 'none', borderRight: '1px solid var(--divider-strong)',
           padding: pad(3, 2), display: 'flex', flexDirection: 'column', gap: sp(1) - 2,
         }}>
-          {NAV_ITEMS.map(({ id, label, Icon, soon }) => {
+          {NAV_ITEMS.map(({ id, label, Icon, soon, group }) => {
             const active = section === id && !soon;
             return (
+              <Fragment key={id}>
+              {/* Надпись группы — тот же приём, что держит группы в сайдбаре: моноширинная
+                  капса, а не жирная строка. Она обязана быть ТИШЕ пунктов, которые называет. */}
+              {group && (
+                <div style={{ ...CAPS, padding: `${sp(4)}px ${sp(3)}px ${sp(1)}px` }}>{group}</div>
+              )}
               <button
-                key={id}
                 className="settings-nav-item"
                 disabled={!!soon}
                 onClick={() => { if (!soon) goToSection(id as SectionId); }}
@@ -403,6 +416,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
                   </span>
                 )}
               </button>
+              </Fragment>
             );
           })}
         </nav>
