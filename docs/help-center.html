@@ -1,0 +1,1755 @@
+<title>Справочник Oblako</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700&display=swap">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   СПРАВОЧНИК OBLAKO
+   Оформление взято из дизайн-системы проекта дословно, а не придумано заново:
+   • числа — src/styles/system.ts (воздух 4·8·12·16·24·32, радиусы 4/8/12/20/24,
+     четыре роли текста 22/16/14/12,5, дисплейная роль, моношринная капса);
+   • цвет — src/styles/tokens/colors.css + palettes.css (четыре палитры × две темы,
+     акцент принадлежит палитре, статус не красит фон, фиолетового нет);
+   • материал — лестница теней lvl1..lvl3 и внутренний свет по верхней кромке.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Шкалы, общие для всех тем и палитр ────────────────────────────────────── */
+:root {
+  --sp1: 4px;  --sp2: 8px;  --sp3: 12px; --sp4: 16px; --sp6: 24px; --sp8: 32px;
+  --r-tight: 4px; --r-control: 8px; --r-box: 12px; --r-island: 20px; --r-content: 24px; --r-pill: 999px;
+
+  --font-ui: "Golos Text", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-display: "Unbounded", "Golos Text", system-ui, sans-serif;
+
+  --dur-fast: 120ms; --dur-base: 180ms; --dur-slow: 260ms;
+  --ease-standard: cubic-bezier(.2,0,.2,1);
+  --ease-out: cubic-bezier(.16,1,.3,1);
+
+  /* Статус — один набор на все палитры. Значок и слово, никогда не заливка. */
+  --success: #34C759;
+  --warning: #FF9500;
+  --danger:  #FF3B30;
+
+  /* Значки живут на нейтральной плашке; цвет несёт группа, а не каждая строка. */
+  --tile-blue:  #007AFF; --tile-green: #34C759; --tile-orange:#FF9500;
+  --tile-teal:  #30B0C7; --tile-brown: #A2845E; --tile-slate: #56616E;
+  --tile-red:   #FF3B30; --tile-grey:  #8E8E93; --tile-pink:  #FF2D55;
+
+  --shadow-tint: #0C0D12;
+  --grain-op: .45;
+}
+
+/* ── Земля, нейтраль, акцент: Уголь, светлая (палитра по умолчанию) ────────── */
+:root {
+  --ground-1: #E3E5E7; --ground-2: #E1E2E5; --ground-3: #E0DFE4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEEF1; --n4:#E2E3E8; --n5:#DBDCE3; --n6:#D0D2DD;
+  --n7:#BBBECE; --n8:#989DB3; --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent: #2C4BD8;
+  --accent-shade: #000000;
+  --on-accent: #FFFFFF;
+  --app-bg: var(--n4);
+  --surface: var(--n1);
+  --surface-sunken: var(--n5);
+  --surface-hover: rgba(0,0,0,.06);
+  --divider: rgba(60,60,67,.14);
+  --divider-strong: rgba(60,60,67,.24);
+  --text-strong: var(--n12); --text-body: var(--n11); --text-muted: var(--n10); --text-faint: var(--n9);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.75), inset 0 -1px 0 color-mix(in srgb, var(--shadow-tint) 5%, transparent);
+}
+
+/* Производные акцента — формулой, как в colors.css: палитра задаёт одну строку. */
+:root {
+  --accent-hover:  color-mix(in srgb, var(--accent) 88%, var(--accent-shade));
+  --accent-soft:   color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-ring:   color-mix(in srgb, var(--accent) 45%, transparent);
+  --selected:      color-mix(in srgb, var(--accent) 16%, var(--surface));
+  --card:          color-mix(in srgb, var(--accent) 8%, var(--surface));
+  --companion:     color-mix(in srgb, var(--accent) 62%, #0E7C9B);
+  --shadow-lvl1:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 5%, transparent),
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 5%, transparent);
+  --shadow-lvl2:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+  --shadow-lvl3:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 9%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 5%, transparent),
+    0 12px 22px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 36px 56px color-mix(in srgb, var(--shadow-tint) 8%, transparent);
+}
+
+/* ── Уголь, тёмная ─────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n6:#42424A;
+    --n7:#55555E; --n8:#72727E; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --accent-shade:#FFFFFF;
+    --app-bg: var(--n1); --surface: var(--n4); --surface-sunken: var(--n5);
+    --surface-hover: rgba(255,255,255,.10);
+    --divider: rgba(255,255,255,.14); --divider-strong: rgba(255,255,255,.22);
+    --shadow-tint:#000000;
+    --on-accent: var(--n1);
+    --selected: color-mix(in srgb, var(--accent) 26%, var(--surface));
+    --inner-light: inset 0 1px 0 rgba(255,255,255,.06);
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n6:#42424A;
+  --n7:#55555E; --n8:#72727E; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --accent-shade:#FFFFFF;
+  --app-bg: var(--n1); --surface: var(--n4); --surface-sunken: var(--n5);
+  --surface-hover: rgba(255,255,255,.10);
+  --divider: rgba(255,255,255,.14); --divider-strong: rgba(255,255,255,.22);
+  --shadow-tint:#000000;
+  --on-accent: var(--n1);
+  --selected: color-mix(in srgb, var(--accent) 26%, var(--surface));
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+/* ── Графит (macOS) ────────────────────────────────────────────────────────── */
+:root[data-palette="graphite"]:not([data-theme="dark"]) {
+  --ground-1:#E3E6E7; --ground-2:#E2E3E5; --ground-3:#E0E0E4;
+  --n1:#FEFEFF; --n2:#F8F8F8; --n3:#EFEFF0; --n4:#E4E5E6; --n5:#DDDEE0; --n6:#D4D5D9;
+  --n7:#C1C3C8; --n8:#A1A4AB; --n9:#747981; --n10:#5C5F65; --n11:#414348; --n12:#282A2C;
+  --accent:#3F6FB5;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="graphite"]:not([data-theme="light"]) {
+    --ground-1:#0F1316; --ground-2:#0E1014; --ground-3:#0D0D13;
+    --n1:#121212; --n2:#1A1A1A; --n3:#222222; --n4:#2B2B2B; --n5:#373737; --n6:#464646;
+    --n7:#595959; --n8:#787878; --n9:#919191; --n10:#B0B0B0; --n11:#D9D9D9; --n12:#FFFFFF;
+    --accent:#628CC9;
+  }
+}
+:root[data-palette="graphite"][data-theme="dark"] {
+  --ground-1:#0F1316; --ground-2:#0E1014; --ground-3:#0D0D13;
+  --n1:#121212; --n2:#1A1A1A; --n3:#222222; --n4:#2B2B2B; --n5:#373737; --n6:#464646;
+  --n7:#595959; --n8:#787878; --n9:#919191; --n10:#B0B0B0; --n11:#D9D9D9; --n12:#FFFFFF;
+  --accent:#628CC9;
+}
+
+/* ── Сланец (Nord) ─────────────────────────────────────────────────────────── */
+:root[data-palette="slate"]:not([data-theme="dark"]) {
+  --ground-1:#E3E6E7; --ground-2:#E2E3E5; --ground-3:#E0E0E4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEFF1; --n4:#E2E4E8; --n5:#DADEE4; --n6:#CFD4DD;
+  --n7:#BAC2CE; --n8:#97A2B4; --n9:#6A7991; --n10:#545F71; --n11:#3C434F; --n12:#252930;
+  --accent:#4C6B92;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="slate"]:not([data-theme="light"]) {
+    --ground-1:#0F1316; --ground-2:#0E1014; --ground-3:#0C0D12;
+    --n1:#111213; --n2:#18191C; --n3:#1E2125; --n4:#262930; --n5:#2F343E; --n6:#3B4252;
+    --n7:#4B5468; --n8:#65728A; --n9:#8B95A8; --n10:#AEB5C2; --n11:#DBDEE3; --n12:#FFFFFF;
+    --accent:#8BA4C2;
+  }
+}
+:root[data-palette="slate"][data-theme="dark"] {
+  --ground-1:#0F1316; --ground-2:#0E1014; --ground-3:#0C0D12;
+  --n1:#111213; --n2:#18191C; --n3:#1E2125; --n4:#262930; --n5:#2F343E; --n6:#3B4252;
+  --n7:#4B5468; --n8:#65728A; --n9:#8B95A8; --n10:#AEB5C2; --n11:#DBDEE3; --n12:#FFFFFF;
+  --accent:#8BA4C2;
+}
+
+/* ── Бумага ────────────────────────────────────────────────────────────────── */
+:root[data-palette="paper"]:not([data-theme="dark"]) {
+  --ground-1:#E7E5E3; --ground-2:#E3E2E0; --ground-3:#E1E1DC;
+  --n1:#FFFFFE; --n2:#F8F8F7; --n3:#F1F0EE; --n4:#E8E6E2; --n5:#E4E1DA; --n6:#DDD9CF;
+  --n7:#CEC8BA; --n8:#B4AB97; --n9:#80765E; --n10:#655C4B; --n11:#474136; --n12:#2B2721;
+  --accent:#94502A;
+  --divider: rgba(60,50,35,.14); --divider-strong: rgba(60,50,35,.22);
+  --surface-hover: rgba(60,45,20,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="paper"]:not([data-theme="light"]) {
+    --ground-1:#16110F; --ground-2:#110F0C; --ground-3:#0D0D09;
+    --n1:#131311; --n2:#1C1A18; --n3:#25221F; --n4:#2F2C26; --n5:#3D3830; --n6:#50483C;
+    --n7:#665C4D; --n8:#887B68; --n9:#9D917F; --n10:#B9B2A6; --n11:#DEDBD6; --n12:#FFFFFF;
+    --accent:#CC7A4C;
+    --divider: rgba(245,240,230,.14); --divider-strong: rgba(245,240,230,.22);
+    --surface-hover: rgba(255,246,230,.10);
+  }
+}
+:root[data-palette="paper"][data-theme="dark"] {
+  --ground-1:#16110F; --ground-2:#110F0C; --ground-3:#0D0D09;
+  --n1:#131311; --n2:#1C1A18; --n3:#25221F; --n4:#2F2C26; --n5:#3D3830; --n6:#50483C;
+  --n7:#665C4D; --n8:#887B68; --n9:#9D917F; --n10:#B9B2A6; --n11:#DEDBD6; --n12:#FFFFFF;
+  --accent:#CC7A4C;
+  --divider: rgba(245,240,230,.14); --divider-strong: rgba(245,240,230,.22);
+  --surface-hover: rgba(255,246,230,.10);
+}
+
+/* ── Земля окна ────────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-body);
+  background: var(--app-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Маршрут градиента: три остановки по оттенку при почти неизменной светлоте. */
+.ground {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 12% -10%, var(--ground-1) 0%, transparent 60%),
+    radial-gradient(100% 80% at 92% 8%, var(--ground-2) 0%, transparent 62%),
+    linear-gradient(168deg, var(--ground-1) 0%, var(--ground-2) 46%, var(--ground-3) 100%);
+}
+/* Зерно земли — тот же рецепт, что у островов: калибр .65, два октава, overlay. */
+.ground::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  opacity: var(--grain-op);
+  mix-blend-mode: overlay;
+}
+
+/* ── Роли текста ───────────────────────────────────────────────────────────── */
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 700; letter-spacing: -.03em; line-height: 1.04;
+  color: var(--text-strong);
+}
+.t-title   { font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; color: var(--text-strong); }
+.t-section { font-size: 16px; font-weight: 600; letter-spacing: -.01em; line-height: 1.35; color: var(--text-strong); }
+.t-body    { font-size: 14px; line-height: 1.5; color: var(--text-body); }
+.t-caption { font-size: 12.5px; line-height: 1.45; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+/* Моношринная капса — типографическая подпись продукта. */
+.caps {
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 500; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.measure { max-width: 68ch; }
+
+/* ── Раскладка: сайдбар-остров слева, остров содержимого справа ────────────── */
+.shell {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  gap: var(--sp3);
+  align-items: start;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: var(--sp3);
+}
+
+/* ── Сайдбар ───────────────────────────────────────────────────────────────── */
+.rail {
+  position: sticky; top: var(--sp3);
+  max-height: calc(100vh - var(--sp6));
+  display: flex; flex-direction: column; gap: var(--sp3);
+  padding: var(--sp3);
+  border-radius: var(--r-island);
+  background: var(--surface);
+  box-shadow: var(--shadow-lvl2), var(--inner-light);
+  overflow: hidden;
+}
+.brand { display: flex; align-items: center; gap: var(--sp2); padding: var(--sp1) var(--sp2) 0; }
+.brand-mark {
+  width: 30px; height: 30px; flex: none;
+  display: grid; place-items: center;
+  border-radius: var(--r-control);
+  background: linear-gradient(150deg, var(--accent), var(--companion));
+  color: var(--on-accent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+.brand-name { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: -.02em; color: var(--text-strong); }
+.brand-sub  { font-size: 11.5px; color: var(--text-faint); margin-top: -2px; }
+
+.nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
+.nav-cap { padding: var(--sp3) var(--sp2) var(--sp1); }
+.nav a {
+  display: flex; align-items: center; gap: var(--sp2);
+  padding: 7px var(--sp2);
+  border-radius: var(--r-control);
+  color: var(--text-body); text-decoration: none;
+  font-size: 13.5px;
+  transition: background var(--dur-fast) var(--ease-standard),
+              color var(--dur-fast) var(--ease-standard),
+              transform var(--dur-fast) var(--ease-standard);
+}
+.nav a:hover { background: var(--surface-hover); transform: translateY(-1px); }
+.nav a .dotmark {
+  width: 6px; height: 6px; flex: none; border-radius: 999px;
+  background: var(--text-faint); opacity: .45;
+  transition: all var(--dur-base) var(--ease-out);
+}
+/* Выделение — заливка, а не свет: токен посчитан по контрасту. */
+.nav a[aria-current="true"] { background: var(--selected); color: var(--text-strong); font-weight: 600; }
+.nav a[aria-current="true"] .dotmark { background: var(--accent); opacity: 1; transform: scale(1.5); }
+
+.rail-foot { border-top: 1px solid var(--divider); padding-top: var(--sp3); display: flex; flex-direction: column; gap: var(--sp2); }
+.swatches { display: flex; gap: var(--sp1); }
+.swatch {
+  flex: 1; height: 28px; padding: 0; cursor: pointer;
+  border-radius: var(--r-control);
+  border: 1px solid var(--divider);
+  background: var(--sw);
+  position: relative;
+  transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+}
+.swatch::after {
+  content: ""; position: absolute; left: 50%; bottom: 5px; translate: -50% 0;
+  width: 10px; height: 3px; border-radius: 2px; background: var(--swa);
+}
+.swatch:hover { transform: translateY(-1px); }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent-ring); border-color: transparent; }
+
+.themebtn {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp2);
+  width: 100%; cursor: pointer;
+  padding: 7px var(--sp3);
+  border-radius: var(--r-control);
+  border: 1px solid var(--divider);
+  background: transparent; color: var(--text-body);
+  font: inherit; font-size: 13px;
+  transition: background var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard);
+}
+.themebtn:hover { background: var(--surface-hover); transform: translateY(-1px); }
+
+/* ── Остров содержимого ────────────────────────────────────────────────────── */
+.stage {
+  border-radius: var(--r-island);
+  background: var(--surface);
+  box-shadow: var(--shadow-lvl2), var(--inner-light);
+  overflow: hidden;
+}
+
+/* Тулбар с омниксом — фильтр по всему справочнику. */
+.toolbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: var(--sp3);
+  padding: var(--sp3) var(--sp6);
+  border-bottom: 1px solid var(--divider);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(1.4);
+}
+.omnibox {
+  flex: 1; display: flex; align-items: center; gap: var(--sp2);
+  height: 36px; padding: 0 var(--sp3);
+  border-radius: var(--r-pill);
+  background: var(--surface-sunken);
+  border: 1px solid transparent;
+  transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+}
+.omnibox:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.omnibox input {
+  flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
+  font: inherit; font-size: 13.5px; color: var(--text-strong);
+}
+.omnibox input::placeholder { color: var(--text-faint); }
+.hitcount { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ── Шапка ─────────────────────────────────────────────────────────────────── */
+.hero { padding: var(--sp8) var(--sp6) var(--sp6); border-bottom: 1px solid var(--divider); }
+.hero h1 { font-size: clamp(30px, 4.2vw, 46px); }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero p { margin: var(--sp4) 0 0; font-size: 15.5px; line-height: 1.55; color: var(--text-body); max-width: 62ch; }
+
+.principles { display: flex; flex-wrap: wrap; gap: var(--sp2); margin-top: var(--sp6); }
+.principle {
+  display: flex; align-items: center; gap: var(--sp2);
+  padding: var(--sp2) var(--sp3);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--text-body);
+  font-size: 13px;
+  box-shadow: var(--shadow-lvl1);
+}
+.principle b { color: var(--text-strong); font-weight: 600; }
+
+/* ── Разделы ───────────────────────────────────────────────────────────────── */
+.section { padding: var(--sp8) var(--sp6); border-bottom: 1px solid var(--divider); scroll-margin-top: 68px; }
+.section:last-of-type { border-bottom: 0; }
+.section-head { display: flex; align-items: flex-start; gap: var(--sp3); margin-bottom: var(--sp6); }
+.section-num {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em;
+  color: var(--text-faint); padding-top: 6px; font-variant-numeric: tabular-nums;
+}
+.section-head p { margin: var(--sp2) 0 0; color: var(--text-muted); font-size: 13.5px; max-width: 68ch; }
+
+/* ── Строки-фичи ───────────────────────────────────────────────────────────── */
+.rows { display: grid; gap: var(--sp2); }
+.row {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: var(--sp3); align-items: start;
+  padding: var(--sp3) var(--sp3) var(--sp3) var(--sp2);
+  border-radius: var(--r-box);
+  transition: background var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard);
+}
+.row:hover { background: var(--surface-hover); transform: translateY(-1px); }
+/* Значок — на нейтральной плашке; цвет несёт значок, а не плашка. */
+.plate {
+  width: 34px; height: 34px; display: grid; place-items: center;
+  border-radius: var(--r-control);
+  background: var(--surface-sunken);
+  color: var(--ic, var(--text-muted));
+}
+.row-name { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: -.01em; color: var(--text-strong); }
+.row-desc { margin-top: 3px; font-size: 13.5px; line-height: 1.5; color: var(--text-muted); max-width: 66ch; }
+.row-meta { display: flex; flex-wrap: wrap; gap: var(--sp1); justify-content: flex-end; padding-top: 2px; max-width: 260px; }
+
+.chip {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .02em;
+  padding: 3px var(--sp2); border-radius: var(--r-tight);
+  background: var(--surface-sunken); color: var(--text-muted); white-space: nowrap;
+}
+.chip.where { letter-spacing: 0; font-family: var(--font-ui); font-size: 12px; }
+
+kbd {
+  font-family: var(--font-mono); font-size: 11.5px;
+  padding: 3px 7px; border-radius: var(--r-tight);
+  background: var(--surface-sunken); color: var(--text-strong);
+  border: 1px solid var(--divider);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--shadow-tint) 8%, transparent);
+  white-space: nowrap;
+}
+
+/* ── Врезка: карточка содержимого (геометрия крупнее, чем у хрома) ─────────── */
+.note {
+  margin-top: var(--sp6);
+  padding: var(--sp4) var(--sp6);
+  border-radius: var(--r-content);
+  background: var(--card);
+  box-shadow: var(--shadow-lvl1);
+}
+.note p { margin: var(--sp2) 0 0; font-size: 13.5px; color: var(--text-body); max-width: 66ch; }
+.note p:first-of-type { margin-top: var(--sp2); }
+
+/* ── Таблица клавиш ────────────────────────────────────────────────────────── */
+.keys-wrap { overflow-x: auto; }
+.keys { width: 100%; border-collapse: collapse; min-width: 460px; }
+.keys tr { border-bottom: 1px solid var(--divider); }
+.keys tr:last-child { border-bottom: 0; }
+.keys td { padding: 9px var(--sp2); font-size: 13.5px; color: var(--text-body); vertical-align: middle; }
+.keys td:first-child { width: 190px; white-space: nowrap; }
+.keys tbody tr { transition: background var(--dur-fast) var(--ease-standard); }
+.keys tbody tr:hover { background: var(--surface-hover); }
+.keys-group td { padding-top: var(--sp6); }
+
+/* ── Реестр «что уходит наружу» ────────────────────────────────────────────── */
+.ledger { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--sp3); }
+.ledger-col { padding: var(--sp4); border-radius: var(--r-content); background: var(--surface-sunken); }
+.ledger-col h3 { display: flex; align-items: center; gap: var(--sp2); font-size: 14px; font-weight: 600; color: var(--text-strong); }
+.dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+.ledger ul { list-style: none; margin: var(--sp3) 0 0; padding: 0; display: grid; gap: var(--sp2); }
+.ledger li { font-size: 13px; color: var(--text-body); padding-left: var(--sp3); position: relative; }
+.ledger li::before { content: "·"; position: absolute; left: 3px; color: var(--text-faint); }
+
+/* ── Пустое состояние фильтра ──────────────────────────────────────────────── */
+.empty { display: none; padding: var(--sp8) var(--sp6); text-align: center; color: var(--text-faint); }
+.empty.on { display: block; }
+.empty .display { font-size: 20px; margin-bottom: var(--sp2); }
+
+.foot { padding: var(--sp6); text-align: center; }
+
+/* ── Появление: покой видимый, движение — только у того, что ниже сгиба ────── */
+.reveal { transition: opacity 460ms var(--ease-out), transform 460ms var(--ease-out); }
+.reveal.pending { opacity: .001; transform: translateY(12px); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-tight); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition-duration: 1ms !important; }
+  .reveal.pending { opacity: 1; transform: none; }
+}
+
+@media (max-width: 940px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .rail { position: static; max-height: none; }
+  .nav { flex-direction: row; overflow-x: auto; gap: var(--sp1); padding-bottom: var(--sp1); }
+  .nav-cap { display: none; }
+  .nav a { white-space: nowrap; }
+  .section, .hero, .toolbar { padding-left: var(--sp4); padding-right: var(--sp4); }
+  .row { grid-template-columns: 34px minmax(0, 1fr); }
+  .row-meta { grid-column: 2; justify-content: flex-start; max-width: none; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-cloud"><path d="M6.5 18a4.5 4.5 0 0 1 .3-9A6 6 0 0 1 18 10.2a3.9 3.9 0 0 1-.4 7.8Z"/></g>
+    <g id="i-tabs"><rect x="3" y="4" width="7" height="16" rx="2"/><rect x="13" y="4" width="8" height="7" rx="2"/><rect x="13" y="13" width="8" height="7" rx="2"/></g>
+    <g id="i-search"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></g>
+    <g id="i-grid"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></g>
+    <g id="i-shield"><path d="M12 3 5 6v6c0 4.4 3 8.1 7 9 4-.9 7-4.6 7-9V6Z"/></g>
+    <g id="i-lock"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></g>
+    <g id="i-book"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2Z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></g>
+    <g id="i-cpu"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3"/></g>
+    <g id="i-notebook"><path d="M5 4h13a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5Z"/><path d="M9 4v16"/></g>
+    <g id="i-globe"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/></g>
+    <g id="i-lang"><path d="M4 6h10M9 4v2c0 4-2.2 7.5-5 9"/><path d="M7 12c1.3 2.6 3.4 4.5 6 5.4"/><path d="m13 20 4-9 4 9M14.6 17h4.8"/></g>
+    <g id="i-wand"><path d="m5 19 9-9M15 5l1.2 2.4L19 9l-2.8 1.6L15 13l-1.2-2.4L11 9l2.8-1.6Z"/></g>
+    <g id="i-plug"><path d="M9 3v6M15 3v6M6 9h12v3a6 6 0 0 1-12 0Z"/><path d="M12 18v3"/></g>
+    <g id="i-users"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17.5 20a6 6 0 0 0-2-4.5"/></g>
+    <g id="i-key"><path d="M4 20 14 10"/><path d="m7 17 2 2"/><circle cx="17" cy="7" r="4"/></g>
+    <g id="i-eye"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.6"/></g>
+    <g id="i-download"><path d="M12 4v10"/><path d="m8 11 4 4 4-4"/><path d="M4 18h16"/></g>
+    <g id="i-tag"><path d="M4 4h7l9 9-7 7-9-9Z"/><circle cx="8.5" cy="8.5" r="1.3"/></g>
+    <g id="i-moon"><path d="M20 13.5A8 8 0 0 1 10.5 4a8 8 0 1 0 9.5 9.5Z"/></g>
+    <g id="i-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g>
+    <g id="i-split"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></g>
+    <g id="i-window"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></g>
+    <g id="i-clock"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></g>
+    <g id="i-calc"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/></g>
+    <g id="i-star"><path d="m12 4 2.3 5 5.7.6-4.3 3.8 1.3 5.6L12 16.2 7 19l1.3-5.6L4 9.6 9.7 9Z"/></g>
+    <g id="i-history"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 5v4h4"/><path d="M12 8v4.4l3 1.8"/></g>
+    <g id="i-graph"><circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.5 7h7M7.2 9.2l3.6 6.6M16.8 9.2l-3.6 6.6"/></g>
+    <g id="i-file"><path d="M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9Z"/><path d="M13 3v6h6"/></g>
+    <g id="i-camera"><rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13.5" r="3.2"/><path d="M8.5 7 10 4h4l1.5 3"/></g>
+    <g id="i-copy"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></g>
+    <g id="i-zzz"><path d="M4 6h7l-7 8h7M14 12h6l-6 7h6"/></g>
+    <g id="i-alert"><path d="M12 4 3 20h18Z"/><path d="M12 10v4M12 17h.01"/></g>
+    <g id="i-check"><path d="m5 13 4.5 4.5L19 7"/></g>
+    <g id="i-import"><path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/></g>
+    <g id="i-sliders"><path d="M4 8h9M17 8h3M4 16h4M12 16h8"/><circle cx="15" cy="8" r="2"/><circle cx="10" cy="16" r="2"/></g>
+  </defs>
+</svg>
+
+<div class="ground"></div>
+
+<div class="shell">
+
+  <!-- ── Сайдбар: разделы стоят так же, как вкладки в браузере ─────────────── -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-cloud"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">Oblako</div>
+        <div class="brand-sub">Справочник по браузеру</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav" aria-label="Разделы справочника">
+      <div class="caps nav-cap">Браузер</div>
+      <a href="#tabs"><span class="dotmark"></span>Вкладки, группы и окна</a>
+      <a href="#omnibox"><span class="dotmark"></span>Адрес и поиск</a>
+      <a href="#desktop"><span class="dotmark"></span>Рабочий стол</a>
+      <a href="#apps"><span class="dotmark"></span>Приложения панели</a>
+
+      <div class="caps nav-cap">Приватность</div>
+      <a href="#shield"><span class="dotmark"></span>Щит: адблок и VPN</a>
+      <a href="#secrets"><span class="dotmark"></span>Пароли и автозаполнение</a>
+      <a href="#permissions"><span class="dotmark"></span>Разрешения сайтов</a>
+
+      <div class="caps nav-cap">Данные</div>
+      <a href="#library"><span class="dotmark"></span>Библиотека</a>
+      <a href="#import"><span class="dotmark"></span>Переезд из другого браузера</a>
+
+      <div class="caps nav-cap">Искусственный интеллект</div>
+      <a href="#localai"><span class="dotmark"></span>Локальные функции</a>
+      <a href="#screens"><span class="dotmark"></span>Блокнот и граф</a>
+      <a href="#hub"><span class="dotmark"></span>Хаб и облачные части</a>
+      <a href="#translate"><span class="dotmark"></span>Перевод</a>
+      <a href="#rules"><span class="dotmark"></span>Правила и скиллы</a>
+      <a href="#agents"><span class="dotmark"></span>Агенты и MCP</a>
+
+      <div class="caps nav-cap">Настройка</div>
+      <a href="#look"><span class="dotmark"></span>Тема, палитры, профили</a>
+      <a href="#keys"><span class="dotmark"></span>Горячие клавиши</a>
+      <a href="#ledger"><span class="dotmark"></span>Что уходит наружу</a>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="caps">Палитра</div>
+      <div class="swatches" id="swatches">
+        <button class="swatch" data-palette="coal"     style="--sw:#E2E3E8;--swa:#2C4BD8" aria-pressed="true"  title="Уголь"></button>
+        <button class="swatch" data-palette="graphite" style="--sw:#E4E5E6;--swa:#3F6FB5" aria-pressed="false" title="Графит"></button>
+        <button class="swatch" data-palette="slate"    style="--sw:#E2E4E8;--swa:#4C6B92" aria-pressed="false" title="Сланец"></button>
+        <button class="swatch" data-palette="paper"    style="--sw:#E8E6E2;--swa:#94502A" aria-pressed="false" title="Бумага"></button>
+      </div>
+      <button class="themebtn" id="themebtn" type="button">
+        <span id="themelabel">Тёмная тема</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use id="themeicon" href="#i-moon"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Остров содержимого ─────────────────────────────────────────────────── -->
+  <main class="stage">
+
+    <div class="toolbar">
+      <div class="omnibox">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-faint)"><use href="#i-search"/></svg>
+        <input id="filter" type="search" placeholder="Найти функцию: «сплит», «пароли», «перевод»…" autocomplete="off" aria-label="Поиск по справочнику">
+      </div>
+      <span class="hitcount" id="hitcount"></span>
+    </div>
+
+    <header class="hero">
+      <h1 class="display">Всё, что умеет <em>Oblako</em>,<br>на одной странице</h1>
+      <p>Браузер на Chromium с блокировщиком и VPN из коробки, локальной языковой моделью и правилом
+         «предлагать, а не делать». Ниже — каждая функция: что она делает, где её найти и на какой
+         клавише она живёт.</p>
+      <div class="principles">
+        <span class="principle"><b>Локально по умолчанию.</b>&nbsp;Всё личное разбирает модель на вашей машине</span>
+        <span class="principle"><b>Предлагать, а не делать.</b>&nbsp;Нажимает и подтверждает человек</span>
+        <span class="principle"><b>Из коробки.</b>&nbsp;Адблок и VPN не требуют расширений</span>
+      </div>
+    </header>
+
+    <!-- ── 1. Вкладки ──────────────────────────────────────────────────────── -->
+    <section class="section" id="tabs">
+      <div class="section-head">
+        <span class="section-num">01</span>
+        <div>
+          <h2 class="t-title">Вкладки, группы и окна</h2>
+          <p>Вкладки стоят слева вертикальным списком: у длинного заголовка есть место, а у двадцати
+             вкладок — читаемость. Всё, что вы разложили, переживает перезапуск.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tabs"/></svg></div>
+          <div>
+            <div class="row-name">Вертикальные вкладки</div>
+            <div class="row-desc">Список слева с перетаскиванием: вкладку можно бросить в группу, к другой вкладке — в пару, или увести в отдельное окно.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>1</kbd>…<kbd>9</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-grid"/></svg></div>
+          <div>
+            <div class="row-name">Группы</div>
+            <div class="row-desc">Своё имя и цвет, сворачивание одним кликом, вложенность. Пустая группа убирается сама, чтобы список не зарастал.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">ПКМ по вкладке</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-star"/></svg></div>
+          <div>
+            <div class="row-name">Закреплённые вкладки</div>
+            <div class="row-desc">Уезжают наверх списка узкой полосой, не закрываются случайно и восстанавливаются первыми при запуске.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">ПКМ → Закрепить</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-slate)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-split"/></svg></div>
+          <div>
+            <div class="row-name">Split — две страницы рядом</div>
+            <div class="row-desc">Доля тянется разделителем; половины меняются местами, если перетащить панель за её шапку на соседнюю. Увели в сайдбар — пара распалась, обе вкладки остались.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Перетаскивание</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-brown)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-window"/></svg></div>
+          <div>
+            <div class="row-name">Несколько окон и перенос живой вкладки</div>
+            <div class="row-desc">Страница уезжает в другое окно вместе с историей «назад», позицией прокрутки и уже набранным в форме текстом — это переезд, а не переоткрытие по адресу.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>M</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-grey)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-zzz"/></svg></div>
+          <div>
+            <div class="row-name">Усыпление фоновых вкладок</div>
+            <div class="row-desc">Давно не открытая вкладка отдаёт память системе и просыпается при клике. Выгрузка включается только когда браузер вышел за свой бюджет <em>и</em> системе действительно тесно — а не «раз в минуту на всякий случай». Отдельные сайты можно занести в исключения.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Браузер</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-slate)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></div>
+          <div>
+            <div class="row-name">Инкогнито</div>
+            <div class="row-desc">Приватная вкладка живёт в сессии в памяти: ни истории, ни автосохранения, ни следа в профиле. Адблок и VPN при этом работают, а тема становится глубже обычной тёмной — режим видно сразу.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>N</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-green)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg></div>
+          <div>
+            <div class="row-name">Автосохранение сессии</div>
+            <div class="row-desc">Вкладки, группы, сплит-пары, закреп и порядок списка пишутся на диск при закрытии окна и возвращаются целиком при следующем запуске.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Само</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-camera"/></svg></div>
+          <div>
+            <div class="row-name">Снимок вкладки</div>
+            <div class="row-desc">Снимает страницу целиком и показывает карточкой: сохранить файлом или скопировать в буфер, не уходя со страницы.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-red)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"/></svg></div>
+          <div>
+            <div class="row-name">Страницы ошибок по-человечески</div>
+            <div class="row-desc">Вместо кода Chromium — что именно не получилось и что с этим делать: сайт не отвечает, нет сети, сертификат просрочен, DNS не нашёл имя.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Вместо ошибки</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-grey)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"/></svg></div>
+          <div>
+            <div class="row-name">Буфер скопированного</div>
+            <div class="row-desc">История того, что вы копировали в браузере: последние записи, вытеснение старых, вставка в один клик.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>B</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sliders"/></svg></div>
+          <div>
+            <div class="row-name">Масштаб, «картинка в картинке», полный экран</div>
+            <div class="row-desc">Масштаб держится по сайту и переживает перезагрузку. Видео выносится поверх других окон, полноэкранный режим не ломает раскладку вкладок.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 2. Омнибокс ─────────────────────────────────────────────────────── -->
+    <section class="section" id="omnibox">
+      <div class="section-head">
+        <span class="section-num">02</span>
+        <div>
+          <h2 class="t-title">Адрес и поиск</h2>
+          <p>Одна строка на адреса и запросы — и три отдельных поиска рядом: по странице, по своим
+             данным и по настройкам браузера.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg></div>
+          <div>
+            <div class="row-name">Омнибокс с подсказками</div>
+            <div class="row-desc">Адрес, запрос и подсказки из истории и закладок в одной строке. Поисковик по умолчанию выбирается в настройках.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>L</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wand"/></svg></div>
+          <div>
+            <div class="row-name">Бэнги</div>
+            <div class="row-desc">Запрос с восклицательным знаком уходит сразу на нужный сайт: <code>!yt котики</code>, <code>!w Электрон</code>. Список свой и правится.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Браузер</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg></div>
+          <div>
+            <div class="row-name">Быстрый поиск</div>
+            <div class="row-desc">Поповер поверх страницы с полосой целей: набрали запрос и выбрали, куда он уйдёт — в поисковик, на сайт, где вы уже искали, или в текущую вкладку.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>E</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-grey)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file"/></svg></div>
+          <div>
+            <div class="row-name">Поиск по странице</div>
+            <div class="row-desc">Панель со счётчиком совпадений и переходом по ним, без потери фокуса на странице.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>F</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-green)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-cpu"/></svg></div>
+          <div>
+            <div class="row-name">Смысловой поиск по странице</div>
+            <div class="row-desc">Спрашиваете словами — модель выбирает нужный фрагмент из тех, что нашли мы, и подсвечивает его прямо на странице. Цитата физически взята со страницы, поэтому соврать негде.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-slate)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sliders"/></svg></div>
+          <div>
+            <div class="row-name">Поиск по настройкам</div>
+            <div class="row-desc">Ищет теми словами, которыми вы спрашиваете, а не теми, которыми настройка названа: «вкладки перезагружаются» приводит к выгрузке из памяти. Работает мгновенно и без модели; модель подключается вторым эшелоном, только если ключевые слова промахнулись.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Строка в настройках</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 3. Рабочий стол ─────────────────────────────────────────────────── -->
+    <section class="section" id="desktop">
+      <div class="section-head">
+        <span class="section-num">03</span>
+        <div>
+          <h2 class="t-title">Новая вкладка — рабочий стол</h2>
+          <p>Не стена ссылок, а свой экран: плитки раскладываются свободно, а один виджет можно
+             назначить «героем» — он получает цвет в полную силу, остальные остаются тихими.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-grid"/></svg></div>
+          <div>
+            <div class="row-name">Свободная раскладка плиток</div>
+            <div class="row-desc">Виджеты перетаскиваются и меняют размер, координаты сохраняются. Ничего не «перескакивает» само при добавлении новой плитки.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Плюс на столе</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clock"/></svg></div>
+          <div>
+            <div class="row-name">Виджеты</div>
+            <div class="row-desc">Часы с несколькими циферблатами, погода, курсы ЦБ, крипта, быстрые ссылки, итоги дня, плеер. Каждому можно задать свой цвет и размер.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Лист «Виджеты»</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wand"/></svg></div>
+          <div>
+            <div class="row-name">Свой виджет по описанию</div>
+            <div class="row-desc">Опишите словами, что хотите видеть, — модель возвращает тип и данные по строгой грамматике, а рисует их обычный код. Никакого HTML от модели: так виджет не может сломать экран.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-brown)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sun"/></svg></div>
+          <div>
+            <div class="row-name">Фон и «высота»</div>
+            <div class="row-desc">Обои из набора или свои, плюс правило одного героя: цвет в полную силу получает ровно одна плитка на экран — та, которую выбрали вы.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Лист «Фон»</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 4. Приложения ───────────────────────────────────────────────────── -->
+    <section class="section" id="apps">
+      <div class="section-head">
+        <span class="section-num">04</span>
+        <div>
+          <h2 class="t-title">Приложения на панели</h2>
+          <p>Мелкие инструменты, ради которых обычно открывают вкладку и уходят на сайт с рекламой.
+             Здесь они живут в боковой панели и считают локально.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-calc"/></svg></div>
+          <div>
+            <div class="row-name">Калькулятор</div>
+            <div class="row-desc">Арифметика, проценты и разбор вставленной строки: скопировали «1200 + 15%» — получили ответ, не перенабирая.</div>
+          </div>
+          <div class="row-meta"><span class="chip">без сети</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-green)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-globe"/></svg></div>
+          <div>
+            <div class="row-name">Конвертер и пояса</div>
+            <div class="row-desc">Величины и валюты по свежему курсу; часовые пояса — вычислением из системной базы, без похода в сеть.</div>
+          </div>
+          <div class="row-meta"><span class="chip">пояса — без сети</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clock"/></svg></div>
+          <div>
+            <div class="row-name">Таймер и счётчик</div>
+            <div class="row-desc">Таймер тикает в главном процессе и не сбивается, когда вкладку усыпили. Счётчик считает знаки, слова и строки в тексте.</div>
+          </div>
+          <div class="row-meta"><span class="chip">без сети</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-pink)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></div>
+          <div>
+            <div class="row-name">Пипетка и котёнок</div>
+            <div class="row-desc">Пипетка берёт цвет с экрана и отдаёт его в нужном формате. Котёнок — маленький тамагочи, основа будущего маскота браузера.</div>
+          </div>
+          <div class="row-meta"><span class="chip">без сети</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-slate)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-window"/></svg></div>
+          <div>
+            <div class="row-name">Веб-приложения</div>
+            <div class="row-desc">Любой сайт можно поставить в панель как приложение — он открывается сбоку целиком, со своим логином и всеми функциями. Переводчик уже стоит в наборе.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Лист «Приложения»</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 5. Щит ──────────────────────────────────────────────────────────── -->
+    <section class="section" id="shield">
+      <div class="section-head">
+        <span class="section-num">05</span>
+        <div>
+          <h2 class="t-title">Щит: блокировка и VPN</h2>
+          <p>Обе защиты живут под одним значком щита в адресной строке — там же видно, что именно
+             сработало на этом сайте.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-green)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shield"/></svg></div>
+          <div>
+            <div class="row-name">Блокировка рекламы и трекеров</div>
+            <div class="row-desc">Движок Ghostery со списками, которые обновляются в фоне. Отключается на отдельном сайте одним переключателем в карточке щита.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Щит в адресной строке</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-globe"/></svg></div>
+          <div>
+            <div class="row-name">VPN на Xray-core</div>
+            <div class="row-desc">Импорт подписки vless/trojan, выбор сервера со списком стран и флагами, свой процесс отдельно от браузера.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → VPN</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-red)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-lock"/></svg></div>
+          <div>
+            <div class="row-name">Kill switch</div>
+            <div class="row-desc">Если туннель упал, трафик не идёт мимо него, а <em>останавливается</em>. Реальный адрес не утекает в момент обрыва — это и есть смысл выключателя.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → VPN</span></div>
+        </article>
+
+      </div>
+
+      <div class="note">
+        <div class="caps">Как это устроено</div>
+        <p>Оба механизма работают и в инкогнито, и внутри веб-приложений панели: блокировка и прокси
+           живут на уровне сессии браузера, а не расширением поверх страницы. Поэтому их нельзя
+           «обойти» открытием страницы в другом месте интерфейса.</p>
+      </div>
+    </section>
+
+    <!-- ── 6. Пароли ───────────────────────────────────────────────────────── -->
+    <section class="section" id="secrets">
+      <div class="section-head">
+        <span class="section-num">06</span>
+        <div>
+          <h2 class="t-title">Пароли, адреса и карты</h2>
+          <p>Секреты шифруются ключом из системного хранилища (DPAPI на Windows) и открытым текстом
+             на диск не пишутся — ни в файлах, ни в логах.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-slate)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-key"/></svg></div>
+          <div>
+            <div class="row-name">Менеджер паролей</div>
+            <div class="row-desc">Хранилище на AES-256-GCM. Автозаполнение срабатывает без лишних кликов, а индикатор в адресной строке показывает, что для этого сайта пароль есть.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Пароли</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-green)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wand"/></svg></div>
+          <div>
+            <div class="row-name">Генератор паролей</div>
+            <div class="row-desc">Появляется прямо в поле регистрации и сохраняет пароль сразу, не заставляя вспоминать, что вы там придумали.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">В поле формы</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eye"/></svg></div>
+          <div>
+            <div class="row-name">Показ пароля — через Windows Hello</div>
+            <div class="row-desc">Увидеть сохранённый пароль или номер карты можно только после подтверждения личности системой. Хранилище открыто, а глаз чужой — этот случай закрыт.</div>
+          </div>
+          <div class="row-meta"><span class="chip">Windows Hello</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file"/></svg></div>
+          <div>
+            <div class="row-name">Адреса и банковские карты</div>
+            <div class="row-desc">Подставляются в формы по подписям полей, а не по угаданным именам атрибутов. Номер карты выдаётся под Windows Hello, CVC не хранится вовсе.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Автозаполнение</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 7. Разрешения ───────────────────────────────────────────────────── -->
+    <section class="section" id="permissions">
+      <div class="section-head">
+        <span class="section-num">07</span>
+        <div>
+          <h2 class="t-title">Разрешения сайтов</h2>
+          <p>Три состояния вместо двух: разрешено, запрещено и «забыть». Третье существует потому,
+             что ошибочное «нет» иначе нельзя отменить — сайт просто перестаёт спрашивать навсегда.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shield"/></svg></div>
+          <div>
+            <div class="row-name">Карточка сайта</div>
+            <div class="row-desc">Камера, микрофон, геопозиция, уведомления, буфер обмена — по каждому сайту отдельно, прямо из адресной строки.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Значок слева от адреса</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-brown)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-lock"/></svg></div>
+          <div>
+            <div class="row-name">Сертификаты</div>
+            <div class="row-desc">Список тех, кому вы доверились вручную, с возможностью забрать доверие обратно. Раздел появляется, только когда в нём что-то есть.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Разрешения</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 8. Библиотека ───────────────────────────────────────────────────── -->
+    <section class="section" id="library">
+      <div class="section-head">
+        <span class="section-num">08</span>
+        <div>
+          <h2 class="t-title">Библиотека</h2>
+          <p>История, закладки, загрузки, отслеживание и журнал агентов — один остров с общей
+             строкой поиска наверху.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-slate)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-history"/></svg></div>
+          <div>
+            <div class="row-name">История с полнотекстовым поиском</div>
+            <div class="row-desc">База SQLite с индексом по текстам страниц. Находки переранжирует локальная модель, поэтому «та статья про батарейки» находится, даже если в заголовке этого слова не было.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>H</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-star"/></svg></div>
+          <div>
+            <div class="row-name">Закладки</div>
+            <div class="row-desc">Звезда в адресной строке, папки, перетаскивание, отдельная полка в сайдбаре.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>D</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-green)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"/></svg></div>
+          <div>
+            <div class="row-name">Загрузки</div>
+            <div class="row-desc">Раскладка по ярусам «сегодня / раньше», метка происхождения файла из интернета (Mark-of-the-Web) и безопасное имя файла без сюрпризов с путями.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Библиотека → Загрузки</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tag"/></svg></div>
+          <div>
+            <div class="row-name">Отслеживание цен</div>
+            <div class="row-desc">Один товар — одна карточка, даже если он найден в нескольких магазинах: предложения складываются внутрь неё. Показываются только факты из собственных наблюдений («минимум за всё время»), а не советы, когда покупать.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Библиотека → Отслеживание</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg></div>
+          <div>
+            <div class="row-name">«Куда я это дел»</div>
+            <div class="row-desc">Один вопрос сразу по истории, закладкам и загрузкам — когда не помнишь, была это статья, закладка или скачанный файл.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 9. Переезд ──────────────────────────────────────────────────────── -->
+    <section class="section" id="import">
+      <div class="section-head">
+        <span class="section-num">09</span>
+        <div>
+          <h2 class="t-title">Переезд из другого браузера</h2>
+          <p>Перенос предлагается последним шагом первого запуска, а не первым: сначала имеет смысл
+             понять, зачем вам программа.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-import"/></svg></div>
+          <div>
+            <div class="row-name">Закладки, история и пароли</div>
+            <div class="row-desc">Chrome, Edge, Brave, Opera, Vivaldi и Яндекс.Браузер — включая недокументированную схему шифрования паролей Яндекса.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Браузер</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-grey)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file"/></svg></div>
+          <div>
+            <div class="row-name">Пароли из свежего Chrome — через CSV</div>
+            <div class="row-desc">Начиная с Chrome 127 пароли защищены привязкой к приложению, и прямая расшифровка чужого хранилища — это ровно та техника, которой пользуются вредоносы. Поэтому путь один: экспорт CSV из Chrome, импорт у нас.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Диалог импорта</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-green)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg></div>
+          <div>
+            <div class="row-name">Браузер по умолчанию</div>
+            <div class="row-desc">Регистрация в системе делается из установщика, назначение — одной кнопкой в настройках.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Браузер</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 10. Локальный ИИ ────────────────────────────────────────────────── -->
+    <section class="section" id="localai">
+      <div class="section-head">
+        <span class="section-num">10</span>
+        <div>
+          <h2 class="t-title">Локальные функции модели</h2>
+          <p>Восемь функций, отобранных по жёсткому правилу: короткий вход, короткий выход, ответ
+             проверяемой формы, один шаг и дешёвая, видимая ошибка. Ни одна из них не отправляет
+             наружу ни байта.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file"/></svg></div>
+          <div>
+            <div class="row-name">Правка своего текста в поле ввода</div>
+            <div class="row-desc">Выделили черновик в форме — модель поправит формулировку прямо в поле. Отмена обычным <kbd>Ctrl</kbd>+<kbd>Z</kbd> работает как всегда.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tabs"/></svg></div>
+          <div>
+            <div class="row-name">Поиск вкладки по смыслу</div>
+            <div class="row-desc">«Там, где про доставку» — модель выбирает номер вкладки из списка, который собрали мы, а не придумывает ответ словами.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-grid"/></svg></div>
+          <div>
+            <div class="row-name">«Навести порядок» — группировка вкладок</div>
+            <div class="row-desc">Двадцать открытых вкладок раскладываются по темам одной кнопкой. Это <em>предложение</em>: не понравилось — откат одним движением.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-slate)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sliders"/></svg></div>
+          <div>
+            <div class="row-name">Распознавание полей формы</div>
+            <div class="row-desc">Когда сайт назвал поля как попало, модель читает подписи рядом с ними и понимает, где имя, где адрес, где индекс.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-green)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clock"/></svg></div>
+          <div>
+            <div class="row-name">«Чем занимался» — итоги дня</div>
+            <div class="row-desc">Короткая сводка по вашей же истории: над чем шла работа, что читалось, куда ушло время.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-brown)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-history"/></svg></div>
+          <div>
+            <div class="row-name">«Вы это уже читали»</div>
+            <div class="row-desc">Подсказка, что страница уже попадалась вам раньше, и что на ней с тех пор изменилось.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-red)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg></div>
+          <div>
+            <div class="row-name">Смысловой поиск по странице</div>
+            <div class="row-desc">Тот же <kbd>Ctrl</kbd>+<kbd>F</kbd>, но вопросом. Модель показывает место на странице, а не пересказывает его своими словами.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wand"/></svg></div>
+          <div>
+            <div class="row-name">Фраза → правило</div>
+            <div class="row-desc">«Ссылки с habr.com открывай в группе Чтение» превращается в настоящее правило — но сначала показывается карточкой подтверждения, и работать начинает только после вашего «да».</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+      </div>
+
+      <div class="note">
+        <div class="caps">Про модель</div>
+        <p>Модель скачивается из интерфейса и подбирается под вашу видеокарту: каталог честно
+           пишет, что на этой машине не пойдёт, и не предлагает скачать то, что не заработает.
+           Замеры показали, что модель на 4B обходит 9B на задачах со строгой формой ответа и
+           отвечает быстрее, — поэтому рекомендуется не самая крупная, а самая лёгкая из
+           проверенных. Без модели браузер работает целиком, ИИ-функции просто молчат.</p>
+      </div>
+    </section>
+
+    <!-- ── 11. Большие экраны ──────────────────────────────────────────────── -->
+    <section class="section" id="screens">
+      <div class="section-head">
+        <span class="section-num">11</span>
+        <div>
+          <h2 class="t-title">Блокнот и граф</h2>
+          <p>Два больших экрана для работы с материалом. Маленькая локальная модель не умеет
+             планировать на длинном горизонте — поэтому план рисует человек, а модель делает один
+             узкий шаг.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-notebook"/></svg></div>
+          <div>
+            <div class="row-name">Блокнот с источниками</div>
+            <div class="row-desc">Несколько независимых блокнотов; источники — ссылки и локальные файлы (pdf, docx, txt, md, csv). Чат заземлён на них: отвечает по вашим материалам, а не по общим знаниям.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Большой AI-экран</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wand"/></svg></div>
+          <div>
+            <div class="row-name">Студия: пять форматов из одних источников</div>
+            <div class="row-desc">Саммари, майндкарта, инфографика, интерактивный тест и статья-страница в трёх стилях — её можно открыть вкладкой или сохранить одним файлом .html. Картинки рисует обычный код, модель отдаёт только структуру и текст.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Блокнот → Студия</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-graph"/></svg></div>
+          <div>
+            <div class="row-name">Граф-воркспейс</div>
+            <div class="row-desc">Холст, где вы сами рисуете план связями. Узлы: страница, заметка, шаг модели, результат, артефакты Студии, веб-поиск и фактчек. Кнопка ▷ на узле всегда пересчитывает его заново, даже если вход не менялся.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Большой AI-экран</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-slate)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-window"/></svg></div>
+          <div>
+            <div class="row-name">Чужой ИИ-сайт как узел</div>
+            <div class="row-desc">ChatGPT или Claude открываются в панели один в один. Обмен идёт через вашу руку: кнопку «отправить» жмёте вы — код не автоматизирует чужой интерфейс никогда.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Граф → узел webapp</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 12. Хаб ─────────────────────────────────────────────────────────── -->
+    <section class="section" id="hub">
+      <div class="section-head">
+        <span class="section-num">12</span>
+        <div>
+          <h2 class="t-title">Хаб и облачные части</h2>
+          <p>Облачное в браузере есть, и оно названо прямо. Эти службы не получают ни вкладок, ни
+             истории, ни черновиков — только тот запрос, который вы набрали сами, и выключаются в
+             настройках.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-cpu"/></svg></div>
+          <div>
+            <div class="row-name">AI-хаб на новой вкладке</div>
+            <div class="row-desc">Свой чат прямо на стартовом экране, с историей разговоров и переключением модели.</div>
+          </div>
+          <div class="row-meta"><kbd>Ctrl</kbd><kbd>T</kbd></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-globe"/></svg></div>
+          <div>
+            <div class="row-name">Веб-поиск и фактчек</div>
+            <div class="row-desc">Ответ можно подкрепить свежей выдачей (SearXNG) или проверить фактчеком (Gemini). И то и другое — по вашему явному действию, а не в фоне.</div>
+          </div>
+          <div class="row-meta"><span class="chip" style="color:var(--warning)">наружу</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-slate)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-key"/></svg></div>
+          <div>
+            <div class="row-name">Облачные модели по своему ключу</div>
+            <div class="row-desc">Ключ хранится в системном хранилище. Роли настраиваются отдельно: например, разбор страницы оставить локальной модели, а длинный текст отдать облачной.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → AI</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-green)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plug"/></svg></div>
+          <div>
+            <div class="row-name">Ollama и LM Studio</div>
+            <div class="row-desc">Если на машине уже поднят локальный сервер моделей, браузер найдёт его сам и предложит подключить.</div>
+          </div>
+          <div class="row-meta"><span class="chip">на вашей машине</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-cpu"/></svg></div>
+          <div>
+            <div class="row-name">Боковая AI-панель</div>
+            <div class="row-desc">Чат сбоку от страницы, у каждого окна свой. Знает, что открыто в текущей вкладке, — и остаётся на месте, когда вы переключаетесь между вкладками.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Значок в тулбаре</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 13. Перевод ─────────────────────────────────────────────────────── -->
+    <section class="section" id="translate">
+      <div class="section-head">
+        <span class="section-num">13</span>
+        <div>
+          <h2 class="t-title">Перевод</h2>
+          <p>Перевод идёт на процессоре, без видеокарты и без сети: страница не уезжает на чужой
+             сервер ради того, чтобы её прочитали.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-lang"/></svg></div>
+          <div>
+            <div class="row-name">Перевод страницы целиком</div>
+            <div class="row-desc">Движок Bergamot с локально скачанными языковыми парами; если пары нет — переводит модель. Готовые куски кэшируются, поэтому возврат на страницу мгновенный.</div>
+          </div>
+          <div class="row-meta"><span class="chip">на вашей машине</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file"/></svg></div>
+          <div>
+            <div class="row-name">Поповер над выделением</div>
+            <div class="row-desc">Выделили кусок текста — перевести, пересказать, упростить или объяснить, не уходя со страницы.</div>
+          </div>
+          <div class="row-meta"><span class="chip">локально</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 14. Правила ─────────────────────────────────────────────────────── -->
+    <section class="section" id="rules">
+      <div class="section-head">
+        <span class="section-num">14</span>
+        <div>
+          <h2 class="t-title">Правила и скиллы</h2>
+          <p>Две настраиваемые вещи, которые работают и без модели: фразу разбирает модель, а
+             исполняет их обычный код.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wand"/></svg></div>
+          <div>
+            <div class="row-name">Правила-автоматизации</div>
+            <div class="row-desc">Открывать ссылки с сайта в определённой группе, держать масштаб, не усыплять, включать VPN. Каталог намеренно маленький и закрытый: браузер не должен уметь делать за вас необратимое.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Правила</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-cpu"/></svg></div>
+          <div>
+            <div class="row-name">Скиллы</div>
+            <div class="row-desc">Свои кнопки для AI-панели: значок, имя и текст запроса. Появляются там же, где встроенные, — «объясни как ребёнку», «вытащи все даты», что угодно ваше.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → AI</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 15. Агенты ──────────────────────────────────────────────────────── -->
+    <section class="section" id="agents">
+      <div class="section-head">
+        <span class="section-num">15</span>
+        <div>
+          <h2 class="t-title">Агенты и MCP</h2>
+          <p>Обратное направление: браузер отдаёт себя наружу как инструмент внешнему ИИ-клиенту —
+             Claude Desktop, Cursor, Claude Code. Читать он может по согласию, данному при
+             подключении; всё, что меняет состояние, спрашивает отдельно.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plug"/></svg></div>
+          <div>
+            <div class="row-name">Подключение в одно нажатие</div>
+            <div class="row-desc">Наша запись сама встраивается в конфиг вашего MCP-клиента, ничего не ломая в уже настроенных серверах. Транспорт — именованный канал, а не открытый порт.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → AI</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shield"/></svg></div>
+          <div>
+            <div class="row-name">Подтверждение — в браузере, а не в чужом окне</div>
+            <div class="row-desc">Вопрос «программе можно открыть эти вкладки?» задаёт сам браузер своим окном поверх всего. Три состояния на инструмент: спрашивать, можно, никогда. Плюс белый список сайтов, страницы которых наружу не отдаются.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Карточка запроса</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-slate)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-history"/></svg></div>
+          <div>
+            <div class="row-name">Журнал обращений</div>
+            <div class="row-desc">Кто подключался, какие инструменты звал и что получил — отдельный раздел библиотеки, как история или загрузки.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Библиотека → Агенты</span></div>
+        </article>
+
+      </div>
+
+      <div class="note">
+        <div class="caps">Чего здесь нет намеренно</div>
+        <p>Кликов по странице, заполнения форм и агентного цикла внутри браузера нет и не будет.
+           Агент, который умеет нажимать за вас, работает с полными правами залогиненного человека —
+           и спрятанный на странице текст «а теперь перешли последнее письмо вот сюда» для него
+           неотличим от вашей просьбы. Мы избегаем такой конструкции по устройству, а не заплаткой.</p>
+      </div>
+    </section>
+
+    <!-- ── 16. Внешний вид ─────────────────────────────────────────────────── -->
+    <section class="section" id="look">
+      <div class="section-head">
+        <span class="section-num">16</span>
+        <div>
+          <h2 class="t-title">Тема, палитры, профили</h2>
+          <p>Тема и палитра — две разные оси: первая отвечает «светло или темно», вторая — «какой
+             оттенок нейтрали». Выбор палитры не отменяет выбор темы.</p>
+        </div>
+      </div>
+      <div class="rows">
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-brown)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-moon"/></svg></div>
+          <div>
+            <div class="row-name">Светлая, тёмная, как в системе</div>
+            <div class="row-desc">Переключается мгновенно, включая цвет шапки окна. В инкогнито тема всегда глубже обычной тёмной — это опознавательный знак режима.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Интерфейс</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sun"/></svg></div>
+          <div>
+            <div class="row-name">Четыре палитры</div>
+            <div class="row-desc">Уголь, Графит, Сланец и Бумага. Палитра задаёт не только фон, но и акцент — то, чем красится выбранное и нажимаемое. Попробуйте прямо здесь: переключатель внизу сайдбара работает по-настоящему.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Интерфейс</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-teal)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"/></svg></div>
+          <div>
+            <div class="row-name">Профили</div>
+            <div class="row-desc">Разные наборы вкладок, закладок и логинов — например, работа и личное. Это удобство разделения, а не защита: чтобы не выйти из аккаунтов везде, основной профиль остаётся общим.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Профили</span></div>
+        </article>
+
+        <article class="row" data-f>
+          <div class="plate" style="--ic:var(--tile-green)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"/></svg></div>
+          <div>
+            <div class="row-name">Обновления</div>
+            <div class="row-desc">Новая версия скачивается в фоне и ставится при следующем запуске. Проверить вручную можно в любой момент.</div>
+          </div>
+          <div class="row-meta"><span class="chip where">Настройки → Браузер</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── 17. Клавиши ─────────────────────────────────────────────────────── -->
+    <section class="section" id="keys">
+      <div class="section-head">
+        <span class="section-num">17</span>
+        <div>
+          <h2 class="t-title">Горячие клавиши</h2>
+          <p>Спорные аккорды намеренно оставлены странице: в Google Таблицах <kbd>Ctrl</kbd>+<kbd>D</kbd> —
+             «заполнить вниз», и браузер не имеет права это отбирать.</p>
+        </div>
+      </div>
+
+      <div class="keys-wrap">
+        <table class="keys">
+          <tbody>
+            <tr class="keys-group"><td colspan="2"><span class="caps">Вкладки и окна</span></td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>T</kbd></td><td>Новая вкладка — открывается хаб</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>W</kbd></td><td>Закрыть активную вкладку</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>T</kbd></td><td>Вернуть последнюю закрытую</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>Tab</kbd></td><td>Следующая вкладка</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Tab</kbd></td><td>Предыдущая вкладка</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>1</kbd>…<kbd>8</kbd></td><td>Вкладка по номеру</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>9</kbd></td><td>Последняя вкладка</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>N</kbd></td><td>Новое окно</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>N</kbd></td><td>Новая вкладка в инкогнито</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>M</kbd></td><td>Вернуть вкладку в другое окно</td></tr>
+
+            <tr class="keys-group"><td colspan="2"><span class="caps">Адрес, поиск, страница</span></td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>L</kbd></td><td>Фокус в адресную строку</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>E</kbd></td><td>Поповер быстрого поиска</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>F</kbd></td><td>Поиск по странице</td></tr>
+            <tr data-f><td><kbd>F5</kbd> или <kbd>Ctrl</kbd> <kbd>R</kbd></td><td>Обновить страницу</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>R</kbd></td><td>Обновить мимо кэша</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></td><td>Масштаб: крупнее, мельче, сбросить</td></tr>
+
+            <tr class="keys-group"><td colspan="2"><span class="caps">Данные</span></td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>D</kbd></td><td>Сохранить страницу в закладки</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>O</kbd></td><td>Открыть закладки</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>H</kbd></td><td>Открыть библиотеку — история, загрузки, агенты</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>B</kbd></td><td>Буфер скопированного</td></tr>
+
+            <tr class="keys-group"><td colspan="2"><span class="caps">Прочее</span></td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>S</kbd></td><td>Снимок вкладки</td></tr>
+            <tr data-f><td><kbd>Ctrl</kbd> <kbd>S</kbd></td><td>Сохранить снимок — пока висит его карточка</td></tr>
+            <tr data-f><td><kbd>F12</kbd> или <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>I</kbd></td><td>Инструменты разработчика</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── 18. Реестр ──────────────────────────────────────────────────────── -->
+    <section class="section" id="ledger">
+      <div class="section-head">
+        <span class="section-num">18</span>
+        <div>
+          <h2 class="t-title">Что уходит наружу, а что нет</h2>
+          <p>Честная формулировка: не «ИИ только локальный», а «локальный там, где речь о вас».
+             Телеметрии нет вообще, шрифты вшиты в приложение — браузер не сообщает Google даже
+             о собственном запуске.</p>
+        </div>
+      </div>
+
+      <div class="ledger">
+        <div class="ledger-col">
+          <h3><span class="dot" style="background:var(--success)"></span>Не покидает машину</h3>
+          <ul>
+            <li>История, закладки, загрузки и поиск по ним</li>
+            <li>Пароли, адреса и карты</li>
+            <li>Перевод страниц и выделенного текста</li>
+            <li>Пересказ, объяснение, правка вашего черновика</li>
+            <li>Группировка вкладок и поиск вкладки по смыслу</li>
+            <li>Итоги дня, «вы это уже читали», разбор полей формы</li>
+            <li>Блокнот, Студия и граф на локальной модели</li>
+            <li>Расчёты приложений панели</li>
+          </ul>
+        </div>
+        <div class="ledger-col">
+          <h3><span class="dot" style="background:var(--warning)"></span>Уходит по вашему действию</h3>
+          <ul>
+            <li>Запрос, который вы набрали в поисковике</li>
+            <li>Веб-поиск в хабе (SearXNG) и фактчек (Gemini)</li>
+            <li>Облачная модель — только если вы вписали свой ключ</li>
+            <li>Курсы валют, погода и цены отслеживаемых товаров</li>
+            <li>Списки блокировщика и проверка обновлений</li>
+            <li>Скачивание языковых пар и весов модели</li>
+          </ul>
+        </div>
+        <div class="ledger-col">
+          <h3><span class="dot" style="background:var(--danger)"></span>Не собирается вовсе</h3>
+          <ul>
+            <li>Телеметрия и аналитика использования</li>
+            <li>Отчёты о сбоях с содержимым страниц</li>
+            <li>Профиль интересов и рекламные идентификаторы</li>
+            <li>CVC банковской карты — не хранится нигде</li>
+            <li>Внешние шрифты и CDN в интерфейсе</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <div class="empty" id="empty">
+      <div class="display">Ничего не нашлось</div>
+      <div class="t-caption">Попробуйте другое слово — например, «сплит», «kill switch» или «блокнот».</div>
+    </div>
+
+    <footer class="foot">
+      <div class="caps">Oblako · Справочник по функциям</div>
+      <div class="t-caption" style="margin-top:var(--sp2)">Windows x64 · Chromium + локальная модель · телеметрии нет</div>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ── Палитра ────────────────────────────────────────────────────────────────
+  var swatches = Array.prototype.slice.call(document.querySelectorAll('.swatch'));
+  swatches.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var p = btn.getAttribute('data-palette');
+      if (p === 'coal') root.removeAttribute('data-palette');
+      else root.setAttribute('data-palette', p);
+      swatches.forEach(function (b) { b.setAttribute('aria-pressed', String(b === btn)); });
+    });
+  });
+
+  // ── Тема ───────────────────────────────────────────────────────────────────
+  var themeBtn = document.getElementById('themebtn');
+  var themeLabel = document.getElementById('themelabel');
+  var themeIcon = document.getElementById('themeicon');
+  function isDark() {
+    var stamp = root.getAttribute('data-theme');
+    if (stamp) return stamp === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function paintThemeButton() {
+    var dark = isDark();
+    themeLabel.textContent = dark ? 'Светлая тема' : 'Тёмная тема';
+    themeIcon.setAttribute('href', dark ? '#i-sun' : '#i-moon');
+  }
+  themeBtn.addEventListener('click', function () {
+    root.setAttribute('data-theme', isDark() ? 'light' : 'dark');
+    paintThemeButton();
+  });
+  paintThemeButton();
+
+  // ── Фильтр по справочнику: одна строка на все разделы ─────────────────────
+  var input = document.getElementById('filter');
+  var hitcount = document.getElementById('hitcount');
+  var empty = document.getElementById('empty');
+  var items = Array.prototype.slice.call(document.querySelectorAll('[data-f]'));
+  var sections = Array.prototype.slice.call(document.querySelectorAll('.section'));
+  var groups = Array.prototype.slice.call(document.querySelectorAll('.keys-group'));
+
+  items.forEach(function (el) {
+    el.dataset.text = (el.textContent || '').toLowerCase().replace(/\s+/g, ' ');
+  });
+
+  function applyFilter() {
+    var q = input.value.trim().toLowerCase();
+    if (!q) {
+      items.forEach(function (el) { el.style.display = ''; });
+      groups.forEach(function (g) { g.style.display = ''; });
+      sections.forEach(function (s) { s.style.display = ''; });
+      empty.classList.remove('on');
+      hitcount.textContent = items.length + ' функций';
+      return;
+    }
+    var words = q.split(/\s+/);
+    var shown = 0;
+    items.forEach(function (el) {
+      var text = el.dataset.text;
+      var ok = words.every(function (w) { return text.indexOf(w) !== -1; });
+      el.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    // Заголовок группы клавиш живёт, только пока под ним осталась хоть одна строка.
+    groups.forEach(function (g) {
+      var alive = false;
+      for (var row = g.nextElementSibling; row && !row.classList.contains('keys-group'); row = row.nextElementSibling) {
+        if (row.style.display !== 'none') { alive = true; break; }
+      }
+      g.style.display = alive ? '' : 'none';
+    });
+    sections.forEach(function (s) {
+      var any = s.querySelector('[data-f]:not([style*="display: none"])');
+      s.style.display = any ? '' : 'none';
+    });
+    empty.classList.toggle('on', shown === 0);
+    hitcount.textContent = shown === 0 ? 'ничего' : 'найдено ' + shown;
+  }
+  input.addEventListener('input', applyFilter);
+  applyFilter();
+
+  // Ctrl+F по справочнику ведёт в его же строку — та же привычка, что в браузере.
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); input.focus(); input.select(); }
+    if (e.key === 'Escape' && document.activeElement === input) { input.value = ''; applyFilter(); input.blur(); }
+  });
+
+  // ── Подсветка активного раздела в сайдбаре ────────────────────────────────
+  var links = Array.prototype.slice.call(document.querySelectorAll('#nav a'));
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+
+  var spy = new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) {
+      if (!en.isIntersecting) return;
+      links.forEach(function (a) { a.removeAttribute('aria-current'); });
+      var a = byId[en.target.id];
+      if (a) a.setAttribute('aria-current', 'true');
+    });
+  }, { rootMargin: '-72px 0px -68% 0px', threshold: 0 });
+  sections.forEach(function (s) { spy.observe(s); });
+
+  // ── Появление: покой видимый, движение только у того, что ниже сгиба ──────
+  if (!reduced && 'IntersectionObserver' in window) {
+    var below = items.concat(Array.prototype.slice.call(document.querySelectorAll('.note, .ledger-col')))
+      .filter(function (el) { return el.getBoundingClientRect().top > window.innerHeight; });
+    below.forEach(function (el) { el.classList.add('reveal', 'pending'); });
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        en.target.classList.remove('pending');
+        io.unobserve(en.target);
+      });
+    }, { rootMargin: '0px 0px -10% 0px' });
+    below.forEach(function (el) { io.observe(el); });
+  }
+})();
+</script>

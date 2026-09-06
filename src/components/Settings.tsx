@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, CreditCard, Wand2, Search, Sparkles, type LucideIcon, Users } from 'lucide-react';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, CreditCard, Wand2, Search, Sparkles, type LucideIcon, Users, BookOpen } from 'lucide-react';
 import { searchSettings, isEntryAvailable, SETTINGS_INDEX, type SettingsEntry, type SettingsAvailability } from '../../shared/settingsIndex';
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
@@ -15,6 +15,7 @@ import PermissionsSection from './settings/PermissionsSection';
 import AppearanceSection from './settings/AppearanceSection';
 import ProfilesSection from './settings/ProfilesSection';
 import RulesSection from './settings/RulesSection';
+import HelpSection from './settings/HelpSection';
 import { useRubberBand } from '../rubberBand';
 
 interface SettingsProps {
@@ -62,8 +63,12 @@ const NAV_ITEMS: NavItem[] = [
   // Правила стоят последними как самое редкое, но по-прежнему отдельным разделом, а не блоком
   // внутри AI: фразу разбирает модель, а исполняются они обычным кодом и живут без модели.
   { id: 'rules',      label: 'Правила',        Icon: Wand2 },
+  // ⚠️ Справка — САМЫМ низом и отдельно от всех: она ничего не настраивает. Остальные разделы
+  // отвечают «как это включить», справка — «а что тут вообще есть», и её открывают один-два раза
+  // за всё время. Выше она вытесняла бы то, чем пользуются каждую неделю.
+  { id: 'help',       label: 'Справка',        Icon: BookOpen },
 ];
-type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'rules' | 'passwords' | 'autofill' | 'permissions' | 'appearance' | 'profiles';
+type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'rules' | 'passwords' | 'autofill' | 'permissions' | 'appearance' | 'profiles' | 'help';
 
 // ⚠️ Проверка идёт по САМОМУ меню, а не по своему списку строк. Отдельный список тут уже
 // разошёлся с NAV_ITEMS однажды (новый раздел «Правила» существовал в меню, но открыть его
@@ -76,6 +81,24 @@ function isSectionId(v: unknown): v is SectionId {
 // 'adblock', и настройки открывались на «Блокировке» — втором пункте сверху, при том что глаз
 // ждёт первый. Ошибка того же рода, что уже была с isSectionId: отдельно записанное имя раздела
 // расходится с меню молча, и заметить это можно только глазами.
+// Разделы БЕЗ пропов — таблицей, а не цепочкой `section === '…' &&` в разметке.
+//
+// ⚠️ Затеяно не ради красоты: цепочка росла на строку с каждым новым разделом, и функция
+// Settings() упиралась в порог structure-check ровно на добавлении справки. Пропы остались
+// только у двух разделов («Браузер» зовёт импорт, «Блокировка» держит состояние адблока) —
+// они и остаются в разметке отдельными ветками, потому что таблица их не выразит.
+const PLAIN_SECTION: Partial<Record<SectionId, ComponentType>> = {
+  vpn: VpnSection,
+  ai: AiSection,
+  rules: RulesSection,
+  passwords: PasswordsSection,
+  autofill: AutofillSection,
+  permissions: PermissionsSection,
+  appearance: AppearanceSection,
+  profiles: ProfilesSection,
+  help: HelpSection,
+};
+
 const FIRST_SECTION = NAV_ITEMS[0].id as SectionId;
 
 export default function Settings({ onClose, defaultSection, onOpenImport, onSectionChange }: SettingsProps) {
@@ -86,6 +109,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
   // Смена раздела идёт через одну дверь: и локальный стейт (перерисовка), и наверх в App.tsx
   // (переживает размонтирование при переключении вкладок).
   const goToSection = (next: SectionId) => { setSection(next); onSectionChange?.(next); };
+  const PlainSection = PLAIN_SECTION[section];
   // ── Поиск по настройкам (AI-IDEAS.md №6) ─────────────────────────────────
   const [query, setQuery] = useState('');
   // Что подсветить после перехода. Блок живёт в ЕЩЁ НЕ отрисованной секции, поэтому имя
@@ -411,14 +435,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
               onDismissReload={() => setPendingReload(null)}
             />
           )}
-          {section === 'vpn' && <VpnSection />}
-          {section === 'ai' && <AiSection />}
-          {section === 'rules' && <RulesSection />}
-          {section === 'passwords' && <PasswordsSection />}
-          {section === 'autofill' && <AutofillSection />}
-          {section === 'permissions' && <PermissionsSection />}
-          {section === 'appearance' && <AppearanceSection />}
-          {section === 'profiles' && <ProfilesSection />}
+          {PlainSection && <PlainSection />}
           </div>
         </div>
       </div>

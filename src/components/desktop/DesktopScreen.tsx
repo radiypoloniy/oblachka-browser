@@ -26,7 +26,7 @@ const GRAIN_LAYER: React.CSSProperties = {
 const FLAT_GRAIN_LAYER: React.CSSProperties = { ...grain, zIndex: 1 };
 import { useDesktopGrid } from './useDesktopGrid';
 import { DesktopGrid } from './DesktopGrid';
-import { RADIUS, grain } from '../../styles/system';
+import { CAPS, RADIUS, grain, motion } from '../../styles/system';
 
 // Рабочий стол новой вкладки — springboard в духе iPad: сетка иконок и виджетов поверх обоев.
 // Раскладку считает src/newtab/desktop.ts (там же объяснено, почему элементы хранят порядок, а
@@ -41,6 +41,28 @@ interface Props {
   /** Открыть локальное приложение (калькулятор и т.п.) — их слоты живут в AI-панели. */
   onOpenApp: (appId: string) => void;
 }
+
+// Материал УГЛОВЫХ КНОПОК — плотная плашка, а не стекло, и ОДНА на обе палитры.
+//
+// ⚠️ Разбор живой жалобы «кнопки визуально отличаются от стиля панели». Плитки стола — плакатная
+// краска с зерном и тенью; кнопки же рисовались стеклом (--nt-plate, чёрное с прозрачностью
+// 0,28 плюс блюр). Два разных материала на одном экране, и это видно раньше, чем читается: угол
+// выглядит накладкой из другой программы.
+//
+// ⚠️ Почему плашка ТЁМНАЯ и в светлой палитре тоже. Стекло меняло цвет вместе с обоями и в обоих
+// крайних случаях проигрывало: на тёмных обоях чёрное на чёрном не видно вовсе, на светлых белое
+// на белом читается мутным пятном. У плиток такой проблемы нет именно потому, что их краска от
+// обоев не зависит — кнопки берут то же правило.
+//
+// ⚠️ Цвет НЕ из палитры приложения: над обоями токены земли не работают (там нет ни --surface,
+// ни --app-bg — есть фотография). Поэтому здесь свои значения, как и у всей новой вкладки.
+const CONTROL_MATERIAL: Record<string, string> = {
+  '--nt-control': 'rgba(26,31,38,0.92)',
+  '--nt-control-hover': 'rgba(38,45,54,0.96)',
+  '--nt-control-ink': 'var(--on-poster-light)',
+  // Волосок между кнопками внутри пилюли: тот же приём, что у сегментов в настройках.
+  '--nt-control-line': 'rgba(242,237,225,0.16)',
+};
 
 // Палитры текста и «стекла» — те же, что были у минималистичной вкладки: фон бывает и белым
 // (по умолчанию), и тёмным, и на белом светлый текст просто не виден.
@@ -57,6 +79,7 @@ const DARK_PALETTE: Record<string, string> = {
   '--nt-field-text': '#fff',
   '--nt-plate': 'rgba(0,0,0,0.28)',
   '--nt-plate-border': 'rgba(255,255,255,0.16)',
+  ...CONTROL_MATERIAL,
 };
 
 const LIGHT_PALETTE: Record<string, string> = {
@@ -76,6 +99,7 @@ const LIGHT_PALETTE: Record<string, string> = {
   '--nt-field-text': 'rgba(28,28,32,0.92)',
   '--nt-plate': 'rgba(255,255,255,0.78)',
   '--nt-plate-border': 'rgba(0,0,0,0.07)',
+  ...CONTROL_MATERIAL,
 };
 
 
@@ -145,6 +169,15 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
     ro.observe(el);
     return () => { cancelAnimationFrame(frame); ro.disconnect(); };
   }, []);
+  // Узкое окно — подписи в углу убираются, остаются одни значки.
+  //
+  // ⚠️ Порог по ширине ОБЛАСТИ СЕТКИ, которую и так меряет ResizeObserver выше, а не по
+  // window.innerWidth: у лёгкого окна и у окна с открытой AI-панелью содержимое узкое при широком
+  // окне, и подписи налезали бы на плитки именно там. Мерить надо то место, где кнопки живут.
+  //
+  // ⚠️ width === 0 — это первый кадр до замера. Считаем его ШИРОКИМ: мигнуть подписями и убрать
+  // их лучше, чем наоборот, потому что схлопнутый вид — исключение, а не норма.
+  const compactCorner = width > 0 && width < 560;
   const light = isLightBackground(settings.background);
   // Геометрия сетки и жесты переноса/растягивания — в useDesktopGrid.
   // ⚠️ Результат хука уезжает в сетку ОДНИМ объектом. Разложить его на двадцать пропсов
@@ -194,42 +227,13 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
         <div style={{ marginBottom: 'auto', flex: 'none' }} />
       </div>
 
-      {/* Управление. В режиме правки набор кнопок другой: добавить и «Готово» — остальное
-          сейчас неуместно, человек занят одним делом. */}
-      <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 30, display: 'flex', gap: 8 }}>
-        {editing ? (
-          <>
-            <CornerButton title="Добавить виджет, приложение или сайт" onClick={() => setSheetOpen(true)}>
-              <Plus size={18} />
-            </CornerButton>
-            <button
-              onClick={() => { setEditing(false); setSheetOpen(false); }}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, padding: '0 16px',
-                borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
-                background: 'var(--accent)', color: 'var(--on-accent)',
-                fontSize: 'var(--fs-sm)', fontWeight: 600, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
-              }}
-            ><Check size={16} /> Готово</button>
-          </>
-        ) : (
-          <>
-            {/* ⚠️ ДВЕ кнопки, и это не дубль. «Настройка» (панель) — что показывать и как оно
-                выглядит; «Правка» (режим на самом столе) — где что лежит, то есть перетаскивание
-                и размеры. Раньше и то и другое пряталось за одной кнопкой, а часть настроек жила
-                вообще в отдельном разделе — именно это и было неудобно. */}
-            <CornerButton title="Настроить экран" onClick={() => setPanelOpen(true)}>
-              <SlidersHorizontal size={18} />
-            </CornerButton>
-            {!isLightWindow && (
-              <>
-                <CornerButton title="Граф-воркспейс" onClick={onOpenGraph}><Workflow size={18} /></CornerButton>
-                <CornerButton title="AI-режим" onClick={onOpenAi}><Sparkles size={18} /></CornerButton>
-              </>
-            )}
-          </>
-        )}
-      </div>
+      <DesktopCorner
+        editing={editing} compact={compactCorner} isLightWindow={isLightWindow}
+        onAdd={() => setSheetOpen(true)}
+        onDone={() => { setEditing(false); setSheetOpen(false); }}
+        onPanel={() => setPanelOpen(true)}
+        onOpenGraph={onOpenGraph} onOpenAi={onOpenAi}
+      />
 
       {panelOpen && (
         <SidePanel
@@ -263,18 +267,159 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   );
 }
 
+/**
+ * Угол управления столом.
+ *
+ * ⚠️ Вынесен из DesktopScreen() отдельным компонентом не «для порядка», а потому что функция
+ * экрана упёрлась в порог structure-check (200 строк). Угол — самодостаточный кусок: он ничего
+ * не знает ни о раскладке, ни о виджетах, только о том, какие действия сейчас уместны.
+ */
+function DesktopCorner({ editing, compact, isLightWindow, onAdd, onDone, onPanel, onOpenGraph, onOpenAi }: {
+  editing: boolean;
+  compact: boolean;
+  isLightWindow?: boolean;
+  onAdd: () => void;
+  onDone: () => void;
+  onPanel: () => void;
+  onOpenGraph: () => void;
+  onOpenAi: () => void;
+}) {
+  // ⚠️ В режиме правки набор кнопок ДРУГОЙ: добавить и «Готово» — остальное сейчас неуместно,
+  // человек занят одним делом.
+  //
+  // ⚠️ УГОЛ НИЖНИЙ ПРАВЫЙ, а не верхний. Сверху кнопки стояли ровно там, куда приходит взгляд при
+  // открытии новой вкладки, — то есть спорили за внимание с приветствием и первой строкой плиток.
+  // Внизу они попадают под руку и перестают перебивать содержимое стола.
+  //
+  // ⚠️ Кнопка «Добавить» в режиме правки остаётся ЗДЕСЬ ЖЕ. Перекладывать управление между углами
+  // при смене режима нельзя: человек ищет его там, где оставил.
+  return (
+    <div style={{ position: 'absolute', bottom: 16, right: 16, zIndex: 30, display: 'flex', gap: 8, alignItems: 'center' }}>
+      {editing ? (
+        <>
+          <CornerButton title="Добавить виджет, приложение или сайт" onClick={onAdd}>
+            <Plus size={18} />
+          </CornerButton>
+          <button
+            onClick={onDone}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, padding: '0 16px',
+              borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
+              background: 'var(--accent)', color: 'var(--on-accent)',
+              fontSize: 'var(--fs-sm)', fontWeight: 600, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+            }}
+          ><Check size={16} /> Готово</button>
+        </>
+      ) : (
+        <>
+          {/* ⚠️ ДВЕ кнопки, и это не дубль. «Настройка» (панель) — что показывать и как оно
+              выглядит; «Правка» (режим на самом столе) — где что лежит, то есть перетаскивание
+              и размеры. Раньше и то и другое пряталось за одной кнопкой, а часть настроек жила
+              вообще в отдельном разделе — именно это и было неудобно. */}
+          {/* ⚠️ РОЛИ РАЗВЕДЕНЫ, и это не косметика. «Настроить» меняет ЭТОТ экран и остаётся
+              значком; «Граф» и «Блокнот» уводят на СОВСЕМ ДРУГИЕ экраны — поэтому они собраны
+              в одну пилюлю и подписаны словами. Тремя одинаковыми кружками, как было, эта
+              разница не читалась вовсе, и звёздочку приходилось угадывать. */}
+          <CornerButton title="Настроить экран" onClick={onPanel}>
+            <SlidersHorizontal size={18} />
+          </CornerButton>
+          {!isLightWindow && (
+            <CornerPair compact={compact}>
+              <CornerPairButton
+                title="Граф-воркспейс" label="Граф" compact={compact}
+                onClick={onOpenGraph}
+              ><Workflow size={16} /></CornerPairButton>
+              <CornerPairButton
+                title="Блокнот и AI-режим" label="Блокнот" compact={compact} divider
+                onClick={onOpenAi}
+              ><Sparkles size={16} /></CornerPairButton>
+            </CornerPair>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ⚠️ Зерно ТО ЖЕ, что на плитках стола и на шапках разделов (grain в system.ts). Оно и отличает
+// «напечатано» от «залито в макете» — без него плотная плашка выглядит просто тёмным квадратом,
+// и родство с плитками не читается.
+const CORNER_PLATE: React.CSSProperties = {
+  borderRadius: RADIUS.box, border: 'none',
+  background: 'var(--nt-control)', color: 'var(--nt-control-ink)',
+  boxShadow: '0 2px 10px rgba(0,0,0,0.22)',
+  position: 'relative', overflow: 'hidden',
+};
+
 function CornerButton({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
       title={title}
       style={{
-        width: 40, height: 40, borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
+        ...CORNER_PLATE,
+        width: 40, height: 40, cursor: 'default',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--nt-plate)', backdropFilter: 'blur(12px)',
-        color: 'var(--nt-text)', boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+        transition: motion.hover('background'),
       }}
-    >{children}</button>
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--nt-control-hover)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--nt-control)')}
+    >
+      <div style={grain} />
+      <span style={{ position: 'relative', display: 'inline-flex' }}>{children}</span>
+    </button>
+  );
+}
+
+/**
+ * Пилюля входов на другие экраны: граф и блокнот.
+ *
+ * ⚠️ ОДИН предмет с волоском внутри, а не две кнопки рядом. Две отдельные плашки читались бы как
+ * ещё два равноправных значка — то есть ровно то, от чего уходим: «настроить» и «уйти на другой
+ * экран» это разные действия, и разница обязана быть видна формой, а не только подписью.
+ */
+function CornerPair({ compact, children }: { compact: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{
+      ...CORNER_PLATE, display: 'flex', alignItems: 'center', height: 40,
+      // Ширина едет плавно: схлопывание подписей при ресайзе иначе выглядит рывком.
+      transition: motion.state('width'),
+    }} data-compact={compact ? 'true' : undefined}>
+      <div style={grain} />
+      {children}
+    </div>
+  );
+}
+
+function CornerPairButton({ title, label, compact, divider, onClick, children }: {
+  title: string; label: string; compact: boolean; divider?: boolean;
+  onClick: () => void; children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      // ⚠️ aria-label ставится ВСЕГДА, а не только в схлопнутом виде: в компактном состоянии
+      // подписи на экране нет вовсе, и без него кнопка для читалки становится безымянной.
+      aria-label={title}
+      style={{
+        height: 40, padding: compact ? '0 12px' : '0 14px', border: 'none', cursor: 'default',
+        background: 'transparent',
+        display: 'inline-flex', alignItems: 'center', gap: 8,
+        position: 'relative', zIndex: 1,
+        // ⚠️ Волосок-разделитель ставит САМА вторая кнопка (проп divider), потому что
+        // псевдоэлемента `+ button::before` в инлайн-стилях нет, а заводить ради одной линии
+        // класс в global.css — держать вид кнопки в двух файлах сразу.
+        borderLeft: divider ? '1px solid var(--nt-control-line)' : 'none',
+        transition: motion.hover('background'),
+        ...CAPS, color: 'inherit',
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--nt-control-hover)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+    >
+      {children}
+      {!compact && <span>{label}</span>}
+    </button>
   );
 }
 

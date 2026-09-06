@@ -1,0 +1,530 @@
+<title>Кнопки рабочего стола</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700&display=swap">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   ТРИ ВАРИАНТА УГЛОВЫХ КНОПОК РАБОЧЕГО СТОЛА
+   Задача: сейчас кнопки «Настроить / Граф / AI» нарисованы стеклянной плашкой
+   (--nt-plate, rgba(0,0,0,.28) + blur 12), а плитки под ними — плотные
+   постерные блоки. Два разных языка на одном экране; на тёмных обоях стекло
+   к тому же почти не видно.
+   Все три варианта ниже говорят языком плиток, а не языком стекла.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-standard:cubic-bezier(.2,0,.2,1);
+
+  /* Плакатная краска — src/styles/tokens/colors.css */
+  --poster-tangerine:#E8611C; --poster-mustard:#E9BE1E; --poster-lime:#A9E86B;
+  --poster-tea:#1F5E52; --poster-sky:#9BD3DE; --poster-passion:#C63F3E;
+  --poster-neutral:#4C5665;
+  --on-poster-dark:#14140F; --on-poster-light:#F2EDE1;
+
+  /* Земля страницы-стенда (не стола) */
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n5:#DBDCE3; --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --app-bg:var(--n5); --surface:var(--n1); --sunken:var(--n5);
+  --divider:rgba(60,60,67,.14);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n5:#343439; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --on-accent:#121213;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#343439;
+    --divider:rgba(255,255,255,.14);
+    --shadow-tint:#000000;
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n5:#343439; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#343439;
+  --divider:rgba(255,255,255,.14);
+  --shadow-tint:#000000;
+}
+
+:root {
+  --shadow-lvl2:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+}
+
+* { box-sizing:border-box; }
+body {
+  margin:0; font-family:var(--font-ui); font-size:14px; line-height:1.5;
+  color:var(--text-body); background:var(--app-bg);
+  -webkit-font-smoothing:antialiased;
+}
+.ground {
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:linear-gradient(168deg,var(--ground-1) 0%,var(--ground-2) 46%,var(--ground-3) 100%);
+}
+.wrap { position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:var(--sp6) var(--sp4) 64px; }
+
+h1,h2,h3 { margin:0; text-wrap:balance; }
+.display { font-family:var(--font-display); font-weight:700; letter-spacing:-.03em; line-height:1.05; color:var(--text-strong); }
+.caps { font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); }
+.lede { max-width:68ch; color:var(--text-muted); font-size:14px; margin:var(--sp3) 0 0; }
+
+.head { padding:var(--sp6) 0 var(--sp6); }
+.head h1 { font-size:clamp(26px,3.4vw,36px); }
+
+/* ── Управление стендом ────────────────────────────────────────────────────── */
+.controls {
+  display:flex; flex-wrap:wrap; gap:var(--sp3); align-items:center;
+  padding:var(--sp3); border-radius:16px; background:var(--surface);
+  box-shadow:var(--shadow-lvl2); margin-bottom:var(--sp4);
+}
+.seg { display:flex; gap:2px; padding:3px; border-radius:999px; background:var(--sunken); }
+.seg button {
+  border:0; cursor:pointer; font:inherit; font-size:13px; font-weight:500;
+  padding:6px 14px; border-radius:999px; background:transparent; color:var(--text-muted);
+  transition:background 120ms var(--ease-standard), color 120ms var(--ease-standard);
+}
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); font-weight:600; }
+.spacer { flex:1; }
+.hint { font-size:12.5px; color:var(--text-faint); }
+
+/* ── Стенд: макет рабочего стола ───────────────────────────────────────────── */
+.stand {
+  position:relative; border-radius:20px; overflow:hidden;
+  box-shadow:var(--shadow-lvl2);
+  aspect-ratio:16/9; min-height:420px;
+  background:#0A1018;
+}
+.stand.light-wall { background:#EDEAE2; }
+#wall { position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+.board {
+  position:absolute; inset:0; z-index:2;
+  display:grid; place-content:center;
+  padding:56px 24px 24px;
+}
+.tiles {
+  display:grid;
+  grid-template-columns:repeat(6, 84px);
+  grid-auto-rows:84px;
+  gap:10px;
+}
+.tile {
+  border-radius:16px; padding:10px; overflow:hidden; position:relative;
+  display:flex; flex-direction:column; justify-content:space-between;
+  box-shadow:0 2px 10px rgba(0,0,0,.22);
+}
+/* Зерно плитки — тот же рецепт, что в системе: калибр .65, два октава, overlay. */
+.tile::after, .cc-grain::after {
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:.45; mix-blend-mode:overlay;
+}
+.tile .cap { font-family:var(--font-mono); font-size:7.5px; letter-spacing:.12em; text-transform:uppercase; opacity:.72; }
+.tile .big { font-family:var(--font-display); font-weight:700; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+.tile .sub { font-size:8px; opacity:.72; line-height:1.3; }
+
+.t-clock { grid-column:span 2; background:var(--poster-sky); color:var(--on-poster-dark); }
+.t-clock .big { font-size:30px; }
+.t-music { background:#B6BAC0; color:var(--on-poster-dark); }
+.t-weather { grid-column:span 2; background:#8A5C3E; color:var(--on-poster-light); }
+.t-weather .big { font-size:26px; }
+.t-track { grid-column:span 2; background:var(--poster-tea); color:var(--on-poster-light); }
+.t-track .big { font-size:15px; }
+.t-timer { grid-column:span 2; background:var(--poster-passion); color:var(--on-poster-light); }
+.t-timer .big { font-size:24px; }
+.t-rates { grid-column:span 2; background:#C6C9CD; color:var(--on-poster-dark); }
+.t-rates .big { font-size:15px; }
+.t-cal { grid-column:span 3; background:var(--poster-mustard); color:var(--on-poster-dark); }
+.t-cal .big { font-size:20px; }
+.t-shield { background:var(--poster-neutral); color:var(--on-poster-light); }
+.t-quote { grid-column:span 2; background:var(--poster-lime); color:var(--on-poster-dark); }
+.t-quote .sub { font-size:9px; opacity:1; font-weight:600; }
+
+/* ── Угол ──────────────────────────────────────────────────────────────────── */
+.corner { position:absolute; bottom:16px; right:16px; z-index:30; display:flex; gap:8px; align-items:center; }
+
+/* ── СЕЙЧАС: стеклянная плашка ─────────────────────────────────────────────── */
+.now-btn {
+  width:40px; height:40px; border-radius:999px; border:0; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.28); backdrop-filter:blur(12px);
+  color:rgba(255,255,255,.96); box-shadow:0 2px 12px rgba(0,0,0,.12);
+}
+.light-wall .now-btn { background:rgba(255,255,255,.78); color:rgba(28,28,32,.92); }
+
+/* ── A · Пульт: три значка в одном плотном блоке ───────────────────────────── */
+.cc-a {
+  display:flex; align-items:center; position:relative;
+  border-radius:16px; overflow:hidden;
+  background:#20262E; color:var(--on-poster-light);
+  box-shadow:0 2px 10px rgba(0,0,0,.22);
+}
+.light-wall .cc-a { background:#2B3038; }
+.cc-a button {
+  width:44px; height:40px; border:0; cursor:pointer; background:transparent;
+  color:inherit; display:inline-flex; align-items:center; justify-content:center;
+  position:relative; z-index:1;
+  transition:background 120ms var(--ease-standard);
+}
+.cc-a button + button::before {
+  content:""; position:absolute; left:0; top:9px; bottom:9px; width:1px;
+  background:rgba(242,237,225,.16);
+}
+.cc-a button:hover { background:rgba(242,237,225,.12); }
+.cc-a button:active { background:rgba(242,237,225,.2); }
+
+/* ── B · Марки: три отдельные плитки постерного тона ───────────────────────── */
+.cc-b { display:flex; gap:6px; }
+.cc-b button {
+  width:40px; height:40px; border:0; cursor:pointer; border-radius:12px;
+  display:inline-flex; align-items:center; justify-content:center; position:relative;
+  overflow:hidden;
+  box-shadow:0 2px 10px rgba(0,0,0,.22);
+  transition:transform 120ms var(--ease-standard), box-shadow 120ms var(--ease-standard);
+}
+.cc-b button:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,.28); }
+.cc-b .b-set { background:#20262E; color:var(--on-poster-light); }
+.cc-b .b-graph { background:var(--poster-tea); color:var(--on-poster-light); }
+.cc-b .b-ai { background:var(--poster-lime); color:var(--on-poster-dark); }
+
+/* ── C · Роли врозь: тихая настройка + постерная пилюля входов ─────────────── */
+.cc-c { display:flex; gap:8px; align-items:center; }
+.cc-c .c-set {
+  width:40px; height:40px; border-radius:12px; border:0; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
+  background:#20262E; color:var(--on-poster-light); box-shadow:0 2px 10px rgba(0,0,0,.22);
+  transition:background 120ms var(--ease-standard);
+}
+.cc-c .c-set:hover { background:#2A323C; }
+.cc-c .c-pair {
+  display:flex; align-items:center; position:relative; overflow:hidden;
+  border-radius:12px; background:#20262E; box-shadow:0 2px 10px rgba(0,0,0,.22);
+}
+.cc-c .c-pair button {
+  height:40px; padding:0 12px; border:0; cursor:pointer; background:transparent;
+  display:inline-flex; align-items:center; gap:7px; position:relative; z-index:1;
+  color:var(--on-poster-light);
+  font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  transition:background 120ms var(--ease-standard);
+}
+.stand.narrow .cc-c .c-pair button span { display:none; }
+.stand.narrow .cc-c .c-pair button { padding:0 12px; }
+.cc-c .c-pair button + button::before {
+  content:""; position:absolute; left:0; top:9px; bottom:9px; width:1px; background:rgba(242,237,225,.16);
+}
+.cc-c .c-pair button:hover { background:rgba(242,237,225,.12); }
+
+/* Подпись под кнопкой — появляется по наведению, набрана капсой как на плитках. */
+.tip {
+  position:absolute; bottom:46px; right:0; white-space:nowrap;
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+  padding:4px 8px; border-radius:6px;
+  background:#20262E; color:var(--on-poster-light);
+  opacity:0; transform:translateY(-3px); pointer-events:none;
+  transition:opacity 140ms var(--ease-out), transform 140ms var(--ease-out);
+}
+.corner:hover .tip.on { opacity:1; transform:none; }
+
+/* ── Разбор вариантов ──────────────────────────────────────────────────────── */
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:var(--sp3); margin-top:var(--sp6); }
+.card { padding:var(--sp4); border-radius:16px; background:var(--surface); box-shadow:var(--shadow-lvl2); display:flex; flex-direction:column; gap:var(--sp3); }
+.card.pick { box-shadow:var(--shadow-lvl2), 0 0 0 2px var(--accent); }
+.card h3 { font-family:var(--font-display); font-size:16px; font-weight:700; letter-spacing:-.015em; color:var(--text-strong); }
+.card p { margin:0; font-size:13px; color:var(--text-muted); }
+.card .verdict { font-size:12.5px; color:var(--text-body); border-top:1px solid var(--divider); padding-top:var(--sp3); }
+.badge {
+  align-self:flex-start; font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  padding:3px 8px; border-radius:4px; background:var(--accent); color:var(--on-accent);
+}
+.demo { border-radius:12px; padding:var(--sp4); display:flex; justify-content:center; background:#0E141C; }
+
+.foot { margin-top:var(--sp8); padding-top:var(--sp4); border-top:1px solid var(--divider); }
+
+@media (prefers-reduced-motion: reduce) { * { transition-duration:1ms !important; animation:none !important; } }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+
+@media (max-width:820px) {
+  .tiles { grid-template-columns:repeat(3,84px); }
+  .stand { aspect-ratio:auto; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="g-sliders"><path d="M4 8h9M17 8h3M4 16h4M12 16h8"/><circle cx="15" cy="8" r="2"/><circle cx="10" cy="16" r="2"/></g>
+  <g id="g-flow"><circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.5 7h7M7.2 9.2l3.6 6.6M16.8 9.2l-3.6 6.6"/></g>
+  <g id="g-spark"><path d="m12 3 1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9Z"/><path d="M18.5 15.5 19.4 18l2.5.9-2.5.9-.9 2.5-.9-2.5-2.5-.9 2.5-.9Z"/></g>
+</defs></svg>
+
+<div class="ground"></div>
+
+<div class="wrap">
+
+  <header class="head">
+    <div class="caps">Рабочий стол · угловые кнопки</div>
+    <h1 class="display" style="margin-top:12px">Кнопки в углу говорят<br>не на языке стола</h1>
+    <p class="lede">
+      Плитки — плотная плакатная краска с зерном и моношринной капсой. Кнопки «Настроить», «Граф» и
+      «AI» рисуются стеклянной плашкой <code>--nt-plate</code> (<code>rgba(0,0,0,.28)</code> плюс
+      блюр 12) — материалом из другой части системы. На тёмных обоях этого стекла почти не видно,
+      а на светлых оно читается белёсым пятном. Ниже — три способа перевести их на язык стола.
+      <b>Принят вариант C</b> — с двумя правками против первого показа: угол переехал вниз справа,
+      а на узком окне подписи убираются сами. Переключайте прямо на макете.
+    </p>
+  </header>
+
+  <div class="controls">
+    <div class="seg" id="variant" role="group" aria-label="Вариант кнопок">
+      <button data-v="now"  aria-pressed="false">Сейчас</button>
+      <button data-v="a"    aria-pressed="false">A · Пульт</button>
+      <button data-v="b"    aria-pressed="false">B · Марки</button>
+      <button data-v="c"    aria-pressed="true">C · Роли врозь — принят</button>
+    </div>
+    <div class="seg" id="wallsw" role="group" aria-label="Обои">
+      <button data-w="dark" aria-pressed="true">Тёмные обои</button>
+      <button data-w="light" aria-pressed="false">Светлые</button>
+    </div>
+    <div class="seg" id="widthsw" role="group" aria-label="Ширина окна">
+      <button data-c="wide" aria-pressed="true">Обычное окно</button>
+      <button data-c="narrow" aria-pressed="false">Узкое окно</button>
+    </div>
+    <span class="spacer"></span>
+    <span class="hint">Узкое окно убирает подписи — остаются значки</span>
+  </div>
+
+  <!-- ── Стенд ──────────────────────────────────────────────────────────────── -->
+  <div class="stand" id="stand">
+    <canvas id="wall"></canvas>
+
+    <div class="board">
+      <div class="tiles">
+        <div class="tile t-clock"><span class="cap">Воскресенье</span><div><div class="big">14:29</div><div class="sub" style="margin-top:4px">6 сентября</div></div></div>
+        <div class="tile t-music"><span class="cap">Музыка</span><div class="sub">Ничего<br>не играет</div></div>
+        <div class="tile t-weather"><span class="cap">Краснодар</span><div><div class="big">30°</div><div class="sub" style="margin-top:4px">Малооблачно</div></div></div>
+
+        <div class="tile t-track"><span class="cap">Отслеживание</span><div><div class="big">30 807 ₽</div><div class="sub" style="margin-top:3px">ozon.ru · ещё 4</div></div></div>
+        <div class="tile t-timer"><span class="cap">Таймер</span><div class="big">19:59</div></div>
+        <div class="tile t-rates"><span class="cap">Курс ЦБ</span><div><div class="big">86,59</div><div class="sub" style="margin-top:3px">USD · 30 дней</div></div></div>
+
+        <div class="tile t-cal"><span class="cap">Сентябрь</span><div class="big">09</div></div>
+        <div class="tile t-shield"><span class="cap">Защита</span><div class="big" style="font-size:16px">2 050</div></div>
+        <div class="tile t-quote"><span class="cap">Сенека</span><div class="sub">Мир не меняется, пока мы не изменим себя.</div></div>
+      </div>
+    </div>
+
+    <!-- Сейчас -->
+    <div class="corner" data-corner="now" hidden>
+      <button class="now-btn" title="Настроить экран"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-sliders"/></svg></button>
+      <button class="now-btn" title="Граф-воркспейс"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-flow"/></svg></button>
+      <button class="now-btn" title="AI-режим"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-spark"/></svg></button>
+    </div>
+
+    <!-- A · Пульт -->
+    <div class="corner" data-corner="a" hidden>
+      <div class="cc-a cc-grain">
+        <button title="Настроить экран" data-tip="Настроить"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-sliders"/></svg></button>
+        <button title="Граф-воркспейс" data-tip="Граф"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-flow"/></svg></button>
+        <button title="Блокнот и AI" data-tip="Блокнот"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-spark"/></svg></button>
+      </div>
+      <span class="tip" id="tipA"></span>
+    </div>
+
+    <!-- B · Марки -->
+    <div class="corner" data-corner="b" hidden>
+      <div class="cc-b">
+        <button class="b-set cc-grain" title="Настроить экран" data-tip="Настроить"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-sliders"/></svg></button>
+        <button class="b-graph cc-grain" title="Граф-воркспейс" data-tip="Граф"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-flow"/></svg></button>
+        <button class="b-ai cc-grain" title="Блокнот и AI" data-tip="Блокнот"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-spark"/></svg></button>
+      </div>
+      <span class="tip" id="tipB"></span>
+    </div>
+
+    <!-- C · Роли врозь -->
+    <div class="corner" data-corner="c">
+      <div class="cc-c">
+        <button class="c-set cc-grain" title="Настроить экран"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-sliders"/></svg></button>
+        <div class="c-pair cc-grain">
+          <button title="Граф-воркспейс"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-flow"/></svg><span>Граф</span></button>
+          <button title="Блокнот и AI"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-spark"/></svg><span>Блокнот</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Разбор ─────────────────────────────────────────────────────────────── -->
+  <div class="cards">
+
+    <div class="card">
+      <h3>A · Пульт</h3>
+      <div class="demo">
+        <div class="cc-a cc-grain" style="pointer-events:none">
+          <button><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-sliders"/></svg></button>
+          <button><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-flow"/></svg></button>
+          <button><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-spark"/></svg></button>
+        </div>
+      </div>
+      <p>Три значка склеены в один плотный блок с тем же радиусом, зерном и тенью, что у плиток —
+         и с волосками-разделителями внутри. Читается как ещё один маленький виджет стола, а не как
+         накладка поверх обоев. Подпись всплывает под блоком капсой.</p>
+      <div class="verdict"><b>Почему так.</b> Цвета не добавляет — значит не спорит с плитками и не
+         нарушает правило «один герой на экран». Материал общий со столом, поэтому кнопки видно на
+         любых обоях, включая светлые.</div>
+    </div>
+
+    <div class="card">
+      <h3>B · Марки</h3>
+      <div class="demo">
+        <div class="cc-b" style="pointer-events:none">
+          <button class="b-set cc-grain"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-sliders"/></svg></button>
+          <button class="b-graph cc-grain"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-flow"/></svg></button>
+          <button class="b-ai cc-grain"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-spark"/></svg></button>
+        </div>
+      </div>
+      <p>Каждая кнопка — своя маленькая плитка плакатного тона: настройка нейтральная, граф на
+         «чае», блокнот на «лайме». Самая прямая цитата языка стола: цвет несёт смысл, форма та же.</p>
+      <div class="verdict"><b>Риск.</b> Три цветных пятна в углу конкурируют с плитками за внимание,
+         а на лаймовой плитке-цитате рядом — ещё и повторяются. Правило одного героя размывается.</div>
+    </div>
+
+    <div class="card pick">
+      <span class="badge">Принят и внедрён</span>
+      <h3>C · Роли врозь</h3>
+      <div class="demo">
+        <div class="cc-c" style="pointer-events:none">
+          <button class="c-set cc-grain"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#g-sliders"/></svg></button>
+          <div class="c-pair cc-grain">
+            <button><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-flow"/></svg>Граф</button>
+            <button><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-spark"/></svg>Блокнот</button>
+          </div>
+        </div>
+      </div>
+      <p>Честная иерархия: «Настроить» — про этот экран и остаётся значком, а «Граф» и «Блокнот»
+         уводят на совсем другие экраны, поэтому собраны в пилюлю с подписями словами.</p>
+      <div class="verdict"><b>Что изменилось после показа.</b> Угол переехал вниз справа: сверху
+         кнопки стояли ровно там, куда падает взгляд при открытии вкладки, и спорили за внимание
+         с приветствием. Ширина, которая была главным возражением, снимается схлопыванием — на
+         узком окне остаются одни значки, как в свёрнутом сайдбаре.</div>
+    </div>
+
+  </div>
+
+  <footer class="foot">
+    <div class="caps">Что меняется в коде</div>
+    <p class="lede" style="margin-top:8px">
+      Правка узкая: <code>CornerButton</code> в <code>src/components/desktop/DesktopScreen.tsx</code>
+      и группа-обёртка рядом с ней. Токены <code>--nt-plate</code> и <code>--nt-plate-border</code>
+      остаются на месте — их используют и другие элементы новой вкладки, у угла просто будет свой
+      материал. Ничего в раскладке, сетке и панели настройки не двигается.
+    </p>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  // ── Обои: приближение живых, чтобы судить кнопки в честных условиях ───────
+  var cv = document.getElementById('wall');
+  var stand = document.getElementById('stand');
+  var mode = 'dark';
+
+  function drawWall() {
+    var r = stand.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.max(320, r.width), h = Math.max(320, r.height);
+    cv.width = w * dpr; cv.height = h * dpr;
+    cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    if (mode === 'dark') {
+      var g = ctx.createLinearGradient(0, 0, w, h);
+      g.addColorStop(0, '#0A1018'); g.addColorStop(.5, '#0C1622'); g.addColorStop(1, '#070B11');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      ctx.lineWidth = 1;
+      var bars = Math.floor(w / 4);
+      for (var i = 0; i < bars; i++) {
+        var x = i * 4 + 2;
+        var t = i / bars;
+        var env = Math.pow(Math.sin(Math.PI * t), 1.4);
+        var wob = Math.sin(t * 34) * .28 + Math.sin(t * 11 + 1.2) * .5 + Math.sin(t * 61) * .18;
+        var amp = env * h * .44 * (.55 + .45 * Math.abs(wob));
+        var alpha = .05 + env * .22;
+        ctx.strokeStyle = 'rgba(150,196,235,' + alpha.toFixed(3) + ')';
+        ctx.beginPath(); ctx.moveTo(x, h / 2 - amp); ctx.lineTo(x, h / 2 + amp); ctx.stroke();
+      }
+      var v = ctx.createRadialGradient(w / 2, h / 2, h * .2, w / 2, h / 2, h * .95);
+      v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.55)');
+      ctx.fillStyle = v; ctx.fillRect(0, 0, w, h);
+    } else {
+      var g2 = ctx.createLinearGradient(0, 0, w, h);
+      g2.addColorStop(0, '#F2EFE7'); g2.addColorStop(.55, '#E8E4DA'); g2.addColorStop(1, '#DFDCD2');
+      ctx.fillStyle = g2; ctx.fillRect(0, 0, w, h);
+      var bars2 = Math.floor(w / 4);
+      for (var j = 0; j < bars2; j++) {
+        var x2 = j * 4 + 2, t2 = j / bars2;
+        var env2 = Math.pow(Math.sin(Math.PI * t2), 1.4);
+        var wob2 = Math.sin(t2 * 34) * .28 + Math.sin(t2 * 11 + 1.2) * .5 + Math.sin(t2 * 61) * .18;
+        var amp2 = env2 * h * .44 * (.55 + .45 * Math.abs(wob2));
+        ctx.strokeStyle = 'rgba(120,128,140,' + (.03 + env2 * .12).toFixed(3) + ')';
+        ctx.beginPath(); ctx.moveTo(x2, h / 2 - amp2); ctx.lineTo(x2, h / 2 + amp2); ctx.stroke();
+      }
+    }
+  }
+  drawWall();
+  window.addEventListener('resize', drawWall);
+
+  // ── Переключатели ─────────────────────────────────────────────────────────
+  function bindSeg(id, apply) {
+    var box = document.getElementById(id);
+    var btns = Array.prototype.slice.call(box.querySelectorAll('button'));
+    btns.forEach(function (b) {
+      b.addEventListener('click', function () {
+        btns.forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        apply(b);
+      });
+    });
+  }
+
+  bindSeg('variant', function (b) {
+    var v = b.getAttribute('data-v');
+    Array.prototype.slice.call(document.querySelectorAll('.corner')).forEach(function (c) {
+      c.hidden = c.getAttribute('data-corner') !== v;
+    });
+  });
+
+  bindSeg('widthsw', function (b) {
+    stand.classList.toggle('narrow', b.getAttribute('data-c') === 'narrow');
+  });
+
+  bindSeg('wallsw', function (b) {
+    mode = b.getAttribute('data-w');
+    stand.classList.toggle('light-wall', mode === 'light');
+    drawWall();
+  });
+
+  // ── Подписи под кнопками ──────────────────────────────────────────────────
+  ['a', 'b'].forEach(function (key) {
+    var corner = document.querySelector('[data-corner="' + key + '"]');
+    var tip = corner.querySelector('.tip');
+    corner.querySelectorAll('button[data-tip]').forEach(function (btn) {
+      btn.addEventListener('mouseenter', function () {
+        tip.textContent = btn.getAttribute('data-tip');
+        tip.classList.add('on');
+      });
+      btn.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
+    });
+  });
+})();
+</script>
