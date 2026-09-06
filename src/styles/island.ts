@@ -137,28 +137,20 @@ export function noise(opacity: number, freq = '0.85', octaves = 1): string {
 // data-URI собирается строкой, и var() внутри него не вычисляется.
 // ⚠️ В тёмной теме доза втрое меньше: overlay кладёт светлые крапины на тёмную землю, и та же
 // сила, что даёт печатную фактуру на светлом, читается шумом поверх интерфейса.
-/**
- * Высота полосы системных кнопок Windows. ⚠️ Дубль числа из shared/chromeGround.ts — намеренный:
- * island.ts не тянет значимых импортов, а сама полоса здесь нужна ровно для одного — погасить в
- * ней зерно (см. capStrip ниже).
- */
-const OVERLAY_STRIP_PX = 56;
-
-/**
- * Полоса без зерна под кнопками Windows.
+/*
+ * ⚠️ ЗДЕСЬ БЫЛ `capStrip` — непрозрачная полоса высотой 56 px поверх земли и зерна, и её больше
+ * нет. Заводилась она под ОС: кнопки окна рисовала Windows (`setTitleBarOverlay`), заливая свою
+ * полосу ЧИСТЫМ цветом, и рядом с печатной дозой зерна стык читался как «кнопки не соответствуют
+ * браузеру» — при том что сам цвет совпадал точно (overlay со средним серым не смещает тон,
+ * смещается только фактура).
  *
- * ⚠️ Кнопки окна рисует ОПЕРАЦИОННАЯ СИСТЕМА, и она заливает свою полосу ЧИСТЫМ цветом — фактуру
- * туда передать нечем. Пока зерно было на пределе видимости, стык не читался; с печатной дозой
- * разница стала заметна, и это ощущается как «кнопки не соответствуют браузеру, чувствуется
- * разница в цветах и стиле» — при том что сам цвет совпадает точно (overlay со средним 50% серым
- * не смещает тон, смещается только фактура).
+ * ⚠️ Окно давно `frame: false`, кнопки рисует хром (toolbar/WindowControls.tsx), полосы у ОС нет.
+ * Гасить фактуру стало не для кого, а заплатка осталась и вылезла ровно тем, чем была, —
+ * непрозрачной крышкой поверх верха окна: «сверху у шапки градиент темнее, чем в системе».
  *
- * ⚠️ Гасим НЕПРОЗРАЧНОЙ заливкой цвета верхней кромки, а не маской: маска у слоя фона в CSS
- * применяется ко всему элементу, а нам нужен ровно первый слой.
+ * ⚠️ Урок на будущее: заплатка под чужой механизм обязана умирать вместе с ним. Эта пережила его
+ * на два выпуска, потому что выглядела как часть рисунка земли, а не как костыль.
  */
-function capStrip(topColor: string): string {
-  return `linear-gradient(180deg, ${topColor} 0px, ${topColor} ${OVERLAY_STRIP_PX - 12}px, transparent ${OVERLAY_STRIP_PX}px)`;
-}
 
 const GROUND_GRAIN_LIGHT = 0.85;
 const GROUND_GRAIN_DARK = 0.28;
@@ -187,18 +179,18 @@ export const GRAIN = { light: 0.09, dark: 0.09, tinted: 0.075, material: 0.06, o
 // Сам рисунок земли считает shared/chromeGround.ts (там же и проверка): CSS не умеет ни поворот
 // тона, ни притемнение по светимости, а без них цветной фон ломает читаемость в тёмной теме.
 // Здесь остаётся только обёртка — положить готовую картинку и накрыть её зерном.
-export function chromeTintStyle(backgroundImage: string, paintLayers = 1, dark = false, topColor = 'var(--app-bg)'): React.CSSProperties {
+export function chromeTintStyle(backgroundImage: string, paintLayers = 1, dark = false): React.CSSProperties {
   // ⚠️ Размер и повтор — на КАЖДЫЙ слой краски, не «зерно + одно 100%». У сетки слоёв несколько,
   // и недостающие размеры CSS берёт С НАЧАЛА списка: пятно получало бы плитку зерна 180 px.
   const paintSize = Array.from({ length: paintLayers }, () => '100% 100%').join(', ');
   const paintRepeat = Array.from({ length: paintLayers }, () => 'no-repeat').join(', ');
   return {
-    backgroundImage: `${capStrip(topColor)}, ${groundGrain(dark)}, ${backgroundImage}`,
-    // ⚠️ normal на полосу, overlay на зерно, normal на все слои краски. Без наложения шум ложится
-    // серой плёнкой поверх цвета: он гасит краску вместо того, чтобы дать ей поверхность.
-    backgroundBlendMode: `normal, overlay, ${Array.from({ length: paintLayers }, () => 'normal').join(', ')}`,
-    backgroundRepeat: `no-repeat, repeat, ${paintRepeat}`,
-    backgroundSize: `100% ${OVERLAY_STRIP_PX}px, 180px 180px, ${paintSize}`,
+    backgroundImage: `${groundGrain(dark)}, ${backgroundImage}`,
+    // ⚠️ overlay на зерно, normal на все слои краски. Без наложения шум ложится серой плёнкой
+    // поверх цвета: он гасит краску вместо того, чтобы дать ей поверхность.
+    backgroundBlendMode: `overlay, ${Array.from({ length: paintLayers }, () => 'normal').join(', ')}`,
+    backgroundRepeat: `repeat, ${paintRepeat}`,
+    backgroundSize: `180px 180px, ${paintSize}`,
   };
 }
 
@@ -232,10 +224,10 @@ export function chromeSpaceStyle(dark = false): React.CSSProperties {
     return { backgroundImage: gradient, backgroundRepeat: 'no-repeat', backgroundSize: '100% 100%' };
   }
   return {
-    backgroundImage: `${capStrip('var(--ground-1)')}, ${groundGrain(dark)}, ${gradient}`,
-    backgroundBlendMode: 'normal, overlay, normal',
-    backgroundRepeat: 'no-repeat, repeat, no-repeat',
-    backgroundSize: `100% ${OVERLAY_STRIP_PX}px, 180px 180px, 100% 100%`,
+    backgroundImage: `${groundGrain(dark)}, ${gradient}`,
+    backgroundBlendMode: 'overlay, normal',
+    backgroundRepeat: 'repeat, no-repeat',
+    backgroundSize: '180px 180px, 100% 100%',
   };
 }
 

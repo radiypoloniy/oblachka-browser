@@ -317,7 +317,7 @@ export default function App() {
       // Цветная земля несёт зерно сама; обычная получает его здесь — иначе фактура доставалась
       // бы только тем, кто включил подкраску (разбор — chromeGrainStyle в styles/island.ts).
       // Пространство рисуется ВСЕГДА; цветная подкраска — усиленный вариант того же маршрута.
-      ...(ground ? chromeTintStyle(ground.backgroundImage, ground.paintLayers, dark || activeIncognito, ground.top) : chromeSpaceStyle(dark || activeIncognito)),
+      ...(ground ? chromeTintStyle(ground.backgroundImage, ground.paintLayers, dark || activeIncognito) : chromeSpaceStyle(dark || activeIncognito)),
       ...(ground ? tintedPlateVars(ground.island, dark || activeIncognito) : null),
       ['--sidebar-plate' as string]: ground ? ground.island : 'var(--surface)',
     }}>

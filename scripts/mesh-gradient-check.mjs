@@ -100,12 +100,17 @@ console.log('\n— земля окна из сетки —');
     tint: '#007AFF', appBg: '#F2F2F7', surface: '#FFFFFF', amount: 30, dark: false,
   });
   check('кромка — hex', /^#[0-9a-f]{6}$/.test(g.top), true);
-  check('кромка стоит на 0px (высота полосы Windows)', g.backgroundImage.includes(`${g.top} 0px`), true);
+  // ⚠️ ПРОВЕРКА ПЕРЕВЁРНУТА НАМЕРЕННО, и это сторож против возврата снятой заплатки.
+  // Раньше первым слоем шла непрозрачная полоса цвета кромки на всю ширину до 56 px — она
+  // существовала ради setTitleBarOverlay, где полосу кнопок красила ОС одним hex. Окно давно
+  // frame: false, кнопки рисует хром, а полоса осталась и читалась как «шапка темнее земли»:
+  // цвет-то берётся СПРАВА (там кнопки), а красил он всю ширину, поверх пятен сетки.
+  check('непрозрачной полосы поверх земли нет', g.backgroundImage.includes(`${g.top} 0px`), false);
+  check('высота полосы кнопок в землю не заезжает', g.backgroundImage.includes(`${CHROME_OVERLAY_PX}px`), false);
   check('слоёв больше одного', g.paintLayers > 1, true);
   check('остров светлее или равен кромке не требуется — но остров валиден',
     /^#[0-9a-f]{6}$/.test(g.island), true);
   check('остров не совпадает с чёрным', g.island !== '#000000', true);
-  check('кромка держится на высоте полосы Windows', g.backgroundImage.includes(`${CHROME_OVERLAY_PX}px`), true);
 }
 
 console.log('\n— сетка под тему —');

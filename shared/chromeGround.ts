@@ -31,11 +31,10 @@ export interface Ground {
    */
   paintLayers: number;
   /**
-   * Цвет ВЕРХНЕЙ КРОМКИ окна.
-   *
-   * ⚠️ Полосу кнопок Windows рисует ОС одним hex, веб-градиент туда не заезжает.
-   * Для палитры ось строго вертикальная — верх равен первой ступени. Для сетки кромка
-   * берётся справа (там кнопки) и держится CHROME_OVERLAY_PX пикселей.
+   * Цвет ВЕРХНЕЙ КРОМКИ окна. ⚠️ ОПИСАНИЕ земли, а не заливка: им ничего не красят (прежде им
+   * заливали полосу setTitleBarOverlay — см. buildChromeGroundFromMesh). Для палитры ось строго
+   * вертикальная, поэтому верх равен первой ступени; для сетки берётся справа — там кнопки окна,
+   * и с их фоном сверяют читаемость значков.
    */
   top: string;
   /**
@@ -602,6 +601,8 @@ export function compileMeshBackground(mesh: MeshGradient): string {
  * ⚠️ Кромка сетки красится в ПИКСЕЛЯХ, не в процентах: 14% от окна то выше, то ниже кнопок,
  * и прямоугольник ОС расходится с землёй. Число одно — здесь, в main.ts и в Toolbar.tsx.
  */
+// ⚠️ Высота полосы кнопок окна — теперь НАШЕЙ (toolbar/WindowControls.tsx), а не полосы ОС.
+// Землю это число больше не режет.
 export const CHROME_OVERLAY_PX = 56;
 
 /**
@@ -746,16 +747,15 @@ export function randomMesh(rand: () => number = Math.random): MeshGradient {
 }
 
 /**
- * Земля окна из сетки. ⚠️ Сверху полоса в ПИКСЕЛЯХ высотой CHROME_OVERLAY_PX: её рисует ОС
- * одним hex (setTitleBarOverlay), и процент от окна с ней никогда не совпадёт.
- * Цвет кромки берётся справа — там кнопки, не по центру.
+ * Земля окна из сетки. ⚠️ ПОЛОСЫ СВЕРХУ НЕТ: непрозрачный `fade` был заплаткой под
+ * `setTitleBarOverlay` и снят вместе с ним (разбор — у покойного `capStrip` в styles/island.ts).
+ * На сетке он был особенно заметен: цвет кромки берётся СПРАВА, а красил всю ширину.
  */
 export function buildChromeGroundFromMesh(mesh: MeshGradient, input: GroundInput): Ground {
   const live = adaptMeshToTheme(mesh, input.dark);
   const top = meshCaptionTop(live);
   const deep = sampleMesh(live, 50, 18);
-  const fade = `linear-gradient(180deg, ${top} 0px, ${top} ${CHROME_OVERLAY_PX}px, ${rgba(top, 0)} ${CHROME_OVERLAY_PX + 64}px)`;
-  const layers = [fade, ...meshPaintLayers(live)];
+  const layers = meshPaintLayers(live);
   return {
     top,
     island: islandOver(deep, live.seeds[0] ?? input.tint, input.surface, input.dark),

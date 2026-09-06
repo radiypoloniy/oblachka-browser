@@ -543,8 +543,8 @@
   "buildChromeGroundFromMesh mesh, светлая": {
     "top": "#bac6b5",
     "island": "#dde2f9",
-    "paintLayers": 5,
-    "backgroundImage": "linear-gradient(180deg, #bac6b5 0px, #bac6b5 56px, rgba(186, 198, 181, 0.000) 120px), radial-gradient(ellipse 62% 48.4% at 18% 22%, #4b66d1 0%, rgba(75, 102, 209, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 54% 42.1% at 78% 30%, #deab58 0%, rgba(222, 171, 88, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 58% 45.2% at 46% 84%, #49ab77 0%, rgba(73, 171, 119, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #b9c7b8 0%, #b9c7b8 100%)"
+    "paintLayers": 4,
+    "backgroundImage": "radial-gradient(ellipse 62% 48.4% at 18% 22%, #4b66d1 0%, rgba(75, 102, 209, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 54% 42.1% at 78% 30%, #deab58 0%, rgba(222, 171, 88, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 58% 45.2% at 46% 84%, #49ab77 0%, rgba(73, 171, 119, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #b9c7b8 0%, #b9c7b8 100%)"
   },
   "adaptMeshToTheme mesh, тёмная": {
     "id": "golden",
@@ -584,8 +584,8 @@
   "buildChromeGroundFromMesh mesh, тёмная": {
     "top": "#37453e",
     "island": "#59657a",
-    "paintLayers": 5,
-    "backgroundImage": "linear-gradient(180deg, #37453e 0px, #37453e 56px, rgba(55, 69, 62, 0.000) 120px), radial-gradient(ellipse 62% 48.4% at 18% 22%, #2e49b6 0%, rgba(46, 73, 182, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 54% 42.1% at 78% 30%, #bf8c38 0%, rgba(191, 140, 56, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 58% 45.2% at 46% 84%, #236e49 0%, rgba(35, 110, 73, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #33433e 0%, #33433e 100%)"
+    "paintLayers": 4,
+    "backgroundImage": "radial-gradient(ellipse 62% 48.4% at 18% 22%, #2e49b6 0%, rgba(46, 73, 182, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 54% 42.1% at 78% 30%, #bf8c38 0%, rgba(191, 140, 56, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 58% 45.2% at 46% 84%, #236e49 0%, rgba(35, 110, 73, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #33433e 0%, #33433e 100%)"
   },
   "meshIsLight retro": true,
   "meshCaptionTop retro": "#d7dcea",
@@ -675,8 +675,8 @@
   "buildChromeGroundFromMesh retro, светлая": {
     "top": "#92a2eb",
     "island": "#dde2f9",
-    "paintLayers": 2,
-    "backgroundImage": "linear-gradient(180deg, #92a2eb 0px, #92a2eb 56px, rgba(146, 162, 235, 0.000) 120px), linear-gradient(160deg, #92a2eb 0.00% 16.67%, #697fe3 16.67% 33.33%, #405cdc 33.33% 50.00%, #2542c7 50.00% 66.67%, #1d359e 66.67% 83.33%, #162776 83.33% 100.00%)"
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(160deg, #92a2eb 0.00% 16.67%, #697fe3 16.67% 33.33%, #405cdc 33.33% 50.00%, #2542c7 50.00% 66.67%, #1d359e 66.67% 83.33%, #162776 83.33% 100.00%)"
   },
   "adaptMeshToTheme retro, тёмная": {
     "id": "golden-retro",
@@ -716,8 +716,8 @@
   "buildChromeGroundFromMesh retro, тёмная": {
     "top": "#92a2eb",
     "island": "#8799e9",
-    "paintLayers": 2,
-    "backgroundImage": "linear-gradient(180deg, #92a2eb 0px, #92a2eb 56px, rgba(146, 162, 235, 0.000) 120px), linear-gradient(160deg, #92a2eb 0.00% 16.67%, #697fe3 16.67% 33.33%, #405cdc 33.33% 50.00%, #2542c7 50.00% 66.67%, #1d359e 66.67% 83.33%, #162776 83.33% 100.00%)"
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(160deg, #92a2eb 0.00% 16.67%, #697fe3 16.67% 33.33%, #405cdc 33.33% 50.00%, #2542c7 50.00% 66.67%, #1d359e 66.67% 83.33%, #162776 83.33% 100.00%)"
   },
   "meshIsLight duplex": true,
   "meshCaptionTop duplex": "#dfe1e9",
@@ -804,8 +804,8 @@
   "buildChromeGroundFromMesh duplex, светлая": {
     "top": "#2c4bd8",
     "island": "#dde2f9",
-    "paintLayers": 4,
-    "backgroundImage": "linear-gradient(180deg, #2c4bd8 0px, #2c4bd8 56px, rgba(44, 75, 216, 0.000) 120px), radial-gradient(ellipse 86% 67.1% at 18% 22%, #524936 0%, rgba(82, 73, 54, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 82% 64.0% at 84% 78%, #0e4959 0%, rgba(14, 73, 89, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #2c4bd8 0%, #2c4bd8 100%)"
+    "paintLayers": 3,
+    "backgroundImage": "radial-gradient(ellipse 86% 67.1% at 18% 22%, #524936 0%, rgba(82, 73, 54, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 82% 64.0% at 84% 78%, #0e4959 0%, rgba(14, 73, 89, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #2c4bd8 0%, #2c4bd8 100%)"
   },
   "adaptMeshToTheme duplex, тёмная": {
     "id": "golden-duplex",
@@ -839,8 +839,8 @@
   "buildChromeGroundFromMesh duplex, тёмная": {
     "top": "#2c4bd8",
     "island": "#4e5dab",
-    "paintLayers": 4,
-    "backgroundImage": "linear-gradient(180deg, #2c4bd8 0px, #2c4bd8 56px, rgba(44, 75, 216, 0.000) 120px), radial-gradient(ellipse 86% 67.1% at 18% 22%, #524830 0%, rgba(82, 72, 48, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 82% 64.0% at 84% 78%, #0b3743 0%, rgba(11, 55, 67, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #2c4bd8 0%, #2c4bd8 100%)"
+    "paintLayers": 3,
+    "backgroundImage": "radial-gradient(ellipse 86% 67.1% at 18% 22%, #524830 0%, rgba(82, 72, 48, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 82% 64.0% at 84% 78%, #0b3743 0%, rgba(11, 55, 67, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #2c4bd8 0%, #2c4bd8 100%)"
   },
   "retroSteps 40": 3,
   "retroSteps 55": 4,
