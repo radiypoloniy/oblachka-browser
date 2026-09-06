@@ -554,7 +554,9 @@ presentation attribute, и глобальное правило переписа�
 - **AI-runtime / VRAM-бюджет**: учитывать, что Windows = NVIDIA/CUDA + выделенная
   VRAM, macOS = Apple Silicon/Metal + unified memory. Логика бюджета за
   платформенным интерфейсом.
-- **Titlebar/окно**: Windows titleBarOverlay vs macOS trafficLight (кнопки слева).
+- **Titlebar/окно**: окно `frame: false`, кнопки рисует САМ хром (`toolbar/WindowControls.tsx`),
+  а не ОС — `titleBarOverlay` не используется с 0.7.5. Для macOS это значит не «включить
+  trafficLight», а перенести свои кнопки влево и оставить место под системные.
   Раскладку шапки делать условной по платформе, не хардкодить под Windows.
 Правило: если код вызывает ОС-специфичный API — он живёт за интерфейсом с
 платформенными реализациями, а не инлайн в общей логике.
