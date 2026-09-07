@@ -1,7 +1,7 @@
 {
   "electron/AiPanelManager.ts": {
-    "lines": 820,
-    "fn": 271,
+    "lines": 814,
+    "fn": 252,
     "effects": 0,
     "ipc": 0
   },
@@ -12,7 +12,7 @@
     "ipc": 0
   },
   "electron/TabManager.ts": {
-    "lines": 4302,
+    "lines": 4311,
     "fn": 171,
     "effects": 0,
     "ipc": 0
@@ -60,9 +60,9 @@
     "ipc": 24
   },
   "src/aipanel.tsx": {
-    "lines": 518,
-    "fn": 325,
-    "effects": 6,
+    "lines": 450,
+    "fn": 260,
+    "effects": 3,
     "ipc": 0
   },
   "src/components/Bookmarks.tsx": {
@@ -108,7 +108,7 @@
     "ipc": 3
   },
   "src/components/Settings.tsx": {
-    "lines": 428,
+    "lines": 459,
     "fn": 347,
     "effects": 4,
     "ipc": 8
@@ -174,19 +174,19 @@
     "ipc": 3
   },
   "src/components/settings/AppearanceSection.tsx": {
-    "lines": 715,
+    "lines": 699,
     "fn": 498,
     "effects": 2,
     "ipc": 4
   },
   "src/components/settings/GradientEditor.tsx": {
-    "lines": 253,
+    "lines": 240,
     "fn": 226,
     "effects": 0,
     "ipc": 0
   },
   "src/components/settings/PasswordsSection.tsx": {
-    "lines": 670,
+    "lines": 666,
     "fn": 455,
     "effects": 3,
     "ipc": 15
@@ -198,7 +198,7 @@
     "ipc": 17
   },
   "src/components/settings/RulesSection.tsx": {
-    "lines": 422,
+    "lines": 431,
     "fn": 314,
     "effects": 2,
     "ipc": 7

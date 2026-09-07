@@ -1,5 +1,5 @@
 import { Menu, clipboard } from 'electron';
-import type { BrowserWindow, ContextMenuParams, MenuItemConstructorOptions, WebContents, WebContentsView } from 'electron';
+import type { BrowserWindow, ContextMenuParams, MenuItemConstructorOptions, Referrer, WebContents, WebContentsView } from 'electron';
 import { getSearchEngine } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 import { hostOfUrl } from '../shared/rules';
@@ -88,8 +88,13 @@ export interface PageContextMenuHost {
   searchEngineId(): SearchEngineId;
   /** Приватна ли вкладка, в которой щёлкнули. */
   isIncognito(tabId: string): boolean;
-  /** Новая вкладка. Возвращает id: он нужен и для учёта происхождения, и для split. */
-  openTab(url: string, background: boolean, incognito: boolean): string;
+  /**
+   * Новая вкладка. Возвращает id: он нужен и для учёта происхождения, и для split.
+   * referrer — только для пунктов «открыть ССЫЛКУ»: там переход рождён страницей, и Chrome шлёт
+   * Referer точно так же, как при обычном клике. Поиску по выделению и «открыть картинку»
+   * referrer не передаётся намеренно — эти переходы затевает браузер, а не сайт.
+   */
+  openTab(url: string, background: boolean, incognito: boolean, referrer?: Referrer): string;
   /** Запомнить, с какого сайта и из какой вкладки родилась новая. */
   noteOpened(openedId: string, fromHost: string, openerId: string): void;
   /** Показывается ли сейчас split-пара. */
@@ -133,7 +138,7 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
       // setWindowOpenHandler): иначе правило «ссылки с хабра — в группу» не сработало бы
       // на самом частом способе открыть ссылку.
       click: () => {
-        const openedId = host.openTab(p.linkURL, true, priv);
+        const openedId = host.openTab(p.linkURL, true, priv, p.referrerPolicy);
         // Третий аргумент — «кто открыл»: см. closeTab, закрытие вернёт человека сюда же.
         host.noteOpened(openedId, hostOfUrl(wc.getURL()), id);
       },
@@ -141,7 +146,9 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
     // Окно создаёт main — TabManager про окна не знает (тот же приём, что у пункта
     // «Добавить в граф»: сюда приходит готовый колбэк).
     { label: 'Открыть ссылку в новом окне', click: () => host.openInNewWindow(p.linkURL) },
-    { label: 'Открыть ссылку в инкогнито', click: () => host.openTab(p.linkURL, true, true) },
+    // ⚠️ Инкогнито Referer НЕ теряет: приватность здесь про хранилище (куки, история), а не про
+    // то, чтобы притвориться переходом ниоткуда — Chrome в приватном окне шлёт его так же.
+    { label: 'Открыть ссылку в инкогнито', click: () => host.openTab(p.linkURL, true, true, p.referrerPolicy) },
   ];
   // Пункт только когда текущая вкладка ещё НЕ в показываемой паре — модель split строго
   // бинарная (пара = 2 панели), добавить третью панель к уже сплитнутой вкладке некуда.
@@ -154,7 +161,7 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
     out.push({
       label: 'Открыть ссылку в split',
       click: () => {
-        const newId = host.openTab(p.linkURL, true, priv); // background — не перебивать фокус до enterSplit
+        const newId = host.openTab(p.linkURL, true, priv, p.referrerPolicy); // background — не перебивать фокус до enterSplit
         if (newId) host.enterSplit(newId); // активная → левая, новая → правая
       },
     });

@@ -1,6 +1,6 @@
 ﻿import os from 'os';
 import { app, WebContentsView, BrowserWindow, ipcMain, net } from 'electron';
-import type { MenuItemConstructorOptions, PostBody, WebContents, WebFrameMain } from 'electron';
+import type { LoadURLOptions, MenuItemConstructorOptions, PostBody, Referrer, WebContents, WebFrameMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { isGuestNavigable } from '../shared/guestNavigation';
 import path from 'node:path';
@@ -916,9 +916,8 @@ export class TabManager {
 
   // ── Создание новой вкладки с реальной страницей ──
   // background=true: вкладка создаётся в фоне, без переключения (средний клик по ссылке).
-  // postBody — тело формы, отправленной с target=_blank (см. setWindowOpenHandler). Без него
-  // POST вырождается в GET, и точка входа платежа, не получив данных заказа, не создаёт
-  // платёжную сессию и возвращает человека в магазин — см. разбор там же.
+  // postBody и referrer — тело формы и Referer перехода, оба приходят из setWindowOpenHandler;
+  // без них ломается оплата, разбор там же.
   // Выключить/включить звук вкладки. Флаг дублируется в записи вкладки, чтобы пережить
   // усыпление (вью с её состоянием уничтожается, см. ManagedTab.muted).
   setTabMuted(id: string, muted: boolean): void {
@@ -936,6 +935,7 @@ export class TabManager {
     incognito = false,
     postBody?: PostBody,
     profileId?: string,
+    referrer?: Referrer,
   ): string {
     const id = randomUUID();
     // ⚠️ Профиль фиксируется В МОМЕНТ СОЗДАНИЯ и дальше не меняется: партиция задаётся при
@@ -971,15 +971,18 @@ export class TabManager {
 
     const target = this.resolveInput(rawUrl ?? 'about:blank');
     if (target !== 'about:blank') {
-      // Content-Type обязателен вместе с телом: без него сервер не разберёт поля формы, и
-      // отсутствие данных будет неотличимо от прежнего GET.
-      view.webContents.loadURL(target, postBody
-        ? {
-          postData: postBody.data,
-          extraHeaders: 'Content-Type: ' + postBody.contentType
-            + (postBody.boundary ? '; boundary=' + postBody.boundary : ''),
-        }
-        : undefined);
+      const opts: LoadURLOptions = {};
+      if (postBody) {
+        // Content-Type обязателен вместе с телом: без него сервер не разберёт поля формы, и
+        // отсутствие данных будет неотличимо от прежнего GET.
+        opts.postData = postBody.data;
+        opts.extraHeaders = 'Content-Type: ' + postBody.contentType
+          + (postBody.boundary ? '; boundary=' + postBody.boundary : '');
+      }
+      // ⚠️ Referer берём ГОТОВЫМ, а не собираем из адреса открывшей страницы: Chromium уже применил
+      // к нему её Referrer-Policy. Своя сборка утекала бы полным адресом там, где сайт просил не.
+      if (referrer) opts.httpReferrer = referrer;
+      view.webContents.loadURL(target, opts);
     }
 
     if (background) {
@@ -1781,7 +1784,7 @@ export class TabManager {
 
     // Политика окон: target=_blank / window.open -> НОВАЯ ВКЛАДКА, не окно — КРОМЕ настоящих
     // попапов (см. ниже). disposition='background-tab' = средний клик/Ctrl+клик → фон (стандарт браузеров).
-    wc.setWindowOpenHandler(({ url, frameName, disposition, features, postBody }) => {
+    wc.setWindowOpenHandler(({ url, frameName, disposition, features, postBody, referrer }) => {
       // Ссылка в чужое приложение (sbolpay:, tg:, …) может прийти и сюда — платёжные страницы
       // часто открывают её новым окном, а не переходом. Вкладку по такой схеме заводить нельзя:
       // Chromium её не откроет, останется пустая вкладка с ошибкой.
@@ -1820,17 +1823,23 @@ export class TabManager {
           },
         };
       }
-      // ⚠️ postBody передаём ОБЯЗАТЕЛЬНО. Chromium отдаёт его только когда окно открыто формой с
-      // target=_blank — а это и есть самый частый способ уйти на оплату. Прежде мы его роняли, и
-      // POST на точку входа платежа превращался в GET без полей заказа: шлюз не создавал сессию
-      // и возвращал человека в магазин. Симптом со стороны — «открылась новая вкладка, а в ней
-      // снова магазин, а не страница банка» (воспроизведено на стенде, оплата по СБП).
+      // ⚠️ postBody и referrer передаём ОБЯЗАТЕЛЬНО, и это ОДНА починка в двух половинах: отказав
+      // Chromium в его окне (action:'deny'), мы переоткрываем адрес своим loadURL, то есть начинаем
+      // навигацию с нуля — всё, что Chromium к ней подготовил, остаётся здесь, в details.
+      // Без тела POST формы с target=_blank вырождался в GET, и шлюз возвращал человека в магазин
+      // вместо страницы банка (воспроизведено на стенде, оплата по СБП). Без Referer панели биллинга
+      // (BILLmanager и родня), сверяющие источник, видят POST «ниоткуда» и показывают
+      // «Подтверждение опасной операции» вместо оплаты — симптом плавал, сайты без сверки работали.
+      // Полей у details ровно шесть, и теперь не теряется ни одно: url, frameName, features и
+      // disposition разобраны выше, postBody и referrer уходят во вкладку.
       const openedId = this.createTab(
         url,
         disposition === 'background-tab',
         disposition === 'new-window',
         this.tabMap.get(id)?.incognito ?? false, // приватная вкладка открывает приватную
         postBody,
+        undefined, // профиль наследуется от активного — как у любой новой вкладки
+        referrer,
       );
       // «Перешёл по ссылке с сайта X» — для новой вкладки источник это страница, которая её
       // открыла: своего предыдущего адреса у неё ещё нет.
@@ -1928,7 +1937,7 @@ export class TabManager {
     window: () => this.win,
     searchEngineId: () => this.searchEngineId,
     isIncognito: (tabId) => this.tabMap.get(tabId)?.incognito ?? false,
-    openTab: (url, background, incognito) => this.createTab(url, background, false, incognito),
+    openTab: (url, background, incognito, referrer) => this.createTab(url, background, false, incognito, undefined, undefined, referrer),
     noteOpened: (openedId, fromHost, openerId) => {
       this.#navFrom.set(openedId, fromHost);
       this.#openerOf.set(openedId, openerId);
