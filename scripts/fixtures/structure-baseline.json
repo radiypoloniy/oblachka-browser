@@ -12,7 +12,7 @@
     "ipc": 0
   },
   "electron/TabManager.ts": {
-    "lines": 4311,
+    "lines": 4254,
     "fn": 171,
     "effects": 0,
     "ipc": 0
@@ -90,8 +90,8 @@
     "ipc": 13
   },
   "src/components/ImportDialog.tsx": {
-    "lines": 324,
-    "fn": 275,
+    "lines": 299,
+    "fn": 259,
     "effects": 1,
     "ipc": 3
   },
