@@ -22,6 +22,10 @@ export function useOnboarding() {
   const [checked, setChecked] = useState<Set<ImportDataType>>(new Set());
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<ImportRunResult | null>(null);
+  // Мастер-пароль Firefox. Спрашивается ТОЛЬКО после того, как импорт в него уткнулся:
+  // у подавляющего большинства он не задан, и поле в мастере первого запуска пугало бы зря.
+  const [primaryPassword, setPrimaryPassword] = useState('');
+  const [needsPassword, setNeedsPassword] = useState(false);
   // CSV-путь для паролей прямо в мастере: пароли современного Chrome с диска не переносятся
   // (App-Bound v20), поэтому после отчёта с нулём паролей предлагаем выбрать CSV, не выходя отсюда.
   const [csvBusy, setCsvBusy] = useState(false);
@@ -128,6 +132,9 @@ export function useOnboarding() {
     setSelectedId(source.id);
     setChecked(new Set(source.dataTypes));
     setReport(null);
+    // Пароль принадлежит конкретному профилю — на другой источник его не тащим.
+    setPrimaryPassword('');
+    setNeedsPassword(false);
   }
 
   function toggleType(type: ImportDataType) {
@@ -144,7 +151,11 @@ export function useOnboarding() {
     setReport(null);
     try {
       const types = selected.dataTypes.filter((t) => checked.has(t));
-      setReport(await window.oblako.runImport(selected.id, types));
+      const result = await window.oblako.runImport(selected.id, types, primaryPassword);
+      setReport(result);
+      // Признак держится, пока пароль не подойдёт: убрать поле после неудачной попытки значило бы
+      // сказать человеку «ничего не нашлось» вместо «пароль не тот».
+      setNeedsPassword(result.passwords?.needsPrimaryPassword === true);
       setCsvMsg('');
     } finally {
       setRunning(false);
@@ -187,7 +198,8 @@ export function useOnboarding() {
     step, setStep, steps, kind, importStep, isLastStep,
     sources, selected, selectedId, checked, running, report,
     csvBusy, csvMsg, catalog, installed, dl, backfill, indexAsked,
-    modelOffer, modelDone, historyImported,
+    modelOffer, modelDone, historyImported, primaryPassword, needsPassword,
     selectSource, toggleType, handleRun, handleCsvImport, handleDownload, handleIndex,
+    setPrimaryPassword,
   };
 }

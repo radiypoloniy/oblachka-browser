@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Download, Loader2, Check, KeyRound, FileUp } from 'lucide-react';
+import { X, Download, Loader2, Check } from 'lucide-react';
 import type { ImportSource, ImportDataType, ImportRunResult, ImportTypeResult, CsvPasswordImport } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
+import FirefoxPasswordPrompt from './FirefoxPasswordPrompt';
+import ImportCsvSection from './ImportCsvSection';
 import { RADIUS } from '../styles/system';
 
 // Диалог импорта данных из другого браузера. Открывается ТОЛЬКО из раздела настроек «Браузер»:
@@ -25,26 +27,15 @@ const TYPE_LABELS: Record<ImportDataType, string> = {
 function resultLine(type: ImportDataType, res: ImportTypeResult | null): string {
   const label = TYPE_LABELS[type];
   if (res === null) return `${label}: не удалось прочитать`;
+  // ⚠️ Раньше всех остальных случаев: «добавлено 0» здесь было бы враньём — переносить есть что,
+  // просто хранилище закрыто. Человеку нужно действие, а не отчёт.
+  if (res.needsPrimaryPassword) return `${label}: нужен мастер-пароль Firefox`;
   const parts = [`добавлено ${res.inserted}`];
   if (res.skipped > 0) parts.push(`пропущено (уже были) ${res.skipped}`);
   if (res.unsupported && res.unsupported > 0) parts.push(`не поддержано ${res.unsupported}`);
   return `${label}: ${parts.join(', ')}`;
 }
 
-// Человекочитаемый итог импорта паролей из CSV. status 'canceled' сюда не доходит — его гасит
-// handleCsv (отмена диалога не результат).
-function csvResultLine(res: Exclude<CsvPasswordImport, { status: 'canceled' }>): string {
-  switch (res.status) {
-    case 'ok': {
-      const parts = [`добавлено ${res.inserted}`];
-      if (res.skipped > 0) parts.push(`пропущено (уже были) ${res.skipped}`);
-      return `Пароли из CSV: ${parts.join(', ')}`;
-    }
-    case 'empty':             return 'В файле не нашлось паролей — это точно CSV-экспорт паролей из браузера?';
-    case 'read-error':        return 'Не удалось прочитать файл.';
-    case 'vault-unavailable': return 'Хранилище паролей на этом компьютере недоступно.';
-  }
-}
 
 export default function ImportDialog({ onClose }: ImportDialogProps) {
   const [sources, setSources] = useState<ImportSource[] | null>(null); // null — ещё грузим
@@ -57,6 +48,11 @@ export default function ImportDialog({ onClose }: ImportDialogProps) {
   // Импорт паролей из CSV — свой путь, свой прогресс и свой результат (см. handleCsv).
   const [csvRunning, setCsvRunning] = useState(false);
   const [csvResult, setCsvResult] = useState<CsvPasswordImport | null>(null);
+  // Мастер-пароль Firefox. Показывается ТОЛЬКО после того, как импорт уткнулся в него: спрашивать
+  // заранее нельзя — у подавляющего большинства он не задан, и пустое поле в диалоге читалось бы
+  // как «Oblako зачем-то просит пароль».
+  const [primaryPassword, setPrimaryPassword] = useState('');
+  const [needsPassword, setNeedsPassword] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -77,6 +73,10 @@ export default function ImportDialog({ onClose }: ImportDialogProps) {
     setSelectedId(source.id);
     setChecked(new Set(source.dataTypes)); // по умолчанию — всё, что источник умеет отдать
     setReport(null);
+    // Пароль принадлежит КОНКРЕТНОМУ профилю Firefox — унести его на другой источник значит
+    // отправить чужой секрет туда, где он не нужен.
+    setPrimaryPassword('');
+    setNeedsPassword(false);
   }
 
   function toggleType(type: ImportDataType) {
@@ -93,8 +93,11 @@ export default function ImportDialog({ onClose }: ImportDialogProps) {
     setReport(null);
     try {
       const types = selected.dataTypes.filter((t) => checked.has(t)); // порядок и валидность — от источника
-      const result = await window.oblako.runImport(selected.id, types);
+      const result = await window.oblako.runImport(selected.id, types, primaryPassword);
       setReport(result);
+      // Признак взводится и остаётся: если пароль не подошёл со второй попытки, поле обязано
+      // остаться на экране, иначе человек решит, что импорт просто ничего не нашёл.
+      setNeedsPassword(result.passwords?.needsPrimaryPassword === true);
     } finally {
       setRunning(false);
     }
@@ -253,49 +256,21 @@ export default function ImportDialog({ onClose }: ImportDialogProps) {
                   ))}
                 </div>
               )}
+
+              {/* Мастер-пароль Firefox — общий блок с мастером первого запуска. Хранилище паролей
+                  Firefox шифруется им целиком, и без него ключ из key4.db не развернуть ничем:
+                  это устройство NSS, а не наше ограничение. */}
+              {needsPassword && (
+                <FirefoxPasswordPrompt
+                  value={primaryPassword}
+                  onChange={setPrimaryPassword}
+                  onSubmit={() => void handleRun()}
+                />
+              )}
             </>
           )}
 
-          {/* Пароли из CSV — отдельный путь, всегда доступен. Chrome 127+ шифрует пароли схемой,
-              которую с диска не прочитать (см. shared/csvPasswords.ts), поэтому единственный
-              честный способ перенести их — экспорт CSV из самого браузера. */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, borderTop: '1px solid var(--divider)' }}>
-            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)' }}>
-              Пароли из файла
-            </span>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-              <KeyRound size={16} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }} />
-              <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 1.5 }}>
-                Пароли современного Chrome зашифрованы и с диска не переносятся. Экспортируйте их в
-                самом браузере: <b>Настройки → Пароли → ⋮ → Экспорт паролей</b> — и выберите
-                полученный CSV-файл здесь.
-              </span>
-            </div>
-            <button
-              onClick={() => void handleCsv()}
-              style={{
-                ...btnGhost, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 8,
-                opacity: csvRunning ? 0.5 : 1,
-              }}
-            >
-              {csvRunning
-                ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-                : <FileUp size={14} />}
-              Выбрать CSV-файл
-            </button>
-            {csvResult && csvResult.status !== 'canceled' && (
-              <div style={{ ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '10px 14px' }}>
-                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
-                  {csvResultLine(csvResult)}
-                </div>
-                {csvResult.status === 'ok' && csvResult.inserted > 0 && (
-                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4 }}>
-                    Удалите CSV-файл после импорта — пароли в нём лежат открытым текстом.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <ImportCsvSection running={csvRunning} result={csvResult} onPick={() => void handleCsv()} />
         </div>
 
         {/* Подвал */}

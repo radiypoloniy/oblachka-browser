@@ -57,7 +57,9 @@ export interface DataApi {
   // Общий мультитиповый импорт (закладки/история/пароли) — диалог импорта + онбординг первого
   // запуска (см. electron/browserImport/). Отдельно от bookmark-only каналов выше.
   listImportSources(): Promise<ImportSource[]>;
-  runImport(sourceId: string, dataTypes: ImportDataType[]): Promise<ImportRunResult>;
+  // primaryPassword — мастер-пароль Firefox; опционален, потому что нужен ровно одному источнику
+  // из восьми и только когда человек его себе поставил.
+  runImport(sourceId: string, dataTypes: ImportDataType[], primaryPassword?: string): Promise<ImportRunResult>;
   // Пароли из CSV-экспорта другого браузера — единственный путь для Chrome 127+ (App-Bound v20),
   // чьи пароли с диска не читаются без прав SYSTEM. Диалог выбора файла открывает main.
   importPasswordsCsv(): Promise<CsvPasswordImport>;

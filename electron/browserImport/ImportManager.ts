@@ -7,6 +7,9 @@ import { importChromiumBookmarks } from './ChromiumBookmarksReader';
 import { importChromiumHistory } from './ChromiumHistoryReader';
 import { importChromiumPasswords } from './ChromiumPasswordReader';
 import { importYandexPasswords } from './YandexPasswordReader';
+import { discoverFirefoxProfiles, firefoxDataTypes } from './FirefoxDiscovery';
+import { importFirefoxPasswords } from './FirefoxPasswordReader';
+import { importFirefoxBookmarks, importFirefoxHistory } from './FirefoxPlacesReader';
 
 // Оркестратор общего импорта данных из других браузеров. Знает про discovery (какие браузеры/
 // профили есть) и про менеджеры-приёмники (куда класть). Renderer видит только ImportSource/
@@ -17,6 +20,21 @@ import { importYandexPasswords } from './YandexPasswordReader';
 // IMPLEMENTED_TYPES гейтит, что реально показывается пользователю в диалоге: тип из профиля
 // попадёт в ImportSource.dataTypes только если его файл есть на диске И импортёр уже написан.
 const IMPLEMENTED_TYPES: ReadonlySet<ImportDataType> = new Set<ImportDataType>(['bookmarks', 'history', 'passwords']);
+
+// Firefox — не Chromium ни в чём: список профилей ведётся файлом profiles.ini, закладки и история
+// лежат в одной базе, пароли шифруются схемой NSS. Поэтому у него своё discovery и свои читатели, а
+// общего здесь ровно то, ради чего этот класс и существует, — единый список источников для UI.
+// (Так и было задумано, см. шапку ChromiumDiscovery.ts: «добавятся отдельным discovery, тот же
+// ImportManager соберёт их вместе».)
+const FIREFOX = 'firefox';
+
+function discoverAll(): DiscoveredProfile[] {
+  return [...discoverChromiumProfiles(), ...discoverFirefoxProfiles()];
+}
+
+function dataTypesOf(profile: DiscoveredProfile): ImportDataType[] {
+  return profile.vendorId === FIREFOX ? firefoxDataTypes(profile) : availableDataTypes(profile);
+}
 
 interface ImportDeps {
   // ⚠️ Закладки и история — ГЕТТЕРЫ: обе базы профильные (ProfileData.ts), и импорт обязан
@@ -40,8 +58,8 @@ export class ImportManager {
     // некуда, не предлагаем этот тип вообще (см. PasswordManager.available).
     const vaultReady = this.#deps.passwords.available;
     const sources: ImportSource[] = [];
-    for (const profile of discoverChromiumProfiles()) {
-      const dataTypes = availableDataTypes(profile)
+    for (const profile of discoverAll()) {
+      const dataTypes = dataTypesOf(profile)
         .filter((t) => IMPLEMENTED_TYPES.has(t))
         .filter((t) => t !== 'passwords' || vaultReady);
       if (dataTypes.length === 0) continue; // нечего предложить из этого профиля — не показываем
@@ -50,8 +68,10 @@ export class ImportManager {
     return sources;
   }
 
-  async run(sourceId: string, dataTypes: ImportDataType[]): Promise<ImportRunResult> {
-    const profile = discoverChromiumProfiles().find((p) => p.sourceId === sourceId);
+  // primaryPassword — мастер-пароль Firefox. Пустая строка это НЕ «не задан», а «задан пустым», и
+  // именно так профиль по умолчанию и устроен: проверочный блок в key4.db шифруется пустым паролем.
+  async run(sourceId: string, dataTypes: ImportDataType[], primaryPassword = ''): Promise<ImportRunResult> {
+    const profile = discoverAll().find((p) => p.sourceId === sourceId);
     if (!profile) return {};
 
     const result: ImportRunResult = {};
@@ -60,16 +80,25 @@ export class ImportManager {
       if (!IMPLEMENTED_TYPES.has(type)) continue;
       switch (type) {
         case 'bookmarks':
-          result.bookmarks = importChromiumBookmarks(profile.profilePath, this.#deps.bookmarks());
+          result.bookmarks = profile.vendorId === FIREFOX
+            ? importFirefoxBookmarks(profile.profilePath, this.#deps.bookmarks())
+            : importChromiumBookmarks(profile.profilePath, this.#deps.bookmarks());
           break;
         case 'history':
-          result.history = importChromiumHistory(profile.profilePath, this.#deps.history());
+          result.history = profile.vendorId === FIREFOX
+            ? importFirefoxHistory(profile.profilePath, this.#deps.history())
+            : importChromiumHistory(profile.profilePath, this.#deps.history());
           break;
         case 'passwords':
-          // Яндекс.Браузер — своя схема (файл Ya Passman Data + доп. ключ), остальные Chromium — общая.
-          result.passwords = profile.vendorId === 'yandex'
-            ? importYandexPasswords(profile.profilePath, profile.userDataPath, this.#deps.passwords)
-            : importChromiumPasswords(profile.profilePath, profile.userDataPath, this.#deps.passwords);
+          // Три схемы, а не две: Firefox — NSS (key4.db + logins.json), Яндекс.Браузер — своя
+          // надстройка над Chromium (файл Ya Passman Data + доп. ключ), остальные Chromium — общая.
+          if (profile.vendorId === FIREFOX) {
+            result.passwords = importFirefoxPasswords(profile.profilePath, this.#deps.passwords, primaryPassword);
+          } else if (profile.vendorId === 'yandex') {
+            result.passwords = importYandexPasswords(profile.profilePath, profile.userDataPath, this.#deps.passwords);
+          } else {
+            result.passwords = importChromiumPasswords(profile.profilePath, profile.userDataPath, this.#deps.passwords);
+          }
           break;
       }
     }

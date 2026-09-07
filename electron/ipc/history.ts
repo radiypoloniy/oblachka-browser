@@ -118,8 +118,14 @@ export function registerHistoryIpc(d: IpcDeps): void {
 
   // Общий мультитиповый импорт (закладки/история/пароли) — диалог импорта + онбординг.
   ipcMain.handle(IPC.IMPORT_LIST_SOURCES, () => importManager.listSources());
-  ipcMain.handle(IPC.IMPORT_RUN, async (_e, sourceId: string, dataTypes: ImportDataType[]) => {
-    const result = await importManager.run(sourceId, Array.isArray(dataTypes) ? dataTypes : []);
+  ipcMain.handle(IPC.IMPORT_RUN, async (_e, sourceId: string, dataTypes: ImportDataType[], primaryPassword?: string) => {
+    // Мастер-пароль приходит из renderer и живёт только на время вызова: никуда не пишется, не
+    // логируется и не кэшируется — он чужой секрет, нужный ровно чтобы развернуть ключ key4.db.
+    const result = await importManager.run(
+      sourceId,
+      Array.isArray(dataTypes) ? dataTypes : [],
+      typeof primaryPassword === 'string' ? primaryPassword : '',
+    );
     // Любой перенос мог задеть закладки/историю/сейф — толкаем их слушателей перечитать.
     if (result.bookmarks) broadcastToChrome(IPC.BOOKMARK_CHANGED);
     return result;

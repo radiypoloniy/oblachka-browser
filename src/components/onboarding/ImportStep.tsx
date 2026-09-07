@@ -2,6 +2,7 @@ import { Check, FileUp, Loader2 } from 'lucide-react';
 import type { ImportDataType, ImportRunResult, ImportSource } from '../../../shared/ipc';
 import { sp, pad, CAPS, TEXT, DISPLAY, RADIUS, motion } from '../../styles/system';
 import BrowserLogo from '../BrowserLogo';
+import FirefoxPasswordPrompt from '../FirefoxPasswordPrompt';
 import { islandPlate } from '../../styles/island';
 import { Muted, resultLine, TYPE_LABELS, bigGhost } from './parts';
 
@@ -14,7 +15,8 @@ import { Muted, resultLine, TYPE_LABELS, bigGhost } from './parts';
  */
 export function ImportStep({
   sources, selected, selectedId, checked, report, csvBusy, csvMsg,
-  selectSource, toggleType, handleCsvImport,
+  primaryPassword, needsPassword,
+  selectSource, toggleType, handleCsvImport, setPrimaryPassword, handleRun,
 }: {
   sources: ImportSource[] | null;
   selected: ImportSource | null;
@@ -23,9 +25,13 @@ export function ImportStep({
   report: ImportRunResult | null;
   csvBusy: boolean;
   csvMsg: string;
+  primaryPassword: string;
+  needsPassword: boolean;
   selectSource: (s: ImportSource) => void;
   toggleType: (t: ImportDataType) => void;
   handleCsvImport: () => void;
+  setPrimaryPassword: (v: string) => void;
+  handleRun: () => void;
 }) {
   return (
         <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: sp(3) }}>
@@ -127,11 +133,22 @@ export function ImportStep({
                 </div>
               )}
 
+              {/* Мастер-пароль Firefox — общий блок с диалогом импорта в настройках. */}
+              {needsPassword && (
+                <FirefoxPasswordPrompt
+                  value={primaryPassword}
+                  onChange={setPrimaryPassword}
+                  onSubmit={handleRun}
+                />
+              )}
+
               {/* Пароли просили, но перенеслось ноль — почти всегда это v20 (App-Bound) свежего
                   Chrome, диском их не взять. Не бросаем человека с необъяснённым нулём, а прямо
                   здесь даём рабочий путь через CSV — иначе он уйдёт из мастера без паролей и не
-                  поймёт почему. */}
-              {report && 'passwords' in report && (report.passwords?.inserted ?? 0) === 0 && (
+                  поймёт почему.
+                  ⚠️ Кроме случая с мастер-паролем Firefox: там причина другая, и совет про экспорт
+                  из Chrome был бы прямым враньём — человек пошёл бы выполнять бессмысленные шаги. */}
+              {report && !needsPassword && 'passwords' in report && (report.passwords?.inserted ?? 0) === 0 && (
                 <div style={{
                   ...islandPlate, borderRadius: RADIUS.content, padding: pad(4),
                   display: 'flex', flexDirection: 'column', gap: sp(3),

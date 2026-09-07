@@ -306,8 +306,8 @@ const api: OblakoApi = {
   // Общий мультитиповый импорт (закладки/история/пароли) — диалог импорта + онбординг.
   listImportSources: () =>
     ipcRenderer.invoke(IPC.IMPORT_LIST_SOURCES) as Promise<ImportSource[]>,
-  runImport: (sourceId: string, dataTypes: ImportDataType[]) =>
-    ipcRenderer.invoke(IPC.IMPORT_RUN, sourceId, dataTypes) as Promise<ImportRunResult>,
+  runImport: (sourceId: string, dataTypes: ImportDataType[], primaryPassword?: string) =>
+    ipcRenderer.invoke(IPC.IMPORT_RUN, sourceId, dataTypes, primaryPassword) as Promise<ImportRunResult>,
   importPasswordsCsv: () =>
     ipcRenderer.invoke(IPC.IMPORT_PASSWORDS_CSV) as Promise<CsvPasswordImport>,
   renameAllTabs: () => ipcRenderer.invoke(IPC.TABS_RENAME_ALL) as Promise<void>,

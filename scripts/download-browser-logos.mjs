@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = path.join(ROOT, 'src', 'public', 'browsers')
 
-// vendorId из ChromiumDiscovery → имя пакета @browser-logos.
+// vendorId из ChromiumDiscovery/FirefoxDiscovery → имя пакета @browser-logos.
 const LOGOS = {
   chrome: 'chrome',
   edge: 'edge',
@@ -24,6 +24,7 @@ const LOGOS = {
   opera: 'opera',
   operagx: 'opera-gx',
   vivaldi: 'vivaldi',
+  firefox: 'firefox',
 }
 
 await fs.mkdir(OUT, { recursive: true })

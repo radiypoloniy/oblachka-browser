@@ -207,8 +207,8 @@ export default function Onboarding({ onFinish }: Props) {
   const {
     step, setStep, steps, kind, importStep, isLastStep,
     sources, selected, selectedId, checked, running, report, csvBusy, csvMsg,
-    dl, backfill, indexAsked, modelOffer, modelDone,
-    selectSource, toggleType, handleRun, handleCsvImport, handleDownload, handleIndex,
+    dl, backfill, indexAsked, modelOffer, modelDone, primaryPassword, needsPassword,
+    selectSource, toggleType, handleRun, handleCsvImport, handleDownload, handleIndex, setPrimaryPassword,
   } = o;
 
   // Шапка шага: тон, заголовок, подпись. ⚠️ Ровно одна точка на все виды шагов — раньше здесь
@@ -363,8 +363,8 @@ export default function Onboarding({ onFinish }: Props) {
           <ImportStep
             sources={sources} selected={selected} selectedId={selectedId}
             checked={checked} report={report} csvBusy={csvBusy} csvMsg={csvMsg}
-            selectSource={selectSource} toggleType={toggleType}
-            handleCsvImport={() => void handleCsvImport()}
+            primaryPassword={primaryPassword} needsPassword={needsPassword} setPrimaryPassword={setPrimaryPassword}
+            selectSource={selectSource} toggleType={toggleType} handleRun={() => void handleRun()} handleCsvImport={() => void handleCsvImport()}
           />
         )}
 

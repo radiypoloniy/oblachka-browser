@@ -15,6 +15,8 @@ export const TYPE_LABELS: Record<ImportDataType, string> = {
 export function resultLine(type: ImportDataType, res: ImportTypeResult | null): string {
   const label = TYPE_LABELS[type];
   if (res === null) return `${label}: не удалось прочитать`;
+  // Раньше подсчёта: «перенесено 0» здесь было бы враньём — переносить есть что, хранилище закрыто.
+  if (res.needsPrimaryPassword) return `${label}: нужен мастер-пароль Firefox`;
   const parts = [`перенесено ${res.inserted}`];
   if (res.skipped > 0) parts.push(`уже были ${res.skipped}`);
   if (res.unsupported && res.unsupported > 0) parts.push(`не поддержано ${res.unsupported}`);

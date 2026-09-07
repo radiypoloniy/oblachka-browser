@@ -75,7 +75,7 @@ export const CONTENT = {
   // В отличие от BOOKMARK_IMPORT_* (панель закладок, только закладки) — это мультитиповый импорт с
   // выбором пользователя, что переносить (диалог импорта + онбординг первого запуска).
   IMPORT_LIST_SOURCES: 'import:list-sources', // renderer → main: ImportSource[] (браузер+профиль + доступные типы)
-  IMPORT_RUN:          'import:run',          // renderer → main: (sourceId, dataTypes[]) -> ImportRunResult
+  IMPORT_RUN:          'import:run',          // renderer → main: (sourceId, dataTypes[], primaryPassword?) -> ImportRunResult
   // Пароли из CSV-экспорта другого браузера. Отдельный путь от IMPORT_RUN: пароли Chrome 127+
   // (App-Bound v20) с диска физически не читаются без прав SYSTEM, а лезть туда — техника
   // инфостилера; санкционированный путь — экспорт CSV из самого браузера. Диалог выбора файла —
