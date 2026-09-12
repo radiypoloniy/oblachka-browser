@@ -20,6 +20,10 @@ export interface SuggestDropdownItem {
   // не решает сама, просто рисует подпись, если она есть — источник группировки остаётся в
   // Toolbar.tsx, не размазывается по двум местам.
   sectionHeader?: string;
+  /** Подпись справа в строке панели («2 мин назад», «окно 2»). Только нейтральная панель. */
+  meta?: string;
+  /** true — meta это метка окна, рисуется тегом, а не временем. */
+  tagged?: boolean;
 }
 
 // ── Панель омнибокса (заход 11) ────────────────────────────────────────────────────────────────
@@ -74,6 +78,23 @@ export interface OmniboxPanel {
   siteUrl?: string;
   /** «Вы это уже читали» — приезжает ПОЗЖЕ плиток, дорисовывается снизу (см. Toolbar.tsx). */
   related?: SuggestDropdownItem[];
+  /** «Продолжить» — закрытые вкладки и вкладки других окон. В плоском выборе идут ПЕРВЫМИ. */
+  resume?: SuggestDropdownItem[];
+}
+
+/**
+ * Закрытые вкладки этого окна и открытые в других — сырьё строк «Продолжить».
+ * Сборку в три строки делает `pickResume` в shared/omniboxResume.ts, не main.
+ */
+export interface OmniboxResume {
+  closed: Array<{ url: string; title: string; closedAt: number }>;
+  other: Array<{
+    tabId: string;
+    windowId: number;
+    title: string;
+    url: string;
+    windowLabel: string;
+  }>;
 }
 
 export type DownloadState = 'progressing' | 'completed' | 'cancelled' | 'interrupted';

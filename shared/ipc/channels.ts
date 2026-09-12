@@ -17,10 +17,12 @@ import { SHELL } from './channels/shell';
 import { CONTENT } from './channels/content';
 import { PANELS } from './channels/panels';
 import { SERVICES } from './channels/services';
+import { OMNIBOX_RESUME_CH } from './channels/omniboxResume';
 
 export const IPC = {
   ...SHELL,
   ...CONTENT,
   ...PANELS,
   ...SERVICES,
+  ...OMNIBOX_RESUME_CH,
 } as const;

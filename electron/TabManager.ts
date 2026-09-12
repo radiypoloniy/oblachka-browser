@@ -34,8 +34,7 @@ import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
 import { isRussianCaCandidate } from './CertificateTrust';
-
-const CLOSED_STACK_MAX = 10;
+import { pushClosed, popClosed, peekClosed, type ClosedTab } from '../shared/closedTabStack';
 
 // Менеджер паролей, шаг 2 — ПЕРВЫЙ preload на гостевых страницах (сканер форм, см.
 // electron/preload-content.ts). Тот же приём резолва пути, что AiPanelManager.ts использует
@@ -331,7 +330,7 @@ export class TabManager {
   // Взводится при создании инкогнито-вкладки; см. takeIncognitoClearIfDone (чистка сессии инкогнито).
   #pendingIncognitoClear = false;
   private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
-  private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
+  private closedTabs: ClosedTab[] = []; // стек закрытых вкладок для Ctrl+Shift+T и панели омнибокса
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
   private lastQuery = ''; // последний поисковый запрос (чтобы отличить новый от навигации)
   // Флаг: открыта ли панель поиска (нужен для приоритета Esc: сначала закрыть поиск).
@@ -2083,8 +2082,7 @@ export class TabManager {
       const destroyed = wc.isDestroyed();
       const url = destroyed ? '' : wc.getURL();
       if (/^https?:\/\//i.test(url)) {
-        this.closedTabs.push(url);
-        if (this.closedTabs.length > CLOSED_STACK_MAX) this.closedTabs.shift();
+        this.closedTabs = pushClosed(this.closedTabs, { url, title: this.#tabTitle(tab) || url, closedAt: Date.now() });
       }
       // Поповер перевода анкорится к WebContents конкретной вкладки (см. TranslatePopoverManager.ts) —
       // если закрывается именно она, поповер сравнит ссылку и закроется сам. До removeChildView/close,
@@ -2097,8 +2095,7 @@ export class TabManager {
     } else if (tab.sleeping) {
       const url = tab.sleeping.url;
       if (/^https?:\/\//i.test(url)) {
-        this.closedTabs.push(url);
-        if (this.closedTabs.length > CLOSED_STACK_MAX) this.closedTabs.shift();
+        this.closedTabs = pushClosed(this.closedTabs, { url, title: tab.sleeping.title || url, closedAt: Date.now() });
       }
     }
 
@@ -2218,14 +2215,17 @@ export class TabManager {
   }
 
   reopenLastClosedTab(): void {
-    const url = this.closedTabs.pop();
-    if (url) this.createTab(url);
+    const { tab, rest } = popClosed(this.closedTabs); this.closedTabs = rest;
+    if (tab) this.createTab(tab.url);
   }
 
   // Есть ли что восстанавливать — для активности пункта меню «Открыть закрытую вкладку».
   hasClosedTabs(): boolean {
     return this.closedTabs.length > 0;
   }
+
+  /** Свежие первыми — сырьё строк «Продолжить» в панели. */
+  closedSnapshot(): ClosedTab[] { return peekClosed(this.closedTabs); }
 
   // ── Переупорядочивание вкладок (drag-and-drop) ──────────────────────────────
   // orderedIds — новый порядок от renderer. Перед применением сверяем множества:

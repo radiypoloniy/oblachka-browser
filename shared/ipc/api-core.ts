@@ -10,7 +10,7 @@
 // про программу.
 import type { ContentBounds, FindResult, SidebarNode, SpecialTabKind, SyncState, TabState } from './core';
 import type { BookmarkEntry, DayDigestState, HistoryClearPeriod, HistoryEntry, SemanticSearchResult, SmartSearchResponse } from './history';
-import type { AdBlockState, MatchSuggestion, PageChangesResult, ParsedAddressPart, ProductState, SmartTabHit, StuffHit, TrackedProduct, TrackingEvent } from './omnibox';
+import type { AdBlockState, MatchSuggestion, OmniboxResume, PageChangesResult, ParsedAddressPart, ProductState, SmartTabHit, StuffHit, TrackedProduct, TrackingEvent } from './omnibox';
 import type { AiActivityState } from './ai';
 import type { CryptoRatesInfo, CurrencyRatesInfo, DragCard, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, WeatherInfo, WindowRole } from './app';
 
@@ -73,6 +73,11 @@ export interface CoreApi {
   searchSettingsSmart(query: string): Promise<number[]>;
   /** Страницы из своей истории, связанные с открытой сейчас. Пусто — нечего показать. */
   getRelatedPages(): Promise<SemanticSearchResult[]>;
+  /**
+   * Закрытые вкладки этого окна и открытые в других — сырьё строк «Продолжить».
+   * Пустые массивы — стек пуст и других окон нет; это нормальный ответ.
+   */
+  getOmniboxResume(): Promise<OmniboxResume>;
   /**
    * «Изменилось с прошлого раза» для открытой страницы (см. PageChanges.ts). ⚠️ Не бесплатно:
    * достаёт текст живой страницы и сравнивает со снимком, поэтому вызывающая сторона обязана

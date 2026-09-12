@@ -3,7 +3,7 @@
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
 import { IPC, THEME_PALETTE_IDS } from '../../shared/ipc';
-import type { PageChangesResult, SemanticSearchResult, SmartTabHit, SpecialTabKind, ThemeMode, ThemePaletteId, ThemePrefs } from '../../shared/ipc';
+import type { OmniboxResume, PageChangesResult, SemanticSearchResult, SmartTabHit, SpecialTabKind, ThemeMode, ThemePaletteId, ThemePrefs } from '../../shared/ipc';
 import { getPageChanges } from '../PageChanges';
 import { findRelatedPages } from '../RelatedHistory';
 import { searchStuff } from '../StuffSearch';
@@ -109,6 +109,27 @@ export function registerTabsIpc(d: IpcDeps): void {
     ctx.tabs.activate(tabId);
     if (ctx.win.isMinimized()) ctx.win.restore();
     ctx.win.focus();
+  });
+  ipcMain.handle(IPC.OMNIBOX_RESUME, (e): OmniboxResume => {
+    const from = contextFromSender(e.sender);
+    if (!from) return { closed: [], other: [] };
+    const windows = allContexts();
+    const other: OmniboxResume['other'] = [];
+    for (let i = 0; i < windows.length; i++) {
+      const ctx = windows[i];
+      if (ctx.win.id === from.win.id) continue;
+      for (const tab of ctx.tabs.snapshot()) {
+        if (tab.isHub) continue;
+        other.push({
+          tabId: tab.id,
+          windowId: ctx.win.id,
+          title: tab.title,
+          url: tab.url,
+          windowLabel: `окно ${i + 1}`,
+        });
+      }
+    }
+    return { closed: from.tabs.closedSnapshot(), other };
   });
   // «Вы это уже читали» — связанное из своей истории для АКТИВНОЙ вкладки (см. RelatedHistory.ts).
   // ⚠️ Адрес и заголовок берём из менеджера вкладок окна-отправителя, а не из аргументов: рендерер

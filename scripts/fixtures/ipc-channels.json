@@ -245,6 +245,7 @@
   "NOTEBOOK_SUGGEST_QUERIES=notebook:suggest-queries",
   "OMNIBOX_FOCUS=omnibox:focus",
   "OMNIBOX_MORE_MENU=omnibox:more-menu",
+  "OMNIBOX_RESUME=omnibox:resume",
   "OMNIBOX_SET_BOUNDS=omnibox:set-bounds",
   "OMNIBOX_SET_EDITING=omnibox:set-editing",
   "ONBOARDING_MARK_SHOWN=onboarding:mark-shown",
