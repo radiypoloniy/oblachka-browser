@@ -114,14 +114,17 @@ function Row({ p, share, tone, width, modelLoaded, onSleep, onUnload }: {
     <div style={{ opacity: p.sleeping ? 0.55 : 1 }}>
       <SpotLine
         title={
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(2), minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), minWidth: 0, width: '100%' }}>
             {/* ⚠️ Активная вкладка помечена ТОЧКОЙ, а не заливкой строки: заливка в нашей системе
                 значит «выбрано человеком», а тут состояние, которое сложилось само. */}
             {p.active && <span aria-label="открыта сейчас" style={{
               width: sp(2), height: sp(2), borderRadius: '50%', background: 'var(--success-500)', flex: 'none',
             }} />}
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
-          </span>
+            {/* flex-родитель, не inline-flex: тот растёт по тексту и ellipsis никогда не срабатывает. */}
+            <span title={p.title} style={{
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
+            }}>{p.title}</span>
+          </div>
         }
         hint={`${p.detail}${p.pid > 0 ? ` · ${p.pid}` : ''}`}
         cols={cols}

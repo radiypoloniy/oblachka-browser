@@ -49,6 +49,11 @@ export function Meter({ share, tone = 'var(--accent)' }: {
  * ⚠️ Ширины колонок ФИКСИРОВАННЫЕ (COL из system.ts), а не `auto`. Каждая строка — своя сетка,
  * поэтому `auto` выравнивает числа внутри строки и расходится между соседними: столбец идёт
  * лесенкой. Числа выравниваются по правому краю — иначе разряды не читаются вертикально.
+ *
+ * ⚠️ Имя обрезается, а не наезжает на числа. `minmax(0, 1fr)` даёт колонке сжаться, но без
+ * `overflow: hidden` содержимое всё равно рисуется поверх соседней клетки — длинный заголовок
+ * вкладки в диспетчере задач заходил на «48 МБ». Ellipsis здесь, в примитиве: иначе каждое
+ * место чинит это само и одно забывает.
  */
 export function SpotLine({ title, hint, control, cols, colWidths }: {
   title: ReactNode;
@@ -69,9 +74,23 @@ export function SpotLine({ title, hint, control, cols, colWidths }: {
       display: 'grid', gridTemplateColumns: template, gap: sp(3), alignItems: 'center',
       padding: pad(3, 4), borderTop: '1px solid var(--divider)',
     }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ ...TEXT.body, fontWeight: 650, color: 'var(--text-strong)' }}>{title}</div>
-        {hint && <div style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>{hint}</div>}
+      <div style={{ minWidth: 0, overflow: 'hidden' }}>
+        <div
+          title={typeof title === 'string' ? title : undefined}
+          style={{
+            ...TEXT.body, fontWeight: 650, color: 'var(--text-strong)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+        >{title}</div>
+        {hint && (
+          <div
+            title={typeof hint === 'string' ? hint : undefined}
+            style={{
+              ...TEXT.caption, color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}
+          >{hint}</div>
+        )}
       </div>
       {(cols ?? []).map((c, i) => (
         <div key={i} style={{ minWidth: 0, textAlign: 'right' }}>{c}</div>
