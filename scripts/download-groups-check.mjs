@@ -5,7 +5,7 @@
 // сайта снова ложатся десятью строками. Человек увидит не сбой, а «опять каша».
 //
 // Запуск: npm run download-groups-check (или npm test -- download)
-import { groupDownloads, packBySite, TODAY_LIMIT } from '../shared/downloadGroups.ts';
+import { groupDownloads, packBySite, TODAY_LIMIT, hostOf } from '../shared/downloadGroups.ts';
 
 let passed = 0;
 let failed = 0;
@@ -119,6 +119,12 @@ check('файл пропал с диска — в «не получилось»,
   ids(groupDownloads([e('gone', { missing: true, ago: 5 * MIN })], NOW).failed), ['gone']);
 check('пропавший НЕ попадает в «сегодня»',
   packIds(groupDownloads([e('gone', { missing: true, ago: 5 * MIN })], NOW).today), []);
+
+console.log('');
+console.log('— хост —');
+check('www снимается и нижний регистр', hostOf('https://www.Unsplash.com/a.jpg'), 'unsplash.com');
+check('негодный адрес — пусто, не сбой', hostOf('не адрес'), '');
+check('без схемы — пусто', hostOf('unsplash.com/x'), '');
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

@@ -36,7 +36,7 @@ export interface DownloadTiers<T> {
   today: DownloadPack<T>[];
   /** Всё, что старше суток и не влезло в потолок «сегодня». Показывается числом. */
   older: T[];
-  /** Прервано, отменено, пропало с диска. Свой ярус со своим действием. */
+  /** Прервано, отменено, пропало с диска. В поповере — числом в подвале, не строками. */
   failed: T[];
 }
 
@@ -61,7 +61,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PACK_GAP_MS = 2 * 60 * 1000;
 
 /** Хост без www. ⚠️ Разбор свой и терпимый: на негодном адресе просто нет группировки, не сбой. */
-function hostOf(url: string): string {
+export function hostOf(url: string): string {
   const m = /^[a-z]+:\/\/([^/?#]+)/i.exec(url);
   return m ? m[1]!.replace(/^www\./, '').toLowerCase() : '';
 }

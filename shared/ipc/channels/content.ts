@@ -130,6 +130,9 @@ export const CONTENT = {
   DOWNLOAD_OPEN_FILE:   'download:open-file',   // renderer → main: открыть файл (id)
   DOWNLOAD_SHOW_FOLDER: 'download:show-folder', // renderer → main: показать в папке (id)
   DOWNLOAD_RETRY:       'download:retry',       // renderer → main: повторить загрузку (id)
+  // Иконка файла как в Проводнике. ⚠️ Только id записи, не путь: рендерер не должен читать
+  // произвольный файл с диска. Картинка — кадр, остальное — app.getFileIcon.
+  DOWNLOAD_FILE_ICON:   'download:file-icon',   // renderer → main: (id, wantThumb?) → data URL | null
   // Имя по содержимому (см. electron/DownloadNamer.ts). ⚠️ Каналов ДВА, и разделены они
   // намеренно: «предложить» ничего не трогает на диске, «переименовать» необратимо. Между ними
   // стоит человек, увидевший предложенное имя.

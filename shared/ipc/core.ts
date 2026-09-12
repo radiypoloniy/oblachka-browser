@@ -31,8 +31,11 @@ export type SidebarNode = SingleNode | SplitPairNode | GroupNode;
 // стоит на паузе и в списке не показывается — отказ не должен оставлять запись «Отменено».
 export interface DuplicateDownloadPrompt {
   askId: string;
+  /** Id уже лежащего файла — иконка берётся по нему, путь рендерер не передаёт. */
+  existingId: string;
   filename: string;
   savePath: string;
+  url: string;
   downloadedAt: number;
 }
 export type DuplicateDownloadDecision = 'download' | 'open' | 'cancel';

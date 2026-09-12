@@ -3,9 +3,9 @@ import { X, FolderOpen, ExternalLink, RotateCcw, Pause, Play, XCircle, Trash2 } 
 import type { DownloadEntry } from '../../shared/ipc';
 import { RADIUS, sp } from '../styles/system';
 import { packBySite, type DownloadPack } from '../../shared/downloadGroups';
-// Форматирование, подписи состояний и значок по типу файла — общие с поповером у кнопки тулбара
+// Форматирование и лунка файла — общие с поповером у кнопки тулбара
 // (см. downloadsShared.tsx): один и тот же файл в двух местах должен выглядеть одинаково.
-import { FileKindIcon, formatBytes, formatSpeed } from './downloadsShared';
+import { FileWell, formatBytes, formatSpeed } from './downloadsShared';
 import { EmptyState } from './EmptyState';
 import { DownloadGlyph } from './glyphs';
 import { GroupCap, Row, Rows, type LibrarySummary } from './library/kit';
@@ -151,10 +151,14 @@ export default function Downloads({ downloads, query, onSummary }: DownloadsProp
                       lead=""
                       icon={<span style={{ display: 'flex', gap: 3, flex: 'none' }}>
                         {pack.rest.slice(0, 3).map((d) => (
-                          <span key={d.id} style={{
-                            width: 22, height: 22, borderRadius: RADIUS.tight,
-                            display: 'grid', placeItems: 'center', background: 'var(--surface-sunken)',
-                          }}><FileKindIcon filename={d.filename} size={13} /></span>
+                          <FileWell
+                            key={d.id}
+                            id={d.id}
+                            bust={`${d.filename}|${d.savePath}|${d.state}|${d.fileMissing ? 1 : 0}`}
+                            size={22}
+                            missing={!!d.fileMissing}
+                            thumb={false}
+                          />
                         ))}
                       </span>}
                       title={`Ещё ${pack.rest.length} ${plural(pack.rest.length, 'файл', 'файла', 'файлов')} из этой пачки`}
@@ -182,7 +186,7 @@ function plural(n: number, one: string, few: string, many: string): string {
   return many;
 }
 
-// Строка загрузки — общий рецепт библиотеки: слева время, дальше значок типа, имя дисплейной,
+// Строка загрузки — общий рецепт библиотеки: слева время, дальше лунка файла, имя дисплейной,
 // под ним размер и сайт моноширинным, справа действия.
 function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
   const isActive = d.state === 'progressing';
@@ -203,7 +207,7 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
   return (
     <Row
       lead={isActive || isFailed ? '' : timeOf(d.startedAt)}
-      icon={<FileKindIcon filename={d.filename} size={22} muted={isFailed} />}
+      icon={<FileWell id={d.id} bust={`${d.filename}|${d.savePath}|${d.state}|${d.fileMissing ? 1 : 0}`} size={22} muted={isFailed} missing={!!d.fileMissing} thumb={false} />}
       title={d.filename}
       subtitle={sub}
       title2={d.url}

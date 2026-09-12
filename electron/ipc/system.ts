@@ -85,6 +85,7 @@ export function registerSystemIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.DOWNLOAD_OPEN_FILE,   (_e, id: string) => downloads.openFile(id));
   ipcMain.handle(IPC.DOWNLOAD_SHOW_FOLDER, (_e, id: string) => downloads.showFolder(id));
   ipcMain.handle(IPC.DOWNLOAD_RETRY,       (_e, id: string) => downloads.retry(id));
+  ipcMain.handle(IPC.DOWNLOAD_FILE_ICON,   (_e, id: string, wantThumb?: boolean) => downloads.iconFor(id, wantThumb !== false));
 
   // Поиск по настройкам фразой (AI-IDEAS.md №6) — второй эшелон, зовётся только на промахе
   // ключевых слов. ⚠️ Гвард «один запрос за раз» тот же, что у поиска вкладок: человек печатает

@@ -9,7 +9,7 @@
 // приходится как единое window.oblako, и дробить эту точку входа было бы правдой про файлы, а не
 // про программу.
 import type { BackfillProgress, BookmarkEntry, BookmarkFolderProposal, BookmarkImportResult, BookmarkImportSource, BookmarkNode, HistoryContentCoverage, CsvPasswordImport, ImportDataType, ImportRunResult, ImportSource } from './history';
-import type { DownloadEntry } from './omnibox';
+import type { DownloadEntry, DownloadFileIcon } from './omnibox';
 import type { PermKey, PermissionRecord } from './ai';
 import type { DefaultBrowserRequest } from './app';
 
@@ -112,6 +112,9 @@ export interface DataApi {
   openDownloadFile(id: string): Promise<void>;
   showDownloadFolder(id: string): Promise<void>;
   retryDownload(id: string): Promise<void>;
+  // Иконка как в Проводнике. Путь рендерер не передаёт — только id. thumb=false в архиве:
+  // кадр JPEG декодируется в main синхронно и подвешивал бы список из фото.
+  getDownloadFileIcon(id: string, thumb?: boolean): Promise<DownloadFileIcon | null>;
   onDownloadsChanged(cb: (entries: DownloadEntry[]) => void): () => void;
   onDownloadsOpen(cb: () => void): () => void;
 }

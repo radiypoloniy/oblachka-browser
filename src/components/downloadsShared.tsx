@@ -1,9 +1,11 @@
-import { File, FileText, FileArchive, FileCode, FileSpreadsheet, Image, Music, Video, Package } from 'lucide-react';
-import type { DownloadState } from '../../shared/ipc';
+import { useEffect, useState } from 'react';
+import type { DownloadFileIcon, DownloadState } from '../../shared/ipc';
+import { createLimiter } from '../../shared/limitConcurrency';
+import { DISPLAY_WELL, RADIUS } from '../styles/system';
 
-// Общий словарь загрузок: форматирование и значок по типу файла. Живёт отдельно, потому что
-// потребителей три — поповер у кнопки тулбара, полный список в разделе истории и панель Downloads;
-// разъехавшиеся подписи «Готово»/«Готова» в трёх местах выглядели бы как разные функции.
+// Общий словарь загрузок: форматирование и лунка файла как в Проводнике. Живёт отдельно,
+// потому что потребителей два — поповер у кнопки тулбара и полный список в библиотеке;
+// разъехавшиеся подписи и разные языки иконки выглядели бы как разные функции.
 
 export function formatBytes(n: number): string {
   if (n <= 0) return '0 Б';
@@ -34,74 +36,160 @@ export const STATE_COLOR: Record<DownloadState, string> = {
   interrupted: 'var(--text-muted)',
 };
 
-// Тип файла определяем по РАСШИРЕНИЮ, а не по mime: сервер часто отдаёт
-// application/octet-stream на всё подряд, а имя файла у нас есть всегда.
-type FileKind = 'image' | 'audio' | 'video' | 'archive' | 'doc' | 'sheet' | 'code' | 'app' | 'other';
+/** Лунка превью — как иконка в Проводнике, не глиф типа. */
+export const FILE_WELL = 36;
 
-const KIND_BY_EXT: Record<string, FileKind> = {
-  jpg: 'image', jpeg: 'image', png: 'image', gif: 'image', webp: 'image', svg: 'image',
-  bmp: 'image', avif: 'image', heic: 'image', ico: 'image',
-  mp3: 'audio', wav: 'audio', flac: 'audio', ogg: 'audio', m4a: 'audio', aac: 'audio',
-  mp4: 'video', mkv: 'video', avi: 'video', mov: 'video', webm: 'video', wmv: 'video',
-  zip: 'archive', rar: 'archive', '7z': 'archive', tar: 'archive', gz: 'archive', bz2: 'archive',
-  pdf: 'doc', doc: 'doc', docx: 'doc', odt: 'doc', rtf: 'doc', txt: 'doc', md: 'doc', epub: 'doc',
-  xls: 'sheet', xlsx: 'sheet', csv: 'sheet', ods: 'sheet',
-  json: 'code', xml: 'code', html: 'code', css: 'code', js: 'code', ts: 'code', py: 'code', sh: 'code',
-  exe: 'app', msi: 'app', bat: 'app', cmd: 'app', ps1: 'app', dmg: 'app', pkg: 'app', apk: 'app',
+type IconApi = {
+  getDownloadFileIcon?: (id: string, thumb?: boolean) => Promise<DownloadFileIcon | null>;
 };
 
-// Плитки берут те же токены --tile-*, что значки разделов в сайдбаре, — язык интерфейса один.
-// ⚠️ Зелёного и синего здесь нет намеренно: по цветовому закону они функциональны (локальная
-// модель / VPN и облако-система), и тип файла ими краситься не должен.
-// ⚠️ Фиолетового нет вовсе (см. --tile-* в colors.css): картинка и код красились им и индиго,
-// а сиреневый в системе не предусмотрен спекой вообще.
-const KIND_STYLE: Record<FileKind, { color: string; Icon: typeof File }> = {
-  image:   { color: 'var(--tile-pink)',   Icon: Image },
-  audio:   { color: 'var(--tile-red)',    Icon: Music },
-  video:   { color: 'var(--tile-slate)',  Icon: Video },
-  archive: { color: 'var(--tile-grey)',   Icon: FileArchive },
-  doc:     { color: 'var(--tile-brown)',  Icon: FileText },
-  sheet:   { color: 'var(--tile-orange)', Icon: FileSpreadsheet },
-  code:    { color: 'var(--tile-teal)',   Icon: FileCode },
-  app:     { color: 'var(--tile-grey)',   Icon: Package },
-  other:   { color: 'var(--tile-grey)',   Icon: File },
-};
-
-function kindOf(filename: string): FileKind {
-  const dot = filename.lastIndexOf('.');
-  if (dot < 0) return 'other';
-  return KIND_BY_EXT[filename.slice(dot + 1).toLowerCase()] ?? 'other';
+function fetchIcon(id: string, thumb: boolean): Promise<DownloadFileIcon | null> {
+  const w = window as Window & { downloadsPopover?: IconApi; oblako?: IconApi };
+  const api = w.downloadsPopover ?? w.oblako;
+  if (!api?.getDownloadFileIcon) return Promise.resolve(null);
+  return api.getDownloadFileIcon(id, thumb);
 }
 
-// ⚠️ Размер глифа — не «доля от плитки», а ближайшая ЧИСТАЯ доля сетки lucide (все иконки
-// набора нарисованы на 24). При произвольном множителе (было 0.5 → 15 px, то есть 0.625 сетки)
-// линии рисунка ложатся между пикселями: обводка выходит толщиной 1.37 px и размазывается на
-// два, а мелкие детали — складка листа, ноты, клавиши — сливаются в кашу. На половине и трёх
-// четвертях сетки координаты попадают на полупиксель, и глиф остаётся читаемым.
-const GLYPH_STEPS = [12, 18, 24];
-function glyphFor(size: number): number {
-  const target = size * 0.6; // пропорция значка внутри плитки, как у iOS
-  return GLYPH_STEPS.reduce((best, s) => (Math.abs(s - target) < Math.abs(best - target) ? s : best));
+const iconCache = new Map<string, DownloadFileIcon | null>();
+const iconInflight = new Map<string, Promise<DownloadFileIcon | null>>();
+// Два сразу: строка рисуется пустой лункой, значок доезжает. Залп из трёхсот invoke на архиве
+// иначе стоял бы в IPC раньше, чем main успеет ограничить getFileIcon.
+const iconJobs = createLimiter(2);
+const ICON_CACHE_MAX = 300;
+
+function loadDownloadIcon(id: string, bust: string, thumb: boolean): Promise<DownloadFileIcon | null> {
+  const key = `${id}\0${bust}\0${thumb ? 't' : 's'}`;
+  if (iconCache.has(key)) return Promise.resolve(iconCache.get(key) ?? null);
+  const pending = iconInflight.get(key);
+  if (pending) return pending;
+  const p = iconJobs.run(() => fetchIcon(id, thumb)).then((icon) => {
+    iconCache.set(key, icon);
+    iconInflight.delete(key);
+    while (iconCache.size > ICON_CACHE_MAX) {
+      const first = iconCache.keys().next().value;
+      if (first === undefined) break;
+      iconCache.delete(first);
+    }
+    return icon;
+  }, () => {
+    iconInflight.delete(key);
+    return null;
+  });
+  iconInflight.set(key, p);
+  return p;
 }
 
-export function FileKindIcon({ filename, size = 30, muted = false }: {
-  filename: string;
-  size?: number;
-  // Приглушённая плитка для строк, за которыми уже нет файла (удалён, отменён).
+function useDownloadIcon(id: string, bust: string, thumb: boolean, missing: boolean): DownloadFileIcon | null {
+  const key = `${id}\0${bust}\0${thumb ? 't' : 's'}`;
+  const [icon, setIcon] = useState<DownloadFileIcon | null>(() => (missing ? null : iconCache.get(key) ?? null));
+  useEffect(() => {
+    if (missing) { setIcon(null); return; }
+    let live = true;
+    const cached = iconCache.get(key);
+    if (cached !== undefined) { setIcon(cached); return; }
+    setIcon(null);
+    void loadDownloadIcon(id, bust, thumb).then((next) => { if (live) setIcon(next); });
+    return () => { live = false; };
+  }, [id, bust, thumb, missing, key]);
+  return icon;
+}
+
+export function FileWell({
+  id, bust = '', muted = false, size = FILE_WELL, framed = true, missing = false, thumb = true,
+}: {
+  id: string;
+  /** Смена имени/пути/состояния сбрасывает кэш — иначе после «Назвать» остался бы старый кадр. */
+  bust?: string;
   muted?: boolean;
+  size?: number;
+  /** false — только пиксели, рамку лунки рисует родитель (стопка фото). */
+  framed?: boolean;
+  /** Пропавший файл — пустая лунка, без IPC: архив из сотен «нет на диске» иначе штурмовал main. */
+  missing?: boolean;
+  /** false в архиве: кадр JPEG декодируется в main синхронно и подвешивает окно. */
+  thumb?: boolean;
 }) {
-  const { color, Icon } = KIND_STYLE[kindOf(filename)];
+  const icon = useDownloadIcon(id, bust, thumb, missing);
+  const isThumb = icon?.kind === 'thumb';
+  // Подложка только у кадра. Значок Проводника уже с собственным краем — прямоугольник под ним
+  // читается как рамка, которой в системе нет.
+  const well = framed && isThumb;
   return (
-    <span style={{
-      width: size, height: size, flex: 'none',
-      borderRadius: Math.round(size / 3.5),
-      background: muted ? 'var(--surface-hover)' : color,
-      color: muted ? 'var(--text-faint)' : '#fff',
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      {/* strokeWidth ровно 2 — та толщина, под которую набор и нарисован; дробные значения
-          (было 2.2) съезжают с сетки вместе с рисунком. */}
-      <Icon size={glyphFor(size)} strokeWidth={2} />
+    <span
+      aria-hidden="true"
+      style={{
+        width: size, height: size, flex: 'none',
+        borderRadius: well ? RADIUS.control : 0,
+        overflow: 'hidden', display: 'block', position: 'relative',
+        background: well ? 'var(--surface-sunken)' : 'transparent',
+        boxShadow: well ? '0 0 0 1px var(--divider)' : undefined,
+        opacity: muted ? 0.42 : 1,
+      }}
+    >
+      {icon && (
+        <img
+          alt=""
+          src={icon.url}
+          style={{
+            display: 'block', width: '100%', height: '100%',
+            objectFit: isThumb ? 'cover' : 'contain',
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
+/** Стопка кадров пачки фото: три превью, последнее сверху. */
+export function ThumbStack({ ids, busts }: { ids: string[]; busts: string[] }) {
+  const shown = ids.slice(0, 3).reverse();
+  const shownBusts = busts.slice(0, 3).reverse();
+  const inner = 26;
+  return (
+    <span aria-hidden="true" style={{ width: 44, height: FILE_WELL, position: 'relative', flex: 'none' }}>
+      {shown.map((id, i) => {
+        const fromBack = shown.length - 1 - i;
+        return (
+          <span key={id} style={{
+            position: 'absolute',
+            left: fromBack * 8,
+            top: fromBack === 0 ? 8 : fromBack === 1 ? 4 : 0,
+            transform: fromBack === 0 ? 'none' : fromBack === 1 ? 'rotate(-7deg)' : 'rotate(9deg)',
+            zIndex: i,
+            width: inner, height: inner,
+            borderRadius: RADIUS.tight,
+            overflow: 'hidden',
+            boxShadow: '0 0 0 1px var(--surface), 0 1px 3px color-mix(in srgb, var(--shadow-tint) 18%, transparent)',
+          }}>
+            <FileWell id={id} bust={shownBusts[i] ?? ''} size={inner} framed={false} />
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/** Кольцо прогресса героя. Пока размер неизвестен — пустой круг, полоска под ним бежит сама. */
+export function ProgressRing({ pct, known }: { pct: number; known: boolean }) {
+  const r = 14;
+  const c = 2 * Math.PI * r;
+  const dash = known ? (Math.min(100, Math.max(0, pct)) / 100) * c : 0;
+  return (
+    <span aria-hidden="true" style={{ width: FILE_WELL, height: FILE_WELL, flex: 'none', position: 'relative' }}>
+      <svg width={FILE_WELL} height={FILE_WELL} viewBox={`0 0 ${FILE_WELL} ${FILE_WELL}`} style={{ display: 'block', transform: 'rotate(-90deg)' }}>
+        <circle cx={FILE_WELL / 2} cy={FILE_WELL / 2} r={r} fill="none" stroke="var(--surface-sunken)" strokeWidth={3} />
+        <circle
+          cx={FILE_WELL / 2} cy={FILE_WELL / 2} r={r} fill="none"
+          stroke="var(--text-strong)" strokeWidth={3} strokeLinecap="round"
+          strokeDasharray={`${dash.toFixed(1)} ${c.toFixed(1)}`}
+        />
+      </svg>
+      {known && (
+        <b style={{
+          position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
+          ...DISPLAY_WELL,
+        }}>{pct}</b>
+      )}
     </span>
   );
 }

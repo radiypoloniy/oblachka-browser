@@ -120,6 +120,7 @@
   "DOWNLOAD_DUPLICATE_ASK=download:duplicate-ask",
   "DOWNLOAD_DUPLICATE_DECIDE=download:duplicate-decide",
   "DOWNLOAD_DUPLICATE_PROMPT=download:duplicate-prompt",
+  "DOWNLOAD_FILE_ICON=download:file-icon",
   "DOWNLOAD_OPEN_FILE=download:open-file",
   "DOWNLOAD_PAUSE=download:pause",
   "DOWNLOAD_RENAME=download:rename",

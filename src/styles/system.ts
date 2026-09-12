@@ -167,6 +167,10 @@ export const DISPLAY_CARD: CSSProperties = {
 export const DISPLAY_ROW: CSSProperties = {
   ...DISPLAY, fontSize: 15, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-strong)',
 };
+/** Цифра в кольце прогресса загрузки — влезает в лунку файла, дисплейная, не подпись. */
+export const DISPLAY_WELL: CSSProperties = {
+  ...DISPLAY, fontSize: 11, fontWeight: 800, letterSpacing: '-0.04em', color: 'var(--text-strong)',
+};
 
 /**
  * Надпись группы («УСТАНОВЛЕННЫЕ МОДЕЛИ»). Отдельно от TEXT: это не роль, а приём.

@@ -1,9 +1,11 @@
 import type { Session, DownloadItem, WebContents } from 'electron';
-import { app, dialog, shell } from 'electron';
+import { app, dialog, shell, nativeImage } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { DownloadEntry, DuplicateDownloadPrompt } from '../shared/ipc';
+import type { DownloadEntry, DownloadFileIcon, DuplicateDownloadPrompt } from '../shared/ipc';
+import { isImageFile } from '../shared/documentFormats';
+import { createLimiter } from '../shared/limitConcurrency';
 import { isBackgroundWebContents } from './BackgroundWebContents';
 import { markDownloadedFile, isRiskyDownload } from './DownloadSafety';
 import { profileDataPath } from './ProfilePaths';
@@ -16,6 +18,9 @@ const THROTTLE_MS = 200;
 // Потолок хранимого списка. Загрузки — не история посещений: держать их тысячами незачем,
 // а файл читается синхронно при старте, и распухать ему нельзя.
 const MAX_STORED = 300;
+// Значок — украшение строки, не имеет права соревноваться с вкладкой за главный поток.
+// Два сразу: очередь, а не залп из трёхсот SHGetFileInfo / декодов JPEG (см. iconFor).
+const ICON_JOBS = createLimiter(2);
 
 // Запись на диске. Отдельная от DownloadEntry форма: бегущие поля (скорость, пауза) —
 // свойство МОМЕНТА, а не загрузки, и после перезапуска не значат ничего.
@@ -101,6 +106,10 @@ export class DownloadManager {
   // Настройка остаётся для тех, кто раскладывает файлы по папкам вручную.
   #askLocation = false;
   #throttleTimer: ReturnType<typeof setTimeout> | null = null;
+  // Иконка по id. Токен сбрасывает кэш после «Назвать» / пропажи файла. Потолок = MAX_STORED:
+  // вытеснение на 80 при списке в три сотни гоняло декод по кругу при прокрутке архива.
+  #iconCache = new Map<string, { token: string; icon: DownloadFileIcon | null }>();
+  #iconInflight = new Map<string, Promise<DownloadFileIcon | null>>();
 
   setAskLocation(value: boolean): void {
     this.#askLocation = value;
@@ -258,8 +267,10 @@ export class DownloadManager {
         this.#pendingDuplicates.set(askId, { url, wc: initiator, already });
         this.#onDuplicate(initiator, {
           askId,
+          existingId: already.id,
           filename: already.filename,
           savePath: already.savePath,
+          url: already.url,
           downloadedAt: already.startedAt,
         });
         return;
@@ -390,6 +401,7 @@ export class DownloadManager {
     this.#items.delete(id);
     this.#incognitoIds.delete(id);
     this.#profileOf.delete(id);
+    this.#forgetIcon(id);
     if (owner) this.#persist(owner);
     this.#notify();
   }
@@ -398,6 +410,92 @@ export class DownloadManager {
     if (!this.#stillOnDisk(id)) return;
     const e = this.#entries.get(id);
     if (e?.savePath) void shell.openPath(e.savePath);
+  }
+
+  /**
+   * Иконка как в Проводнике: кадр картинки или `app.getFileIcon`.
+   *
+   * ⚠️ Только id записи, не путь: рендерер не должен читать произвольный файл. Кэш отдельный от
+   * DOWNLOADS_CHANGED — прогресс каждые 200 мс не должен гонять декод JPEG.
+   * ⚠️ Незавершённую картинку не декодируем: частичный JPEG даёт пустой nativeImage, а не кадр.
+   * ⚠️ Пропавший файл — сразу null, без shell: архив из сотен «файла на месте нет» иначе
+   * открывался залпом SHGetFileInfo на главном потоке.
+   * ⚠️ `wantThumb` ложен в архиве: кадр JPEG декодируется синхронно в main, и список из фото
+   * подвешивал бы всё окно. Кадр нужен стопке в поповере.
+   */
+  async iconFor(id: string, wantThumb = true): Promise<DownloadFileIcon | null> {
+    if (typeof id !== 'string' || !id) return null;
+    const e = this.#entries.get(id);
+    if (!e) return null;
+    const thumb = wantThumb === true;
+    const cacheKey = `${id}\0${thumb ? 't' : 's'}`;
+    const token = `${e.savePath}|${e.filename}|${e.state}|${e.fileMissing ? 1 : 0}`;
+    if (e.fileMissing) {
+      this.#putIcon(cacheKey, token, null);
+      return null;
+    }
+    const hit = this.#iconCache.get(cacheKey);
+    if (hit && hit.token === token) return hit.icon;
+    const pending = this.#iconInflight.get(cacheKey);
+    if (pending) return pending;
+    const job = ICON_JOBS.run(async () => {
+      const latest = this.#entries.get(id);
+      if (!latest || latest.fileMissing) {
+        this.#putIcon(cacheKey, latest ? `${latest.savePath}|${latest.filename}|${latest.state}|1` : token, null);
+        return null;
+      }
+      const icon = await this.#makeIcon(latest, thumb);
+      this.#putIcon(cacheKey, `${latest.savePath}|${latest.filename}|${latest.state}|${latest.fileMissing ? 1 : 0}`, icon);
+      return icon;
+    }).finally(() => { this.#iconInflight.delete(cacheKey); });
+    this.#iconInflight.set(cacheKey, job);
+    return job;
+  }
+
+  #putIcon(cacheKey: string, token: string, icon: DownloadFileIcon | null): void {
+    this.#iconCache.set(cacheKey, { token, icon });
+    // Два ключа на запись (кадр / значок типа). Потолок списка — MAX_STORED, кэш не должен
+    // жить дольше самих загрузок: иначе прокрутка архива снова декодировала бы JPEG по кругу.
+    while (this.#iconCache.size > MAX_STORED * 2) {
+      const first = this.#iconCache.keys().next().value;
+      if (first === undefined) break;
+      this.#iconCache.delete(first);
+    }
+  }
+
+  #forgetIcon(id: string): void {
+    this.#iconCache.delete(`${id}\0t`);
+    this.#iconCache.delete(`${id}\0s`);
+    this.#iconInflight.delete(`${id}\0t`);
+    this.#iconInflight.delete(`${id}\0s`);
+  }
+
+  async #makeIcon(e: DownloadEntry, wantThumb: boolean): Promise<DownloadFileIcon | null> {
+    const bytes = e.totalBytes || e.receivedBytes;
+    const canThumb = wantThumb && e.state === 'completed' && !e.fileMissing && !!e.savePath
+      && isImageFile(e.filename) && bytes > 0 && bytes <= 30 * 1024 * 1024;
+    if (canThumb && e.savePath) {
+      try {
+        if (fs.existsSync(e.savePath)) {
+          const decoded = nativeImage.createFromPath(e.savePath);
+          if (!decoded.isEmpty()) {
+            return {
+              kind: 'thumb',
+              url: decoded.resize({ width: 72, height: 72, quality: 'better' }).toDataURL(),
+            };
+          }
+        }
+      } catch { /* битый кадр — значок типа */ }
+    }
+    const probe = e.savePath || (e.filename ? path.join(app.getPath('downloads'), e.filename) : '');
+    if (!probe) return null;
+    try {
+      const icon = await app.getFileIcon(probe, { size: 'large' });
+      if (icon.isEmpty()) return null;
+      return { kind: 'shell', url: icon.toDataURL() };
+    } catch {
+      return null;
+    }
   }
 
   /**

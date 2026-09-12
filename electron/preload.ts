@@ -358,6 +358,7 @@ const api: OblakoApi = {
   openDownloadFile:   (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_OPEN_FILE, id),
   showDownloadFolder: (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_SHOW_FOLDER, id),
   retryDownload:      (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_RETRY, id),
+  getDownloadFileIcon: (id: string, thumb?: boolean) => ipcRenderer.invoke(IPC.DOWNLOAD_FILE_ICON, id, thumb),
   onDownloadsChanged: (cb: (entries: DownloadEntry[]) => void) => {
     const handler = (_e: unknown, entries: DownloadEntry[]) => cb(entries);
     ipcRenderer.on(IPC.DOWNLOADS_CHANGED, handler);
@@ -368,7 +369,6 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.DOWNLOADS_OPEN, handler);
     return () => ipcRenderer.removeListener(IPC.DOWNLOADS_OPEN, handler);
   },
-
   // Разрешения сайтов моста хрома БОЛЬШЕ НЕ КАСАЮТСЯ: вопрос рисует своя WebContentsView
   // (electron/PermissionPopoverManager.ts) со своим preload — preload-permissionpopover.ts.
 

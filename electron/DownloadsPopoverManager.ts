@@ -12,7 +12,7 @@ import type { ContentBounds, DownloadEntry, DuplicateDownloadPrompt, DuplicateDo
 import { IPC } from '../shared/ipc';
 import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
-const POPOVER_WIDTH = 340;
+const POPOVER_WIDTH = 360;
 const INITIAL_HEIGHT = 180;
 // Зазор от якоря и запас под тень — общие для всех якорных поповеров, см. shared/overlayMetrics.ts
 // (там же разбор, почему зазор не может быть меньше запаса: прозрачное поле хит-теститься).

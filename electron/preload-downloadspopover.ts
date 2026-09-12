@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision, DownloadNameSuggestion, DownloadRenameResult } from '../shared/ipc';
+import type { DownloadEntry, DownloadFileIcon, DuplicateDownloadPrompt, DuplicateDownloadDecision, DownloadNameSuggestion, DownloadRenameResult } from '../shared/ipc';
 
 // Мост поповера загрузок. Действия — те же ipcMain.handle, что у боевого window.oblako
 // (обработчик не привязан к конкретному preload'у), поэтому дублировать логику в main не нужно.
@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('downloadsPopover', {
   openDownloadFile:   (id: string) => ipcRenderer.invoke(IPC.DOWNLOAD_OPEN_FILE, id) as Promise<void>,
   showDownloadFolder: (id: string) => ipcRenderer.invoke(IPC.DOWNLOAD_SHOW_FOLDER, id) as Promise<void>,
   retryDownload:      (id: string) => ipcRenderer.invoke(IPC.DOWNLOAD_RETRY, id) as Promise<void>,
+  getDownloadFileIcon: (id: string, thumb?: boolean) => ipcRenderer.invoke(IPC.DOWNLOAD_FILE_ICON, id, thumb) as Promise<DownloadFileIcon | null>,
   // Имя по содержимому: сначала спрашиваем предложение, переименовываем отдельным вызовом —
   // между ними человек смотрит на предложенное имя (см. electron/DownloadNamer.ts).
   suggestDownloadName: (id: string) => ipcRenderer.invoke(IPC.DOWNLOAD_SUGGEST_NAME, id) as Promise<DownloadNameSuggestion>,
