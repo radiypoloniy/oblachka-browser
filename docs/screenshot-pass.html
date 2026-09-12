@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Снимок как снимок</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700;800&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   СНИМОК КАК СНИМОК — предложения, не правки.
+   Жест Ctrl+Shift+S / Ctrl+S не пересматриваем. Правка фона — одна функция
+   decorate() в src/screenshot.tsx. Редактор — режим той же карточки, не
+   новый продукт.
+
+   Токены — дословно из дизайн-системы:
+   • числа — src/styles/system.ts (4·8·12·16·24·32, радиусы 4/8/12/20/24)
+   • цвет — src/styles/tokens/colors.css (Уголь, светлая по умолчанию)
+   • материал — overlay-plate, лестница теней, внутренний свет
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --r-tight:4px; --r-control:8px; --r-box:12px; --r-island:20px; --r-content:24px; --r-pill:999px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-standard:cubic-bezier(.2,0,.2,1);
+  --dur-fast:120ms; --dur-base:180ms; --dur-slow:260ms;
+
+  --success:#34C759; --warning:#FF9500; --danger:#FF3B30;
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEEF1; --n4:#E2E3E8; --n5:#DBDCE3;
+  --n7:#BBBECE; --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --app-bg:var(--n5); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14); --divider-strong:rgba(60,60,67,.24);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+  --overlay-plate:color-mix(in srgb, var(--accent) 7%, var(--surface));
+  --selected:color-mix(in srgb, var(--accent) 16%, var(--surface));
+  --paper:#EEEEF1;
+  --paper-white:#FFFFFF;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439;
+    --n7:#55555E; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --on-accent:#121213;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+    --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+    --shadow-tint:#000000;
+    --overlay-plate:color-mix(in srgb, var(--accent) 7%, var(--surface));
+    --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439;
+  --n7:#55555E; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+  --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+  --shadow-tint:#000000;
+  --overlay-plate:color-mix(in srgb, var(--accent) 7%, var(--surface));
+  --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+}
+:root {
+  --shadow-lvl1:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 5%, transparent),
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 5%, transparent);
+  --shadow-lvl2:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+  --shadow-lvl3:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 9%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 5%, transparent),
+    0 12px 22px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 36px 56px color-mix(in srgb, var(--shadow-tint) 8%, transparent);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.55);
+  --shot-shadow:
+    0 1px 2px rgba(0,0,0,.06),
+    0 8px 18px rgba(0,0,0,.10),
+    0 22px 44px rgba(0,0,0,.16);
+}
+
+* { box-sizing:border-box; }
+body {
+  margin:0; font-family:var(--font-ui); font-size:14px; line-height:1.5;
+  color:var(--text-body); background:var(--app-bg); -webkit-font-smoothing:antialiased;
+}
+button, input { font: inherit; }
+button { cursor:default; }
+.ground {
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:linear-gradient(168deg,var(--ground-1) 0%,var(--ground-2) 46%,var(--ground-3) 100%);
+}
+.ground::after {
+  content:""; position:absolute; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:var(--grain-op); mix-blend-mode:overlay;
+}
+
+.wrap { position:relative; z-index:1; max-width:1120px; margin:0 auto; padding:var(--sp6) var(--sp4) 88px; }
+h1,h2,h3 { margin:0; text-wrap:balance; }
+.display { font-family:var(--font-display); font-weight:700; letter-spacing:-.03em; line-height:1.05; color:var(--text-strong); }
+.caps { font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); }
+.lede { max-width:68ch; color:var(--text-muted); margin:var(--sp3) 0 0; }
+p { margin:var(--sp3) 0 0; max-width:68ch; }
+b { color:var(--text-strong); }
+code { font-family:var(--font-mono); font-size:12px; background:var(--sunken); padding:1px 5px; border-radius:4px; }
+
+.head { padding:var(--sp8) 0 var(--sp6); display:flex; justify-content:space-between; gap:var(--sp4); align-items:end; flex-wrap:wrap; }
+.head h1 { font-size:clamp(30px,4.4vw,50px); }
+.meta { display:flex; flex-wrap:wrap; gap:var(--sp2); margin-top:var(--sp6); }
+.pill {
+  font-family:var(--font-mono); font-size:11px; letter-spacing:.06em;
+  padding:5px var(--sp3); border-radius:var(--r-pill);
+  background:var(--surface); color:var(--text-muted); box-shadow:var(--shadow-lvl1);
+  border:none;
+}
+.pill.on { background:var(--text-strong); color:var(--app-bg); }
+
+.section {
+  margin-top:var(--sp8); padding:var(--sp8) var(--sp6);
+  border-radius:var(--r-island); background:var(--surface);
+  box-shadow:var(--shadow-lvl2), var(--inner-light);
+}
+.section > .caps { display:block; margin-bottom:var(--sp2); }
+.section h2 { font-size:26px; font-family:var(--font-display); font-weight:700; letter-spacing:-.025em; color:var(--text-strong); }
+
+.note {
+  margin-top:var(--sp4); padding:var(--sp4) var(--sp4);
+  border-left:3px solid var(--accent); border-radius:0 var(--r-box) var(--r-box) 0;
+  background:var(--sunken); max-width:none;
+}
+.note.warn { border-left-color:var(--warning); }
+.note p { margin-top:var(--sp2); font-size:13.5px; }
+.note p:first-child { margin-top:0; }
+
+.grid2 { margin-top:var(--sp6); display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:var(--sp4); }
+.grid3 { margin-top:var(--sp6); display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:var(--sp3); }
+
+.studio {
+  background:#3a3a40;
+  border-radius:var(--r-box);
+  overflow:hidden;
+}
+.choice {
+  text-align:left; padding:var(--sp4); border-radius:var(--r-box);
+  border:1.5px solid var(--divider); background:transparent; color:inherit;
+  display:flex; flex-direction:column; gap:var(--sp3);
+  transition:border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard);
+}
+.choice:hover { border-color:var(--divider-strong); }
+.choice.on { border-color:var(--accent); background:var(--selected); }
+.choice .t { font-weight:650; color:var(--text-strong); }
+.choice .d { font-size:12.5px; color:var(--text-muted); }
+.stamp {
+  align-self:flex-start; font-family:var(--font-mono); font-size:10px; letter-spacing:.08em;
+  text-transform:uppercase; padding:3px 8px; border-radius:var(--r-pill);
+  background:var(--text-strong); color:var(--app-bg);
+}
+
+.mrow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--sp4); align-items:start; padding:var(--sp3) 0; border-top:1px solid var(--divider); }
+.mrow:first-of-type { border-top:none; }
+.mrow b { display:block; }
+.mrow span { font-size:13px; color:var(--text-muted); }
+.num { font-family:var(--font-mono); font-size:13px; font-variant-numeric:tabular-nums; color:var(--text-strong); white-space:nowrap; padding-top:2px; }
+
+/* ── Мини-страница, которая «снимается» ───────────────────────────────────── */
+.page {
+  background:#fff; color:#1c1c1e; font-family:var(--font-ui);
+  overflow:hidden; text-align:left;
+}
+.page-bar {
+  display:flex; align-items:center; gap:8px; padding:8px 12px;
+  background:#f4f4f5; border-bottom:1px solid #e5e5ea; color:#636366; font-size:11px;
+}
+.page-dot { width:8px; height:8px; border-radius:99px; background:#d1d1d6; }
+.page-body { padding:16px 18px 18px; }
+.page h4 { margin:0; font-size:18px; letter-spacing:-.02em; line-height:1.2; color:#111; font-weight:700; }
+.page .kicker { font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#8e8e93; margin-bottom:6px; }
+.page .lead { margin:8px 0 0; font-size:12px; line-height:1.45; color:#3a3a3c; }
+.page .quote {
+  margin:12px 0 0; padding:8px 10px; border-left:3px solid #2C4BD8;
+  background:#f2f4ff; font-size:11.5px; color:#1c1c1e;
+}
+.page .meta-row { margin-top:10px; display:flex; gap:8px; font-size:10.5px; color:#8e8e93; }
+
+.app {
+  background:linear-gradient(168deg,#E3E5E7,#E0DFE4); display:grid;
+  grid-template-columns:72px 1fr; min-height:100%;
+}
+.app-side { padding:8px 6px; display:flex; flex-direction:column; gap:4px; }
+.app-tab { height:18px; border-radius:6px; background:rgba(36,37,46,.08); }
+.app-tab.on { background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.app-main { padding:8px 8px 8px 0; display:flex; flex-direction:column; gap:6px; min-width:0; }
+.app-omni { height:18px; border-radius:99px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+.app-scene { flex:1; border-radius:10px; overflow:hidden; min-height:0; }
+
+.page.el-on .quote { outline:2px solid var(--danger); outline-offset:2px; border-radius:2px; }
+
+/* ── Оформленный кадр ─────────────────────────────────────────────────────── */
+.mat {
+  display:flex; align-items:center; justify-content:center;
+  padding:22px 20px 28px;
+}
+.mat[data-backing="current"] { background:transparent; }
+.studio .mat[data-backing="current"],
+.chat .mat[data-backing="current"] { background:#000; }
+.mat[data-backing="paper"] { background:var(--paper); }
+.mat[data-backing="white"] { background:var(--paper-white); }
+.page-shot {
+  width:100%; border-radius:12px; overflow:hidden;
+  box-shadow:var(--shot-shadow);
+  position:relative;
+}
+.card-stage { min-height:300px; }
+.card-preview .mat { padding:12px 10px 16px; }
+.card-preview .page-shot { max-height:168px; }
+.card-preview .page-body { padding:10px 12px 12px; }
+.card-preview .page h4 { font-size:13px; }
+.card-preview .page .lead {
+  font-size:10.5px; display:-webkit-box; -webkit-line-clamp:2;
+  -webkit-box-orient:vertical; overflow:hidden;
+}
+.card-preview .page .quote { font-size:10.5px; margin-top:8px; }
+.card-preview .page .meta-row { display:none; }
+
+.chat {
+  background:#1c1c1e; color:#f2f2f7; border-radius:var(--r-box); padding:var(--sp4);
+  min-height:240px; display:flex; flex-direction:column; justify-content:flex-end; gap:8px;
+}
+.chat .who { font-size:11px; color:#8e8e93; }
+.bubble {
+  align-self:flex-start; max-width:92%; border-radius:14px 14px 14px 4px;
+  overflow:hidden; background:#2c2c2e;
+}
+.bubble img-slot { display:block; }
+.chat.light { background:#e8e8ed; color:#1c1c1e; }
+.chat.light .who { color:#636366; }
+.chat.light .bubble { background:#fff; }
+
+/* ── Карточка снимка (рецепт islandPlate / overlay-plate) ─────────────────── */
+.card-stage {
+  position:relative; border-radius:var(--r-box); overflow:hidden;
+  background:
+    linear-gradient(180deg,#d9e2f2, #c9d4e8);
+  min-height:360px;
+}
+.card-stage::after {
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:.28; mix-blend-mode:overlay;
+}
+.shot-card {
+  position:absolute; right:16px; bottom:16px; width:320px; z-index:1;
+  background:var(--overlay-plate);
+  border:1px solid color-mix(in srgb, var(--text-strong) 8%, transparent);
+  border-radius:var(--r-box);
+  box-shadow:var(--shadow-lvl2), var(--inner-light);
+  overflow:hidden;
+}
+.life { height:2px; background:var(--divider); }
+.life i { display:block; height:100%; width:62%; background:var(--text-faint); opacity:.45; }
+.card-preview { padding:10px 10px 0; }
+.card-preview .mat { padding:14px 12px 18px; border-radius:8px; }
+.card-foot {
+  display:flex; align-items:center; gap:8px; padding:10px 12px;
+}
+.ico {
+  border:none; background:transparent; color:var(--text-muted);
+  width:27px; height:27px; border-radius:var(--r-control);
+  display:inline-flex; align-items:center; justify-content:center; padding:0;
+}
+.ico:hover { background:color-mix(in srgb, var(--text-strong) 6%, transparent); color:var(--text-body); }
+.ico.on { background:var(--selected); color:var(--accent); }
+.save {
+  border:none; background:var(--accent); color:var(--on-accent);
+  padding:6px 10px; border-radius:var(--r-control);
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:13px; font-weight:500;
+}
+.save kbd { opacity:.75; font-family:var(--font-mono); font-size:11px; font-weight:500; }
+
+/* ── Редактор ─────────────────────────────────────────────────────────────── */
+.editor-stage {
+  margin-top:var(--sp6); border-radius:var(--r-box); overflow:hidden;
+  background:var(--overlay-plate);
+  box-shadow:var(--shadow-lvl3);
+  min-height:560px;
+  display:flex; flex-direction:column;
+  position:relative;
+}
+.editor-canvas {
+  flex:1; display:flex; align-items:center; justify-content:center;
+  padding:28px 28px 16px;
+}
+.editor-shot {
+  width:min(560px, 100%);
+  border-radius:4px;
+  overflow:hidden;
+  position:relative;
+}
+.editor-shot .mat { min-height:300px; }
+.mark-oval {
+  position:absolute; left:18%; top:38%; width:64%; height:28%;
+  border:2.5px solid var(--danger); border-radius:50%;
+  pointer-events:none; display:none;
+}
+.mark-arrow {
+  position:absolute; left:72%; top:22%; width:72px; height:48px; display:none; pointer-events:none;
+}
+.mark-text {
+  position:absolute; left:12%; top:14%; display:none;
+  font-family:var(--font-ui); font-weight:700; font-size:15px; color:var(--danger);
+  text-shadow:0 1px 0 #fff; letter-spacing:-.02em;
+}
+.crop-rect {
+  position:absolute; left:10%; top:12%; right:10%; bottom:18%;
+  border:1.5px dashed var(--accent); display:none; pointer-events:none;
+}
+.editor-shot[data-tool="oval"] .mark-oval,
+.editor-shot[data-tool="arrow"] .mark-arrow,
+.editor-shot[data-tool="text"] .mark-text,
+.editor-shot[data-tool="crop"] .crop-rect { display:block; }
+
+.tools {
+  display:flex; align-items:center; gap:8px; justify-content:center;
+  padding:0 16px 18px;
+}
+.tool-island {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:4px;
+  border-radius:var(--r-pill);
+  background:var(--surface);
+  box-shadow:var(--shadow-lvl2), var(--inner-light);
+}
+.seg {
+  display:inline-flex; gap:2px; padding:3px; border-radius:var(--r-pill);
+  background:color-mix(in srgb, var(--text-strong) 6%, transparent);
+}
+.seg button {
+  border:none; background:transparent; color:var(--text-muted);
+  padding:6px 12px; border-radius:var(--r-pill); font-size:13px; font-weight:450;
+}
+.seg button.on {
+  background:var(--surface); color:var(--text-strong); font-weight:650;
+  box-shadow:var(--shadow-lvl1);
+}
+.tool {
+  width:32px; height:32px; border:none; border-radius:var(--r-pill);
+  background:transparent; color:var(--text-muted);
+  display:inline-flex; align-items:center; justify-content:center;
+}
+.tool:hover { background:color-mix(in srgb, var(--text-strong) 6%, transparent); color:var(--text-body); }
+.tool.on { background:var(--selected); color:var(--accent); }
+.tool-done {
+  border:none; background:var(--text-strong); color:var(--app-bg);
+  padding:7px 14px; border-radius:var(--r-pill); font-weight:650; font-size:13px; margin-left:4px;
+}
+.hint-row {
+  text-align:center; font-size:12px; color:var(--text-faint); padding:0 16px 14px;
+  font-variant-numeric:tabular-nums;
+}
+
+.pick-veil {
+  position:absolute; inset:0; background:rgba(12,13,18,.42);
+  display:none; align-items:center; justify-content:center;
+}
+.editor-stage.picking .pick-veil { display:flex; }
+.pick-card {
+  width:min(520px, 92%); background:#fff; border-radius:12px; overflow:hidden;
+  box-shadow:var(--shadow-lvl3); position:relative;
+}
+.pick-label {
+  position:absolute; left:24%; top:58%; transform:translateY(-50%);
+  background:var(--danger); color:#fff; font-size:11px; font-weight:600;
+  padding:3px 8px; border-radius:6px;
+}
+
+.inv { margin-top:var(--sp6); display:grid; gap:0; }
+.inv .row { display:grid; grid-template-columns:120px minmax(0,1fr) 88px; gap:var(--sp4); padding:var(--sp3) 0; border-top:1px solid var(--divider); align-items:start; }
+.inv .row:first-child { border-top:none; }
+.inv .name { font-weight:650; color:var(--text-strong); }
+.inv .why { font-size:13px; color:var(--text-muted); }
+.tag { font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); padding-top:2px; }
+.tag.yes { color:var(--success); }
+.tag.later { color:var(--warning); }
+.tag.no { color:var(--danger); }
+
+.steps { margin-top:var(--sp6); display:grid; gap:var(--sp3); }
+.step {
+  display:grid; grid-template-columns:48px minmax(0,1fr); gap:var(--sp4);
+  padding:var(--sp4); border-radius:var(--r-box); background:var(--sunken);
+}
+.step .n { font-family:var(--font-display); font-weight:800; font-size:22px; letter-spacing:-.03em; color:var(--text-strong); }
+svg.ico-svg { width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+svg.tool-svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+
+@media (max-width: 720px) {
+  .shot-card { position:relative; right:auto; bottom:auto; margin:24px auto; }
+  .inv .row { grid-template-columns:1fr; gap:4px; }
+}
+</style>
+</head>
+<body>
+<div class="ground"></div>
+<div class="wrap">
+
+<header class="head">
+  <div>
+    <span class="caps">Заход по снимку вкладки</span>
+    <h1 class="display">Снимок как снимок</h1>
+    <p class="lede">
+      Ctrl+Shift+S остаётся тем же жестом: снял — карточка в углу — Ctrl+S сохранил.
+      Чёрный фон в чужих приложениях лечится непрозрачной бумагой, а не новым продуктом.
+      Редактор — кнопка на уже знакомой карточке, не второй браузер внутри браузера.
+    </p>
+    <div class="meta">
+      <span class="pill">Ctrl+Shift+S не трогаем</span>
+      <span class="pill">бумага n3, не альфа</span>
+      <span class="pill">редактор = режим карточки</span>
+    </div>
+  </div>
+  <div class="meta" style="margin-top:0">
+    <button class="pill on" data-theme-btn="light" type="button">Светлая</button>
+    <button class="pill" data-theme-btn="dark" type="button">Тёмная</button>
+  </div>
+</header>
+
+<section class="section">
+  <span class="caps">Диагноз</span>
+  <h2>Почему фон чёрный</h2>
+  <p>
+    Это не «иногда тень рисуется чёрной». Кадр <b>уже чёрный в файле и в буфере</b> для любого
+    приложения, которое не умеет альфу. macOS это переживает: Preview и iMessage понимают
+    прозрачный PNG. Windows — нет.
+  </p>
+  <div class="note">
+    <p><b>Что делает <code>decorate()</code> сейчас.</b> Canvas по умолчанию прозрачный.
+    На нём рисуется чёрный скруглённый прямоугольник с мягкой тенью (<code>fillStyle = '#000'</code>),
+    поверх кладётся страница. В PNG вокруг страницы — альфа. В файл и в буфер уходит один и тот же кадр:
+    «в файле одно, в буфере другое» в коде сознательно запрещено.</p>
+    <p>Windows кладёт картинку ещё и как DIB без альфы. Прозрачные пиксели становятся чёрными.
+    Полупрозрачная тень — тоже. Отсюда чёрный прямоугольник в Telegram, Discord, Word, Outlook,
+    части Slack. Комментарий об этом уже лежит в <code>ScreenshotManager.ts</code>.</p>
+  </div>
+  <p>
+    Настоящий вид снимков macOS, который видит человек — <b>страница, тень, светлая земля под ними</b>.
+    Прозрачность была способом получить этот вид «на любом фоне». На Windows этот способ
+    превращается в противоположность: фон читается как чёрная подложка.
+  </p>
+</section>
+
+<section class="section">
+  <span class="caps">Подложка кадра</span>
+  <h2>Непрозрачная бумага, всегда светлая</h2>
+  <p>
+    Лекарство — залить холст непрозрачным полем <b>до</b> тени. PNG становится полностью непрозрачным.
+    Тень читается о землю, а не проваливается в альфу. Подложка не следует теме Oblako:
+    тёмный браузер, который отдаёт тёмную подложку, снова даст «чёрную рамку» в мессенджере.
+  </p>
+  <p>Чистый белый почти убивает тень. Бумага системы (<code>--n3</code>, <code>#EEEEF1</code>) оставляет тени место и в светлом чате почти сливается с белым.</p>
+
+  <div class="grid3" id="backing-choices">
+    <button class="choice" type="button" data-backing="current">
+      <div class="t">Сейчас — альфа</div>
+      <div class="studio"><div class="mat" data-backing="current"><div class="page-shot"><div id="page-a"></div></div></div></div>
+      <div class="d">Красиво, пока принимающее приложение понимает прозрачность. На Windows это меньшинство.</div>
+    </button>
+    <button class="choice on" type="button" data-backing="paper">
+      <span class="stamp">берём</span>
+      <div class="t">Бумага n3</div>
+      <div class="studio"><div class="mat" data-backing="paper"><div class="page-shot"><div id="page-b"></div></div></div></div>
+      <div class="d">Нейтральное поле из шкалы. Тень живая. В тёмном чате — карточка, не дыра.</div>
+    </button>
+    <button class="choice" type="button" data-backing="white">
+      <div class="t">Чистый белый</div>
+      <div class="studio"><div class="mat" data-backing="white"><div class="page-shot"><div id="page-c"></div></div></div></div>
+      <div class="d">«Белая подложка» буквально. Тень почти пропадает, кадр плоский.</div>
+    </button>
+  </div>
+
+  <div class="grid2" style="margin-top:24px">
+    <div>
+      <span class="caps">Вставка в тёмный чат</span>
+      <div class="chat" style="margin-top:12px">
+        <div class="who">Telegram · тёмная</div>
+        <div class="bubble">
+          <div class="mat paste-mat" data-backing="paper" style="padding:16px 14px 20px">
+            <div class="page-shot"><div id="page-chat-d"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <span class="caps">Вставка в светлый чат</span>
+      <div class="chat light" style="margin-top:12px">
+        <div class="who">Почта · светлая</div>
+        <div class="bubble">
+          <div class="mat paste-mat" data-backing="paper" style="padding:16px 14px 20px">
+            <div class="page-shot"><div id="page-chat-l"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="note" style="margin-top:20px">
+    <p><b>Тема браузера и тема снимка — разные вещи.</b> Интерфейс карточки следует палитре Oblako.
+    Сам PNG — всегда светлая бумага. Иначе снимок, сделанный ночью, выглядит сломанным днём.</p>
+  </div>
+</section>
+
+<section class="section">
+  <span class="caps">Жест</span>
+  <h2>Карточка почти не меняется</h2>
+  <p>
+    Справа внизу контента, 320 px, автоскрытие 10 с, Ctrl+S сохраняет, Esc убирает, фокус
+    странице не отнимается. Это уже работает и это то, что нравится. Добавляется одна тихая
+    кнопка-карандаш между «Копировать» и «Сохранить». Пока её не нажали — редактора нет.
+  </p>
+  <div class="grid2">
+    <div>
+      <span class="caps">Сейчас</span>
+      <div class="card-stage" style="margin-top:12px">
+        <div class="shot-card">
+          <div class="life"><i></i></div>
+          <div class="card-preview">
+            <div class="mat" data-backing="current"><div class="page-shot"><div id="page-card-now"></div></div></div>
+          </div>
+          <div class="card-foot">
+            <span style="flex:1"></span>
+            <button class="ico" type="button" title="Копировать" aria-label="Копировать"><svg class="ico-svg" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            <button class="save" type="button">Сохранить <kbd>Ctrl+S</kbd></button>
+            <button class="ico" type="button" title="Закрыть" aria-label="Закрыть"><svg class="ico-svg" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <span class="caps">Предложение</span>
+      <div class="card-stage" style="margin-top:12px">
+        <div class="shot-card">
+          <div class="life"><i></i></div>
+          <div class="card-preview">
+            <div class="mat live-mat" data-backing="paper"><div class="page-shot"><div id="page-card-next"></div></div></div>
+          </div>
+          <div class="card-foot">
+            <span style="flex:1"></span>
+            <button class="ico" type="button" title="Копировать" aria-label="Копировать"><svg class="ico-svg" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            <button class="ico on" type="button" title="Редактировать" aria-label="Редактировать" id="open-editor"><svg class="ico-svg" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+            <button class="save" type="button">Сохранить <kbd>Ctrl+S</kbd></button>
+            <button class="ico" type="button" title="Закрыть" aria-label="Закрыть"><svg class="ico-svg" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="note" style="margin-top:20px">
+    <p><b>Подпись на карандаше не нужна.</b> На карточке 320 px текст «Редактировать» украл бы место
+    у «Сохранить Ctrl+S» — той кнопки, ради которой карточка всплыла. Карандаш молчит, пока его
+    не попросят; хоткей к нему не вешаем.</p>
+  </div>
+</section>
+
+<section class="section" id="editor">
+  <span class="caps">Редактор</span>
+  <h2>Та же вью, на весь контент</h2>
+  <p>
+    Не новое окно и не новый менеджер. Карточка растягивается на контентную зону — как FindBar
+    знает свои bounds, так ScreenshotManager уже умеет <code>setBounds</code>. Посередине — кадр.
+    Снизу — остров инструментов из тех же пилюль, что в настройках. Страница под ним не блюрится:
+    у дочерней WebContentsView <code>backdrop-filter</code> не работает, это уже закрытый разбор
+    у <code>--overlay-plate</code>.
+  </p>
+  <p>
+    Фокус здесь <b>забираем</b>: иначе не ввести подпись. Страж фокуса карточки на время режима
+    выключается. Esc возвращает к карточке без правок. Ctrl+S сохраняет уже готовый кадр — тот же
+    хоткей, тот же <code>save-now</code>.
+  </p>
+
+  <div class="editor-stage" id="editor-stage">
+    <div class="editor-canvas">
+      <div class="editor-shot" id="editor-shot" data-tool="oval">
+        <div class="mat live-mat" data-backing="paper">
+          <div class="page-shot" id="source-shot">
+            <div id="page-editor"></div>
+          </div>
+        </div>
+        <div class="mark-oval"></div>
+        <div class="crop-rect"></div>
+        <div class="mark-text">это — цифра</div>
+        <svg class="mark-arrow" viewBox="0 0 72 48">
+          <path d="M8 40 C28 38, 40 18, 58 14" stroke="#FF3B30" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+          <path d="M50 8 l12 6 -10 8" stroke="#FF3B30" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="tools">
+      <div class="tool-island">
+        <div class="seg" id="source-seg">
+          <button type="button" class="on" data-source="page">Страница</button>
+          <button type="button" data-source="window">Окно</button>
+        </div>
+        <button class="tool" type="button" data-tool="crop" title="Вырезать"><svg class="tool-svg" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg></button>
+        <button class="tool" type="button" data-tool="element" title="Элемент" id="tool-element"><svg class="tool-svg" viewBox="0 0 24 24"><path d="M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM17 17l4 4M17 21l4-4"/></svg></button>
+        <button class="tool on" type="button" data-tool="oval" title="Обвести"><svg class="tool-svg" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="5.5"/></svg></button>
+        <button class="tool" type="button" data-tool="arrow" title="Стрелка"><svg class="tool-svg" viewBox="0 0 24 24"><path d="M5 19 19 5"/><path d="M9 5h10v10"/></svg></button>
+        <button class="tool" type="button" data-tool="text" title="Текст"><svg class="tool-svg" viewBox="0 0 24 24"><path d="M4 7V5h16v2M12 5v14M8 19h8"/></svg></button>
+        <button class="tool-done" type="button" id="editor-done">Готово</button>
+      </div>
+    </div>
+    <div class="hint-row" id="tool-hint">Обвести — овал или прямоугольник цветом разметки. Не акцент палитры: снимок уйдёт из браузера.</div>
+    <div class="pick-veil" id="pick-veil">
+      <div class="pick-card">
+        <div class="page" style="border-radius:0">
+          <div class="page-bar"><span class="page-dot"></span><span class="page-dot"></span><span class="page-dot"></span> theverge.com</div>
+          <div class="page-body">
+            <div class="kicker">Hardware · 12 сентября</div>
+            <h4>Новый Mac mini снова меньше коробки</h4>
+            <p class="lead">Компактный корпус скрывает тот же чип, что в студийном десктопе — и это меняет, что считается «достаточной» машиной для дома.</p>
+            <div class="quote el-on" style="outline:2px solid #FF3B30; outline-offset:3px;">«Это первый раз, когда мини перестал быть компромиссом.»</div>
+          </div>
+        </div>
+        <div class="pick-label">цитата</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <span class="caps">Инструменты</span>
+  <h2>Пять действий, не Photoshop</h2>
+  <p>Набор закрытый. Каждое действие — про снимок, который сейчас на экране, а не про новый вид деятельности.</p>
+  <div class="inv">
+    <div class="row">
+      <div class="name">Страница / Окно</div>
+      <div class="why">По умолчанию по-прежнему только вкладка — <code>capturePage</code> активной вью. «Окно» переснимает браузер целиком: сайдбар, тулбар, сцену. Карточку перед этим прячем, иначе она попадёт в кадр. Дочерние WebContentsView <code>BrowserWindow.capturePage()</code> не видит — нужен <code>desktopCapturer</code> или склейка вью.</div>
+      <div class="tag later">шаг 3</div>
+    </div>
+    <div class="row">
+      <div class="name">Вырезать</div>
+      <div class="why">Прямоугольник по уже снятому кадру. Без прокрутки всей страницы: <code>capturePage</code> снимает вьюпорт, и это ограничение оставляем.</div>
+      <div class="tag yes">шаг 2</div>
+    </div>
+    <div class="row">
+      <div class="name">Элемент</div>
+      <div class="why">Редактор на секунду уходит. На живой странице подсвечивается блок под курсором, клик вырезает его из уже снятого растра (координаты × devicePixelRatio). Не отдельный хоткей и не режим по умолчанию.</div>
+      <div class="tag later">шаг 4</div>
+    </div>
+    <div class="row">
+      <div class="name">Обвести</div>
+      <div class="why">Овал или прямоугольник. Цвет разметки — <code>--danger-500</code> (#FF3B30), как в Preview. Это содержимое картинки, не хром: акцент палитры уйдёт в «Мяту» зелёным и на чужом экране потеряет смысл.</div>
+      <div class="tag yes">шаг 2</div>
+    </div>
+    <div class="row">
+      <div class="name">Стрелка и текст</div>
+      <div class="why">Два самых частых жеста «посмотри сюда». Текст — единственная причина забирать фокус. Пера, стикеров, фильтров и размытия лиц нет.</div>
+      <div class="tag yes">шаг 2</div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <span class="caps">Архитектура</span>
+  <h2>Что уже решено и не пересматриваем</h2>
+  <div class="mrow"><b>Одна вью на окно</b><span class="num">ScreenshotManager</span></div>
+  <p style="margin-top:0">Редактор живёт в <code>src/screenshot.tsx</code>. Новый entry в Vite, новый preload и новый менеджер не заводим: это был бы второй продукт рядом с карточкой.</p>
+  <div class="mrow"><b>Файл только по «Сохранить»</b><span class="num">downloads/</span></div>
+  <p style="margin-top:0">macOS кладёт кадр на рабочий стол сам. У нас это папка загрузок, и засорять её нельзя. Редактор это не меняет.</p>
+  <div class="mrow"><b>Карточка не берёт фокус</b><span class="num">страж</span></div>
+  <p style="margin-top:0">Хоткеи слушает страница. Редактор — исключение по клику человека. По «Готово» страж возвращается, фокус — активной вкладке.</p>
+  <div class="mrow"><b>Хаб и настройки не снимаем</b><span class="num">как сейчас</span></div>
+  <p style="margin-top:0"><code>getActiveWebContents() === null</code> — хоткей молчит. «Окно» имеет смысл только когда есть вкладка; собственный интерфейс по-прежнему не кадр.</p>
+  <div class="mrow"><b>IPC остаётся своим</b><span class="num">не shared/ipc</span></div>
+  <p style="margin-top:0">Мост карточки и сейчас не в боевом <code>window.oblako</code>. Новые команды (<code>capture-window</code>, <code>pick-element</code>) добавляются туда же. Контракт хрома не трогаем.</p>
+</section>
+
+<section class="section">
+  <span class="caps">Не делаем</span>
+  <h2>Чтобы не испортить жест</h2>
+  <div class="grid3">
+    <div class="choice" style="pointer-events:none">
+      <div class="t">Второй хоткей</div>
+      <div class="d">Ctrl+Shift+A «сразу редактор», долгий Shift, жест мышью. Карточка тогда перестаёт быть мгновенной наградой.</div>
+    </div>
+    <div class="choice" style="pointer-events:none">
+      <div class="t">Перо, блюр, стикеры</div>
+      <div class="d">Это редактор картинок. Нам нужен карандаш на полях снимка вкладки, не Pixelmator.</div>
+    </div>
+    <div class="choice" style="pointer-events:none">
+      <div class="t">Полная страница с прокруткой</div>
+      <div class="d"><code>capturePage</code> снимает вьюпорт. Склейка скролла — отдельная задача со своими швами, не этот заход.</div>
+    </div>
+    <div class="choice" style="pointer-events:none">
+      <div class="t">Подложка цветом темы</div>
+      <div class="d">Тёмная бумага снова станет чёрной рамкой в мессенджере. Бумага одна, светлая, из шкалы.</div>
+    </div>
+    <div class="choice" style="pointer-events:none">
+      <div class="t">Кликать по превью</div>
+      <div class="d">Превью — это снимок, а не кнопка. Редактор открывает только карандаш. Иначе сорвётся привычка «глянул и Ctrl+S».</div>
+    </div>
+    <div class="choice" style="pointer-events:none">
+      <div class="t">Акрил под редактором</div>
+      <div class="d">Живой блюр у дочерней вью недостижим. Пробовали обход снимком — стало хуже. Не повторять.</div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <span class="caps">Порядок</span>
+  <h2>Сначала бумага, редактор не ломает жест</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="n">1</div>
+      <div>
+        <b>Непрозрачная бумага в <code>decorate()</code></b>
+        <p style="margin-top:6px">Залить холст <code>#EEEEF1</code> до тени. Никакого UI. Карточка, Ctrl+S, автоскрытие — как вчера, только кадр больше не чернеет в Telegram. Это и есть фикс.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="n">2</div>
+      <div>
+        <b>Карандаш и разметка</b>
+        <p style="margin-top:6px">Кнопка на карточке, режим на всю контентную зону, вырезать / обвести / стрелка / текст. Готово возвращает оформленный кадр в карточку. Ctrl+S по-прежнему сохраняет то, что видно.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="n">3</div>
+      <div>
+        <b>Источник «Окно»</b>
+        <p style="margin-top:6px">Сегмент на острове инструментов. Перед захватом карточка скрывается. Отдельный хоткей не появляется: окно снимают только те, кто уже вошёл в редактор.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="n">4</div>
+      <div>
+        <b>Элемент на живой странице</b>
+        <p style="margin-top:6px">Самый дорогой кусок: инжект подсветки, координаты, возврат в редактор. Делается после того, как разметка уже живёт — иначе в одном заходе смешаются три новых поверхности.</p>
+      </div>
+    </div>
+  </div>
+  <p>
+    Шаг 1 можно выкатить отдельно и на этом остановиться. Шаги 2–4 не имеют права менять
+    Ctrl+Shift+S → карточка → Ctrl+S. Если редактор в какой-то вечер не готов — жест всё равно
+    должен быть тем же, только на бумаге вместо дыры.
+  </p>
+</section>
+
+</div>
+
+<script>
+const PAGE = `
+  <div class="page">
+    <div class="page-bar"><span class="page-dot"></span><span class="page-dot"></span><span class="page-dot"></span> theverge.com</div>
+    <div class="page-body">
+      <div class="kicker">Hardware · 12 сентября</div>
+      <h4>Новый Mac mini снова меньше коробки</h4>
+      <p class="lead">Компактный корпус скрывает тот же чип, что в студийном десктопе — и это меняет, что считается «достаточной» машиной для дома.</p>
+      <div class="quote">«Это первый раз, когда мини перестал быть компромиссом.»</div>
+      <div class="meta-row"><span>4 мин</span><span>12.09.2026</span></div>
+    </div>
+  </div>`;
+
+const WINDOW = `
+  <div class="app">
+    <div class="app-side">
+      <div class="app-tab on"></div>
+      <div class="app-tab"></div>
+      <div class="app-tab"></div>
+    </div>
+    <div class="app-main">
+      <div class="app-omni"></div>
+      <div class="app-scene">${PAGE}</div>
+    </div>
+  </div>`;
+
+function fill(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+['page-a','page-b','page-c','page-chat-d','page-chat-l','page-card-now','page-card-next','page-editor']
+  .forEach((id) => fill(id, PAGE));
+
+const hints = {
+  crop: 'Вырезать — рамка по уже снятому кадру. Вьюпорт, не вся прокрутка.',
+  element: 'Элемент — клик по живому блоку на странице. Редактор на это время прячется.',
+  oval: 'Обвести — овал или прямоугольник цветом разметки. Не акцент палитры: снимок уйдёт из браузера.',
+  arrow: 'Стрелка — «посмотри сюда». Один жест, без палитры кистей.',
+  text: 'Текст забирает фокус. Esc в этом режиме снимает подпись, не редактор.',
+};
+
+let backing = 'paper';
+function applyBacking(next) {
+  backing = next;
+  document.querySelectorAll('[data-backing]').forEach((el) => {
+    if (el.classList.contains('choice')) return;
+    if (el.classList.contains('live-mat') || el.classList.contains('paste-mat') || el.closest('#backing-choices')) {
+      el.setAttribute('data-backing', next);
+    }
+  });
+  document.querySelectorAll('#backing-choices .choice').forEach((btn) => {
+    btn.classList.toggle('on', btn.getAttribute('data-backing') === next);
+  });
+  document.querySelectorAll('.paste-mat').forEach((el) => el.setAttribute('data-backing', next));
+  document.querySelectorAll('.live-mat').forEach((el) => el.setAttribute('data-backing', next));
+}
+
+document.getElementById('backing-choices').addEventListener('click', (e) => {
+  const btn = e.target.closest('.choice');
+  if (!btn) return;
+  applyBacking(btn.getAttribute('data-backing'));
+});
+
+document.querySelectorAll('[data-theme-btn]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.documentElement.setAttribute('data-theme', btn.getAttribute('data-theme-btn'));
+    document.querySelectorAll('[data-theme-btn]').forEach((b) => b.classList.toggle('on', b === btn));
+  });
+});
+
+const shot = document.getElementById('editor-shot');
+const hint = document.getElementById('tool-hint');
+const stage = document.getElementById('editor-stage');
+document.querySelectorAll('.tool[data-tool]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const tool = btn.getAttribute('data-tool');
+    document.querySelectorAll('.tool[data-tool]').forEach((b) => b.classList.toggle('on', b === btn));
+    shot.setAttribute('data-tool', tool);
+    hint.textContent = hints[tool] || '';
+    if (tool === 'element') stage.classList.add('picking');
+    else stage.classList.remove('picking');
+  });
+});
+
+document.getElementById('source-seg').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-source]');
+  if (!btn) return;
+  document.querySelectorAll('#source-seg [data-source]').forEach((b) => b.classList.toggle('on', b === btn));
+  const source = btn.getAttribute('data-source');
+  document.getElementById('source-shot').innerHTML = source === 'window'
+    ? `<div id="page-editor">${WINDOW}</div>`
+    : `<div id="page-editor">${PAGE}</div>`;
+});
+
+document.getElementById('pick-veil').addEventListener('click', () => {
+  stage.classList.remove('picking');
+  document.querySelectorAll('.tool[data-tool]').forEach((b) => b.classList.toggle('on', b.getAttribute('data-tool') === 'crop'));
+  shot.setAttribute('data-tool', 'crop');
+  hint.textContent = 'Элемент вырезан из кадра. Дальше — обычное «Вырезать», если рамку нужно поджать.';
+});
+
+document.getElementById('open-editor').addEventListener('click', () => {
+  document.getElementById('editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+document.getElementById('editor-done').addEventListener('click', () => {
+  hint.textContent = 'Готово возвращает кадр в карточку. Ctrl+S сохраняет уже его, не сырой снимок.';
+});
+</script>
+</body>
+</html>

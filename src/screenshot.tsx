@@ -2,9 +2,11 @@
 // (см. electron/ScreenshotManager.ts). Живёт в своей WebContentsView поверх страницы.
 //
 // ⚠️ ОФОРМЛЕНИЕ КАДРА рисуется здесь, на canvas, и здесь же остаётся до сохранения. Тот вид, за
-// который любят снимки macOS, — это скруглённые углы и мягкая тень на ПРОЗРАЧНОМ фоне; nativeImage
+// который любят снимки macOS, — скруглённые углы и мягкая тень на СВЕТЛОЙ БУМАГЕ; nativeImage
 // в main так не умеет, а canvas умеет и делает это детерминированно: что человек видит в карточке,
 // то и ляжет в файл, без второго рендера по дороге.
+// ⚠️ Бумага непрозрачная нарочно: прозрачный PNG на Windows теряет альфу (DIB), и поле вокруг
+// тени становится чёрным в Telegram/Word. Тема браузера кадр не красит — см. SHOT_PAPER.
 //
 // ⚠️ Поля и радиус считаются от размера самого кадра, а не в фиксированных пикселях: снимок с
 // монитора 150% приходит в полтора раза крупнее, и постоянные 40 px тени выглядели бы на нём
@@ -15,6 +17,7 @@ import { Copy, FolderOpen, X, Check } from 'lucide-react';
 import { islandPlate } from './styles/island';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
+import { SHOT_PAPER, shotFrame } from '../shared/screenshotDecorate';
 
 declare global {
   interface Window {
@@ -41,11 +44,7 @@ const PREVIEW_MAX_H = 190;
 const AUTO_HIDE_MS = 10_000;
 const AFTER_SAVE_MS = 2600;
 
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, v));
-}
-
-/** Кадр → кадр со скруглёнными углами и мягкой тенью на прозрачном фоне (вид снимков macOS). */
+/** Кадр → кадр со скруглёнными углами и мягкой тенью на непрозрачной бумаге. */
 function decorate(raw: string): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -54,11 +53,13 @@ function decorate(raw: string): Promise<string> {
       const h = img.naturalHeight;
       const ctx = document.createElement('canvas').getContext('2d');
       if (!ctx || !w || !h) { resolve(raw); return; }
-      const min = Math.min(w, h);
-      const pad = clamp(Math.round(min * 0.055), 28, 110);   // поле под тень
-      const radius = clamp(Math.round(min * 0.018), 10, 28); // скругление кадра
-      ctx.canvas.width = w + pad * 2;
-      ctx.canvas.height = h + pad * 2;
+      const { pad, radius, width, height } = shotFrame(w, h);
+      ctx.canvas.width = width;
+      ctx.canvas.height = height;
+
+      // Сначала непрозрачная бумага на весь холст: иначе Windows снимет альфу и поле станет чёрным.
+      ctx.fillStyle = SHOT_PAPER;
+      ctx.fillRect(0, 0, width, height);
 
       // Тень отбрасывает залитый прямоугольник, а не сама картинка: у canvas тень строится по
       // альфе того, что рисуют, и у непрозрачного снимка получилась бы та же тень, только медленнее.
@@ -68,7 +69,7 @@ function decorate(raw: string): Promise<string> {
       ctx.shadowOffsetY = Math.round(pad * 0.35);
       ctx.beginPath();
       ctx.roundRect(pad, pad, w, h, radius);
-      ctx.fillStyle = '#000';
+      ctx.fillStyle = SHOT_PAPER;
       ctx.fill();
       ctx.restore();
 
