@@ -24,6 +24,9 @@ const DEFAULT_TRANSLATION_ENGINE: EngineId = 'bergamot';
 // работать с AI (открытие AI-панели/хаба в режиме AI, см. main.ts). См. комментарий у типа
 // ModelLoadMode в shared/ipc.ts.
 const DEFAULT_MODEL_LOAD_MODE: ModelLoadMode = 'on-demand';
+// Выгрузка локальной GGUF по простою — включена: иначе модель висит в VRAM до закрытия браузера
+// после одного утреннего перевода. Человек может выключить тумблером (см. ModelsSection).
+const DEFAULT_UNLOAD_MODEL_ON_IDLE = true;
 
 // Набор «Рекомендуемые» в панели омнибокса — то, с чем начинается рабочий день у большинства.
 // ⚠️ Это ДЕФОЛТ, а не рекомендация от нас: человек правит набор карандашом прямо в панели, и его
@@ -49,6 +52,8 @@ interface PersistedSettings {
   translationEngine: EngineId;
   aiPanelWidth: number;
   modelLoadMode: ModelLoadMode;
+  // Выгружать локальную GGUF через 40 минут без просьбы человека. На облако не действует.
+  unloadModelOnIdle: boolean;
   pageLength: PageLength;
   // Онбординг импорта из другого браузера показывался ли уже (см. electron/browserImport/).
   // Однократное предложение при первом запуске — потом только вручную из настроек.
@@ -159,6 +164,7 @@ export class SettingsManager {
   #translationEngine: EngineId = DEFAULT_TRANSLATION_ENGINE;
   #aiPanelWidth: number = DEFAULT_AI_PANEL_WIDTH;
   #modelLoadMode: ModelLoadMode = DEFAULT_MODEL_LOAD_MODE;
+  #unloadModelOnIdle = DEFAULT_UNLOAD_MODEL_ON_IDLE;
   #pageLength: PageLength = 'normal';
   #importOffered = false;
   // Спрашивать папку для каждого файла. По умолчанию НЕТ — см. DownloadManager.
@@ -231,6 +237,15 @@ export class SettingsManager {
   setModelLoadMode(mode: ModelLoadMode): void {
     if (!isModelLoadMode(mode)) return;
     this.#modelLoadMode = mode;
+    this.#write();
+  }
+
+  getUnloadModelOnIdle(): boolean {
+    return this.#unloadModelOnIdle;
+  }
+
+  setUnloadModelOnIdle(on: boolean): void {
+    this.#unloadModelOnIdle = !!on;
     this.#write();
   }
 
@@ -363,6 +378,8 @@ export class SettingsManager {
         if (typeof pw === 'number' && Number.isFinite(pw)) this.#aiPanelWidth = clampAiPanelWidth(pw);
         const lm = (data as Record<string, unknown>)['modelLoadMode'];
         if (isModelLoadMode(lm)) this.#modelLoadMode = lm;
+        const ui = (data as Record<string, unknown>)['unloadModelOnIdle'];
+        if (typeof ui === 'boolean') this.#unloadModelOnIdle = ui;
         const pl = (data as Record<string, unknown>)['pageLength'];
         if (pl === 'short' || pl === 'normal' || pl === 'long') this.#pageLength = pl;
         const io = (data as Record<string, unknown>)['importOffered'];
@@ -397,6 +414,7 @@ export class SettingsManager {
       translationEngine: this.#translationEngine,
       aiPanelWidth: this.#aiPanelWidth,
       modelLoadMode: this.#modelLoadMode,
+      unloadModelOnIdle: this.#unloadModelOnIdle,
       pageLength: this.#pageLength,
       importOffered: this.#importOffered,
       askDownloadLocation: this.#askDownloadLocation,

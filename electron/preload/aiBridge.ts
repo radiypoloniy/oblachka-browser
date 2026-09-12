@@ -42,6 +42,9 @@ export const aiBridge = {
   aiFileSave: (id: string) => ipcRenderer.invoke(IPC.AI_FILE_SAVE, id) as Promise<boolean>,
   aiTextSave: (name: string, text: string) =>
     ipcRenderer.invoke(IPC.AI_TEXT_SAVE, name, text) as Promise<boolean>,
+  // Выгрузка локальной модели по простою. Здесь, а не в preload.ts: тот за порогом храповика.
+  getUnloadModelOnIdle: () => ipcRenderer.invoke(IPC.SETTINGS_GET_UNLOAD_MODEL_ON_IDLE) as Promise<boolean>,
+  setUnloadModelOnIdle: (on: boolean) => ipcRenderer.invoke(IPC.SETTINGS_SET_UNLOAD_MODEL_ON_IDLE, on) as Promise<void>,
   onAiConnectionsChanged: (cb: (state: AiConnectionsState) => void) => {
     const h = (_e: unknown, state: AiConnectionsState) => cb(state);
     ipcRenderer.on(IPC.AI_CONN_CHANGED, h);

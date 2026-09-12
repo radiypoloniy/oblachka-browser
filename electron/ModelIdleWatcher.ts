@@ -23,6 +23,10 @@ let tightStreak = 0;
 // этого флага долгий ответ дал бы два наложившихся тика с двумя вызовами выгрузки.
 let checking = false;
 
+// Тумблер «выгружать после 40 минут». Читается на каждом тике, чтобы смена в настройках
+// сработала без перезапуска. По умолчанию включено — как в SettingsManager.
+let getUnloadOnIdle: () => boolean = () => true;
+
 /** Состояние видеопамяти либо null, если модель считается лежащей в обычной памяти. */
 async function readVram(): Promise<VramState | null> {
   let info;
@@ -68,6 +72,7 @@ async function tick(): Promise<void> {
       panelOpen: isAiPanelOpen(),
       lastUserRequestAt: lastQwenUserRequestAt(),
       tightStreak,
+      unloadModelOnIdle: getUnloadOnIdle(),
     }, Date.now());
     if (!reason) return;
 
@@ -82,7 +87,8 @@ async function tick(): Promise<void> {
 }
 
 /** Запустить сторож. Зовётся один раз из main.ts после app.whenReady(). */
-export function startModelIdleWatcher(): void {
+export function startModelIdleWatcher(getUnloadOnIdleFn: () => boolean): void {
+  getUnloadOnIdle = getUnloadOnIdleFn;
   if (timer) return;
   // unref — сторож не должен держать процесс живым сам по себе.
   timer = setInterval(() => { void tick(); }, MODEL_CHECK_INTERVAL);

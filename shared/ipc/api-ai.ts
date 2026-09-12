@@ -148,6 +148,9 @@ export interface AiApi {
   setHubMode(mode: HubMode): Promise<void>;
   getModelLoadMode(): Promise<ModelLoadMode>;
   setModelLoadMode(mode: ModelLoadMode): Promise<void>;
+  /** Выгружать локальную GGUF после 40 минут простоя. На облако не действует. */
+  getUnloadModelOnIdle(): Promise<boolean>;
+  setUnloadModelOnIdle(on: boolean): Promise<void>;
   /** Объём страницы Студии: ступень, а не число знаков (см. PAGE_LENGTH_TOKENS). */
   getPageLength(): Promise<PageLength>;
   setPageLength(v: PageLength): Promise<void>;

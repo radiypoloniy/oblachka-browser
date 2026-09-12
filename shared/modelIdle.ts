@@ -142,6 +142,11 @@ export interface ModelIdleState {
   lastUserRequestAt: number;
   /** Сколько проверок подряд железу было тесно. */
   tightStreak: number;
+  /**
+   * Выгружать ли по сорокаминутному простою. Настройка человека, дефолт включён.
+   * ⚠️ На давление это НЕ действует: игра поверх браузера по-прежнему забирает карту.
+   */
+  unloadModelOnIdle: boolean;
 }
 
 export type UnloadReason = 'idle' | 'pressure';
@@ -159,7 +164,7 @@ export type UnloadReason = 'idle' | 'pressure';
 export function shouldUnloadModel(s: ModelIdleState, now: number): UnloadReason | null {
   if (!s.loaded || s.loading || s.busy || s.panelOpen) return null;
   const idleMs = now - s.lastUserRequestAt;
-  if (idleMs >= MODEL_IDLE_TIMEOUT) return 'idle';
+  if (s.unloadModelOnIdle && idleMs >= MODEL_IDLE_TIMEOUT) return 'idle';
   // Давление проверяем ПОСЛЕ простоя: если сработали оба, честнее назвать причиной простой —
   // модель ушла бы и без чужой программы.
   if (s.tightStreak >= TIGHT_STREAK && idleMs >= PRESSURE_MIN_IDLE) return 'pressure';

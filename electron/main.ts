@@ -1576,7 +1576,7 @@ app.whenReady().then(async () => {
 
   // Сторож простоя модели. ⚠️ Здесь, в самом конце whenReady, а не рядом с прочей инициализацией:
   // ветки LLAMA_TEST/TRANSLATE_TEST выходят раньше, и стендам этот таймер не нужен вовсе.
-  startModelIdleWatcher();
+  startModelIdleWatcher(() => settings.getUnloadModelOnIdle());
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

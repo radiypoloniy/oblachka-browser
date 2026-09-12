@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Trash2, AlertTriangle } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
-import { CapsLabel, Subsection, OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox,
+import { CapsLabel, Subsection, OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox, InkSwitch,
 } from './settings/kit';
-import { RADIUS } from '../styles/system';
+import { RADIUS, sp } from '../styles/system';
 
 function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1);
@@ -126,25 +126,46 @@ function NoModelsNotice({ gpuMissing, detected, rechecking, onRecheck }: Recheck
   );
 }
 
-// Режим загрузки — когда именно модель поднимается в память (SettingsManager.ts, modelLoadMode).
-// Оба варианта явно называют цену размена (память против времени первого ответа), человек
-// выбирает осознанно, не вслепую.
-// ⚠️ Сегменты, а не две строки-карточки: выбор бинарный и короткий, а цена размена не теряется —
-// она уходит подписью под пилюлей, см. Segmented в kit.tsx.
-function LoadModeChooser({ value, onChange }: { value: ModelLoadMode; onChange: (id: ModelLoadMode) => void }) {
+// Память локальной GGUF: когда грузить и выгружать ли по простою. Облако не трогает.
+// Состояние здесь, а не в ModelsSection: та функция уже на храповике (281 строка).
+function LoadModeChooser() {
+  const [loadMode, setLoadMode] = useState<ModelLoadMode | null>(null);
+  const [unloadOnIdle, setUnloadOnIdle] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void window.oblako.getModelLoadMode().then((m) => { if (alive) setLoadMode(m); });
+    void window.oblako.getUnloadModelOnIdle().then((v) => { if (alive) setUnloadOnIdle(v); });
+    return () => { alive = false; };
+  }, []);
+
+  if (loadMode === null || unloadOnIdle === null) return null;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-      {/* Своя подпись группы: без неё выбор висит вплотную к списку моделей и читается как его
-          продолжение, а это отдельный вопрос. */}
-      <CapsLabel style={{ marginBottom: 4 }}>Когда загружать модель</CapsLabel>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2), marginTop: sp(3) }}>
+      <CapsLabel style={{ marginBottom: sp(1) }}>Когда загружать модель</CapsLabel>
       <Segmented
-        value={value}
-        onChange={onChange}
+        value={loadMode}
+        onChange={(mode) => {
+          setLoadMode(mode);
+          void window.oblako.setModelLoadMode(mode);
+        }}
         options={[
           { id: 'startup', label: 'При старте браузера', hint: 'Модель готова сразу, занимает ~6 ГБ оперативной памяти постоянно.' },
           { id: 'on-demand', label: 'При первом обращении', hint: 'Экономит память, первый ответ займёт около 30 секунд.' },
         ]}
       />
+      <OptionList>
+        <OptionRow
+          title="Выгружать после 40 минут простоя"
+          subtitle="Освобождает видеопамять, когда ИИ не нужен. Выключите, если не хотите ждать загрузки при следующем обращении."
+          actions={<InkSwitch on={unloadOnIdle} onChange={() => {
+            const next = !unloadOnIdle;
+            setUnloadOnIdle(next);
+            void window.oblako.setUnloadModelOnIdle(next);
+          }} />}
+        />
+      </OptionList>
     </div>
   );
 }
@@ -161,7 +182,6 @@ export default function ModelsSection() {
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [unloading, setUnloading] = useState(false);
   const [hardware, setHardware] = useState<HardwareSnapshot | null>(null);
-  const [loadMode, setLoadModeState] = useState<ModelLoadMode | null>(null);
   const [rechecking, setRechecking] = useState(false);
 
   // Флаг перехода running true→false — по нему решаем, когда перечитать installed/catalog
@@ -182,7 +202,6 @@ export default function ModelsSection() {
     // Обычный (кэшированный) снапшот годится для первого показа — свежий пересчёт нужен только
     // после unloadModel() (см. handleUnloadNow), где vramFree заведомо изменился.
     void window.oblako.getHardwareSnapshot().then((s) => { if (mounted) setHardware(s); });
-    void window.oblako.getModelLoadMode().then((m) => { if (mounted) setLoadModeState(m); });
     window.oblako.getModelDownloadProgress().then((p) => {
       if (!mounted) return;
       setProgress(p);
@@ -238,11 +257,6 @@ export default function ModelsSection() {
     // Не getHardwareSnapshot() (кэш) — vramFree только что изменился, нужен честный пересчёт,
     // иначе строка состояния памяти покажет старую занятую VRAM.
     void window.oblako.refreshHardwareSnapshot().then(setHardware);
-  }
-
-  function handleSetLoadMode(mode: ModelLoadMode) {
-    setLoadModeState(mode); // оптимистично — та же схема, что у select(engine) в TranslationEngineSection
-    void window.oblako.setModelLoadMode(mode);
   }
 
 
@@ -376,7 +390,7 @@ export default function ModelsSection() {
           </div>
         )}
 
-        {loadMode !== null && <LoadModeChooser value={loadMode} onChange={handleSetLoadMode} />}
+        <LoadModeChooser />
       </div>
 
       {/* ── Группа B: доступные для загрузки ── */}

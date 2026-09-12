@@ -81,6 +81,9 @@ export const PANELS = {
   NEVER_SLEEP_CHANGED: 'never-sleep:changed',
   SETTINGS_GET_MODEL_LOAD_MODE: 'settings:get-model-load-mode', // renderer → main: текущий ModelLoadMode
   SETTINGS_SET_MODEL_LOAD_MODE: 'settings:set-model-load-mode', // renderer → main: сменить режим загрузки модели
+  // Выгрузка локальной GGUF после 40 минут простоя. Облачные модели этот сторож не трогает.
+  SETTINGS_GET_UNLOAD_MODEL_ON_IDLE: 'settings:get-unload-model-on-idle', // renderer → main: boolean
+  SETTINGS_SET_UNLOAD_MODEL_ON_IDLE: 'settings:set-unload-model-on-idle', // renderer → main: (boolean) -> void
   SETTINGS_GET_PAGE_LENGTH:   'settings:get-page-length',   // renderer → main: объём страницы Студии
   SETTINGS_SET_PAGE_LENGTH:   'settings:set-page-length',   // renderer → main: (PageLength)
   // Ширина AI-дока (заход 3 — поповер → правый split-view-подобный док, см. AiPanelManager.ts).

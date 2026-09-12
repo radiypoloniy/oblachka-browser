@@ -95,7 +95,7 @@ const MIN = 60 * 1000;
 const now = 1_000_000_000;
 const warm = {
   loaded: true, loading: false, busy: false, panelOpen: false,
-  lastUserRequestAt: now, tightStreak: 0,
+  lastUserRequestAt: now, tightStreak: 0, unloadModelOnIdle: true,
 };
 
 {
@@ -115,6 +115,11 @@ const warm = {
     shouldUnloadModel({ ...warm, busy: true, lastUserRequestAt: now - 5 * 60 * MIN }, now), null);
   check('AI-панель открыта — не трогаем',
     shouldUnloadModel({ ...warm, panelOpen: true, lastUserRequestAt: now - 5 * 60 * MIN }, now), null);
+
+  // Тумблер в настройках: простой выключен — модель держится до закрытия браузера / кнопки /
+  // давления. Живая жалоба: минута обратной загрузки после 40 минут отбила охоту пользоваться ИИ.
+  check('простой выключен — держим даже через час',
+    shouldUnloadModel({ ...warm, unloadModelOnIdle: false, lastUserRequestAt: now - 60 * MIN }, now), null);
 }
 
 // ── Давление: игра или монтаж поверх браузера ────────────────────────────────
@@ -140,6 +145,12 @@ const warm = {
     shouldUnloadModel({ ...tight, busy: true, lastUserRequestAt: now - 10 * MIN }, now), null);
   check('тесно, но открыта панель — держим',
     shouldUnloadModel({ ...tight, panelOpen: true, lastUserRequestAt: now - 10 * MIN }, now), null);
+
+  // Выключенный простой не гасит давление: игра всё равно должна получить карту.
+  check('простой выключен, но железу тесно — выгружаем по давлению',
+    shouldUnloadModel({ ...tight, unloadModelOnIdle: false, lastUserRequestAt: now - 5 * MIN }, now), 'pressure');
+  check('простой выключен и оба повода — причина давление',
+    shouldUnloadModel({ ...tight, unloadModelOnIdle: false, lastUserRequestAt: now - 45 * MIN }, now), 'pressure');
 }
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);

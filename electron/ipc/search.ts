@@ -120,9 +120,11 @@ export function registerSearchIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.SETTINGS_SET_RECOMMENDED, (_e, list: RecommendedSite[]) => settings.setRecommendedSites(list));
   ipcMain.handle(IPC.SETTINGS_GET_AI_PANEL_WIDTH, () => settings.getAiPanelWidth());
   ipcMain.handle(IPC.SETTINGS_GET_MODEL_LOAD_MODE, () => settings.getModelLoadMode());
+  ipcMain.handle(IPC.SETTINGS_SET_MODEL_LOAD_MODE, (_e, mode: ModelLoadMode) => settings.setModelLoadMode(mode));
+  ipcMain.handle(IPC.SETTINGS_GET_UNLOAD_MODEL_ON_IDLE, () => settings.getUnloadModelOnIdle());
+  ipcMain.handle(IPC.SETTINGS_SET_UNLOAD_MODEL_ON_IDLE, (_e, on: boolean) => settings.setUnloadModelOnIdle(on));
   ipcMain.handle(IPC.SETTINGS_GET_PAGE_LENGTH, () => settings.getPageLength());
   ipcMain.handle(IPC.SETTINGS_SET_PAGE_LENGTH, (_e, v: PageLength) => { settings.setPageLength(v); });
-  ipcMain.handle(IPC.SETTINGS_SET_MODEL_LOAD_MODE, (_e, mode: ModelLoadMode) => settings.setModelLoadMode(mode));
 
   // Выбор движка перевода страниц (Settings.tsx, секция AI) — persist + сразу применяется к
   // registry (см. TranslationEngineRegistry.ts::setActiveEngineId), без перезапуска приложения.
