@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { HistoryEntry, PermissionRecord, OmniboxPanel, OmniboxPanelSite, OmniboxResume, SemanticSearchResult, SuggestDropdownItem } from '../../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../../shared/frecency';
 import { isSearchResultUrl } from '../../../shared/searchEngines';
-import { pickResume } from '../../../shared/omniboxResume';
+import { pickResume, mergeOmniboxShelf } from '../../../shared/omniboxResume';
 
 // ── Панель по клику в НЕТРОНУТУЮ строку ──────────────────────────────────────
 //
 // Всё, что человек видит, когда щёлкнул по адресной строке и ничего не набрал: строки «Продолжить»,
-// плитки часто посещаемых, набор «Рекомендуемые», полоска текущего сайта и «вы это уже читали».
+// одна полка сайтов, полоска текущего сайта и «вы это уже читали».
 //
 // ⚠️ Вынесено из Toolbar.tsx отдельным хуком, а не оставлено там: тулбар — единственный файл
 // проекта, который пробивает все четыре порога храповика структуры сразу (размер, длина функции,
@@ -72,9 +72,8 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
   // нет» — это тоже ответ, и повторять его незачем.
   const pageChangesRef = useRef<Map<string, string>>(new Map());
   const relatedRef = useRef<Map<string, SuggestItem[]>>(new Map());
-  // Набор «Рекомендуемые» — читается из настроек один раз при монтировании и живёт в ref: панель
-  // собирается синхронно, иначе плитки набора приезжали бы вторым кадром и сдвигали номера строк
-  // уже после того, как человек нацелился стрелками.
+  // Набор закрепов на полке. Пока человек карандашом не трогал, сюда ничего не кладём —
+  // дефолт Gmail/ChatGPT в панель не показываем. После правки список живёт здесь и на диске.
   const recommendedRef = useRef<SuggestItem[]>([]);
 
   const { tabUrl, isHub, seqRef, openDropdown, closeDropdown, setSuggestions, setSelectedIdx } = d;
@@ -102,7 +101,9 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
   // — это тот же зеркальный дропдаун, только длиннее.
   const showTopSites = useCallback(async () => {
     const seq = ++seqRef.current;
-    const resumeP = window.oblako.getOmniboxResume().catch((): OmniboxResume => ({ closed: [], other: [] }));
+    const resumeP = window.oblako.getOmniboxResume().catch((): OmniboxResume => (
+      { closed: [], other: [], recommendedCustom: false }
+    ));
     let entries: HistoryEntry[] = [];
     try { entries = await window.oblako.getHistory(TOP_SITES_SCAN); } catch { return; }
     if (seq !== seqRef.current) return;
@@ -122,21 +123,40 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
       const cur = best.get(key);
       if (!cur || scoreEntry(e, now) > scoreEntry(cur, now)) best.set(key, e);
     }
-    const items: SuggestItem[] = [...best.values()]
+    const frequent: SuggestItem[] = [...best.values()]
       .sort((a, b) => scoreEntry(b, now) - scoreEntry(a, now))
       .slice(0, TOP_SITES_SHOWN)
       .map((e) => ({ kind: 'history' as SuggestKind, label: e.title || e.url, sub: e.url, url: e.url }));
 
-    const hasSite = !!pageUrl && !isHub;
+    if (rawResume.recommendedCustom) {
+      try {
+        const list = await window.oblako.getRecommendedSites();
+        if (seq !== seqRef.current) return;
+        recommendedRef.current = list.map((s) => ({
+          kind: 'history' as SuggestKind, label: s.title || s.url, sub: s.url, url: s.url,
+        }));
+      } catch { /* ref как был — карандаш уже мог положить набор */ }
+    } else {
+      recommendedRef.current = [];
+    }
     const picked = recommendedRef.current;
-    if (!items.length && !picked.length && !hasSite && !resume.length) { closeDropdown('empty-panel'); return; }
+    const shelf = mergeOmniboxShelf(
+      rawResume.recommendedCustom ? picked.map((s) => ({ url: s.url, title: s.label })) : null,
+      frequent.map((s) => ({ url: s.url, title: s.label })),
+    );
+    const items: SuggestItem[] = shelf.map((s) => ({
+      kind: 'history' as SuggestKind, label: s.title || s.url, sub: s.url, url: s.url,
+    }));
+
+    const hasSite = !!pageUrl && !isHub;
+    if (!items.length && !hasSite && !resume.length) { closeDropdown('empty-panel'); return; }
 
     const pack = (extra: Partial<OmniboxPanel> = {}): OmniboxPanel => ({
       sites: items, recommended: picked, resume, ...extra,
     });
 
-    // Плоский порядок выбора = порядок на экране: «Продолжить», часто посещаемые, набор, потом «уже читали».
-    setSuggestions([...resume, ...items, ...picked]);
+    // Плитки только мышью: в плоском выборе — «Продолжить», потом «уже читали».
+    setSuggestions(resume);
     // ⚠️ Ничего не предвыбираем: человек НИЧЕГО не набирал, и Enter обязан вести по адресу в
     // строке — туда же, куда вёл бы без дропдауна вовсе.
     setSelectedIdx(-1);
@@ -205,21 +225,9 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
     }
     if (!related.length) return;
     void window.oblako.setSuggestDropdownPanel(pack({ site, siteUrl: pageUrl, related }));
-    // Плоский порядок выбора: сначала «Продолжить», потом плитки, следом карточки — ровно как рисует вью.
-    setSuggestions([...resume, ...items, ...picked, ...related]);
+    // Плоский порядок выбора: «Продолжить», следом карточки. Плитки в массив не входят — только мышь.
+    setSuggestions([...resume, ...related]);
   }, [tabUrl, isHub, seqRef, openDropdown, closeDropdown, setSuggestions, setSelectedIdx]);
-
-  // Набор «Рекомендуемые» из настроек — один раз при монтировании. Дальше он меняется только
-  // карандашом в самой панели, и мы правим ref вместе с диском (см. ниже).
-  useEffect(() => {
-    void window.oblako.getRecommendedSites()
-      .then((list) => {
-        recommendedRef.current = list.map((s) => ({
-          kind: 'history' as SuggestKind, label: s.title || s.url, sub: s.url, url: s.url,
-        }));
-      })
-      .catch(() => { /* настроек нет — набор просто пуст */ });
-  }, []);
 
   // Правка набора карандашом (вью → main → сюда). Владелец содержимого панели один, поэтому
   // применяем, сохраняем и пересобираем панель здесь же — вью только присылает намерение.
@@ -234,8 +242,8 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
         : [...cur, { kind: 'history' as SuggestKind, label: edit.title || edit.url, sub: edit.url, url: edit.url }]
             .slice(0, RECOMMENDED_MAX);
     recommendedRef.current = next;
-    void window.oblako.setRecommendedSites(next.map((s) => ({ url: s.url, title: s.label })));
-    void showTopSitesRef.current();
+    void window.oblako.setRecommendedSites(next.map((s) => ({ url: s.url, title: s.label })))
+      .then(() => { void showTopSitesRef.current(); });
   }), []);
 
   return { showTopSites };

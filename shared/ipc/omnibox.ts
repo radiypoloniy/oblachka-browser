@@ -33,9 +33,9 @@ export interface SuggestDropdownItem {
 // половину карточки. Панель забирает ширину плитками и карточками.
 //
 // ⚠️ Порядок ВЫБОРА остаётся ПЛОСКИМ и принадлежит по-прежнему омнибоксу: «Продолжить»,
-// sites, recommended, следом related — ровно тот же массив, что Toolbar.tsx держит в
-// suggestions. Вью считает номер строки из длин этих массивов и сама ничего не решает, как и
-// в режиме списка (Enter выполняется в омнибоксе).
+// следом related — ровно тот же массив, что Toolbar.tsx держит в suggestions. Плитки полки
+// в этот массив не входят: по ним ходят мышью, стрелками — нет. Вью считает номер строки
+// из длин resume и related и сама ничего не решает (Enter выполняется в омнибоксе).
 export interface OmniboxPanelSite {
   /** Хост открытой страницы без www — заголовок полоски. */
   host: string;
@@ -69,7 +69,7 @@ export interface OmniboxRecommendEdit {
 }
 
 export interface OmniboxPanel {
-  /** Плитки «часто посещаемые» — в плоском массиве выбора сразу за resume. */
+  /** Одна полка сайтов (закрепы, иначе частые). В плоский выбор клавиатуры не входит. */
   sites: SuggestDropdownItem[];
   /** Плитки «рекомендуемые» — набор человека; идут в плоском массиве СРАЗУ за sites. */
   recommended?: SuggestDropdownItem[];
@@ -96,6 +96,8 @@ export interface OmniboxResume {
     url: string;
     windowLabel: string;
   }>;
+  /** Человек трогал набор карандашом. false — дефолт Gmail/ChatGPT в панель не кладём. */
+  recommendedCustom: boolean;
 }
 
 export type DownloadState = 'progressing' | 'completed' | 'cancelled' | 'interrupted';

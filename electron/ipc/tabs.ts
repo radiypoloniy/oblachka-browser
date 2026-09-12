@@ -112,7 +112,7 @@ export function registerTabsIpc(d: IpcDeps): void {
   });
   ipcMain.handle(IPC.OMNIBOX_RESUME, (e): OmniboxResume => {
     const from = contextFromSender(e.sender);
-    if (!from) return { closed: [], other: [] };
+    if (!from) return { closed: [], other: [], recommendedCustom: settings.isRecommendedCustom() };
     const windows = allContexts();
     const other: OmniboxResume['other'] = [];
     for (let i = 0; i < windows.length; i++) {
@@ -129,7 +129,11 @@ export function registerTabsIpc(d: IpcDeps): void {
         });
       }
     }
-    return { closed: from.tabs.closedSnapshot(), other };
+    return {
+      closed: from.tabs.closedSnapshot(),
+      other,
+      recommendedCustom: settings.isRecommendedCustom(),
+    };
   });
   // «Вы это уже читали» — связанное из своей истории для АКТИВНОЙ вкладки (см. RelatedHistory.ts).
   // ⚠️ Адрес и заголовок берём из менеджера вкладок окна-отправителя, а не из аргументов: рендерер

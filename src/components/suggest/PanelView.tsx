@@ -244,9 +244,9 @@ function SiteTile({ item, idx, active, editing, badge, onBadge, onHover, onLeave
   return (
     <div
       className="omni-tile omni-rise"
-      data-row={idx}
+      data-row={idx >= 0 ? idx : undefined}
       data-active={active && !editing ? '1' : '0'}
-      style={{ ['--i' as string]: idx }}
+      style={{ ['--i' as string]: Math.max(idx, 0) }}
       onMouseDown={editing ? undefined : () => window.suggestDropdown.pick(item)}
       onMouseMove={(e) => onHover(e, idx)}
       onMouseLeave={() => onLeave(idx)}
@@ -366,12 +366,11 @@ export function PanelView({ panel, activeIdx, editing, setEditing, onHover, onLe
   const resume = panel.resume ?? [];
   const related = panel.related ?? [];
   const picked = panel.recommended ?? [];
-  const tile0 = resume.length;
-  const rec0 = tile0 + panel.sites.length;
-  const rel0 = rec0 + picked.length;
+  const rel0 = resume.length;
   const pickedUrls = new Set(picked.map((p) => p.url));
   const edit = (action: 'add' | 'remove', item: SuggestDropdownItem, title: string) =>
     window.suggestDropdown.editRecommended({ action, url: item.url, title });
+  const clearKeys = (e: React.MouseEvent) => onHover(e, -1);
   return (
     <>
       {panel.site && <SiteHeader site={panel.site} url={panel.siteUrl ?? ''} />}
@@ -389,22 +388,8 @@ export function PanelView({ panel, activeIdx, editing, setEditing, onHover, onLe
       )}
       {(panel.sites.length > 0 || picked.length > 0) && (
         <div className="omni-folders" style={{ padding: '12px 14px 14px' }}>
-          {panel.sites.length > 0 && (
-            <Folder title="Часто посещаемые">
-              {panel.sites.map((item, i) => (
-                <SiteTile
-                  key={item.url} item={item} idx={tile0 + i}
-                  active={activeIdx === tile0 + i}
-                  editing={editing}
-                  badge={pickedUrls.has(item.url) ? undefined : 'add'}
-                  onBadge={() => edit('add', item, item.label)}
-                  onHover={onHover} onLeave={onLeave}
-                />
-              ))}
-            </Folder>
-          )}
           <Folder
-            title="Рекомендуемые"
+            title="Часто"
             action={
               <button
                 className="omni-pencil" data-on={editing ? '1' : '0'}
@@ -415,23 +400,23 @@ export function PanelView({ panel, activeIdx, editing, setEditing, onHover, onLe
               </button>
             }
           >
-            {picked.map((item, i) => (
+            {panel.sites.map((item) => (
               <SiteTile
-                key={item.url} item={item} idx={rec0 + i}
-                active={activeIdx === rec0 + i}
+                key={item.url} item={item} idx={-1}
+                active={false}
                 editing={editing}
-                badge="remove"
-                onBadge={() => edit('remove', item, item.label)}
-                onHover={onHover} onLeave={onLeave}
+                badge={pickedUrls.has(item.url) ? 'remove' : 'add'}
+                onBadge={() => edit(pickedUrls.has(item.url) ? 'remove' : 'add', item, item.label)}
+                onHover={clearKeys} onLeave={onLeave}
               />
             ))}
-            {picked.length === 0 && (
+            {panel.sites.length === 0 && (
               <div style={{
                 width: '100%', padding: '10px 8px 12px',
                 fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', lineHeight: 1.4,
               }}>
                 {editing
-                  ? 'Нажмите + на сайте слева, чтобы добавить его сюда'
+                  ? 'Нажмите + на сайте, чтобы закрепить его здесь'
                   : 'Набор пуст — карандаш соберёт его заново'}
               </div>
             )}

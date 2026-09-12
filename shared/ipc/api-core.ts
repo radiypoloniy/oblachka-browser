@@ -75,7 +75,7 @@ export interface CoreApi {
   getRelatedPages(): Promise<SemanticSearchResult[]>;
   /**
    * Закрытые вкладки этого окна и открытые в других — сырьё строк «Продолжить».
-   * Пустые массивы — стек пуст и других окон нет; это нормальный ответ.
+   * `recommendedCustom` — трогал ли человек набор карандашом; иначе дефолт в панель не кладём.
    */
   getOmniboxResume(): Promise<OmniboxResume>;
   /**

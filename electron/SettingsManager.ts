@@ -334,6 +334,9 @@ export class SettingsManager {
     return this.#recommendedSites ?? DEFAULT_RECOMMENDED;
   }
 
+  /** true — человек трогал набор карандашом (в том числе осознанно опустошил). */
+  isRecommendedCustom(): boolean { return this.#recommendedSites !== null; }
+
   setRecommendedSites(list: RecommendedSite[]): void {
     this.#recommendedSites = normalizeRecommended(list) ?? [];
     this.#write();
