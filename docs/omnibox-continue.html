@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Продолжить</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700;800&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   ПРОДОЛЖИТЬ — предложение, не правка.
+   Нейтральный дропдаун омнибокса (клик в нетронутую строку).
+   ИИ-блок «Вы это уже читали» не пересобираем и не перекрашиваем.
+
+   Токены — дословно из дизайн-системы:
+   • числа — src/styles/system.ts (4·8·12·16·24·32, радиусы 4/8/12/20)
+   • цвет — palettes.css «Уголь» + colors.css
+   • поверхность оверлея — --overlay-plate, тень — --shadow-overlay
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --r-tight:4px; --r-control:8px; --r-box:12px; --r-island:20px; --r-pill:999px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-standard:cubic-bezier(.2,0,.2,1);
+  --dur-fast:120ms; --dur-base:180ms;
+
+  --dot-local:#34C759; --warning:#FF9500; --danger:#FF3B30;
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEEF1; --n4:#E2E3E8; --n5:#DBDCE3;
+  --n7:#BBBECE; --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#3F6FB5; --on-accent:#FFFFFF;
+  --app-bg:var(--n5); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14); --divider-strong:rgba(60,60,67,.24);
+  --glass-edge:rgba(60,60,67,.12);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+  --overlay-plate:color-mix(in srgb, var(--accent) 7%, var(--surface));
+  --selected:color-mix(in srgb, var(--accent) 16%, var(--surface));
+  --fs-sm:14px; --fs-xs:12.5px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439;
+    --n7:#55555E; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#628CC9; --on-accent:#121213;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+    --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+    --glass-edge:rgba(255,255,255,.12);
+    --shadow-tint:#000000;
+    --overlay-plate:color-mix(in srgb, var(--accent) 12%, var(--surface));
+    --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439;
+  --n7:#55555E; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#628CC9; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+  --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+  --glass-edge:rgba(255,255,255,.12);
+  --shadow-tint:#000000;
+  --overlay-plate:color-mix(in srgb, var(--accent) 12%, var(--surface));
+  --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+}
+:root {
+  --shadow-card:
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 5%, transparent),
+    0 6px 14px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+  --shadow-overlay:
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 8%, transparent),
+    0 8px 24px color-mix(in srgb, var(--shadow-tint) 12%, transparent);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.55);
+}
+
+* { box-sizing:border-box; }
+body {
+  margin:0; font-family:var(--font-ui); font-size:var(--fs-sm); line-height:1.5;
+  color:var(--text-body); background:var(--app-bg); -webkit-font-smoothing:antialiased;
+}
+.ground { position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:linear-gradient(168deg,var(--ground-1) 0%,var(--ground-2) 46%,var(--ground-3) 100%); }
+.ground::after {
+  content:""; position:absolute; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:var(--grain-op); mix-blend-mode:overlay;
+}
+
+.wrap { position:relative; z-index:1; max-width:1080px; margin:0 auto; padding:var(--sp6) var(--sp4) 80px; }
+h1,h2,h3 { margin:0; text-wrap:balance; }
+.display { font-family:var(--font-display); font-weight:700; letter-spacing:-.03em; line-height:1.05; color:var(--text-strong); }
+.caps { font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); }
+.lede { max-width:68ch; color:var(--text-muted); margin:var(--sp3) 0 0; }
+p { margin:var(--sp3) 0 0; max-width:68ch; }
+b { color:var(--text-strong); }
+code { font-family:var(--font-mono); font-size:12px; background:var(--sunken); padding:1px 5px; border-radius:var(--r-tight); }
+
+.head { padding:var(--sp8) 0 var(--sp6); }
+.head h1 { font-size:clamp(30px,4.4vw,46px); }
+
+.section { margin-top:var(--sp8); padding:var(--sp8) var(--sp6); border-radius:var(--r-island);
+  background:var(--surface); box-shadow:var(--shadow-card), var(--inner-light); }
+.section > .caps { display:block; margin-bottom:var(--sp2); }
+.section h2 { font-size:25px; font-family:var(--font-display); font-weight:700; letter-spacing:-.025em; color:var(--text-strong); }
+
+.now { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:var(--sp3); margin-top:var(--sp6); }
+.now > div { padding:var(--sp4); border-radius:14px; border:1px solid var(--divider); }
+.now b { display:block; font-family:var(--font-display); font-size:14px; letter-spacing:-.01em; }
+.now span { display:block; margin-top:6px; font-size:12.5px; color:var(--text-muted); }
+.now .src { display:block; margin-top:var(--sp3); font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint); }
+.now .keep { border-color:color-mix(in srgb, var(--dot-local) 45%, var(--divider)); }
+.now .hurt { border-color:color-mix(in srgb, var(--danger) 40%, var(--divider)); }
+
+.stack { margin-top:var(--sp6); display:grid; gap:0; }
+.layer { display:grid; grid-template-columns:72px minmax(0,1fr); gap:var(--sp4); align-items:start;
+  padding:var(--sp3) 0; border-top:1px solid var(--divider); }
+.layer .n { font-family:var(--font-display); font-weight:800; font-size:18px; letter-spacing:-.02em; color:var(--text-strong); }
+.layer .tag { font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; margin-top:3px; }
+.keep-tag { color:var(--dot-local); }
+.hurt-tag { color:var(--danger); }
+.ok-tag { color:var(--text-faint); }
+
+.controls { display:flex; flex-wrap:wrap; gap:var(--sp3); align-items:center; margin-top:var(--sp6); }
+.seg { display:flex; gap:2px; padding:3px; border-radius:var(--r-pill); background:var(--sunken); }
+.seg button {
+  border:0; cursor:pointer; font:inherit; font-size:13px; font-weight:500;
+  padding:6px 14px; border-radius:var(--r-pill); background:transparent; color:var(--text-muted);
+}
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); font-weight:600; }
+.hint { font-size:12.5px; color:var(--text-faint); }
+
+.stage { margin-top:var(--sp6); border-radius:16px; overflow:hidden; background:var(--app-bg); box-shadow:var(--shadow-card); }
+.chrome { display:flex; align-items:center; gap:var(--sp3); padding:10px var(--sp4); }
+.nav { display:flex; gap:2px; color:var(--text-body); }
+.nav i { width:28px; height:28px; display:grid; place-items:center; border-radius:var(--r-control); }
+.omni {
+  flex:1; display:flex; align-items:center; gap:var(--sp2); height:34px; padding:0 var(--sp3);
+  border-radius:var(--r-pill); background:var(--sunken);
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.omni .host { font-size:13px; color:var(--text-strong); font-weight:500; }
+.omni .caret { width:1px; height:15px; background:var(--accent); animation:blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity:0; } }
+
+.dd-wrap { padding:0 var(--sp4) var(--sp4); }
+.dd {
+  border-radius:var(--r-box); overflow:hidden;
+  background:var(--overlay-plate);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:180px 180px; background-blend-mode:overlay;
+  box-shadow:var(--shadow-overlay); border:1px solid var(--glass-edge);
+}
+
+.head-row {
+  display:flex; align-items:center; gap:12px; padding:12px 14px 12px 16px;
+  border-bottom:1px solid var(--glass-edge); cursor:default;
+}
+.head-row:hover { background:var(--sunken); }
+.head-row:hover .chev { transform:translateX(2px); }
+.disp { font-family:var(--font-display); font-size:17px; font-weight:700; letter-spacing:-.015em; color:var(--text-strong);
+  display:flex; align-items:center; gap:5px; overflow:hidden; white-space:nowrap; }
+.changed { display:flex; align-items:center; gap:5px; margin-top:2px; font-size:var(--fs-xs); color:var(--text-muted); }
+.pill {
+  display:inline-flex; align-items:center; gap:5px; flex:none; height:24px; padding:0 9px;
+  border-radius:var(--r-pill); background:var(--sunken); color:var(--text-muted); font-size:var(--fs-xs); white-space:nowrap;
+}
+.chev { flex:none; color:var(--text-faint); transition:transform var(--dur-fast) var(--ease-out); }
+
+.folder { padding:4px 2px 2px; }
+.folder + .folder { margin-top:10px; padding-top:12px; border-top:1px solid var(--divider); }
+.folders { padding:12px 14px 14px; }
+.folder-head {
+  display:flex; align-items:center; gap:8px; padding:0 8px 6px;
+  font-family:var(--font-mono); font-size:10.5px; font-weight:500; color:var(--text-muted);
+  text-transform:uppercase; letter-spacing:.15em;
+}
+.pencil {
+  margin-left:auto; display:inline-flex; align-items:center; gap:4px; border:none; background:transparent;
+  color:var(--text-faint); border-radius:var(--r-pill); padding:3px 7px; font:inherit; font-size:var(--fs-xs);
+  text-transform:none; letter-spacing:0; cursor:default;
+}
+.pencil:hover { background:color-mix(in srgb, var(--surface) 70%, transparent); color:var(--text-body); }
+
+.tiles { display:flex; flex-wrap:wrap; gap:2px; }
+.tile {
+  width:76px; display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:8px 2px 7px; border-radius:10px; cursor:default; min-width:0;
+}
+.tile:hover { background:color-mix(in srgb, var(--surface) 60%, transparent); }
+.tile:hover .plate { transform:translateY(-2px) scale(1.05); box-shadow:0 6px 14px rgba(0,0,0,.14); }
+.plate {
+  width:44px; height:44px; border-radius:12px; background:var(--surface); box-shadow:var(--shadow-card);
+  display:grid; place-items:center; overflow:hidden; transition:transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) ease;
+}
+.plate img { width:26px; height:26px; object-fit:contain; display:block; }
+.plate .let { font-weight:700; font-size:17px; color:var(--text-muted); }
+.tlab { max-width:100%; font-size:var(--fs-xs); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+.sec {
+  display:flex; align-items:center; gap:6px; padding:12px 16px 8px;
+  font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--text-muted);
+}
+.sec.div { padding-top:4px; }
+.sec.div::before {
+  content:""; display:block; height:1px; background:var(--glass-edge);
+  position:absolute; left:16px; right:16px; margin-top:-4px;
+}
+.sec { position:relative; }
+
+.cards { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; padding:0 16px 16px; }
+.card {
+  display:flex; flex-direction:column; gap:6px; min-width:0; padding:10px 12px; border-radius:12px;
+  cursor:default; border:1px solid var(--glass-edge); background:var(--sunken);
+  transition:background var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) ease;
+}
+.card:hover { transform:translateY(-2px); box-shadow:0 6px 14px rgba(0,0,0,.10); }
+.card .who { display:flex; align-items:center; gap:7px; min-width:0; font-size:var(--fs-xs); color:var(--text-faint); }
+.card .who img, .mini { width:18px; height:18px; border-radius:6px; background:var(--surface); box-shadow:var(--shadow-card); display:grid; place-items:center; flex:none; overflow:hidden; }
+.card .who img, .mini img { width:12px; height:12px; object-fit:contain; }
+.card .ttl {
+  font-size:var(--fs-sm); color:var(--text-strong); line-height:1.35;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+
+.rows { padding:4px 0 8px; }
+.row {
+  display:grid; grid-template-columns:22px minmax(0,1fr) auto; gap:12px; align-items:center;
+  padding:8px 16px; cursor:default; transition:background 100ms var(--ease-standard);
+}
+.row:hover { background:var(--selected); }
+.row .fav { width:22px; height:22px; border-radius:7px; background:var(--surface); box-shadow:var(--shadow-card);
+  display:grid; place-items:center; overflow:hidden; }
+.row .fav img { width:14px; height:14px; object-fit:contain; }
+.row .mid { min-width:0; }
+.row .t { font-size:13.5px; color:var(--text-strong); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.row .h { font-size:11.5px; color:var(--text-faint); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.row .meta {
+  font-family:var(--font-mono); font-size:10.5px; color:var(--text-faint); white-space:nowrap;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.tag {
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+  padding:2px 6px; border-radius:4px; border:1px solid var(--divider-strong); color:var(--text-faint);
+}
+
+.facts { margin-top:var(--sp6); display:grid; gap:var(--sp3); }
+.fact { display:grid; grid-template-columns:148px minmax(0,1fr); gap:var(--sp3); align-items:start; }
+.fact dt { font-family:var(--font-mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-faint); padding-top:3px; }
+.fact dd { margin:0; font-size:13.5px; color:var(--text-body); }
+
+.grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--sp3); margin-top:var(--sp6); }
+.choice { padding:var(--sp4); border-radius:14px; background:var(--sunken); }
+.choice .t { font-family:var(--font-display); font-size:14px; letter-spacing:-.01em; color:var(--text-strong); }
+.choice .d { margin-top:6px; font-size:12.5px; color:var(--text-muted); }
+
+.bounds { margin-top:var(--sp6); display:grid; gap:var(--sp3); }
+.bound { display:grid; grid-template-columns:20px minmax(0,1fr); gap:var(--sp3); align-items:start; }
+.bound .x { color:var(--danger); font-family:var(--font-mono); font-size:15px; line-height:1.3; }
+
+.qs { margin-top:var(--sp6); display:grid; gap:var(--sp3); }
+.q { padding:var(--sp4); border-radius:16px; background:var(--sunken); }
+.q b { display:block; font-family:var(--font-display); font-size:15px; letter-spacing:-.01em; }
+.q span { display:block; margin-top:6px; font-size:13.5px; color:var(--text-muted); }
+
+.empty { display:flex; align-items:center; gap:10px; padding:14px 16px; font-size:var(--fs-sm); color:var(--text-muted); }
+.foot { margin-top:var(--sp8); text-align:center; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration:1ms !important; animation:none !important; }
+  .tile:hover .plate, .card:hover { transform:none; }
+}
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+@media (max-width:760px) {
+  .layer, .fact { grid-template-columns:minmax(0,1fr); }
+  .cards { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+<div class="ground"></div>
+<div class="wrap">
+
+<header class="head">
+  <div class="caps">Панель адресной строки · клик без набора · предложение</div>
+  <h1 class="display">Продолжить</h1>
+  <p class="lede">
+    Сейчас нейтральный дропдаун — это витрина сайтов: восемь частых, восемь «рекомендуемых»
+    и, если модель тёплая, ряд карточек «вы это уже читали». Карточки — единственное, чего
+    облако сделать не может. Их не трогаем. Меняем то, что занимает всю площадь до них:
+    две папки плиток, которые отвечают на вопрос, у которого в браузере уже есть стол.
+  </p>
+</header>
+
+<section class="section">
+  <span class="caps">Как сейчас</span>
+  <h2>Четыре слоя, один жест</h2>
+  <p>
+    Клик в нетронутую строку открывает режим панели, не список подсказок
+    (<code>useOmniboxPanel</code> → <code>suggestdropdown.tsx</code>). Enter без выбора по-прежнему
+    ведёт по адресу в строке. Дорисовка приезжает только снизу, иначе плитки уехали бы из-под курсора.
+  </p>
+  <div class="now">
+    <div class="keep">
+      <b>Полоска сайта</b>
+      <span>Сводка замочка: хост дисплейным 17, щит, выданные разрешения, «изменилось с прошлого раза». Клик уводит в поповер. На хабе нет.</span>
+      <span class="src">оставить</span>
+    </div>
+    <div class="hurt">
+      <b>Часто посещаемые</b>
+      <span>Восемь доменов из трёхсот записей истории, дедуп по сайту, лучший <code>scoreEntry</code>. Открытую страницу выбрасываем.</span>
+      <span class="src">тот же список, что стол</span>
+    </div>
+    <div class="hurt">
+      <b>Рекомендуемые</b>
+      <span>Ручной набор из настроек. Пока человек карандаш не трогал — дефолт: Почта, Календарь, Диск, GitHub, Notion, Figma, ChatGPT, YouTube. Произвольный адрес вписать нельзя: окно дропдауна <code>focusable: false</code>.</span>
+      <span class="src">четвёртый набор ссылок</span>
+    </div>
+    <div class="keep">
+      <b>Вы это уже читали</b>
+      <span>До четырёх карточек из своей истории по заголовку открытой страницы. Только на тёплой модели, пустой ответ не кэшируем. Появляется вторым пакетом.</span>
+      <span class="src">не трогаем</span>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <span class="caps">Зачем щёлкают</span>
+  <h2>Витрина отвечает не на тот вопрос</h2>
+  <p>
+    Стол и закреплённые вкладки уже держат «куда я хожу». Щелчок в строку, пока открыта статья, —
+    про <b>этот сеанс</b>: что со страницей, куда вернуться, не закрывал ли я это минуту назад,
+    не лежит ли то же в другом окне. Плитки на это не умеют: они ведут на <b>сайт</b>, а не на страницу.
+  </p>
+  <div class="stack">
+    <div class="layer">
+      <div><div class="n">1</div><div class="tag keep-tag">есть</div></div>
+      <div>
+        <b>Эта страница</b>
+        <span>Полоска сайта. Единственный слой, которого нет ни на столе, ни в закреплённых.</span>
+      </div>
+    </div>
+    <div class="layer">
+      <div><div class="n">2</div><div class="tag hurt-tag">дыры</div></div>
+      <div>
+        <b>Страница, которую только что закрыл, или вкладка в другом окне</b>
+        <span>
+          Стек <code>closedTabs</code> уже есть (десять адресов, Ctrl+Shift+T). Вкладки чужого окна
+          уже приезжают в подсказки с <code>windowId</code> — но только после набора. В нейтральной
+          панели их нет.
+        </span>
+      </div>
+    </div>
+    <div class="layer">
+      <div><div class="n">3</div><div class="tag keep-tag">есть</div></div>
+      <div>
+        <b>Я это уже читал — где?</b>
+        <span>Карточки. Связанное ищется по заголовку, не эмбеддингами. Форму, порядок и появление снизу не меняем.</span>
+      </div>
+    </div>
+    <div class="layer">
+      <div><div class="n">4</div><div class="tag ok-tag">оставить строку</div></div>
+      <div>
+        <b>Прыгнуть на частый сайт, не открывая стол</b>
+        <span>
+          Валидный жест, пока читаешь. Ему хватает одной полки из восьми, а не двух папок.
+          Дефолтный набор Gmail/ChatGPT до первой правки карандаша — не «ваши сайты», а заглушка.
+        </span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <span class="caps">Макет</span>
+  <h2>Полоска, страницы, полка, карточки</h2>
+  <p>
+    Первый кадр — полоска и «продолжить». Полка частых под ними, в одну линию. Карточки — как сейчас,
+    вторым пакетом снизу. Предвыбора нет: Enter по-прежнему идёт по адресу в строке.
+  </p>
+
+  <div class="controls">
+    <div class="seg" id="which" role="group" aria-label="Вариант">
+      <button data-v="new" aria-pressed="true">Предложение</button>
+      <button data-v="old" aria-pressed="false">Как сейчас</button>
+    </div>
+    <div class="seg" id="scene" role="group" aria-label="Сцена">
+      <button data-s="page" aria-pressed="true">Статья</button>
+      <button data-s="hub" aria-pressed="false">Новая вкладка</button>
+    </div>
+    <div class="seg" id="theme" role="group" aria-label="Тема">
+      <button data-t="light" aria-pressed="true">Светлая</button>
+      <button data-t="dark" aria-pressed="false">Тёмная</button>
+    </div>
+    <span class="hint" id="hint">Наведите строки и плитки</span>
+  </div>
+
+  <div class="stage">
+    <div class="chrome">
+      <div class="nav" aria-hidden="true">
+        <i><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 18 9 12l6-6"/></svg></i>
+        <i><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m9 18 6-6-6-6"/></svg></i>
+      </div>
+      <div class="omni">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color:var(--text-faint)"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span class="host" id="omniHost">habr.com/ru/articles/electron-tabs</span>
+        <span class="caret"></span>
+      </div>
+    </div>
+    <div class="dd-wrap"><div class="dd" id="dd"></div></div>
+  </div>
+</section>
+
+<section class="section">
+  <span class="caps">Почему так</span>
+  <h2>Что даёт перестановка, кроме вида</h2>
+  <dl class="facts">
+    <div class="fact">
+      <dt>Закрытая вкладка видна</dt>
+      <dd>Ctrl+Shift+T знает меньшинство. Строка «закрыта 2 мин назад» не учит хоткей — она и есть хоткей. Стек уже хранит десять адресов; не хватает заголовка из истории и времени закрытия рядом.</dd>
+    </div>
+    <div class="fact">
+      <dt>Чужое окно перестаёт прятаться</dt>
+      <dd>Вкладку можно унести в другое окно живьём. Найти её потом сейчас можно только набрав текст. Метка «окно 2» показывает её в том же списке, без запроса.</dd>
+    </div>
+    <div class="fact">
+      <dt>Карточки остаются карточками</dt>
+      <dd>Связанное — про <b>страницы</b>, у них заголовок в две строки. Сжимать их в ряд «вернулись» значит смешать два разных ответа. Они приезжают снизу, как сейчас, и не двигают полку.</dd>
+    </div>
+    <div class="fact">
+      <dt>Стрелки снова значат одно</dt>
+      <dd>Сейчас плоский индекс идёт по сетке 4×2, потом по второй сетке, потом по карточкам. В сетке «вниз» — не сосед. Строки «продолжить» и карточки ходят стрелками; плитки — только мышью, как полка избранного в Safari.</dd>
+    </div>
+    <div class="fact">
+      <dt>Панель короче в первом кадре</dt>
+      <dd>Шесть строк плюс одна полка вместо двух папок 4×2. Карточка ловит мышь всей площадью: чем она выше до дорисовки, тем больше страницы под ней недоступно.</dd>
+    </div>
+    <div class="fact">
+      <dt>Дефолт больше не притворяется вами</dt>
+      <dd>Пока <code>recommendedSites === null</code>, полка — только frecency. Карандаш по-прежнему переносит частый сайт в набор; пустой массив после правки остаётся пустым, дефолт обратно не подсовываем.</dd>
+    </div>
+  </dl>
+</section>
+
+<section class="section">
+  <span class="caps">Данные</span>
+  <h2>Почти всё уже лежит</h2>
+  <div class="grid3">
+    <div class="choice">
+      <div class="t">Стек закрытых</div>
+      <div class="d"><code>TabManager.closedTabs</code> — до десяти URL этого окна. Заголовок берём из истории тем же <code>getHistory</code>, что собирает плитки. Новое поле одно: время закрытия рядом с адресом.</div>
+    </div>
+    <div class="choice">
+      <div class="t">Чужие окна</div>
+      <div class="d">В обычных подсказках вкладка уже приходит с <code>windowId</code> (<code>useOmniboxSuggestions</code>, <code>activateTabInWindow</code>). В нейтральной панели этот список просто показываем сразу, без набора.</div>
+    </div>
+    <div class="choice">
+      <div class="t">Связанное</div>
+      <div class="d">Тот же <code>getRelatedPages</code> / <code>RelatedHistory</code>. Лимит 4, кэш пустого нет, монтируется снизу. Иконка искры и зелёная точка — как сейчас.</div>
+    </div>
+    <div class="choice">
+      <div class="t">Полка</div>
+      <div class="d">Один массив из восьми: сначала кастомный набор, потом frecency без дублей. Дефолт Gmail…YouTube в панель не кладём. Карандаш и <code>RECOMMENDED_MAX = 8</code> остаются.</div>
+    </div>
+    <div class="choice">
+      <div class="t">Выбор</div>
+      <div class="d">Плоский <code>suggestions</code> в тулбаре не делим. Порядок: строки «продолжить», затем карточки. Плитки в массив не входят — Enter по ним только с мыши, как сейчас по <code>pick</code>.</div>
+    </div>
+    <div class="choice">
+      <div class="t">Новая вкладка</div>
+      <div class="d">Полоски нет, связанных нет — под ней и так стол. Панель сжимается до «продолжить» (если стек не пуст) и полки. Пустой профиль — честная строка «начните вводить», как сейчас.</div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <span class="caps">Границы</span>
+  <h2>Чего здесь нет</h2>
+  <div class="bounds">
+    <div class="bound"><span class="x">✕</span><span><b>Не пересобираем «вы это уже читали».</b> Не строки, не другая подпись, не другая иконка, не другой лимит. Это и есть ИИ-фишка панели.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не ряд действий над адресом.</b> Копирование уже живёт в строке, перевод — у страницы, поиск по сайту — Ctrl+E. Третий вход в те же команды только размазывает жест.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не вторая история.</b> «Продолжить» — минуты и это окно плюс открытое в другом. Потолок три строки, иначе карточки связанные уезжают в скролл. Архив — библиотека.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не цветные плашки доменов.</b> Это уже пробовали: восемь квадратиков в ряд читаются рябью. <code>SitePlate</code> остаётся нейтральным <code>--surface</code>.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не режим набора в дропдауне.</b> Окно по-прежнему неактивируемое. Карандаш только переносит уже известный сайт.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не трогаем подсказки после первой буквы.</b> Герой, поиск, вкладки, разделы настроек — как есть.</span></div>
+  </div>
+
+  <div class="qs">
+    <div class="q">
+      <b>Сливать ли набор с frecency в одну полку?</b>
+      <span>На макете — да: закреплённые карандашом стоят первыми, частые добирают до восьми. Отдельная папка «Рекомендуемые» имеет смысл, только если человек её собрал и мы хотим это подчеркнуть. Иначе это снова две витрины.</span>
+    </div>
+    <div class="q">
+      <b>Сколько строк в «Продолжить»?</b>
+      <span>На макете три: две закрытые и одна из другого окна. Четыре уже упираются в потолок карточки (520): полоска + полка + ряд связанных не оставляют места, и ИИ-блок уезжает во внутренний скролл. Больше — в библиотеку.</span>
+    </div>
+    <div class="q">
+      <b>Показывать ли вкладки других окон, если окно одно?</b>
+      <span>Нет. Блок появляется, только когда есть что сказать: закрытая вкладка или чужое окно. Иначе «продолжить» молчит, и это честно.</span>
+    </div>
+    <div class="q">
+      <b>Нужен ли карандаш, если полка одна?</b>
+      <span>Да, иначе набор из настроек некуда править на месте. В режиме правки плитка по-прежнему не ведёт на сайт.</span>
+    </div>
+  </div>
+</section>
+
+<footer class="foot"><div class="caps">Oblako · панель адресной строки · предложение, не правка</div></footer>
+</div>
+
+<script>
+(function () {
+  var ICO = function (host) {
+    return 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(host) + '&sz=128';
+  };
+  function plate(host, size) {
+    size = size || 44;
+    var img = size >= 40 ? 26 : (size >= 22 ? 14 : 12);
+    var r = size >= 40 ? 12 : (size >= 22 ? 7 : 6);
+    return '<span class="plate" style="width:' + size + 'px;height:' + size + 'px;border-radius:' + r + 'px">' +
+      '<img src="' + ICO(host) + '" alt="" width="' + img + '" height="' + img + '"' +
+      ' onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'">' +
+      '<span class="let" style="display:none">' + host.charAt(0).toUpperCase() + '</span></span>';
+  }
+  function mini(host) {
+    return '<span class="mini">' +
+      '<img src="' + ICO(host) + '" alt="" onerror="this.style.display=\'none\'">' +
+      '</span>';
+  }
+
+  var FREQ = [
+    ['habr.com', 'habr'], ['youtube.com', 'youtube'], ['github.com', 'github'],
+    ['ozon.ru', 'ozon'], ['t.me', 't'], ['mail.google.com', 'mail'],
+    ['wildberries.ru', 'wildberries'], ['dtf.ru', 'dtf']
+  ];
+  var DEFAULT_REC = [
+    ['mail.google.com', 'Почта'], ['calendar.google.com', 'Календарь'],
+    ['drive.google.com', 'Диск'], ['github.com', 'github'],
+    ['notion.so', 'notion'], ['figma.com', 'figma'],
+    ['chatgpt.com', 'chatgpt'], ['youtube.com', 'youtube']
+  ];
+  var RELATED = [
+    ['vc.ru', 'Что не так с браузерными ИИ-агентами'],
+    ['3dnews.ru', 'Обзор видеокарт для локального инференса'],
+    ['habr.com', 'Заморозка вкладок через CDP в Electron 42'],
+    ['github.com', 'node-llama-cpp: Vulkan backend, issue #412']
+  ];
+  var RESUME = [
+    { host: 'habr.com', title: 'Как Electron экономит память на фоновых вкладках', meta: 'закрыта 2 мин назад' },
+    { host: 'github.com', title: 'node-llama-cpp — issue #412: Vulkan backend', meta: 'окно 2', tag: true },
+    { host: 'ozon.ru', title: 'iQOO Z11 5G, 8/128 ГБ — корзина', meta: 'закрыта 20 мин назад' }
+  ];
+
+  function tiles(list) {
+    return list.map(function (p) {
+      return '<div class="tile">' + plate(p[0], 44) + '<span class="tlab">' + p[1] + '</span></div>';
+    }).join('');
+  }
+  function folder(title, inner, action) {
+    return '<section class="folder"><div class="folder-head">' + title + (action || '') + '</div>' +
+      '<div class="tiles">' + inner + '</div></section>';
+  }
+  var PENCIL = '<button class="pencil" type="button" tabindex="-1" title="Изменить набор">' +
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+    '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>';
+
+  function cards() {
+    return '<div class="sec div">' +
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--dot-local)" stroke-width="2">' +
+      '<path d="m12 3-1.9 5.8H4l5 3.6L7.1 18 12 14.4 16.9 18 15 12.4l5-3.6h-6.1Z"/></svg>' +
+      'Вы это уже читали</div>' +
+      '<div class="cards">' + RELATED.map(function (r) {
+        return '<div class="card"><div class="who">' + mini(r[0]) + '<span>' + r[0] + '</span></div>' +
+          '<span class="ttl">' + r[1] + '</span></div>';
+      }).join('') + '</div>';
+  }
+
+  function header() {
+    return '<div class="head-row">' + plate('habr.com', 34) +
+      '<div style="min-width:0;flex:1">' +
+        '<div class="disp">' +
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-faint);flex:none"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
+          'habr.com</div>' +
+        '<div class="changed">' +
+          '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="flex:none"><path d="m12 3-1.9 5.8H4l5 3.6L7.1 18 12 14.4 16.9 18 15 12.4l5-3.6h-6.1Z"/></svg>' +
+          '<span>4 новых комментария с прошлого визита</span></div>' +
+      '</div>' +
+      '<span class="pill">' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--dot-local)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>' +
+        '47 запросов</span>' +
+      '<span class="pill">' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>' +
+      '</span>' +
+      '<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>' +
+    '</div>';
+  }
+
+  function resume() {
+    return '<div class="sec">' +
+      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 5v4h4"/></svg>' +
+      'Продолжить</div><div class="rows">' +
+      RESUME.map(function (r) {
+        var meta = r.tag
+          ? '<span class="tag">' + r.meta + '</span>'
+          : '<span class="meta">' + r.meta + '</span>';
+        return '<div class="row">' +
+          '<span class="fav"><img src="' + ICO(r.host) + '" alt=""></span>' +
+          '<span class="mid"><div class="t">' + r.title + '</div><div class="h">' + r.host + '</div></span>' +
+          meta + '</div>';
+      }).join('') + '</div>';
+  }
+
+  function render() {
+    var view = document.querySelector('#which [aria-pressed="true"]').getAttribute('data-v');
+    var scene = document.querySelector('#scene [aria-pressed="true"]').getAttribute('data-s');
+    var dd = document.getElementById('dd');
+    var host = document.getElementById('omniHost');
+    var hint = document.getElementById('hint');
+    var onPage = scene === 'page';
+    host.textContent = onPage ? 'habr.com/ru/articles/electron-tabs' : '';
+    host.nextElementSibling.style.display = onPage ? 'none' : 'block';
+    if (!onPage) host.textContent = '';
+
+    if (view === 'old') {
+      hint.textContent = 'Две папки плиток — весь первый кадр';
+      var body = '<div class="folders">' +
+        folder('Часто посещаемые', tiles(FREQ)) +
+        folder('Рекомендуемые', tiles(DEFAULT_REC), PENCIL) +
+        '</div>';
+      dd.innerHTML = (onPage ? header() : '') + body + (onPage ? cards() : '');
+      return;
+    }
+
+    hint.textContent = 'Стрелки — по строкам и карточкам; плитки только мышью';
+    var shelf = folder('Часто', tiles(FREQ), PENCIL);
+    if (onPage) {
+      dd.innerHTML = header() + resume() + '<div class="folders">' + shelf + '</div>' + cards();
+    } else {
+      dd.innerHTML = resume() + '<div class="folders">' + shelf + '</div>';
+    }
+  }
+
+  function seg(id, apply) {
+    var box = document.getElementById(id);
+    var bs = Array.prototype.slice.call(box.querySelectorAll('button'));
+    bs.forEach(function (b) {
+      b.addEventListener('click', function () {
+        bs.forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        apply(b);
+      });
+    });
+  }
+  seg('which', render);
+  seg('scene', render);
+  seg('theme', function (b) { document.documentElement.setAttribute('data-theme', b.getAttribute('data-t')); });
+  render();
+})();
+</script>
+</body>
+</html>

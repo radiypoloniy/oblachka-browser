@@ -1,0 +1,569 @@
+<title>Панель возвращения</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700;800&display=swap">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   ПАНЕЛЬ ВОЗВРАЩЕНИЯ — заход третий, от UX, а не от оформления.
+   Два предыдущих захода красили витрину сайтов и оба были отклонены по делу:
+   беда не в том, КАК она нарисована, а в том, ЧТО в ней лежит.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1); --ease-standard:cubic-bezier(.2,0,.2,1);
+
+  --dot-local:#34C759; --warning:#FF9500; --danger:#FF3B30;
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEEF1; --n4:#E2E3E8; --n5:#DBDCE3; --n7:#BBBECE;
+  --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --app-bg:var(--n4); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14); --divider-strong:rgba(60,60,67,.24);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+  --selected:color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n7:#55555E;
+    --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --on-accent:#121213;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+    --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+    --shadow-tint:#000000; --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n7:#55555E;
+  --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+  --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+  --shadow-tint:#000000; --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+}
+:root {
+  --shadow-lvl1: 0 0 0 1px color-mix(in srgb, var(--shadow-tint) 5%, transparent), 0 1px 2px color-mix(in srgb, var(--shadow-tint) 5%, transparent);
+  --shadow-lvl2:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+  --shadow-lvl3:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 9%, transparent),
+    0 12px 22px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 36px 56px color-mix(in srgb, var(--shadow-tint) 10%, transparent);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.55);
+}
+
+* { box-sizing:border-box; }
+body { margin:0; font-family:var(--font-ui); font-size:14px; line-height:1.5; color:var(--text-body); background:var(--app-bg); -webkit-font-smoothing:antialiased; }
+.ground { position:fixed; inset:0; z-index:0; pointer-events:none; background:linear-gradient(168deg,var(--ground-1) 0%,var(--ground-2) 46%,var(--ground-3) 100%); }
+.ground::after {
+  content:""; position:absolute; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:var(--grain-op); mix-blend-mode:overlay;
+}
+
+.wrap { position:relative; z-index:1; max-width:1080px; margin:0 auto; padding:var(--sp6) var(--sp4) 72px; }
+h1,h2,h3 { margin:0; text-wrap:balance; }
+.display { font-family:var(--font-display); font-weight:700; letter-spacing:-.03em; line-height:1.05; color:var(--text-strong); }
+.caps { font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); }
+.lede { max-width:68ch; color:var(--text-muted); margin:var(--sp3) 0 0; }
+p { margin:var(--sp3) 0 0; max-width:68ch; }
+b { color:var(--text-strong); }
+code { font-family:var(--font-mono); font-size:12px; background:var(--sunken); padding:1px 5px; border-radius:4px; }
+
+.head { padding:var(--sp8) 0 var(--sp6); }
+.head h1 { font-size:clamp(30px,4.4vw,46px); }
+
+.section { margin-top:var(--sp8); padding:var(--sp8) var(--sp6); border-radius:20px; background:var(--surface); box-shadow:var(--shadow-lvl2), var(--inner-light); }
+.section > .caps { display:block; margin-bottom:var(--sp2); }
+.section h2 { font-size:25px; font-family:var(--font-display); font-weight:700; letter-spacing:-.025em; color:var(--text-strong); }
+
+/* ── Диагноз: три копии ────────────────────────────────────────────────────── */
+.copies { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--sp3); margin-top:var(--sp6); }
+.copy { padding:var(--sp4); border-radius:14px; border:1px solid var(--divider); }
+.copy b { display:block; font-family:var(--font-display); font-size:14px; letter-spacing:-.01em; }
+.copy span { display:block; margin-top:6px; font-size:12.5px; color:var(--text-muted); }
+.copy .where { display:block; margin-top:var(--sp3); font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint); }
+
+/* ── Таблица намерений ─────────────────────────────────────────────────────── */
+.intents { margin-top:var(--sp6); }
+.intent { display:grid; grid-template-columns:56px minmax(0,1fr) 132px; gap:var(--sp4); align-items:start; padding:var(--sp3) 0; border-top:1px solid var(--divider); }
+.intent .share { font-family:var(--font-display); font-weight:800; font-size:19px; letter-spacing:-.02em; color:var(--text-strong); font-variant-numeric:tabular-nums; }
+.intent b { display:block; }
+.intent span { font-size:13px; color:var(--text-muted); }
+.intent .now { font-family:var(--font-mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; padding-top:3px; }
+.intent .now.bad { color:var(--danger); }
+.intent .now.ok { color:var(--text-faint); }
+
+/* ══ МАКЕТ ═════════════════════════════════════════════════════════════════ */
+.controls { display:flex; flex-wrap:wrap; gap:var(--sp3); align-items:center; margin-top:var(--sp6); }
+.seg { display:flex; gap:2px; padding:3px; border-radius:999px; background:var(--sunken); }
+.seg button { border:0; cursor:pointer; font:inherit; font-size:13px; font-weight:500; padding:6px 14px; border-radius:999px; background:transparent; color:var(--text-muted); }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); font-weight:600; }
+.hint { font-size:12.5px; color:var(--text-faint); }
+
+.win { margin-top:var(--sp6); border-radius:16px; overflow:hidden; background:var(--app-bg); box-shadow:var(--shadow-lvl2); }
+.bar { display:flex; align-items:center; gap:var(--sp3); padding:10px var(--sp4); }
+.omni {
+  flex:1; display:flex; align-items:center; gap:var(--sp2); height:34px; padding:0 var(--sp3);
+  border-radius:999px; background:var(--sunken);
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.omni .ph { font-size:13px; color:var(--text-faint); }
+.omni .caret { width:1px; height:15px; background:var(--accent); animation:blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity:0; } }
+
+.dd { margin:0 var(--sp4) var(--sp4); border-radius:16px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow-lvl3); }
+
+/* Ряд действий над текущим адресом */
+.acts { display:flex; align-items:center; gap:var(--sp2); padding:10px var(--sp3); border-bottom:1px solid var(--divider); flex-wrap:wrap; }
+.act {
+  display:inline-flex; align-items:center; gap:7px; padding:6px 11px; border-radius:999px;
+  background:var(--sunken); color:var(--text-body); font-size:12.5px; cursor:pointer;
+  border:1px solid transparent; transition:background 120ms var(--ease-standard);
+}
+.act:hover { background:var(--selected); color:var(--text-strong); }
+.act kbd { font-family:var(--font-mono); font-size:10px; color:var(--text-faint); border:1px solid var(--divider-strong); border-radius:4px; padding:1px 4px; }
+.act .site { font-weight:600; color:var(--text-strong); }
+
+/* Группа строк */
+.grp { padding:var(--sp3) 0 var(--sp2); }
+.grp-cap { display:flex; align-items:center; gap:7px; padding:0 var(--sp4) 6px; font-family:var(--font-mono); font-size:10px; font-weight:500; letter-spacing:.15em; text-transform:uppercase; color:var(--text-muted); }
+.grp + .grp { border-top:1px solid var(--divider); }
+
+.row {
+  display:grid; grid-template-columns:22px minmax(0,1fr) auto; gap:var(--sp3);
+  align-items:center; padding:7px var(--sp4); cursor:pointer;
+  transition:background 100ms var(--ease-standard);
+}
+.row:hover, .row[data-on="1"] { background:var(--selected); }
+.row .fav { width:22px; height:22px; border-radius:7px; display:grid; place-items:center; font-family:var(--font-display); font-weight:700; font-size:11px; color:#F2EDE1; }
+.row .mid { min-width:0; display:flex; align-items:baseline; gap:var(--sp2); }
+.row .t { font-size:13.5px; color:var(--text-strong); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.row .h { font-size:11.5px; color:var(--text-faint); flex:none; }
+.row .when { font-family:var(--font-mono); font-size:10.5px; color:var(--text-faint); white-space:nowrap; }
+.row .tag {
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+  padding:2px 6px; border-radius:4px; border:1px solid var(--divider-strong); color:var(--text-faint); white-space:nowrap;
+}
+
+/* Тихая полка частых — одной строкой внизу */
+.quick { display:flex; align-items:center; gap:var(--sp2); padding:10px var(--sp4) 12px; border-top:1px solid var(--divider); flex-wrap:wrap; }
+.quick .qcap { font-family:var(--font-mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-faint); margin-right:var(--sp1); }
+.qsite { width:26px; height:26px; border-radius:8px; display:grid; place-items:center; font-family:var(--font-display); font-weight:700; font-size:12px; color:#F2EDE1; cursor:pointer; transition:transform 120ms var(--ease-out); }
+.qsite:hover { transform:translateY(-2px); }
+
+/* ── Старый вид для сравнения ──────────────────────────────────────────────── */
+.old-head { display:flex; align-items:center; gap:var(--sp2); padding:11px var(--sp4); border-bottom:1px solid var(--divider); font-size:13px; }
+.old-body { padding:12px 14px 14px; }
+.old-cap { font-family:var(--font-mono); font-size:10.5px; letter-spacing:.15em; text-transform:uppercase; color:var(--text-muted); padding:0 8px 6px; }
+.old-tiles { display:flex; flex-wrap:wrap; gap:2px; }
+.old-tile { width:76px; display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 2px 7px; border-radius:10px; }
+.old-plate { width:44px; height:44px; border-radius:12px; background:var(--surface); box-shadow:0 1px 3px rgba(0,0,0,.14); display:grid; place-items:center; font-weight:700; font-size:17px; color:var(--text-muted); }
+.old-lab { font-size:11px; color:var(--text-muted); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.old-folder + .old-folder { margin-top:10px; padding-top:12px; border-top:1px solid var(--divider); }
+.old-cards { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; padding:0 16px 16px; }
+.old-card { padding:9px 10px; border-radius:12px; border:1px solid var(--divider); }
+.old-card .t { font-size:13px; color:var(--text-strong); line-height:1.35; }
+
+/* ── Разбор ────────────────────────────────────────────────────────────────── */
+.facts-dl { margin-top:var(--sp4); display:grid; gap:var(--sp3); }
+.fact { display:grid; grid-template-columns:140px minmax(0,1fr); gap:var(--sp3); align-items:start; }
+.fact dt { font-family:var(--font-mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-faint); padding-top:3px; }
+.fact dd { margin:0; font-size:13.5px; color:var(--text-body); }
+
+.bounds { margin-top:var(--sp6); display:grid; gap:var(--sp3); }
+.bound { display:grid; grid-template-columns:20px minmax(0,1fr); gap:var(--sp3); align-items:start; }
+.bound .x { color:var(--danger); font-family:var(--font-mono); font-size:15px; line-height:1.3; }
+.bound span { font-size:13.5px; color:var(--text-muted); }
+
+.qs { margin-top:var(--sp6); display:grid; gap:var(--sp3); }
+.q { padding:var(--sp4); border-radius:16px; background:var(--sunken); }
+.q b { display:block; font-family:var(--font-display); font-size:15px; letter-spacing:-.01em; }
+.q span { display:block; margin-top:6px; font-size:13.5px; color:var(--text-muted); }
+
+.foot { margin-top:var(--sp8); text-align:center; }
+
+@media (prefers-reduced-motion: reduce) { * { transition-duration:1ms !important; animation:none !important; } }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+@media (max-width:760px) {
+  .intent { grid-template-columns:44px minmax(0,1fr); }
+  .intent .now { grid-column:2; }
+  .fact { grid-template-columns:minmax(0,1fr); gap:var(--sp1); }
+}
+</style>
+
+<div class="ground"></div>
+<div class="wrap">
+
+<header class="head">
+  <div class="caps">Панель адресной строки · заход третий · от UX</div>
+  <h1 class="display">Панель возвращения</h1>
+  <p class="lede">
+    Два прошлых захода красили витрину сайтов, и оба были отклонены по делу. Дело не в том,
+    <b>как</b> она нарисована, а в том, <b>что</b> в ней лежит: панель показывает список, до
+    которого в браузере уже есть три других пути, и тратит на него всю площадь. Ниже — разбор
+    того, зачем человек вообще щёлкает в адресную строку, и что там должно быть вместо витрины.
+  </p>
+</header>
+
+<!-- ══ ДИАГНОЗ ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Диагноз</span>
+  <h2>Панель — третья копия одного и того же списка</h2>
+  <p>
+    «Часто посещаемые» и «Рекомендуемые» — это сайты, куда человек ходит. Ровно тот же список уже
+    лежит в браузере в трёх местах, и каждое из них ближе или удобнее.
+  </p>
+
+  <div class="copies">
+    <div class="copy">
+      <b>Рабочий стол</b>
+      <span>Плитки быстрых ссылок, крупные, с раскладкой под себя. Открывается по Ctrl+T.</span>
+      <span class="where">копия 1</span>
+    </div>
+    <div class="copy">
+      <b>Закреплённые вкладки</b>
+      <span>Сайты, куда человек ходит постоянно, стоят в сайдбаре всегда и открываются в один клик.</span>
+      <span class="where">копия 2</span>
+    </div>
+    <div class="copy">
+      <b>Закладки</b>
+      <span>Полка в сайдбаре и панель. То, что человек отобрал руками.</span>
+      <span class="where">копия 3</span>
+    </div>
+    <div class="copy" style="border-color:var(--danger)">
+      <b>Панель адресной строки</b>
+      <span>Восемь частых плюс восемь «рекомендуемых» — и это <b>весь</b> её экран. Плюс отдельный карандаш, чтобы собрать четвёртый по счёту набор ссылок.</span>
+      <span class="where" style="color:var(--danger)">копия 4</span>
+    </div>
+  </div>
+
+  <p>
+    Вот почему всё, что я с ней делал, выглядело нелепо: <b>нельзя удачно оформить содержимое,
+    которого не должно быть</b>. Плитки крупнее — четвёртая копия крупнее. Плитки цветнее —
+    четвёртая копия цветнее.
+  </p>
+</section>
+
+<!-- ══ НАМЕРЕНИЯ ═════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 1</span>
+  <h2>Зачем на самом деле щёлкают в строку</h2>
+  <p>
+    Состояний всего четыре, и панель обслуживает то, которое встречается реже прочих. Доли —
+    моя оценка по здравому смыслу, а не замер: телеметрии у нас нет и не будет. Но порядок
+    величин тут спорить не заставляет.
+  </p>
+
+  <div class="intents">
+    <div class="intent">
+      <span class="share">~60%</span>
+      <div>
+        <b>Сейчас наберу</b>
+        <span>Запрос или адрес. Панель для этого человека — помеха на пути к подсказкам, и её задача одна: не мешать и мгновенно уступить место, как только он начал печатать.</span>
+      </div>
+      <span class="now ok">обслужено: не мешать</span>
+    </div>
+    <div class="intent">
+      <span class="share">~25%</span>
+      <div>
+        <b>Хочу вернуться</b>
+        <span>К только что закрытой вкладке, к вкладке в другом окне, к статье, которую читал вчера. Ctrl+Shift+T знает меньшинство; вкладку в соседнем окне сейчас можно найти только набрав текст.</span>
+      </div>
+      <span class="now bad">не обслужено вовсе</span>
+    </div>
+    <div class="intent">
+      <span class="share">~10%</span>
+      <div>
+        <b>Хочу что-то сделать с этим адресом</b>
+        <span>Скопировать, поискать внутри этого сайта, перевести страницу. Человек щёлкнул в строку именно потому, что его интересует ЭТА строка.</span>
+      </div>
+      <span class="now bad">не обслужено вовсе</span>
+    </div>
+    <div class="intent">
+      <span class="share">~5%</span>
+      <div>
+        <b>Пойду на частый сайт</b>
+        <span>Тот самый случай, ради которого построена вся панель — и единственный, у которого уже есть три других пути.</span>
+      </div>
+      <span class="now ok">обслужено целиком</span>
+    </div>
+  </div>
+
+  <p>
+    Отсюда и вся перестройка: <b>панель должна отвечать второму и третьему состоянию, а четвёртому
+    отдать одну строку внизу</b>. Не потому что частые сайты плохи, а потому что им и так есть где
+    жить.
+  </p>
+</section>
+
+<!-- ══ МАКЕТ ═════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 2</span>
+  <h2>Что вместо витрины</h2>
+  <p>
+    И форма меняется вместе с содержимым: <b>строки, а не плитки</b>. Возвращаются не к сайтам, а
+    к конкретным страницам, у которых есть заголовок и время, — в плитку это не влезает. Плюс
+    через секунду на этом же месте появятся подсказки по вводу, и они тоже строки: глазу не надо
+    будет перестраиваться с сетки на список.
+  </p>
+
+  <div class="controls">
+    <div class="seg" id="which" role="group" aria-label="Вариант">
+      <button data-v="new" aria-pressed="true">Предложение</button>
+      <button data-v="old" aria-pressed="false">Как сейчас</button>
+    </div>
+    <div class="seg" id="theme" role="group" aria-label="Тема">
+      <button data-t="light" aria-pressed="true">Светлая</button>
+      <button data-t="dark" aria-pressed="false">Тёмная</button>
+    </div>
+    <span class="hint">Строки живые — наведите</span>
+  </div>
+
+  <div class="win" data-view="new">
+    <div class="bar">
+      <div class="omni">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color:var(--text-faint)"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="ph">Введите запрос или адрес</span><span class="caret"></span>
+      </div>
+    </div>
+
+    <div class="dd">
+      <!-- Действия над текущим адресом -->
+      <div class="acts">
+        <span class="act">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          Искать по <span class="site">habr.com</span> <kbd>Tab</kbd>
+        </span>
+        <span class="act">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+          Скопировать адрес
+        </span>
+        <span class="act">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M9 4v2c0 4-2.2 7.5-5 9M7 12c1.3 2.6 3.4 4.5 6 5.4"/><path d="m13 20 4-9 4 9M14.6 17h4.8"/></svg>
+          Перевести страницу
+        </span>
+      </div>
+
+      <!-- Вернуться -->
+      <div class="grp">
+        <div class="grp-cap">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 5v4h4"/></svg>
+          Вернуться
+        </div>
+        <div class="row" data-on="1" data-host="habr.com">
+          <span class="fav"></span>
+          <span class="mid"><span class="t">Как Electron экономит память на фоновых вкладках</span><span class="h">habr.com</span></span>
+          <span class="when">закрыта 2 мин назад</span>
+        </div>
+        <div class="row" data-host="github.com">
+          <span class="fav"></span>
+          <span class="mid"><span class="t">node-llama-cpp — issue #412: Vulkan backend</span><span class="h">github.com</span></span>
+          <span class="tag">окно 2</span>
+        </div>
+        <div class="row" data-host="ozon.ru">
+          <span class="fav"></span>
+          <span class="mid"><span class="t">iQOO Z11 5G, 8/128 ГБ — корзина</span><span class="h">ozon.ru</span></span>
+          <span class="when">закрыта 20 мин назад</span>
+        </div>
+        <div class="row" data-host="mail.google.com">
+          <span class="fav"></span>
+          <span class="mid"><span class="t">Входящие (3)</span><span class="h">mail.google.com</span></span>
+          <span class="tag">окно 2</span>
+        </div>
+      </div>
+
+      <!-- Дочитать -->
+      <div class="grp">
+        <div class="grp-cap">
+          <span style="width:6px;height:6px;border-radius:999px;background:var(--dot-local)"></span>
+          Вы это уже читали
+        </div>
+        <div class="row" data-host="vc.ru">
+          <span class="fav"></span>
+          <span class="mid"><span class="t">Что не так с браузерными ИИ-агентами</span><span class="h">vc.ru</span></span>
+          <span class="when">вчера · 4 новых комментария</span>
+        </div>
+        <div class="row" data-host="3dnews.ru">
+          <span class="fav"></span>
+          <span class="mid"><span class="t">Обзор видеокарт для локального инференса</span><span class="h">3dnews.ru</span></span>
+          <span class="when">5 дней назад · дополнено</span>
+        </div>
+      </div>
+
+      <!-- Частые — одной тихой строкой -->
+      <div class="quick" id="quick">
+        <span class="qcap">Часто</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="win" data-view="old" hidden>
+    <div class="bar">
+      <div class="omni">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color:var(--text-faint)"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="ph">Введите запрос или адрес</span><span class="caret"></span>
+      </div>
+    </div>
+    <div class="dd">
+      <div class="old-head">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-faint)"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <span style="color:var(--text-strong);font-weight:600">habr.com</span>
+        <span style="color:var(--text-faint);font-size:12px">· вырезано 47 запросов · камера, уведомления</span>
+      </div>
+      <div class="old-body">
+        <section class="old-folder"><div class="old-cap">Часто посещаемые</div><div class="old-tiles" id="oldTiles"></div></section>
+        <section class="old-folder"><div class="old-cap">Рекомендуемые</div><div class="old-tiles" id="oldPicked"></div></section>
+      </div>
+      <div class="old-cards" id="oldCards"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ ПОЧЕМУ ЭТО РАБОТАЕТ ═══════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Шаг 3</span>
+  <h2>Что это даёт, кроме вида</h2>
+
+  <dl class="facts-dl">
+    <div class="fact"><dt>Хоткей становится видимым</dt><dd>Ctrl+Shift+T знает меньшинство, а закрыть вкладку по ошибке случается со всеми. Строка «закрыта 2 минуты назад» решает это без обучения — и это самая частая правка, которую человек делает в браузере вообще.</dd></div>
+    <div class="fact"><dt>Многооконность перестаёт прятаться</dt><dd>У нас вкладку можно унести в другое окно живьём — фича, которой нет почти ни у кого. Но найти её потом можно только набрав текст. Метка «окно 2» показывает её без запроса.</dd></div>
+    <div class="fact"><dt>Поиск по сайту выходит из тени</dt><dd>Данные для этого уже есть: <code>SearchTargetStore</code> запоминает сайты, где человек искал, вместе с шаблоном запроса. Сейчас они доступны только через Ctrl+E; строка в панели делает их видимыми там, где человек и так стоит.</dd></div>
+    <div class="fact"><dt>Одно кольцо навигации</dt><dd>Плитки и строки сейчас лежат в одном массиве под стрелками — а стрелка вниз в сетке значит не то же, что в списке. Список убирает эту двусмысленность целиком.</dd></div>
+    <div class="fact"><dt>Панель становится короче</dt><dd>Шесть строк вместо двух рядов плиток плюс ряда карточек. Она открывается на секунду, и чем меньше её площадь, тем меньше она мешает набору.</dd></div>
+  </dl>
+
+  <p>
+    <b>Данные.</b> Ни одного нового поля не нужно: стек закрытых вкладок в <code>TabManager</code>
+    есть (там URL, заголовок берётся из истории), вкладки других окон уже приезжают в подсказки с
+    <code>windowId</code>, «вы это уже читали» уже собирается, цели поиска лежат в
+    <code>SearchTargetStore</code>. Единственное, чего нет, — время закрытия вкладки: сейчас стек
+    хранит только адреса. Это одно поле рядом с существующим.
+  </p>
+</section>
+
+<!-- ══ ГРАНИЦЫ ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <span class="caps">Границы</span>
+  <h2>Чего я делать не буду</h2>
+  <div class="bounds">
+    <div class="bound"><span class="x">✕</span><span><b>Не выбрасываю частые сайты совсем.</b> Они уезжают в одну тихую строку значками внизу — привычка кликать туда у людей есть, и ломать её ради чистоты идеи неправильно.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не трогаю режим подсказок.</b> Всё, что происходит после первой набранной буквы, остаётся как есть.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не делаю панель ещё одной историей.</b> «Вернуться» — это минуты и часы, а не архив: пять-шесть строк и всё. За архивом идут в библиотеку.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не крашу строки в цвета сайтов.</b> Прошлый заход это предлагал; в списке из шести строк шесть цветных значков — рябь. Значок остаётся значком.</span></div>
+    <div class="bound"><span class="x">✕</span><span><b>Не показываю «набор» как отдельную сущность.</b> Четвёртый настраиваемый список ссылок в браузере — это не фича, а долг. Если частые сайты остаются одной строкой, ручной набор туда же и сливается.</span></div>
+  </div>
+
+  <div class="qs">
+    <div class="q">
+      <b>Убирать ли «Мой набор» (бывшие «Рекомендуемые») совсем?</b>
+      <span>Это самое спорное место предложения. Набор кто-то мог собрать руками, и молча его выбросить нельзя. Варианты: слить с частыми в одну строку (набранные вручную идут первыми) или оставить полку, но ниже «вернуться».</span>
+    </div>
+    <div class="q">
+      <b>Сколько строк в «Вернуться»?</b>
+      <span>На макете четыре: две закрытые и две из другого окна. Больше — панель растёт и начинает мешать набору; меньше — теряется смысл. Предлагаю жёсткий потолок в пять.</span>
+    </div>
+    <div class="q">
+      <b>Нужен ли ряд действий, если есть поповер замочка?</b>
+      <span>«Скопировать» и «перевести» частично дублируют другие места. Бесспорна только первая — поиск по сайту: у неё нет другого входа, кроме Ctrl+E. Возможно, ряд стоит свести к ней одной.</span>
+    </div>
+    <div class="q">
+      <b>Что показывать на новой вкладке?</b>
+      <span>Там нет ни текущего сайта, ни, часто, закрытых вкладок. Панель сожмётся до строки частых — и это честно: на новой вкладке под ней и так лежит целый рабочий стол.</span>
+    </div>
+  </div>
+</section>
+
+<footer class="foot"><div class="caps">Oblako · панель адресной строки · предложение, не правка</div></footer>
+
+</div>
+
+<script>
+(function () {
+  // Тот же расчёт цвета, что в src/components/desktop/siteTint.ts: набор из 11 оттенков идёт
+  // от красного к синему и обрывается перед сиреневым.
+  var HUES = [8, 22, 36, 48, 96, 140, 168, 190, 210, 232, 348];
+  function hue(host) {
+    var h = 0;
+    for (var i = 0; i < host.length; i++) h = (h * 31 + host.charCodeAt(i)) | 0;
+    return HUES[Math.abs(h) % HUES.length];
+  }
+  function tint(host) { var x = hue(host); return 'linear-gradient(180deg, hsl(' + x + ' 62% 62%), hsl(' + x + ' 58% 48%))'; }
+  function letter(host) { return host.replace(/^www\./, '').charAt(0).toUpperCase(); }
+  function short(host) { return host.replace(/^www\./, ''); }
+
+  // Значки в строках — маленькие и спокойные: в списке они опознают источник, а не украшают.
+  Array.prototype.slice.call(document.querySelectorAll('.row')).forEach(function (r) {
+    var host = r.getAttribute('data-host');
+    var f = r.querySelector('.fav');
+    f.style.background = tint(host);
+    f.textContent = letter(host);
+    if (hue(host) >= 36 && hue(host) <= 140) f.style.color = '#14140F';
+  });
+
+  var QUICK = ['habr.com', 'youtube.com', 'github.com', 'ozon.ru', 't.me', 'mail.google.com', 'wildberries.ru', 'dtf.ru'];
+  var quick = document.getElementById('quick');
+  QUICK.forEach(function (host) {
+    var el = document.createElement('span');
+    el.className = 'qsite';
+    el.style.background = tint(host);
+    el.textContent = letter(host);
+    el.title = short(host);
+    if (hue(host) >= 36 && hue(host) <= 140) el.style.color = '#14140F';
+    quick.appendChild(el);
+  });
+
+  // Старый вид — для сравнения
+  var oldT = document.getElementById('oldTiles'), oldP = document.getElementById('oldPicked');
+  QUICK.forEach(function (host) {
+    var o = document.createElement('div');
+    o.className = 'old-tile';
+    o.innerHTML = '<span class="old-plate">' + letter(host) + '</span><span class="old-lab">' + short(host) + '</span>';
+    oldT.appendChild(o);
+  });
+  ['figma.com', 'claude.ai', 'notion.so', 'kinopoisk.ru'].forEach(function (host) {
+    var o = document.createElement('div');
+    o.className = 'old-tile';
+    o.innerHTML = '<span class="old-plate">' + letter(host) + '</span><span class="old-lab">' + short(host) + '</span>';
+    oldP.appendChild(o);
+  });
+  var oc = document.getElementById('oldCards');
+  [['habr.com', 'Как Electron экономит память на фоновых вкладках'],
+   ['vc.ru', 'Что не так с браузерными ИИ-агентами'],
+   ['github.com', 'node-llama-cpp: релиз с поддержкой Vulkan'],
+   ['3dnews.ru', 'Обзор видеокарт для локального инференса']].forEach(function (r) {
+    var d = document.createElement('div');
+    d.className = 'old-card';
+    d.innerHTML = '<div style="font-size:11px;color:var(--text-faint);margin-bottom:5px">' + r[0] + '</div><div class="t">' + r[1] + '</div>';
+    oc.appendChild(d);
+  });
+
+  function seg(id, apply) {
+    var box = document.getElementById(id);
+    var bs = Array.prototype.slice.call(box.querySelectorAll('button'));
+    bs.forEach(function (b) {
+      b.addEventListener('click', function () {
+        bs.forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        apply(b);
+      });
+    });
+  }
+  seg('which', function (b) {
+    var v = b.getAttribute('data-v');
+    Array.prototype.slice.call(document.querySelectorAll('.win')).forEach(function (w) {
+      w.hidden = w.getAttribute('data-view') !== v;
+    });
+  });
+  seg('theme', function (b) { document.documentElement.setAttribute('data-theme', b.getAttribute('data-t')); });
+})();
+</script>
