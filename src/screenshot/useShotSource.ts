@@ -1,6 +1,8 @@
-// Источник кадра в редакторе: страница — то, с чем вошли; окно — свежий desktopCapturer.
+// Источник кадра в редакторе: страница / окно / вырез элемента с живой страницы.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { cropReady, parseViewportFrac, viewportFracToShot } from '../../shared/screenshotMarkup';
+import { cropShot, loadShot } from './paint';
 import type { ShotSource } from './SourceSeg';
 
 export function useShotSource(pageRaw: string): {
@@ -10,6 +12,7 @@ export function useShotSource(pageRaw: string): {
   failed: boolean;
   bake: (next: string) => void;
   choose: (next: ShotSource) => void;
+  pickElement: () => void;
 } {
   const [source, setSource] = useState<ShotSource>('page');
   const [working, setWorking] = useState(pageRaw);
@@ -55,5 +58,29 @@ export function useShotSource(pageRaw: string): {
       });
   }, []);
 
-  return { source, working, capturing, failed, bake, choose };
+  const pickElement = useCallback(() => {
+    if (lock.current) return;
+    lock.current = true;
+    setFailed(false);
+    setCapturing(true);
+    void window.screenshotOverlay.pickElement()
+      .then(async (raw) => {
+        const frac = parseViewportFrac(raw);
+        if (!frac) return;
+        const img = await loadShot(pageRef.current);
+        const r = viewportFracToShot(frac, { width: img.naturalWidth, height: img.naturalHeight });
+        if (!cropReady(r)) return;
+        const url = await cropShot(pageRef.current, r);
+        pageRef.current = url;
+        setSource('page');
+        setWorking(url);
+      })
+      .catch(() => { /* Esc / вкладка умерла — редактор как был */ })
+      .finally(() => {
+        lock.current = false;
+        setCapturing(false);
+      });
+  }, []);
+
+  return { source, working, capturing, failed, bake, choose, pickElement };
 }

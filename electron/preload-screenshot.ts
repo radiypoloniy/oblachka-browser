@@ -24,4 +24,7 @@ contextBridge.exposeInMainWorld('screenshotOverlay', {
   setMode: (mode: 'card' | 'edit') => ipcRenderer.send('screenshot:mode', mode),
   // Только своё окно, список источников renderer не видит (см. screenshotCapture.ts).
   captureWindow: () => ipcRenderer.invoke('screenshot:capture-window') as Promise<string | null>,
+  pickElement: () => ipcRenderer.invoke('screenshot:pick-element') as Promise<{
+    x: number; y: number; w: number; h: number;
+  } | null>,
 });

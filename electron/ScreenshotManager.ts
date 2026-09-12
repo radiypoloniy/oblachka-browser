@@ -26,6 +26,8 @@ import { getAiPanelReservedWidth } from './AiPanelManager';
 import type { TabManager } from './TabManager';
 import { closeWindowView } from './viewTeardown';
 import { captureBrowserWindow } from './screenshotCapture';
+import { PICK_ELEMENT_SCRIPT } from './screenshotPick';
+import { parseViewportFrac, type ViewportFrac } from '../shared/screenshotMarkup';
 
 const CARD_WIDTH = 320;
 const INITIAL_HEIGHT = 220;
@@ -149,6 +151,26 @@ function pngFromDataUrl(dataUrl: string): Buffer | null {
   try { return Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'); } catch { return null; }
 }
 
+/** Карточку снимаем с дерева на время захвата окна / клика по элементу. */
+async function withShotOverlayHidden<T>(st: WindowShot, fn: () => Promise<T>): Promise<T | null> {
+  if (!st.open || st.capturing) return null;
+  st.capturing = true;
+  const attached = isAttached(st);
+  if (attached) {
+    try { st.win.contentView.removeChildView(st.view!); } catch { /* окно могло закрыться */ }
+  }
+  try {
+    return await fn();
+  } finally {
+    st.capturing = false;
+    if (attached && st.open && st.view && !st.win.isDestroyed()) {
+      st.win.contentView.addChildView(st.view);
+      layout(st);
+      if (st.mode === 'edit') st.view.webContents.focus();
+    }
+  }
+}
+
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
@@ -203,22 +225,23 @@ function ensureIpcRegistered(): void {
   // с дерева до кадра — иначе она сама попадёт в «окно».
   ipcMain.handle('screenshot:capture-window', async (e): Promise<string | null> => {
     const st = stateBySender(e.sender);
-    if (!st || !st.open || st.mode !== 'edit' || st.capturing) return null;
-    st.capturing = true;
-    const attached = isAttached(st);
-    if (attached) {
-      try { st.win.contentView.removeChildView(st.view!); } catch { /* окно могло закрыться */ }
-    }
-    try {
-      return await captureBrowserWindow(st.win);
-    } finally {
-      st.capturing = false;
-      if (attached && st.open && st.view && !st.win.isDestroyed()) {
-        st.win.contentView.addChildView(st.view);
-        layout(st);
-        if (st.mode === 'edit') st.view.webContents.focus();
+    if (!st || st.mode !== 'edit') return null;
+    return withShotOverlayHidden(st, () => captureBrowserWindow(st.win));
+  });
+
+  ipcMain.handle('screenshot:pick-element', async (e): Promise<ViewportFrac | null> => {
+    const st = stateBySender(e.sender);
+    if (!st || st.mode !== 'edit') return null;
+    const wc = st.tabs?.getActiveWebContents();
+    if (!wc || wc.isDestroyed()) return null;
+    return withShotOverlayHidden(st, async () => {
+      st.tabs?.focusActiveView();
+      try {
+        return parseViewportFrac(await wc.executeJavaScript(PICK_ELEMENT_SCRIPT, true));
+      } catch {
+        return null;
       }
-    }
+    });
   });
 }
 

@@ -19,6 +19,7 @@ declare global {
       reportHeight: (px: number) => void;
       setMode: (mode: 'card' | 'edit') => void;
       captureWindow: () => Promise<string | null>;
+      pickElement: () => Promise<{ x: number; y: number; w: number; h: number } | null>;
     };
   }
 }

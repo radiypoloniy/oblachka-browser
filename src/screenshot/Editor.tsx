@@ -1,7 +1,7 @@
 // Редактор снимка — режим той же вью, не новое окно. Жест карточки не меняется.
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowUpRight, Check, Crop, Circle, Type } from 'lucide-react';
+import { ArrowUpRight, Check, Crop, Circle, Scan, Type } from 'lucide-react';
 import { overlayPlate } from '../styles/island';
 import { ICON, RADIUS, TEXT, glyph, pad, sp } from '../styles/system';
 import { SHOT_PAPER } from '../../shared/screenshotDecorate';
@@ -46,7 +46,7 @@ export function ShotEditor(props: {
   onSave: (raw: string) => void;
   onCancel: () => void;
 }): ReactNode {
-  const { source, working, capturing, failed, bake: applyShot, choose } = useShotSource(props.raw);
+  const { source, working, capturing, failed, bake: applyShot, choose, pickElement } = useShotSource(props.raw);
   const [tool, setTool] = useState<ShotTool>('oval');
   const [nat, setNat] = useState({ width: 1, height: 1 });
   const [textAt, setTextAt] = useState<{ x: number; y: number } | null>(null);
@@ -186,6 +186,18 @@ export function ShotEditor(props: {
             busy={capturing}
             onChange={(next) => { markup.cancelDraft(); setTextAt(null); choose(next); }}
           />
+          <button
+            type="button"
+            title="Элемент"
+            disabled={capturing}
+            onClick={() => { markup.cancelDraft(); setTextAt(null); pickElement(); }}
+            style={{
+              width: 32, height: 32, border: 'none', borderRadius: RADIUS.pill,
+              background: 'transparent', color: 'var(--text-muted)',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              opacity: capturing ? 0.6 : 1,
+            }}
+          ><Scan {...g} /></button>
           {tools.map((t) => (
             <button
               key={t.id}
