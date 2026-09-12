@@ -41,6 +41,7 @@ export function useMarkup(opts: {
     if (!opts.enabled) return;
     const p = local(e);
     if (!p) return;
+    e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     if (opts.tool === 'text') {
       opts.onText(p);
