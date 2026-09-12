@@ -3,9 +3,8 @@
 // появляется только по явному «сохранить», иначе папка загрузок засоряется случайными кадрами.
 //
 // ⚠️ Хоткей снимает ровно ОДНУ вью — активной вкладки (webContents.capturePage). «Окно» живёт
-// только в редакторе и идёт через desktopCapturer: BrowserWindow.capturePage дочерние
-// WebContentsView не видит. Хаб/настройки/история хоткею не подлежат
-// (getActiveWebContents() === null) — снимать там нечего, это наш собственный интерфейс.
+// только в редакторе и склеивает capturePage дочерних вью (редактор в кадр не входит и его
+// не прячем). desktopCapturer — запасной путь. Хаб/настройки хоткею не подлежат.
 //
 // Оформление кадра (скруглённые углы + мягкая тень на непрозрачной бумаге — тот вид, за который
 // любят снимки macOS) делает РЕНДЕРЕР карточки на canvas, а не main: nativeImage тени рисовать не
@@ -25,9 +24,10 @@ import { uniquePath } from './DownloadManager';
 import { getAiPanelReservedWidth } from './AiPanelManager';
 import type { TabManager } from './TabManager';
 import { closeWindowView } from './viewTeardown';
-import { captureBrowserWindow } from './screenshotCapture';
-import { PICK_ELEMENT_SCRIPT } from './screenshotPick';
-import { parseViewportFrac, type ViewportFrac } from '../shared/screenshotMarkup';
+import { captureBrowserWindow, captureDesktop } from './screenshotCapture';
+import { PICK_ELEMENT_SCRIPT, waitShotPaint } from './screenshotPick';
+import { fracOverlapsView, parseViewportFrac, type ViewportFrac } from '../shared/screenshotMarkup';
+import type { WindowLayers } from '../shared/screenshotWindow';
 
 const CARD_WIDTH = 320;
 const INITIAL_HEIGHT = 220;
@@ -156,8 +156,13 @@ async function withShotOverlayHidden<T>(st: WindowShot, fn: () => Promise<T>): P
   if (!st.open || st.capturing) return null;
   st.capturing = true;
   const attached = isAttached(st);
-  if (attached) {
-    try { st.win.contentView.removeChildView(st.view!); } catch { /* окно могло закрыться */ }
+  if (attached && st.view && !st.view.webContents.isDestroyed()) {
+    try {
+      await st.view.webContents.executeJavaScript(
+        "document.documentElement.setAttribute('data-shot-skip-reveal','')",
+      );
+    } catch { /* вью закрылась */ }
+    try { st.win.contentView.removeChildView(st.view); } catch { /* окно могло закрыться */ }
   }
   try {
     return await fn();
@@ -167,6 +172,9 @@ async function withShotOverlayHidden<T>(st: WindowShot, fn: () => Promise<T>): P
       st.win.contentView.addChildView(st.view);
       layout(st);
       if (st.mode === 'edit') st.view.webContents.focus();
+      void st.view.webContents.executeJavaScript(
+        "document.documentElement.removeAttribute('data-shot-skip-reveal')",
+      ).catch(() => { /* вью закрылась */ });
     }
   }
 }
@@ -221,15 +229,16 @@ function ensureIpcRegistered(): void {
     else st.tabs?.focusActiveView();
   });
 
-  // Только из вью редактора: иначе любой preload мог бы снять окно. Карточку снимаем
-  // с дерева до кадра — иначе она сама попадёт в «окно».
-  ipcMain.handle('screenshot:capture-window', async (e): Promise<string | null> => {
+  // Склейка capturePage вью: редактор не прячем, иначе первое «Окно» вспыхивает страницей.
+  ipcMain.handle('screenshot:capture-window', async (e): Promise<WindowLayers | null> => {
     const st = stateBySender(e.sender);
-    if (!st || st.mode !== 'edit') return null;
-    return withShotOverlayHidden(st, () => captureBrowserWindow(st.win));
+    if (!st || st.mode !== 'edit' || st.capturing) return null;
+    const stitched = await captureBrowserWindow(st.win, st.view);
+    if (stitched) return stitched;
+    return withShotOverlayHidden(st, () => captureDesktop(st.win));
   });
 
-  ipcMain.handle('screenshot:pick-element', async (e): Promise<ViewportFrac | null> => {
+  ipcMain.handle('screenshot:pick-element', async (e): Promise<{ raw: string; frac: ViewportFrac } | null> => {
     const st = stateBySender(e.sender);
     if (!st || st.mode !== 'edit') return null;
     const wc = st.tabs?.getActiveWebContents();
@@ -237,7 +246,15 @@ function ensureIpcRegistered(): void {
     return withShotOverlayHidden(st, async () => {
       st.tabs?.focusActiveView();
       try {
-        return parseViewportFrac(await wc.executeJavaScript(PICK_ELEMENT_SCRIPT, true));
+        const frac = parseViewportFrac(await wc.executeJavaScript(PICK_ELEMENT_SCRIPT, true));
+        if (!frac || !fracOverlapsView(frac)) return null;
+        // Свежий кадр ТЕКУЩЕГО вьюпорта — и только после кадра без рамки подсветки.
+        // Доли от прокрутки на старый растр попали бы в чужой кусок; capturePage сразу
+        // после removeChild ещё видит красную рамку (композитор на кадр позади).
+        await waitShotPaint(wc);
+        const img = await wc.capturePage();
+        if (img.isEmpty()) return null;
+        return { raw: img.toDataURL(), frac };
       } catch {
         return null;
       }
@@ -337,6 +354,19 @@ export function closeScreenshot(win: BrowserWindow | null): void {
   if (!win) return;
   const st = shots.get(win.id);
   if (!st || !st.open) return;
+  // Esc во время клика по элементу приходит в страницу (оверлей снят), и TabManager
+  // думает, что надо закрыть карточку. Это отмена жеста, не выход из редактора.
+  if (st.capturing && st.mode === 'edit') {
+    const wc = st.tabs?.getActiveWebContents();
+    if (wc && !wc.isDestroyed()) {
+      void wc.executeJavaScript(
+        'window.__oblakoShotPick && window.__oblakoShotPick.abort()',
+        true,
+      ).catch(() => { /* вкладка умерла */ });
+    }
+    st.tabs?.setScreenshotOpen(true);
+    return;
+  }
   st.open = false;
   st.mode = 'card';
   st.tabs?.setScreenshotOpen(false);

@@ -2,8 +2,23 @@
 // гонял обычным node (scripts/screenshot-window-check.mjs).
 //
 // ⚠️ BrowserWindow.capturePage() дочерние WebContentsView не видит: вкладка, AI-панель,
-// поповеры в кадр не попадут. Нужен desktopCapturer. Список окон в renderer не отдаём —
-// оттуда достаточно data-URL своего кадра, а чужое окно снимать нельзя.
+// поповеры в кадр не попадут. Основной путь — склейка capturePage каждой вью
+// (electron/screenshotCapture.ts). desktopCapturer здесь — запасной выбор своего окна.
+// Список окон в renderer не отдаём: оттуда достаточно слоёв своего кадра.
+
+export interface ShotLayer {
+  url: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface WindowLayers {
+  width: number;
+  height: number;
+  layers: ShotLayer[];
+}
 
 export interface WindowSourcePick {
   id: string;

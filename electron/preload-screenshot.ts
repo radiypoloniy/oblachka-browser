@@ -23,8 +23,11 @@ contextBridge.exposeInMainWorld('screenshotOverlay', {
   reportHeight: (px: number) => ipcRenderer.send('screenshot:height', px),
   setMode: (mode: 'card' | 'edit') => ipcRenderer.send('screenshot:mode', mode),
   // Только своё окно, список источников renderer не видит (см. screenshotCapture.ts).
-  captureWindow: () => ipcRenderer.invoke('screenshot:capture-window') as Promise<string | null>,
+  captureWindow: () => ipcRenderer.invoke('screenshot:capture-window') as Promise<{
+    width: number; height: number;
+    layers: { url: string; x: number; y: number; w: number; h: number }[];
+  } | null>,
   pickElement: () => ipcRenderer.invoke('screenshot:pick-element') as Promise<{
-    x: number; y: number; w: number; h: number;
+    raw: string; frac: { x: number; y: number; w: number; h: number };
   } | null>,
 });

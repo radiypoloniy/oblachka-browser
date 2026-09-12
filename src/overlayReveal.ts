@@ -54,6 +54,10 @@ export function installOverlayReveal(): void {
 
   if (!document.hidden) play();
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) play();
+    if (document.hidden) return;
+    // Снимок окна прячет эту же вью на время desktopCapturer. Показ заново — не первое
+    // появление карточки, а возврат редактора: replay scale+fade выглядит как рваный щелчок.
+    if (document.documentElement.hasAttribute('data-shot-skip-reveal')) return;
+    play();
   });
 }

@@ -1,6 +1,6 @@
 // Рисование разметки на кадре. Живёт в renderer: нужен Canvas 2D, shared/ его не имеет.
 
-import { SHOT_MARK, type Point, type ShotRect } from '../../shared/screenshotMarkup';
+import { SHOT_MARK, SHOT_TEXT, SHOT_FONT, type Point, type ShotRect } from '../../shared/screenshotMarkup';
 
 export function loadShot(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -51,17 +51,17 @@ export function paintText(ctx: CanvasRenderingContext2D, at: Point, text: string
   const t = text.trim();
   if (!t) return;
   const size = Math.max(16, Math.round(minSide * 0.032));
-  ctx.font = `700 ${size}px "Golos Text", "Segoe UI", sans-serif`;
-  ctx.fillStyle = SHOT_MARK;
+  ctx.font = `600 ${size}px ${SHOT_FONT}`;
+  ctx.fillStyle = SHOT_TEXT;
   ctx.textBaseline = 'top';
   ctx.lineJoin = 'round';
-  ctx.lineWidth = Math.max(3, Math.round(size * 0.18));
+  ctx.lineWidth = Math.max(2, Math.round(size * 0.12));
   ctx.strokeStyle = '#fff';
   ctx.strokeText(t, at.x, at.y);
   ctx.fillText(t, at.x, at.y);
 }
 
-export async function cropShot(src: string, r: ShotRect): Promise<string> {
+export async function cropShot(src: string, r: ShotRect, angle = 0): Promise<string> {
   const img = await loadShot(src);
   const w = Math.max(1, Math.round(r.w));
   const h = Math.max(1, Math.round(r.h));
@@ -70,7 +70,27 @@ export async function cropShot(src: string, r: ShotRect): Promise<string> {
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) return src;
-  ctx.drawImage(img, Math.round(r.x), Math.round(r.y), w, h, 0, 0, w, h);
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(-angle);
+  ctx.drawImage(img, -(r.x + r.w / 2), -(r.y + r.h / 2));
+  return canvas.toDataURL('image/png');
+}
+
+export async function compositeLayers(
+  width: number,
+  height: number,
+  layers: { url: string; x: number; y: number; w: number; h: number }[],
+): Promise<string | null> {
+  if (width < 1 || height < 1 || layers.length === 0) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  for (const layer of layers) {
+    const img = await loadShot(layer.url);
+    ctx.drawImage(img, layer.x, layer.y, layer.w, layer.h);
+  }
   return canvas.toDataURL('image/png');
 }
 
