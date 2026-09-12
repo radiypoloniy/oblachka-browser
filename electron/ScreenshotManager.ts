@@ -52,6 +52,9 @@ interface WindowShot {
   // мёртвой карточке, а не странице. Ровно тот класс залипания, который лечится только
   // перезапуском.
   capturing: boolean;
+  // Редактор — режим той же вью на всю контентную зону. Карточка фокус не берёт; редактору он
+  // нужен, иначе не ввести подпись. TabManager не трогаем: Esc/Ctrl+S в этом режиме ловит сама вью.
+  mode: 'card' | 'edit';
 }
 
 const shots = new Map<number, WindowShot>();
@@ -63,7 +66,7 @@ function stateFor(win: BrowserWindow): WindowShot {
   const created: WindowShot = {
     win, view: null, tabs: null,
     content: { x: 0, y: 0, width: 0, height: 0 },
-    height: INITIAL_HEIGHT, open: false, loaded: false, pending: null, capturing: false,
+    height: INITIAL_HEIGHT, open: false, loaded: false, pending: null, capturing: false, mode: 'card',
   };
   shots.set(win.id, created);
   // ⚠️ Вью закрываем сами: окно не уносит с собой дочерние WebContentsView, и поповер
@@ -93,6 +96,14 @@ function isAttached(st: WindowShot): boolean {
 function computeBounds(st: WindowShot): { x: number; y: number; width: number; height: number } {
   const cb = st.content;
   const right = cb.x + cb.width - getAiPanelReservedWidth(st.win);
+  if (st.mode === 'edit') {
+    return {
+      x: cb.x,
+      y: cb.y,
+      width: Math.max(1, right - cb.x),
+      height: Math.max(1, cb.height),
+    };
+  }
   const x = Math.max(cb.x + EDGE_GAP, right - CARD_WIDTH - EDGE_GAP);
   const y = Math.max(cb.y + EDGE_GAP, cb.y + cb.height - st.height - EDGE_GAP);
   return {
@@ -177,6 +188,15 @@ function ensureIpcRegistered(): void {
     st.height = Math.max(1, Math.round(px));
     layout(st);
   });
+
+  ipcMain.on('screenshot:mode', (e, mode: unknown) => {
+    const st = stateBySender(e.sender);
+    if (!st) return;
+    st.mode = mode === 'edit' ? 'edit' : 'card';
+    layout(st);
+    if (st.mode === 'edit') st.view?.webContents.focus();
+    else st.tabs?.focusActiveView();
+  });
 }
 
 function ensureView(st: WindowShot): WebContentsView {
@@ -198,6 +218,7 @@ function ensureView(st: WindowShot): WebContentsView {
   // возвращаем на следующем тике — и заодно этим держим Ctrl+S рабочим: хоткеи слушает
   // before-input-event на самой странице (см. TabManager.registerHotkeyHandler).
   view.webContents.on('focus', () => {
+    if (st.mode === 'edit') return;
     setImmediate(() => st.tabs?.focusActiveView());
   });
   view.webContents.once('did-finish-load', () => {
@@ -240,6 +261,7 @@ export async function captureTabScreenshot(win: BrowserWindow, tabs: TabManager)
 
     const view = ensureView(st);
     st.open = true;
+    st.mode = 'card';
     view.setBounds(computeBounds(st));
     // Порядок наложения у нативных вью — это порядок детей contentView, поэтому карточку надо
     // держать последней. ⚠️ НО поднимаем, ТОЛЬКО если она уже не наверху: страж возвращает фокус
@@ -270,6 +292,7 @@ export function closeScreenshot(win: BrowserWindow | null): void {
   const st = shots.get(win.id);
   if (!st || !st.open) return;
   st.open = false;
+  st.mode = 'card';
   st.tabs?.setScreenshotOpen(false);
   if (isAttached(st)) {
     try { st.win.contentView.removeChildView(st.view!); } catch { /* окно могло уже закрыться */ }

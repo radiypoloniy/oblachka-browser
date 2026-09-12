@@ -6,8 +6,11 @@
   <style>
     /* !important — global.css грузится позже этого инлайн-стиля и иначе перебивает прозрачность,
        давая непрозрачный прямоугольник вокруг карточки поверх страницы. */
-    html, body, #root { margin: 0; padding: 0; background: transparent !important; overflow: hidden; }
-    #root { display: inline-block; }
+    html, body, #root {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: transparent !important; overflow: hidden;
+    }
+    #root { display: block; }
   </style>
 </head>
 <body>

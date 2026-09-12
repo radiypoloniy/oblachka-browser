@@ -21,4 +21,5 @@ contextBridge.exposeInMainWorld('screenshotOverlay', {
   reveal: (file: string) => ipcRenderer.send('screenshot:reveal', file),
   close: () => ipcRenderer.send('screenshot:close'),
   reportHeight: (px: number) => ipcRenderer.send('screenshot:height', px),
+  setMode: (mode: 'card' | 'edit') => ipcRenderer.send('screenshot:mode', mode),
 });
