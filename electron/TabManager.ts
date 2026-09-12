@@ -605,7 +605,8 @@ export class TabManager {
       tabError: this.errors.get(t.id) ?? null,
       url: wc.getURL(),
       title: t.aiTitle || wc.getTitle() || wc.getURL() || 'Загрузка…',
-      faviconUrl: (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon ?? null,
+      // data: важнее URL: blob гостя хром не откроет; пустой page-favicon-updated не затирает.
+      faviconUrl: ((m) => m._oblakoFaviconData ?? (m._oblakoFavicon && /^(data:|https?:)/i.test(m._oblakoFavicon) ? m._oblakoFavicon : null))(wc as unknown as { _oblakoFavicon?: string; _oblakoFaviconData?: string }),
       isLoading: wc.isLoadingMainFrame(),
       canGoBack: wc.canGoBack(),
       canGoForward: wc.canGoForward(),
@@ -1079,17 +1080,16 @@ export class TabManager {
     return id;
   }
 
-  // Создаёт закреплённую вкладку — используется только при восстановлении сессии.
-  // cachedFaviconData — base64 из session.json (заход C): кладём в тот же хак-приём, что и живой
-  // favicon (_oblakoFavicon), ДО loadURL — #tabToState тут же отдаст его в сайдбар, пока страница
-  // ещё грузится. Реальный favicon, когда прилетит page-favicon-updated, перезапишет заглушку сам.
+  // Закреп. cachedFaviconData — data: из session.json: и в URL, и в байтовый кэш ДО loadURL,
+  // чтобы сайдбар не мигал буквой и пустой page-favicon-updated (SPA) не стёр заглушку.
   createPinnedTab(rawUrl: string, cachedFaviconData?: string): string {
     const id = randomUUID();
     const view = new WebContentsView({
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: CONTENT_PRELOAD_PATH },
     });
     if (cachedFaviconData) {
-      (view.webContents as unknown as { _oblakoFavicon?: string })._oblakoFavicon = cachedFaviconData;
+      const w = view.webContents as unknown as { _oblakoFavicon?: string; _oblakoFaviconData?: string };
+      w._oblakoFavicon = w._oblakoFaviconData = cachedFaviconData;
     }
     const tab: ManagedTab = { id, view, sleeping: null, lastActiveAt: Date.now() };
     this.tabMap.set(id, tab);
@@ -1208,27 +1208,22 @@ export class TabManager {
     return this.pinnedTabs.some((t) => t.id === id);
   }
 
-  // ── Фоновый кэш favicon в base64 (заход C) — для мгновенных офлайн-иконок в сессии ──
-  // Fire-and-forget: качает favicons?.[0] (URL, см. page-favicon-updated выше), кладёт data:-строку
-  // в тот же хак-приём, что и _oblakoFavicon (свойство прямо на webContents). НИКОГДА не вызывается
-  // из getSessionSnapshot/#write — те синхронны и работают в т.ч. на win.on('close'), await там
-  // не сработает. Кап на размер (FAVICON_CACHE_MAX_BYTES) — один «тяжёлый» favicon не должен
-  // бесконтрольно раздувать session.json.
-  // ⚠️ Сессией САМОЙ ВКЛАДКИ (wc.session.fetch), а не активного профиля. Запрос порождён
-  // конкретной вью, и она может принадлежать ДРУГОМУ профилю или инкогнито: вкладки соседнего
-  // профиля продолжают жить и обновлять иконки, пока человек смотрит другой. Через активную
-  // сессию иконка чужой вкладки шла бы чужими куками и чужим прокси — то есть ровно тем
-  // профилем, к которому эта страница отношения не имеет.
-  // credentials: 'omit' — как в FaviconService: даже своей сессией незачем прикладывать куки
-  // к запросу картинки.
+  // Фоновый кэш favicon → data: на webContents. Fire-and-forget: snapshot/#write синхронны
+  // (в т.ч. win.on('close')), await там нельзя. Кап FAVICON_CACHE_MAX_BYTES.
+  // ⚠️ fetch сессией САМОЙ вкладки (чужой профиль/инкогнито), не активного окна.
+  // credentials: 'omit' — как FaviconService: куки к картинке не прикладываем.
   #cacheFaviconData(wc: WebContents, url: string): void {
+    if (url.startsWith('data:')) { (wc as unknown as { _oblakoFaviconData?: string })._oblakoFaviconData = url; this.onChange(); return; }
+    if (!/^(https?:|blob:)/i.test(url)) return;
     wc.session.fetch(url, { credentials: 'omit' }).then(async (res) => {
       if (!res.ok || wc.isDestroyed()) return;
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.byteLength === 0 || buf.byteLength > FAVICON_CACHE_MAX_BYTES || wc.isDestroyed()) return;
+      if (/^<!doctype|^<html/i.test(buf.subarray(0, 64).toString('utf8').trimStart())) return;
       const contentType = res.headers.get('content-type') || 'image/x-icon';
       (wc as unknown as { _oblakoFaviconData?: string })._oblakoFaviconData =
-        `data:${contentType};base64,${buf.toString('base64')}`;
+        `data:${contentType.split(';')[0].trim() || 'image/x-icon'};base64,${buf.toString('base64')}`;
+      this.onChange();
     }).catch(() => { /* сеть недоступна/CORS/т.п. — просто не кэшируем, не критично */ });
   }
 
@@ -1261,10 +1256,13 @@ export class TabManager {
   private wakeTab(id: string): void {
     const tab = this.tabMap.get(id);
     if (!tab?.sleeping) return;
-    const { url } = tab.sleeping;
+    const { url, faviconData, faviconUrl } = tab.sleeping;
     const view = new WebContentsView({
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: CONTENT_PRELOAD_PATH },
     });
+    const w = view.webContents as unknown as { _oblakoFavicon?: string; _oblakoFaviconData?: string };
+    if (faviconData) w._oblakoFavicon = w._oblakoFaviconData = faviconData;
+    else if (faviconUrl && /^(data:|https?:)/i.test(faviconUrl)) w._oblakoFavicon = faviconUrl;
     tab.sleeping = null;
     tab.view = view;
     tab.lastActiveAt = Date.now();
@@ -1754,9 +1752,9 @@ export class TabManager {
     wc.on('page-favicon-updated', (_e, favicons) => {
       if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       const url = favicons?.[0];
-      (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon = url;
-      notify();
-      if (url) this.#cacheFaviconData(wc, url);
+      if (!url) return; // [] у SPA не значит «иконки нет» — не затираем живую
+      if (/^(data:|https?:)/i.test(url)) { (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon = url; notify(); }
+      this.#cacheFaviconData(wc, url);
     });
 
     // Вкладка начала или перестала звучать. Отдельное событие нужно потому, что звук не связан

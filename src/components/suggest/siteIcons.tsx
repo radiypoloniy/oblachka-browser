@@ -8,12 +8,9 @@ import { RADIUS } from '../../styles/system';
 //
 // ⚠️ Вынесено из src/suggestdropdown.tsx не по вкусу, а по счёту: тот файл в базе храповика
 // структуры, и исправление бага в нём (прокрутка к подсвеченной строке) добавило строк. Правило
-// «файл из базы не растёт» оплачивается выносом, а не поднятием базы — и значки оказались самым
-// чистым куском: ни состояния вью, ни разговора с main, ни клавиатуры.
+// «файл из базы не растёт» оплачивается выносом, а не поднятием базы. Значки плитки идут в main
+// тем же FAVICON_GET, что пароли и буфер, — не угадыванием /favicon.ico.
 
-function originOf(url: string): string | null {
-  try { return new URL(url).origin; } catch { return null; }
-}
 export function hostOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
 }
@@ -46,15 +43,38 @@ export function plural(n: number, one: string, few: string, many: string): strin
 // var(--surface) + var(--shadow-card) + var(--radius-sm)), — а покрашен фон ПАПКИ, которая их
 // объединяет. Цвет так работает на группировку, а не против неё.
 
-// Фавикон строки СПИСКА — тот же приём, что TileCard в Hub.tsx (`${origin}/favicon.ico` + onError-
-// фолбэк на генерик-иконку): никакой новой инфраструктуры/IPC, страница просто пробует
-// стандартный путь к иконке сайта сама. search/suggest — не страницы, для них фавикона в
-// принципе не существует, там остаётся иконка-лупа, как и раньше.
+// Кэш обещаний на модуль: восемь плиток часто делят хост со строками списка, и без него это
+// были бы одинаковые IPC на каждый маунт. Main тоже кэширует, но спамить незачем.
+const iconCache = new Map<string, Promise<string | null>>();
+function loadIcon(host: string): Promise<string | null> {
+  let p = iconCache.get(host);
+  if (!p) {
+    p = window.suggestDropdown.favicon(host).catch(() => null);
+    iconCache.set(host, p);
+  }
+  return p;
+}
+
+function useHostIcon(url: string): string | null {
+  const host = hostOf(url);
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!host) { setSrc(null); return; }
+    let alive = true;
+    setSrc(null);
+    void loadIcon(host).then((d) => { if (alive) setSrc(d); });
+    return () => { alive = false; };
+  }, [host]);
+  return src;
+}
+
+// Фавикон строки СПИСКА. search/suggest — не страницы, фавикона нет, остаётся лупа.
+// Остальным — FaviconService через тот же FAVICON_GET, что у паролей и буфера: угадывать
+// /favicon.ico вью больше не должна (у большинства сайтов его по этому пути нет).
 export function RowIcon({ item, size }: { item: SuggestDropdownItem; size: number }) {
   const isSearchLike = item.kind === 'search' || item.kind === 'suggest';
-  const [ok, setOk] = useState(true);
-  const origin = isSearchLike ? null : originOf(item.url);
-  if (isSearchLike || !origin || !ok) {
+  const src = useHostIcon(isSearchLike ? '' : item.url);
+  if (isSearchLike || !src) {
     const Icon = isSearchLike ? Search : Globe;
     return (
       <span style={{
@@ -68,40 +88,25 @@ export function RowIcon({ item, size }: { item: SuggestDropdownItem; size: numbe
   }
   return (
     <img
-      src={`${origin}/favicon.ico`}
+      src={src}
       alt=""
       width={size} height={size}
       style={{ borderRadius: RADIUS.tight, display: 'block', flex: 'none' }}
-      onError={() => setOk(false)}
     />
   );
 }
 
 // ── Значок сайта на подложке ──────────────────────────────────────────────────────────────────
-// ⚠️ Не компонент SiteIcon со стола: тот ходит за фолбэком в window.oblako (getFavicon), а у этой
-// вью свой крошечный preload без боевого API. Поэтому здесь свой каскад: крупная apple-touch-icon
-// первым заходом (16-пиксельная фавиконка, растянутая до 32 px, — это ровно те пиксельные
-// лесенки, из-за которых плитки выглядят дёшево), затем favicon.ico, затем буква.
+// ⚠️ Не компонент SiteIcon со стола: тот ходит в window.oblako, а у этой вью свой preload.
+// Канал тот же (FAVICON_GET) — как у поповера буфера. Угадывать apple-touch/favicon.ico здесь
+// нельзя: большинство сайтов кладёт иконку в <link>, и плитка оставалась буквой.
 //
 // ⚠️ Подложка ОБЩАЯ И НЕЙТРАЛЬНАЯ: значки сайтов — прозрачные PNG разной формы и плотности, без
 // плашки они висят в воздухе и ряд читается как случайная россыпь. Плашка даёт всем одинаковый
 // силуэт, а цвет остаётся папке (см. FOLDER_TINT_* выше).
 export function SitePlate({ url, size, radius }: { url: string; size: number; radius: number }) {
-  const origin = originOf(url);
   const host = hostOf(url);
-  const [src, setSrc] = useState<string | null>(origin ? `${origin}/apple-touch-icon.png` : null);
-  const [stage, setStage] = useState<'touch' | 'favicon' | 'letter'>(origin ? 'touch' : 'letter');
-
-  // Адрес плитки поменялся (список пересобрался) — начинаем поиск значка заново.
-  useEffect(() => {
-    setSrc(origin ? `${origin}/apple-touch-icon.png` : null);
-    setStage(origin ? 'touch' : 'letter');
-  }, [origin]);
-
-  const fail = () => {
-    if (stage === 'touch' && origin) { setStage('favicon'); setSrc(`${origin}/favicon.ico`); return; }
-    setStage('letter'); setSrc(null);
-  };
+  const src = useHostIcon(url);
 
   return (
     <span
@@ -115,7 +120,7 @@ export function SitePlate({ url, size, radius }: { url: string; size: number; ra
     >
       {src ? (
         <img
-          src={src} alt="" onError={fail}
+          src={src} alt=""
           style={{ width: Math.round(size * 0.58), height: Math.round(size * 0.58), objectFit: 'contain', display: 'block' }}
         />
       ) : (

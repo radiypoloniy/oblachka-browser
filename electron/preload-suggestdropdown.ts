@@ -37,4 +37,9 @@ contextBridge.exposeInMainWorld('suggestDropdown', {
   // main пересчитывает bounds самой вью под неё, вместо фиксированных 280px (см.
   // SuggestDropdownManager.ts). Тот же приём, что translate-popover:height у поповера перевода.
   reportHeight: (px: number) => ipcRenderer.send('suggest-dropdown:height', px),
+  // Значок плитки/строки. Свой канал не заводим — тот же FAVICON_GET, что у паролей и буфера:
+  // кэш на диске и иконка ТОЛЬКО с самого домена (см. FaviconService.ts). Угадывать
+  // /apple-touch-icon.png и /favicon.ico вью больше не должна: у большинства сайтов их нет,
+  // и плитка оставалась буквой.
+  favicon: (host: string) => ipcRenderer.invoke(IPC.FAVICON_GET, host) as Promise<string | null>,
 })

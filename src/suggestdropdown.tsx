@@ -40,6 +40,7 @@ declare global {
       editRecommended: (edit: OmniboxRecommendEdit) => void
       onHighlight: (cb: (idx: number) => void) => () => void
       reportHeight: (px: number) => void
+      favicon: (host: string) => Promise<string | null>
     }
   }
 }
