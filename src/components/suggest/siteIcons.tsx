@@ -14,7 +14,7 @@ import { RADIUS } from '../../styles/system';
 function originOf(url: string): string | null {
   try { return new URL(url).origin; } catch { return null; }
 }
-function hostOf(url: string): string {
+export function hostOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
 }
 

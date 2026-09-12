@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { HistoryEntry, PermissionRecord, OmniboxPanelSite, SemanticSearchResult, SuggestDropdownItem } from '../../../shared/ipc';
+import type { HistoryEntry, PermissionRecord, OmniboxPanel, OmniboxPanelSite, OmniboxResume, SemanticSearchResult, SuggestDropdownItem } from '../../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../../shared/frecency';
 import { isSearchResultUrl } from '../../../shared/searchEngines';
+import { pickResume } from '../../../shared/omniboxResume';
 
 // ── Панель по клику в НЕТРОНУТУЮ строку ──────────────────────────────────────
 //
-// Всё, что человек видит, когда щёлкнул по адресной строке и ничего не набрал: плитки часто
-// посещаемых, набор «Рекомендуемые», полоска текущего сайта и «вы это уже читали».
+// Всё, что человек видит, когда щёлкнул по адресной строке и ничего не набрал: строки «Продолжить»,
+// плитки часто посещаемых, набор «Рекомендуемые», полоска текущего сайта и «вы это уже читали».
 //
 // ⚠️ Вынесено из Toolbar.tsx отдельным хуком, а не оставлено там: тулбар — единственный файл
 // проекта, который пробивает все четыре порога храповика структуры сразу (размер, длина функции,
@@ -31,6 +32,19 @@ const RECOMMENDED_MAX = 8;
 
 type SuggestKind = SuggestDropdownItem['kind'];
 type SuggestItem = SuggestDropdownItem;
+
+function resumeItems(raw: OmniboxResume, currentUrl: string, now: number): SuggestItem[] {
+  return pickResume(raw.closed, raw.other, currentUrl, now).map((row) => ({
+    kind: row.tabId ? 'tab' as const : 'history' as const,
+    label: row.url,
+    sub: row.title,
+    url: row.url,
+    tabId: row.tabId,
+    windowId: row.windowId,
+    meta: row.meta,
+    tagged: row.tagged,
+  }));
+}
 
 export interface OmniboxPanelDeps {
   /** Адрес открытой страницы: из него собирается полоска сайта и по нему кэшируются дорисовки. */
@@ -67,12 +81,13 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
 
   // Заход 11: раньше здесь был плоский список часто посещаемых, и после переезда омнибокса во
   // flex-поток (строка занимает всю свободную полосу) восемь строк слева оставляли пустой всю
-  // правую половину карточки. Теперь это ПАНЕЛЬ (см. OmniboxPanel в shared/ipc.ts): плитки
-  // сайтов, полоска текущего сайта и «вы это уже читали».
+  // правую половину карточки. Теперь это ПАНЕЛЬ (см. OmniboxPanel в shared/ipc.ts): строки
+  // «Продолжить», плитки сайтов, полоска текущего сайта и «вы это уже читали».
   //
   // ⚠️ Дорисовка приезжает ВТОРЫМ пакетом и только СНИЗУ. Высота карточки задаёт высоту окна
   // (reportHeight → setBounds), поэтому блок, который вставился бы ВЫШЕ уже нарисованного, увёл
-  // бы плитки из-под курсора в момент, когда человек в них целится.
+  // бы плитки из-под курсора в момент, когда человек в них целится. «Продолжить» поэтому едет
+  // в ПЕРВОМ пакете вместе с плитками — не отдельным запросом после шапки сайта.
   //
   // ⚠️ Раньше здесь запрашивались обычные подсказки по тексту строки, а в строке лежит адрес
   // открытой страницы — поиск по истории находил её же, и дропдаун получался ЗЕРКАЛОМ: одна
@@ -87,12 +102,16 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
   // — это тот же зеркальный дропдаун, только длиннее.
   const showTopSites = useCallback(async () => {
     const seq = ++seqRef.current;
+    const resumeP = window.oblako.getOmniboxResume().catch((): OmniboxResume => ({ closed: [], other: [] }));
     let entries: HistoryEntry[] = [];
     try { entries = await window.oblako.getHistory(TOP_SITES_SCAN); } catch { return; }
+    if (seq !== seqRef.current) return;
+    const rawResume = await resumeP;
     if (seq !== seqRef.current) return;
 
     const now = Date.now();
     const pageUrl = tabUrl ?? '';
+    const resume = resumeItems(rawResume, pageUrl, now);
     const currentKey = normalizeForOmnibox(pageUrl);
     const siteOf = (u: string): string => { try { return new URL(u).origin; } catch { return u; } };
     const best = new Map<string, HistoryEntry>();
@@ -108,19 +127,21 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
       .slice(0, TOP_SITES_SHOWN)
       .map((e) => ({ kind: 'history' as SuggestKind, label: e.title || e.url, sub: e.url, url: e.url }));
 
-    // Панель без плиток ещё имеет смысл — полоска сайта сама по себе полезна. Пусто И там, и там
-    // (чистый профиль, новая вкладка) — вью покажет одну честную строку вместо пустой карточки.
     const hasSite = !!pageUrl && !isHub;
     const picked = recommendedRef.current;
-    if (!items.length && !picked.length && !hasSite) { closeDropdown('empty-panel'); return; }
+    if (!items.length && !picked.length && !hasSite && !resume.length) { closeDropdown('empty-panel'); return; }
 
-    // Плоский порядок выбора = порядок на экране: часто посещаемые, набор, потом «уже читали».
-    setSuggestions([...items, ...picked]);
+    const pack = (extra: Partial<OmniboxPanel> = {}): OmniboxPanel => ({
+      sites: items, recommended: picked, resume, ...extra,
+    });
+
+    // Плоский порядок выбора = порядок на экране: «Продолжить», часто посещаемые, набор, потом «уже читали».
+    setSuggestions([...resume, ...items, ...picked]);
     // ⚠️ Ничего не предвыбираем: человек НИЧЕГО не набирал, и Enter обязан вести по адресу в
     // строке — туда же, куда вёл бы без дропдауна вовсе.
     setSelectedIdx(-1);
     openDropdown();
-    void window.oblako.setSuggestDropdownPanel({ sites: items, recommended: picked });
+    void window.oblako.setSuggestDropdownPanel(pack());
     void window.oblako.setSuggestDropdownHighlight(-1);
     if (!hasSite) return;
 
@@ -148,7 +169,7 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
       // адресу — показываем сразу, второй раз страницу не разбираем (см. кэш ниже).
       changed: pageChangesRef.current.get(pageUrl),
     };
-    void window.oblako.setSuggestDropdownPanel({ sites: items, recommended: picked, site, siteUrl: pageUrl });
+    void window.oblako.setSuggestDropdownPanel(pack({ site, siteUrl: pageUrl }));
 
     // ── Дорисовка: «изменилось с прошлого раза» ───────────────────────────────────────────────
     // ⚠️ РАЗ НА АДРЕС. Вызов достаёт текст живой страницы и сравнивает со снимком в истории —
@@ -161,7 +182,7 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
       pageChangesRef.current.set(pageUrl, phrase);
       if (phrase) {
         site.changed = phrase;
-        void window.oblako.setSuggestDropdownPanel({ sites: items, recommended: picked, site, siteUrl: pageUrl });
+        void window.oblako.setSuggestDropdownPanel(pack({ site, siteUrl: pageUrl }));
       }
     }
 
@@ -183,9 +204,9 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
       if (related.length) relatedRef.current.set(pageUrl, related);
     }
     if (!related.length) return;
-    void window.oblako.setSuggestDropdownPanel({ sites: items, recommended: picked, site, siteUrl: pageUrl, related });
-    // Плоский порядок выбора: сначала плитки, следом карточки — ровно как рисует вью.
-    setSuggestions([...items, ...picked, ...related]);
+    void window.oblako.setSuggestDropdownPanel(pack({ site, siteUrl: pageUrl, related }));
+    // Плоский порядок выбора: сначала «Продолжить», потом плитки, следом карточки — ровно как рисует вью.
+    setSuggestions([...resume, ...items, ...picked, ...related]);
   }, [tabUrl, isHub, seqRef, openDropdown, closeDropdown, setSuggestions, setSelectedIdx]);
 
   // Набор «Рекомендуемые» из настроек — один раз при монтировании. Дальше он меняется только
