@@ -7,7 +7,9 @@ import { ICON, RADIUS, TEXT, glyph, pad, sp } from '../styles/system';
 import { SHOT_PAPER } from '../../shared/screenshotDecorate';
 import { SHOT_MARK, clampRect, cropReady, rectFromPoints, type ShotTool } from '../../shared/screenshotMarkup';
 import { cropShot, paintArrow, paintOval, paintText, withPaint } from './paint';
+import { SourceSeg } from './SourceSeg';
 import { useMarkup, type Draft } from './useMarkup';
+import { useShotSource } from './useShotSource';
 
 const HINT: Record<ShotTool, string> = {
   crop: 'Вырезать — рамка по кадру. Вьюпорт, не вся прокрутка.',
@@ -44,7 +46,7 @@ export function ShotEditor(props: {
   onSave: (raw: string) => void;
   onCancel: () => void;
 }): ReactNode {
-  const [working, setWorking] = useState(props.raw);
+  const { source, working, capturing, failed, bake: applyShot, choose } = useShotSource(props.raw);
   const [tool, setTool] = useState<ShotTool>('oval');
   const [nat, setNat] = useState({ width: 1, height: 1 });
   const [textAt, setTextAt] = useState<{ x: number; y: number } | null>(null);
@@ -54,20 +56,19 @@ export function ShotEditor(props: {
   const busy = useRef(false);
   const skipBlur = useRef(false);
 
-  useEffect(() => { setWorking(props.raw); }, [props.raw]);
   useEffect(() => { if (textAt) inputRef.current?.focus(); }, [textAt]);
 
   const bake = useCallback(async (next: string) => {
     busy.current = true;
-    setWorking(next);
+    applyShot(next);
     busy.current = false;
-  }, []);
+  }, [applyShot]);
 
   const markup = useMarkup({
     imgRef,
     natural: nat,
     tool,
-    enabled: !textAt && !busy.current,
+    enabled: !textAt && !busy.current && !capturing,
     onRect: (kind, r) => {
       const clamped = clampRect(r, nat);
       if (kind === 'crop') {
@@ -180,6 +181,11 @@ export function ShotEditor(props: {
           padding: sp(1), borderRadius: RADIUS.pill,
           background: 'var(--surface)', boxShadow: 'var(--shadow-lvl2), var(--inner-light)',
         }}>
+          <SourceSeg
+            value={source}
+            busy={capturing}
+            onChange={(next) => { markup.cancelDraft(); setTextAt(null); choose(next); }}
+          />
           {tools.map((t) => (
             <button
               key={t.id}
@@ -209,7 +215,9 @@ export function ShotEditor(props: {
           </button>
         </div>
       </div>
-      <div style={{ ...TEXT.caption, textAlign: 'center', padding: `0 ${sp(4)}px ${sp(3)}px` }}>{HINT[tool]}</div>
+      <div style={{ ...TEXT.caption, textAlign: 'center', padding: `0 ${sp(4)}px ${sp(3)}px` }}>
+        {capturing ? 'Снимаем окно…' : failed ? 'Не удалось снять окно' : HINT[tool]}
+      </div>
     </div>
   );
 }

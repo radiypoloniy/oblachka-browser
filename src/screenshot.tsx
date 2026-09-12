@@ -18,6 +18,7 @@ declare global {
       close: () => void;
       reportHeight: (px: number) => void;
       setMode: (mode: 'card' | 'edit') => void;
+      captureWindow: () => Promise<string | null>;
     };
   }
 }

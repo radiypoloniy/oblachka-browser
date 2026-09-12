@@ -2,10 +2,10 @@
 // снимком → Ctrl+S сохраняет, Esc убирает. Как и там, снимок НЕ уходит на диск сам: файл
 // появляется только по явному «сохранить», иначе папка загрузок засоряется случайными кадрами.
 //
-// ⚠️ Снимаем ровно ОДНУ вью — активной вкладки (webContents.capturePage). Выбора «какое окно
-// снять» у нас нет и не задумано: интерфейс браузера в кадре человеку не нужен, ему нужна
-// страница. Хаб/настройки/история снимку не подлежат (getActiveWebContents() === null) —
-// снимать там нечего, это наш собственный интерфейс.
+// ⚠️ Хоткей снимает ровно ОДНУ вью — активной вкладки (webContents.capturePage). «Окно» живёт
+// только в редакторе и идёт через desktopCapturer: BrowserWindow.capturePage дочерние
+// WebContentsView не видит. Хаб/настройки/история хоткею не подлежат
+// (getActiveWebContents() === null) — снимать там нечего, это наш собственный интерфейс.
 //
 // Оформление кадра (скруглённые углы + мягкая тень на непрозрачной бумаге — тот вид, за который
 // любят снимки macOS) делает РЕНДЕРЕР карточки на canvas, а не main: nativeImage тени рисовать не
@@ -25,6 +25,7 @@ import { uniquePath } from './DownloadManager';
 import { getAiPanelReservedWidth } from './AiPanelManager';
 import type { TabManager } from './TabManager';
 import { closeWindowView } from './viewTeardown';
+import { captureBrowserWindow } from './screenshotCapture';
 
 const CARD_WIDTH = 320;
 const INITIAL_HEIGHT = 220;
@@ -196,6 +197,28 @@ function ensureIpcRegistered(): void {
     layout(st);
     if (st.mode === 'edit') st.view?.webContents.focus();
     else st.tabs?.focusActiveView();
+  });
+
+  // Только из вью редактора: иначе любой preload мог бы снять окно. Карточку снимаем
+  // с дерева до кадра — иначе она сама попадёт в «окно».
+  ipcMain.handle('screenshot:capture-window', async (e): Promise<string | null> => {
+    const st = stateBySender(e.sender);
+    if (!st || !st.open || st.mode !== 'edit' || st.capturing) return null;
+    st.capturing = true;
+    const attached = isAttached(st);
+    if (attached) {
+      try { st.win.contentView.removeChildView(st.view!); } catch { /* окно могло закрыться */ }
+    }
+    try {
+      return await captureBrowserWindow(st.win);
+    } finally {
+      st.capturing = false;
+      if (attached && st.open && st.view && !st.win.isDestroyed()) {
+        st.win.contentView.addChildView(st.view);
+        layout(st);
+        if (st.mode === 'edit') st.view.webContents.focus();
+      }
+    }
   });
 }
 
