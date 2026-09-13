@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Обновление — карточка и пилюля в тулбаре</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@600;700;800&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   ОБНОВЛЕНИЕ — предложение пилюли в тулбаре + сверка карточки с живым кодом.
+   Карточка уже в src/components/UpdatePrompt.tsx (invert PopoverCard, 380).
+   Пилюля ещё не написана. Токены — дословно из системы.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --r-tight:4px; --r-control:8px; --r-box:12px; --r-island:20px; --r-pill:999px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-standard:cubic-bezier(.2,0,.2,1);
+  --dur-fast:120ms; --dur-slow:260ms;
+  --success:#34C759; --warning:#FF9500; --danger:#FF3B30;
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEEF1; --n4:#E2E3E8; --n5:#DBDCE3;
+  --n7:#BBBECE; --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --app-bg:var(--n5); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14); --divider-strong:rgba(60,60,67,.24);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+  --overlay-plate:color-mix(in srgb, var(--accent) 7%, var(--surface));
+  --overlay-plate-invert:color-mix(in srgb, var(--n12) 86%, var(--n11));
+  --overlay-invert-ink:var(--n1);
+  --overlay-invert-body:color-mix(in srgb, var(--n1) 64%, var(--overlay-plate-invert));
+  --overlay-invert-line:color-mix(in srgb, var(--n1) 16%, transparent);
+  --overlay-invert-quiet:color-mix(in srgb, var(--n1) 12%, transparent);
+  --selected:color-mix(in srgb, var(--accent) 16%, var(--surface));
+  --plate:color-mix(in srgb, var(--surface) 72%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439;
+    --n7:#55555E; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --on-accent:#121213;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+    --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+    --shadow-tint:#000000;
+    --overlay-plate:color-mix(in srgb, var(--accent) 12%, var(--surface));
+    --overlay-plate-invert:color-mix(in srgb, var(--n12) 86%, var(--n11));
+    --overlay-invert-ink:var(--n1);
+    --overlay-invert-body:color-mix(in srgb, var(--n1) 64%, var(--overlay-plate-invert));
+    --overlay-invert-line:color-mix(in srgb, var(--n1) 16%, transparent);
+    --overlay-invert-quiet:color-mix(in srgb, var(--n1) 12%, transparent);
+    --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439;
+  --n7:#55555E; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+  --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+  --shadow-tint:#000000;
+  --overlay-plate:color-mix(in srgb, var(--accent) 12%, var(--surface));
+  --overlay-plate-invert:color-mix(in srgb, var(--n12) 86%, var(--n11));
+  --overlay-invert-ink:var(--n1);
+  --overlay-invert-body:color-mix(in srgb, var(--n1) 64%, var(--overlay-plate-invert));
+  --overlay-invert-line:color-mix(in srgb, var(--n1) 16%, transparent);
+  --overlay-invert-quiet:color-mix(in srgb, var(--n1) 12%, transparent);
+  --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+}
+:root {
+  --shadow-lvl2:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+  --shadow-overlay:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 8%, transparent),
+    0 8px 16px color-mix(in srgb, var(--shadow-tint) 8%, transparent),
+    0 28px 48px color-mix(in srgb, var(--shadow-tint) 12%, transparent);
+  --shadow-overlay-strong:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 12%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 14%, transparent),
+    0 36px 64px color-mix(in srgb, var(--shadow-tint) 18%, transparent);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.55);
+}
+:root[data-theme="dark"] { --inner-light: inset 0 1px 0 rgba(255,255,255,.06); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --inner-light: inset 0 1px 0 rgba(255,255,255,.06); }
+}
+
+* { box-sizing:border-box; }
+html, body { margin:0; }
+body {
+  font-family:var(--font-ui); font-size:14px; line-height:1.45;
+  color:var(--text-body); background:var(--app-bg); -webkit-font-smoothing:antialiased;
+}
+.ground { position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:linear-gradient(168deg,var(--ground-1) 0%,var(--ground-2) 46%,var(--ground-3) 100%); }
+.ground::after {
+  content:""; position:absolute; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px; opacity:var(--grain-op); mix-blend-mode:overlay;
+}
+.wrap { position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:var(--sp6) var(--sp4) 80px; }
+h1,h2,h3 { margin:0; text-wrap:balance; }
+.display { font-family:var(--font-display); font-weight:700; letter-spacing:-.03em; line-height:1.05; color:var(--text-strong); }
+.caps { font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); }
+.lede { max-width:68ch; color:var(--text-muted); margin:var(--sp3) 0 0; }
+p { margin:var(--sp3) 0 0; max-width:68ch; }
+b { color:var(--text-strong); }
+code { font-family:var(--font-mono); font-size:12px; background:var(--sunken); padding:1px 5px; border-radius:4px; }
+
+.head { padding:var(--sp8) 0 var(--sp6); }
+.head h1 { font-size:clamp(30px,4.4vw,46px); }
+
+.section { margin-top:var(--sp8); padding:var(--sp8) var(--sp6); border-radius:20px; background:var(--surface); box-shadow:var(--shadow-lvl2), var(--inner-light); }
+.section > .caps { display:block; margin-bottom:var(--sp2); }
+.section h2 { font-size:25px; font-family:var(--font-display); font-weight:700; letter-spacing:-.025em; color:var(--text-strong); }
+
+.grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--sp3); margin-top:var(--sp6); }
+.card { padding:var(--sp4); border-radius:14px; border:1px solid var(--divider); }
+.card b { display:block; font-family:var(--font-display); font-size:15px; letter-spacing:-.015em; }
+.card span { display:block; margin-top:6px; font-size:12.5px; color:var(--text-muted); }
+.card.no { border-color:color-mix(in srgb, var(--danger) 28%, var(--divider)); }
+.card.yes { border-color:color-mix(in srgb, var(--accent) 28%, var(--divider)); }
+
+.controls { display:flex; flex-wrap:wrap; gap:var(--sp3); align-items:center; margin-top:var(--sp6); }
+.seg { display:flex; gap:2px; padding:3px; border-radius:999px; background:var(--sunken); }
+.seg button {
+  border:0; cursor:pointer; font:inherit; font-size:13px; font-weight:500;
+  padding:6px 14px; border-radius:999px; background:transparent; color:var(--text-muted);
+}
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); font-weight:600; }
+.hint { font-size:12.5px; color:var(--text-faint); }
+.check {
+  display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted);
+  user-select:none; cursor:pointer;
+}
+.check input { accent-color:var(--accent); }
+
+/* ── Макет окна ──────────────────────────────────────────────────────────── */
+.win {
+  margin-top:var(--sp6); border-radius:16px; overflow:hidden;
+  background:var(--app-bg); box-shadow:var(--shadow-lvl2);
+  display:grid; grid-template-columns:52px 1fr; min-height:420px;
+}
+.side { background:transparent; padding:10px 8px; display:flex; flex-direction:column; gap:8px; align-items:center; }
+.side .dot { width:28px; height:28px; border-radius:10px; background:var(--sunken); }
+.side .dot.on { background:var(--selected); }
+.main { display:flex; flex-direction:column; min-width:0; }
+.bar {
+  display:flex; align-items:center; gap:8px; padding:8px 12px 8px 4px;
+}
+.nav { display:flex; gap:0; }
+.nav button, .tool {
+  width:34px; height:34px; border:0; background:transparent; color:var(--text-body);
+  border-radius:999px; display:grid; place-items:center; cursor:pointer; padding:0;
+}
+.nav button:hover, .tool:hover { background:color-mix(in srgb, var(--text-strong) 6%, transparent); }
+.omni {
+  flex:1; min-width:0; height:38px; display:flex; align-items:center; gap:8px;
+  padding:0 12px; border-radius:999px; background:var(--sunken);
+  color:var(--text-muted); font-size:13px;
+}
+.omni .lock { opacity:.55; display:grid; }
+.cluster {
+  display:flex; align-items:center; gap:2px; height:38px; padding:2px; border-radius:999px;
+}
+.cluster .tool { width:34px; height:34px; position:relative; }
+.win-btns { display:flex; gap:2px; margin-left:4px; }
+.win-btns i { width:12px; height:12px; border-radius:50%; background:var(--n7); display:block; font-style:normal; }
+
+.page {
+  position:relative; flex:1; margin:0 12px 12px 0; border-radius:16px;
+  background:linear-gradient(180deg, #F7F4EE 0%, #EEE8DC 100%);
+  overflow:hidden; min-height:320px;
+}
+:root[data-theme="dark"] .page,
+:root:not([data-theme="light"]) .page { background:linear-gradient(180deg, #1C1B18 0%, #161512 100%); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .page { background:linear-gradient(180deg, #F7F4EE 0%, #EEE8DC 100%); }
+}
+.page-lines { padding:28px 36px; }
+.page-lines em { display:block; height:10px; border-radius:4px; background:rgba(0,0,0,.08); margin-bottom:10px; font-style:normal; }
+.page-lines em:nth-child(1) { width:42%; height:18px; }
+.page-lines em:nth-child(2) { width:78%; }
+.page-lines em:nth-child(3) { width:71%; }
+.page-lines em:nth-child(4) { width:64%; }
+:root[data-theme="dark"] .page-lines em { background:rgba(255,255,255,.08); }
+
+/* Пилюля обновления — остров события слева от кластера из трёх */
+.update-island {
+  display:none; align-items:center; height:38px; padding:2px; border-radius:999px;
+}
+.update-island.on { display:flex; }
+.update-btn {
+  position:relative; width:34px; height:34px; border:0; padding:0;
+  border-radius:999px; background:transparent; color:var(--text-body);
+  display:grid; place-items:center; cursor:pointer;
+}
+.update-btn.ready { color:var(--accent); background:var(--selected); }
+.update-island .pct { display:none; }
+.update-island.labeled { padding:0 8px 0 2px; gap:6px; }
+.update-island.labeled .pct {
+  display:block;
+  font-family:var(--font-mono); font-size:12px; font-weight:600;
+  color:var(--text-strong); font-variant-numeric:tabular-nums; min-width:2.4ch;
+}
+.update-island.labeled.ready .pct { display:none; }
+
+.ring {
+  position:absolute; inset:0; margin:auto; width:30px; height:30px; pointer-events:none;
+  transform:rotate(-90deg);
+}
+.ring circle { fill:none; stroke:var(--accent); stroke-width:2; }
+.ring .track { stroke-opacity:.18; }
+.ring .arc { stroke-linecap:round; }
+
+/* Инверсная карточка — копия PopoverCard invert 380 */
+.ask {
+  position:absolute; top:12px; left:12px; width:380px; z-index:3;
+  background:var(--overlay-plate-invert);
+  border:1px solid var(--overlay-invert-line);
+  color:var(--overlay-invert-body);
+  border-radius:20px; padding:16px;
+  display:none; flex-direction:column; gap:16px;
+  box-shadow:var(--shadow-overlay-strong);
+}
+.ask.on { display:flex; }
+.ask .tail {
+  position:absolute; top:-7px; left:24px; width:14px; height:14px;
+  background:var(--overlay-plate-invert);
+  border-left:1px solid var(--overlay-invert-line);
+  border-top:1px solid var(--overlay-invert-line);
+  transform:rotate(45deg);
+}
+.ask-row { display:flex; gap:16px; align-items:flex-start; }
+.ico {
+  width:46px; height:46px; border-radius:12px; flex:none;
+  display:grid; place-items:center;
+  background:var(--overlay-invert-quiet); color:var(--overlay-invert-ink);
+}
+.ask .who {
+  font-family:var(--font-mono); font-size:12.5px; letter-spacing:.04em;
+  color:var(--overlay-invert-body); margin-bottom:4px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ask .q {
+  font-family:var(--font-display); font-size:20px; font-weight:700;
+  letter-spacing:-.03em; line-height:1.14; color:var(--overlay-invert-ink); margin-bottom:8px;
+}
+.ask .hint-line { font-size:14px; color:var(--overlay-invert-body); }
+.track { height:4px; border-radius:4px; background:var(--overlay-invert-quiet); overflow:hidden; }
+.fill { height:100%; background:var(--accent); width:0%; transition:width .2s; }
+.ask label {
+  display:flex; align-items:center; gap:8px; font-size:12.5px;
+  color:var(--overlay-invert-body); cursor:default; user-select:none;
+}
+.ask label input { accent-color:var(--accent); }
+.acts { display:flex; gap:4px; }
+.acts button {
+  flex:1; border:0; cursor:pointer; font:inherit; font-weight:600; font-size:14px;
+  padding:12px 16px; border-radius:8px;
+}
+.acts .pri { background:var(--accent); color:var(--on-accent); }
+.acts .quiet { background:var(--overlay-invert-quiet); color:var(--overlay-invert-ink); }
+
+/* Ряд живых карточек */
+.specimens { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:var(--sp4); margin-top:var(--sp6); }
+.specimen { display:flex; flex-direction:column; gap:var(--sp3); align-items:flex-start; }
+.specimen .ask { position:relative; top:auto; left:auto; display:flex; }
+.specimen .cap { font-size:12.5px; color:var(--text-muted); }
+
+.pills { display:flex; flex-wrap:wrap; gap:var(--sp6); align-items:flex-end; margin-top:var(--sp6); }
+.pill-col { display:flex; flex-direction:column; gap:10px; align-items:center; }
+.pill-col em { font-style:normal; font-size:12px; color:var(--text-muted); text-align:center; max-width:140px; }
+.fakebar {
+  display:flex; align-items:center; gap:8px;
+  padding:8px 10px; border-radius:14px; background:var(--app-bg);
+}
+
+.rules { margin-top:var(--sp6); }
+.rule { display:grid; grid-template-columns:28px 1fr; gap:var(--sp3); padding:var(--sp3) 0; border-top:1px solid var(--divider); }
+.rule i { font-family:var(--font-display); font-style:normal; font-weight:800; color:var(--text-strong); }
+
+.foot { margin-top:var(--sp8); text-align:center; color:var(--text-faint); font-size:12.5px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition-duration:1ms !important; animation:none !important; } }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+</style>
+</head>
+<body>
+<div class="ground"></div>
+<div class="wrap">
+
+  <header class="head">
+    <div class="caps">предложение · карточка уже в коде</div>
+    <h1 class="display">Обновление: вопрос<br>на странице, ход — в хроме</h1>
+    <p class="lede">
+      Карточка — тот же invert, что у разрешения сайта: браузер спрашивает, человек отвечает.
+      После «Обновить» вопрос закрыт, остаётся процесс. Процесс живёт не четвёртой кнопкой
+      в кластере и не кольцом на загрузках, а островом события слева от трёх постоянных кнопок —
+      тем же местом, где появляется «Внешний агент».
+    </p>
+  </header>
+
+  <section class="section">
+    <span class="caps">окно</span>
+    <h2>Как это выглядит в браузере</h2>
+    <p>Переключай шаг. Пилюля появляется только когда уже качаем или готовы поставить. Карточка на «Качается» по умолчанию спрятана: страница свободна, ход читается с кнопки.</p>
+
+    <div class="controls">
+      <div class="seg" role="tablist" aria-label="Шаг">
+        <button type="button" data-phase="ask" aria-pressed="true">Спросить</button>
+        <button type="button" data-phase="downloading" aria-pressed="false">Качается</button>
+        <button type="button" data-phase="ready" aria-pressed="false">Готово</button>
+      </div>
+      <div class="seg" role="group" aria-label="Вид пилюли">
+        <button type="button" data-pill="ring" aria-pressed="true">Кольцо</button>
+        <button type="button" data-pill="labeled" aria-pressed="false">Кольцо и %</button>
+      </div>
+      <div class="seg" role="group" aria-label="Тема">
+        <button type="button" data-theme="light">Светлая</button>
+        <button type="button" data-theme="dark">Тёмная</button>
+      </div>
+      <label class="check" data-only="downloading">
+        <input type="checkbox" id="cardOpen"> Карточка открыта с пилюли
+      </label>
+    </div>
+
+    <div class="win" id="win">
+      <aside class="side" aria-hidden="true">
+        <div class="dot on"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </aside>
+      <div class="main">
+        <div class="bar">
+          <div class="nav">
+            <button type="button" title="Назад" aria-label="Назад">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 4 6 8l4 4"/></svg>
+            </button>
+            <button type="button" title="Вперёд" aria-label="Вперёд">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 4l4 4-4 4"/></svg>
+            </button>
+          </div>
+          <div class="omni">
+            <span class="lock"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5.5" width="6" height="5" rx="1"/><path d="M4.2 5.5V4.2a1.8 1.8 0 0 1 3.6 0V5.5"/></svg></span>
+            the-flow.ru
+          </div>
+          <div class="update-island" id="updateIsland" title="">
+            <button class="update-btn" id="updateBtn" type="button" aria-label="Обновление">
+              <svg class="glyph-refresh" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9a5.5 5.5 0 0 1 9.2-4M14.5 9a5.5 5.5 0 0 1-9.2 4"/><path d="M12.2 3.2v2.6h-2.6M5.8 14.8v-2.6h2.6"/></svg>
+              <svg class="glyph-restart" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M3 9h12M11 5l4 4-4 4"/><path d="M15 13v2.5H3"/></svg>
+              <svg class="ring" viewBox="0 0 32 32" aria-hidden="true">
+                <circle class="track" cx="16" cy="16" r="13"/>
+                <circle class="arc" id="arc" cx="16" cy="16" r="13" stroke-dasharray="81.68" stroke-dashoffset="81.68"/>
+              </svg>
+            </button>
+            <span class="pct" id="pctLabel">47%</span>
+          </div>
+          <div class="cluster">
+            <button class="tool" type="button" title="AI-панель" aria-label="AI-панель">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 2.5 10.6 7H15.5L11.7 9.8 13.2 14.5 9 11.8 4.8 14.5 6.3 9.8 2.5 7h4.9z"/></svg>
+            </button>
+            <button class="tool" type="button" title="Буфер" aria-label="Буфер">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="5" y="5" width="10" height="12" rx="2"/><path d="M7 5V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+            <button class="tool" type="button" title="Загрузки" aria-label="Загрузки">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M9 3.5v9M5.5 9.5 9 13l3.5-3.5"/><path d="M4 15.5h10"/></svg>
+            </button>
+          </div>
+          <div class="win-btns" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
+        <div class="page">
+          <div class="page-lines"><em></em><em></em><em></em><em></em></div>
+          <div class="ask" id="ask">
+            <span class="tail" aria-hidden="true"></span>
+            <div class="ask-row">
+              <span class="ico" id="askIco"></span>
+              <div>
+                <div class="who">Oblako</div>
+                <div class="q" id="askQ"></div>
+                <div class="hint-line" id="askHint"></div>
+              </div>
+            </div>
+            <div class="track" id="askTrack"><div class="fill" id="askFill"></div></div>
+            <label id="askSkip"><input type="checkbox"> Не спрашивать об этой версии</label>
+            <div class="acts" id="askActs">
+              <button class="pri" type="button" id="pri"></button>
+              <button class="quiet" type="button" id="quiet"></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:12px" id="sceneHint"></p>
+  </section>
+
+  <section class="section">
+    <span class="caps">пилюля</span>
+    <h2>Не четвёртая кнопка и не загрузки</h2>
+    <p>
+      Правый кластер — постоянный набор из трёх слотов. Появляющаяся кнопка внутри него сдвигает омнибокс под курсором;
+      это уже ловили и лечили гашением, а не исчезновением. Обновление — событие, как внешний агент: своего острова
+      слева, и только пока событие живо.
+    </p>
+    <div class="grid3">
+      <div class="card yes">
+        <b>Кольцо на своей кнопке</b>
+        <span>Тот же <code>ProgressRing</code>, что у загрузок: дуга с 12 часов, неизвестный размер — крутится четвертью. Глиф — обновление, не стрелка файла. Клик открывает карточку.</span>
+      </div>
+      <div class="card">
+        <b>Кольцо и проценты</b>
+        <span>Тот же остров, справа от кнопки моноширинные 47%. Читается с первого взгляда, но крадёт ширину омнибокса. Запасной вид, если кольца мало.</span>
+      </div>
+      <div class="card no">
+        <b>Не делать</b>
+        <span>Кольцо на кнопке загрузок — человек откроет файлы. Четвёртая кнопка в тройке — слот про инструмент, а это событие. Подпись «Обновление 0.8.3» — как бейдж агента, слишком дорого для тихого хода.</span>
+      </div>
+    </div>
+
+    <div class="pills">
+      <div class="pill-col">
+        <div class="fakebar">
+          <div class="update-island on">
+            <button class="update-btn" type="button">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9a5.5 5.5 0 0 1 9.2-4M14.5 9a5.5 5.5 0 0 1-9.2 4"/><path d="M12.2 3.2v2.6h-2.6M5.8 14.8v-2.6h2.6"/></svg>
+              <svg class="ring" viewBox="0 0 32 32"><circle class="track" cx="16" cy="16" r="13"/><circle class="arc" cx="16" cy="16" r="13" stroke-dasharray="81.68" stroke-dashoffset="43"/></svg>
+            </button>
+          </div>
+          <div class="cluster"><span class="tool"></span><span class="tool"></span><span class="tool"></span></div>
+        </div>
+        <em>Качается · кольцо</em>
+      </div>
+      <div class="pill-col">
+        <div class="fakebar">
+          <div class="update-island on labeled">
+            <button class="update-btn" type="button">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9a5.5 5.5 0 0 1 9.2-4M14.5 9a5.5 5.5 0 0 1-9.2 4"/><path d="M12.2 3.2v2.6h-2.6M5.8 14.8v-2.6h2.6"/></svg>
+              <svg class="ring" viewBox="0 0 32 32"><circle class="track" cx="16" cy="16" r="13"/><circle class="arc" cx="16" cy="16" r="13" stroke-dasharray="81.68" stroke-dashoffset="43"/></svg>
+            </button>
+            <span class="pct">47%</span>
+          </div>
+          <div class="cluster"><span class="tool"></span><span class="tool"></span><span class="tool"></span></div>
+        </div>
+        <em>Качается · кольцо и %</em>
+      </div>
+      <div class="pill-col">
+        <div class="fakebar">
+          <div class="update-island on">
+            <button class="update-btn ready" type="button">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h12M11 5l4 4-4 4"/><path d="M15 13v2.5H3"/></svg>
+            </button>
+          </div>
+          <div class="cluster"><span class="tool"></span><span class="tool"></span><span class="tool"></span></div>
+        </div>
+        <em>Готово · акцент, без кольца</em>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <span class="caps">карточка · живой код</span>
+    <h2>Три фазы invert, как уже сделано</h2>
+    <p>
+      Это не новый макет. Сверка с <code>UpdatePrompt.tsx</code>: 380, хвост, плашка 46, вопрос Unbounded 20,
+      чекбокс только на вопросе и только меняет «Не сейчас». На ходе кнопок нет. Цвет бара — акцент, не статус.
+    </p>
+    <div class="specimens">
+      <div class="specimen">
+        <div class="ask">
+          <span class="tail"></span>
+          <div class="ask-row">
+            <span class="ico"><svg width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 11.5a7 7 0 0 1 11.7-5.1M18.5 11.5a7 7 0 0 1-11.7 5.1"/><path d="M15.6 4.2v3.2h-3.2M7.4 18.8v-3.2h3.2"/></svg></span>
+            <div>
+              <div class="who">Oblako</div>
+              <div class="q">Поставить версию 0.8.3?</div>
+              <div class="hint-line">Сейчас стоит 0.8.2. Скачается в фоне, вкладки сохранятся.</div>
+            </div>
+          </div>
+          <label><input type="checkbox"> Не спрашивать об этой версии</label>
+          <div class="acts"><button class="pri" type="button">Обновить</button><button class="quiet" type="button">Не сейчас</button></div>
+        </div>
+        <span class="cap">Спросить. Чекбокс не трогает «Обновить».</span>
+      </div>
+      <div class="specimen">
+        <div class="ask">
+          <span class="tail"></span>
+          <div class="ask-row">
+            <span class="ico"><svg width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M11.5 4v9.5M7.5 10.5 11.5 14.5 15.5 10.5"/><path d="M5 18h13"/></svg></span>
+            <div>
+              <div class="who">Oblako</div>
+              <div class="q">Скачиваем версию 0.8.3…</div>
+              <div class="hint-line">47%</div>
+            </div>
+          </div>
+          <div class="track"><div class="fill" style="width:47%"></div></div>
+        </div>
+        <span class="cap">Ход. Кнопок нет — отменить качку нечем и не надо.</span>
+      </div>
+      <div class="specimen">
+        <div class="ask">
+          <span class="tail"></span>
+          <div class="ask-row">
+            <span class="ico"><svg width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 11.5h15M15 7.5l4 4-4 4"/><path d="M19 16v3H4"/></svg></span>
+            <div>
+              <div class="who">Oblako</div>
+              <div class="q">Перезапустить и поставить 0.8.3?</div>
+              <div class="hint-line">Браузер закроется ненадолго и откроется сам. Вкладки на месте.</div>
+            </div>
+          </div>
+          <div class="acts"><button class="pri" type="button">Перезапустить</button><button class="quiet" type="button">Позже</button></div>
+        </div>
+        <span class="cap">Готово. «Позже» поставит при выходе.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <span class="caps">если делать</span>
+    <h2>Правила, которые можно проверить</h2>
+    <div class="rules">
+      <div class="rule"><i>1</i><div><b>Пилюля не член тройки.</b> Свой остров слева от кластера. В покое её нет — как бейджа агента. Слот AI / буфер / загрузки не меняется.</div></div>
+      <div class="rule"><i>2</i><div><b>После «Обновить» карточка уходит.</b> Страница снова целая. Ход держит пилюля. Клик по пилюле возвращает invert с полосой или с перезапуском.</div></div>
+      <div class="rule"><i>3</i><div><b>Кольцо = загрузки, глиф другой.</b> Тот же <code>ProgressRing</code>, тот же старт сверху. Не стрелка файла. Готово — акцент на кнопке, кольца уже нет.</div></div>
+      <div class="rule"><i>4</i><div><b>Карточку не рисовать заново.</b> Фазы уже в <code>UpdatePrompt.tsx</code>. Меняется только: прятать после download и открывать с пилюли.</div></div>
+      <div class="rule"><i>5</i><div><b>Проценты в хроме — опция.</b> Корабль — кольцо. Подпись % добавляется одной строкой, если кольца окажется мало на живом окне.</div></div>
+    </div>
+  </section>
+
+  <p class="foot">docs/visual docs/update-prompt.html · код карточки не трогать, пока не сойдёмся по пилюле</p>
+</div>
+
+<script>
+const ICO = {
+  refresh: `<svg width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 11.5a7 7 0 0 1 11.7-5.1M18.5 11.5a7 7 0 0 1-11.7 5.1"/><path d="M15.6 4.2v3.2h-3.2M7.4 18.8v-3.2h3.2"/></svg>`,
+  download: `<svg width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M11.5 4v9.5M7.5 10.5 11.5 14.5 15.5 10.5"/><path d="M5 18h13"/></svg>`,
+  restart: `<svg width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 11.5h15M15 7.5l4 4-4 4"/><path d="M19 16v3H4"/></svg>`,
+};
+const LEN = 2 * Math.PI * 13;
+let phase = 'ask';
+let pill = 'ring';
+let pct = 47;
+
+function setPressed(sel, key, value) {
+  document.querySelectorAll(sel).forEach((btn) => {
+    btn.setAttribute('aria-pressed', String(btn.getAttribute(key) === value || btn.dataset.phase === value || btn.dataset.pill === value));
+  });
+}
+
+function render() {
+  const island = document.getElementById('updateIsland');
+  const btn = document.getElementById('updateBtn');
+  const ask = document.getElementById('ask');
+  const track = document.getElementById('askTrack');
+  const skip = document.getElementById('askSkip');
+  const acts = document.getElementById('askActs');
+  const arc = document.getElementById('arc');
+  const fill = document.getElementById('askFill');
+  const cardOpen = document.getElementById('cardOpen').checked;
+  const onlyDl = document.querySelector('[data-only="downloading"]');
+  onlyDl.style.display = phase === 'downloading' ? 'inline-flex' : 'none';
+
+  island.classList.toggle('on', phase !== 'ask');
+  island.classList.toggle('labeled', pill === 'labeled');
+  island.classList.toggle('ready', phase === 'ready');
+  btn.classList.toggle('ready', phase === 'ready');
+  const gRefresh = btn.querySelector('.glyph-refresh');
+  const gRestart = btn.querySelector('.glyph-restart');
+  if (gRefresh && gRestart) {
+    gRefresh.toggleAttribute('hidden', phase === 'ready');
+    gRestart.toggleAttribute('hidden', phase !== 'ready');
+  }
+  island.title = phase === 'downloading'
+    ? `Скачиваем 0.8.3 — ${pct}%`
+    : phase === 'ready' ? 'Перезапустить и поставить 0.8.3' : '';
+  document.getElementById('pctLabel').textContent = `${pct}%`;
+  arc.style.strokeDasharray = String(LEN);
+  arc.style.strokeDashoffset = phase === 'ready' ? '0' : String(LEN * (1 - pct / 100));
+  arc.style.opacity = phase === 'downloading' ? '1' : '0';
+
+  const showCard = phase === 'ask' || phase === 'ready' || (phase === 'downloading' && cardOpen);
+  ask.classList.toggle('on', showCard);
+  track.style.display = phase === 'downloading' ? 'block' : 'none';
+  skip.style.display = phase === 'ask' ? 'flex' : 'none';
+  acts.style.display = phase === 'downloading' ? 'none' : 'flex';
+  fill.style.width = pct + '%';
+
+  const q = document.getElementById('askQ');
+  const h = document.getElementById('askHint');
+  const ico = document.getElementById('askIco');
+  const pri = document.getElementById('pri');
+  const quiet = document.getElementById('quiet');
+  if (phase === 'ask') {
+    ico.innerHTML = ICO.refresh;
+    q.textContent = 'Поставить версию 0.8.3?';
+    h.textContent = 'Сейчас стоит 0.8.2. Скачается в фоне, вкладки сохранятся.';
+    pri.textContent = 'Обновить';
+    quiet.textContent = 'Не сейчас';
+  } else if (phase === 'downloading') {
+    ico.innerHTML = ICO.download;
+    q.textContent = 'Скачиваем версию 0.8.3…';
+    h.textContent = pct + '%';
+  } else {
+    ico.innerHTML = ICO.restart;
+    q.textContent = 'Перезапустить и поставить 0.8.3?';
+    h.textContent = 'Браузер закроется ненадолго и откроется сам. Вкладки на месте.';
+    pri.textContent = 'Перезапустить';
+    quiet.textContent = 'Позже';
+  }
+
+  const hint = document.getElementById('sceneHint');
+  if (phase === 'ask') hint.textContent = 'Пилюли ещё нет: спрашиваем, а не качаем. Карточка у левого верхнего угла контента, как разрешение сайта.';
+  else if (phase === 'downloading') hint.textContent = cardOpen
+    ? 'Карточка вернулась по клику на пилюлю. Кнопок нет, отменить нечего.'
+    : 'Карточка закрыта. Кольцо слева от загрузок — не на них. Клик по кольцу откроет карточку.';
+  else hint.textContent = 'Пилюля остаётся, пока не перезапустим и не скажем «Позже». Акцент вместо кольца: ход закончен, ждут действия.';
+}
+
+document.querySelectorAll('[data-phase]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    phase = btn.dataset.phase;
+    document.querySelectorAll('[data-phase]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+    render();
+  });
+});
+document.querySelectorAll('[data-pill]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    pill = btn.dataset.pill;
+    document.querySelectorAll('[data-pill]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+    render();
+  });
+});
+document.querySelectorAll('[data-theme]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.documentElement.setAttribute('data-theme', btn.dataset.theme);
+  });
+});
+document.getElementById('cardOpen').addEventListener('change', render);
+document.getElementById('pri').addEventListener('click', () => {
+  if (phase === 'ask') {
+    phase = 'downloading';
+    document.querySelectorAll('[data-phase]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.phase === 'downloading')));
+    render();
+  }
+});
+document.getElementById('updateBtn').addEventListener('click', () => {
+  if (phase === 'downloading') {
+    document.getElementById('cardOpen').checked = !document.getElementById('cardOpen').checked;
+    render();
+  }
+});
+
+setInterval(() => {
+  if (phase !== 'downloading') return;
+  pct = pct >= 96 ? 12 : pct + 2;
+  render();
+}, 240);
+
+render();
+</script>
+</body>
+</html>
