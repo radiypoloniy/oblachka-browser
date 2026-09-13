@@ -248,6 +248,7 @@ document.getElementById('close').onclick = () => post('close');
 if (window.chrome && chrome.webview) {
   chrome.webview.addEventListener('message', (e) => {
     const m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+    if (m.mode === 'update') applyUpdateMode();
     if (m.screen === 'copy') {
       document.getElementById('d2').classList.remove('wait');
     }
@@ -260,6 +261,27 @@ if (window.chrome && chrome.webview) {
       show('s-err');
     }
   });
+}
+
+function applyUpdateMode() {
+  const h1 = document.querySelector('#s-install h1');
+  const lede = document.querySelector('#s-install .lede');
+  const cap = document.querySelector('#s-install .cap');
+  const meta = document.querySelector('#s-install .meta');
+  if (h1) h1.innerHTML = 'Обновляем<br>Oblako';
+  if (lede) lede.textContent = 'Подождите: ставим новую версию. Браузер откроется сам.';
+  if (cap) cap.textContent = 'Обновление';
+  if (meta) meta.textContent = 'Это займёт меньше минуты.';
+  const cancel = document.getElementById('cancel');
+  if (cancel) cancel.hidden = true;
+  const doneH1 = document.querySelector('#s-done h1');
+  const doneLede = document.querySelector('#s-done .lede');
+  const doneMeta = document.querySelector('#s-done .meta');
+  const open = document.getElementById('open');
+  if (doneH1) doneH1.innerHTML = 'Можно<br>пользоваться';
+  if (doneLede) doneLede.textContent = 'Браузер сейчас откроется сам.';
+  if (doneMeta) doneMeta.textContent = 'Ничего нажимать не нужно.';
+  if (open) open.hidden = true;
 }
 
 setTimeout(() => document.getElementById('d2').classList.remove('wait'), 1200);

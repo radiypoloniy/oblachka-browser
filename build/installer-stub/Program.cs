@@ -25,14 +25,17 @@ static class Program
 
         string? statePath = null;
         int parentPid = 0;
+        var isUpdate = false;
         for (var i = 0; i < args.Length; i++)
         {
             if (args[i] == "--state" && i + 1 < args.Length) statePath = args[++i];
             else if (args[i] == "--pid" && i + 1 < args.Length)
                 int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out parentPid);
+            else if (args[i] == "--mode" && i + 1 < args.Length)
+                isUpdate = string.Equals(args[++i], "update", StringComparison.OrdinalIgnoreCase);
         }
 
-        Application.Run(new SetupForm(statePath, parentPid));
+        Application.Run(new SetupForm(statePath, parentPid, isUpdate));
     }
 
     internal static void Log(Exception? ex)
@@ -52,6 +55,7 @@ sealed class SetupForm : Form
 {
     readonly string? statePath;
     readonly int parentPid;
+    readonly bool isUpdate;
     readonly WebView2 web = new() { Dock = DockStyle.Fill, Visible = false };
 
     // ⚠️ Окно установки не имеет права быть пустым: человек видит его ВМЕСТО мастера Windows и по
@@ -69,10 +73,11 @@ sealed class SetupForm : Form
     string? appExe;
     bool finished;
 
-    public SetupForm(string? statePath, int parentPid)
+    public SetupForm(string? statePath, int parentPid, bool isUpdate)
     {
         this.statePath = statePath;
         this.parentPid = parentPid;
+        this.isUpdate = isUpdate;
         Text = "Oblako";
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterScreen;
@@ -127,6 +132,9 @@ sealed class SetupForm : Form
         {
             fallback.Visible = false;
             web.Visible = true;
+            // Режим обновления — тот же экран «копируем файлы», другие слова. Постить ПОСЛЕ
+            // показа: иначе applyUpdateMode в html сработает по пустому документу.
+            if (isUpdate) PostRaw("{\"mode\":\"update\"}");
         };
         web.CoreWebView2.Navigate(new Uri(Path.Combine(root, "index.html")).AbsoluteUri);
     }
@@ -163,8 +171,14 @@ sealed class SetupForm : Form
         if (web.CoreWebView2 == null)
         {
             // Карточки нет — кнопок «Открыть»/«Закрыть» человеку не показать, поэтому решаем за него:
-            // на успехе ведём себя как runAfterFinish, на ошибке говорим словом и уходим.
-            if (screen == "done") { OpenApp(); return; }
+            // на успехе первой установки ведём себя как runAfterFinish. На апдейте --force-run
+            // сам поднимет браузер: OpenApp здесь дал бы второй процесс.
+            if (screen == "done")
+            {
+                if (!isUpdate) OpenApp();
+                Close();
+                return;
+            }
             fallback.Text = "Установка не завершилась." + Environment.NewLine
                 + "Попробуйте запустить установщик ещё раз.";
             var bye = new System.Windows.Forms.Timer { Interval = 5000 };
@@ -172,13 +186,29 @@ sealed class SetupForm : Form
             bye.Start();
             return;
         }
+        if (isUpdate) PostRaw("{\"mode\":\"update\"}");
         PostScreen(screen);
+        // Апдейтер сам запускает браузер (--force-run). Экран «Можно открывать» на обновлении
+        // дал бы вторую кнопку «Открыть» и второй процесс — закрываемся, как только файлы на месте.
+        if (isUpdate && screen == "done")
+        {
+            // Держим карточку секунду: --force-run поднимает браузер не мгновенно, и сразу
+            // закрытое окно снова оставляет человека на рабочем столе.
+            var bye = new System.Windows.Forms.Timer { Interval = 1200 };
+            bye.Tick += (_, _) => { bye.Stop(); Close(); };
+            bye.Start();
+        }
     }
 
     void PostScreen(string screen)
     {
+        PostRaw($"{{\"screen\":\"{screen}\"}}");
+    }
+
+    void PostRaw(string json)
+    {
         if (web.CoreWebView2 == null) return;
-        web.CoreWebView2.PostWebMessageAsString($"{{\"screen\":\"{screen}\"}}");
+        web.CoreWebView2.PostWebMessageAsString(json);
     }
 
     void CancelInstall()

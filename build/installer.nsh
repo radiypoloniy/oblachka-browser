@@ -17,8 +17,8 @@
 ;
 ; Мастер MUI человеку больше не показываем: customInit поднимает oblako-setup-ui.exe
 ; (карточка на токенах) и переводит NSIS в Silent — копирование файлов идёт без окна Windows.
-; Апдейтер передаёт --updated: карточку не показываем, ставим молча и --force-run открывает
-; браузер (см. UpdateManager.quitAndInstall).
+; Апдейтер передаёт --updated: ту же карточку показываем в режиме обновления (без «Открыть» —
+; браузер поднимет --force-run, см. UpdateManager.quitAndInstall).
 ;
 ; Состояние для карточки пишем в %TEMP%, не в $PLUGINSDIR: каталог плагинов NSIS сносит при
 ; выходе, а окно «Готово» должно пережить установщик.
@@ -28,6 +28,15 @@
   ${StdUtils.TestParameter} $R9 "updated"
   ${If} $R9 == "true"
     SetSilent silent
+    InitPluginsDir
+    SetOutPath "$TEMP"
+    File /oname=$TEMP\oblako-setup-ui.exe "${BUILD_RESOURCES_DIR}\oblako-setup-ui.exe"
+    StrCpy $0 "$TEMP\oblako-setup-ui.state"
+    FileOpen $1 $0 w
+    FileWrite $1 "installing$\r$\n"
+    FileClose $1
+    System::Call "kernel32::GetCurrentProcessId() i .r2"
+    Exec '"$TEMP\oblako-setup-ui.exe" --state "$0" --pid $2 --mode update'
   ${ElseIfNot} ${Silent}
     InitPluginsDir
     SetOutPath "$TEMP"
