@@ -18,6 +18,7 @@ import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
 import { modelFor, type JsonSchema, type AiRole, type ChatVia, type Provider, type AiFileMeta } from './ai/registry'
 import * as FileStore from './ai/FileStore'
 import { isQwenBusy, withQwenQueue, withQwenQueueBackground } from './QwenQueue'
+import { buildRelatedRerankPrompt } from '../shared/relatedHistory'
 export { withQwenQueueBackground }
 import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
 
@@ -391,17 +392,12 @@ export interface RerankCandidate { id: number; title: string; url: string; score
 // связный текст, а короткий структурированный ответ.
 const RERANK_MAX_TOKENS = 512
 
-// ⚠️ Фрагмент ОБЯЗАН быть подрезан, и это не оптимизация. Снипет приходит из FTS-индекса
-// содержимого — это кусок текста страницы, и его длина ничем не ограничена. На истории с
-// реальным контентом двадцать таких кандидатов переставали влезать в контекст, node-llama-cpp
-// отвечал «Failed to compress chat history… prompt too long», реранк падал — и умный поиск ТИХО
-// деградировал до лексики+FTS. Тихо, потому что этот исход предусмотрен как штатный
-// (degraded:true), и отличить «модель сочла кандидатов нерелевантными» от «промпт не влез»
-// снаружи было нельзя. Поймано на живом прогоне подсказки «вы это уже читали».
-// Для суждения о релевантности двухсот символов хватает: там решается «про то или не про то».
+// ⚠️ Фрагмент ОБЯЗАН быть подрезан: снипет из FTS не ограничен, двадцать кандидатов не влезали
+// в контекст, реранк тихо деградировал до лексики+FTS (degraded:true). 240 символов хватает
+// решить «про то или не про то». Поймано на живом прогоне «вы это уже читали».
 const RERANK_SNIPPET_MAX = 240
 
-function buildRerankPrompt(query: string, candidates: RerankCandidate[]): string {
+function buildRerankPrompt(query: string, candidates: RerankCandidate[], related?: boolean): string {
   const list = candidates
     .map((c, i) => {
       const short = c.snippet?.replace(/\s+/g, ' ').trim().slice(0, RERANK_SNIPPET_MAX)
@@ -409,6 +405,7 @@ function buildRerankPrompt(query: string, candidates: RerankCandidate[]): string
       return `${i}. ${(c.title || '(без названия)').slice(0, 120)} — ${c.url.slice(0, 140)}${snippet}`
     })
     .join('\n')
+  if (related) return buildRelatedRerankPrompt(query, list)
   return (
     `Пользователь ищет в истории браузера: "${query}"\n\n` +
     `Вот кандидаты (найдены по заголовку, домену и тексту страницы — совпадение НЕ значит ` +
@@ -434,7 +431,7 @@ export async function rerankHistoryCandidates(
   candidates: RerankCandidate[],
   // background — переранжирование, которого человек не заказывал (подсказка «вы это уже читали»
   // при клике в омнибокс). Ждёт, пока пользовательская полоса не опустеет (см. QwenQueue.ts).
-  opts?: { background?: boolean },
+  opts?: { background?: boolean; related?: boolean },
 ): Promise<number[]> {
   if (candidates.length === 0) return []
   // runPrompt САМ модель не грузит — обычно её загружает вызывающая сторона (runSegmented для
@@ -444,7 +441,7 @@ export async function rerankHistoryCandidates(
   // этой сессии ещё ни разу не переводил и не чатился) ушёл бы в процесс инференса с незагруженной
   // моделью.
   await ensureLoaded()
-  const { out } = await runPrompt(buildRerankPrompt(query, candidates), RERANK_MAX_TOKENS, undefined, { ...opts, role: 'search' })
+  const { out } = await runPrompt(buildRerankPrompt(query, candidates, opts?.related), RERANK_MAX_TOKENS, undefined, { ...opts, role: 'search' })
   const seen = new Set<number>()
   const result: number[] = []
   for (const raw of out.match(/\d+/g) ?? []) {

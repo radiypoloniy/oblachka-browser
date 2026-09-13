@@ -111,9 +111,10 @@ export async function searchHistorySmart(
   history: HistoryManager,
   query: string,
   limit = 8,
-  // background — поиск, которого человек не заказывал (подсказка «вы это уже читали», см.
-  // RelatedHistory.ts). Такой ждёт, пока пользовательская полоса очереди не опустеет.
-  opts?: { background?: boolean },
+  // background — поиск, которого человек не заказывал (подсказка «вы это уже читали»).
+  // related — та же труба, но пустой реранк не должен гасить FTS: для headline это «не та
+  // статья», для темы — как раз соседние материалы.
+  opts?: { background?: boolean; related?: boolean },
 ): Promise<SmartSearchResponse> {
   const q = query.trim();
   if (!q) return { results: [], degraded: false };
@@ -141,6 +142,9 @@ export async function searchHistorySmart(
     return { results: candidates.slice(0, limit), degraded: true };
   }
 
+  if (order.length === 0 && opts?.related) {
+    return { results: candidates.slice(0, limit), degraded: true };
+  }
   if (order.length === 0 && lexicalKeys.size > 0) {
     return { results: candidates.filter((c) => lexicalKeys.has(normalizeForOmnibox(c.url))).slice(0, limit), degraded: false };
   }
