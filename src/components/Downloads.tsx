@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, FolderOpen, ExternalLink, RotateCcw, Pause, Play, XCircle, Trash2 } from 'lucide-react';
 import type { DownloadEntry } from '../../shared/ipc';
 import { RADIUS, sp } from '../styles/system';
@@ -204,6 +204,9 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
         : d.state === 'interrupted' ? 'прервано'
           : `${formatBytes(d.totalBytes || d.receivedBytes)} · ${hostOf(d.url)}`;
 
+  const canDrag = isDone && !!d.savePath;
+  const skipClick = useRef(false);
+
   return (
     <Row
       lead={isActive || isFailed ? '' : timeOf(d.startedAt)}
@@ -211,7 +214,15 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
       title={d.filename}
       subtitle={sub}
       title2={d.url}
-      onClick={isDone && d.savePath ? () => void window.oblako.openDownloadFile(d.id) : undefined}
+      draggable={canDrag}
+      onFileDrag={canDrag ? () => {
+        skipClick.current = true;
+        window.oblako.startDownloadDrag([d.id]);
+      } : undefined}
+      onClick={canDrag ? () => {
+        if (skipClick.current) { skipClick.current = false; return; }
+        void window.oblako.openDownloadFile(d.id);
+      } : undefined}
       meta={isActive && d.totalBytes > 0 ? `${pct} %` : undefined}
       actions={(
         <>

@@ -10,6 +10,8 @@ import { getCryptoHistory } from '../CryptoRates';
 import { getCurrencyHistory } from '../CurrencyRates';
 import { isDefaultBrowser, requestDefaultBrowser } from '../DefaultBrowser';
 import { renameDownloadedFile, suggestFileName } from '../DownloadNamer';
+import { startDownloadFileDrag } from '../downloadFileDrag';
+import { beginDownloadsFileDrag } from '../DownloadsPopoverManager';
 import { permissionAnswered, setPermissionPopoverHeight } from '../PermissionPopoverManager';
 import { searchSettingsByMeaning } from '../SettingsSearch';
 import { ipcMain } from 'electron';
@@ -83,6 +85,12 @@ export function registerSystemIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.DOWNLOAD_CANCEL,      (_e, id: string) => downloads.cancel(id));
   ipcMain.handle(IPC.DOWNLOAD_CLEAR,       (_e, id: string) => downloads.clear(id));
   ipcMain.handle(IPC.DOWNLOAD_OPEN_FILE,   (_e, id: string) => downloads.openFile(id));
+  // sendSync из dragstart: startDrag обязан бежать синхронно, см. DOWNLOAD_START_DRAG.
+  ipcMain.on(IPC.DOWNLOAD_START_DRAG, (e, ids: unknown) => {
+    if (startDownloadFileDrag(downloads, e.sender, ids)) beginDownloadsFileDrag(e.sender);
+    // sendSync ждёт returnValue — без него жест повесит рендерер.
+    e.returnValue = true;
+  });
   ipcMain.handle(IPC.DOWNLOAD_SHOW_FOLDER, (_e, id: string) => downloads.showFolder(id));
   ipcMain.handle(IPC.DOWNLOAD_RETRY,       (_e, id: string) => downloads.retry(id));
   ipcMain.handle(IPC.DOWNLOAD_FILE_ICON,   (_e, id: string, wantThumb?: boolean) => downloads.iconFor(id, wantThumb !== false));

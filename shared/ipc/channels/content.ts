@@ -128,6 +128,10 @@ export const CONTENT = {
   DOWNLOAD_CANCEL:      'download:cancel',      // renderer → main: отмена (id)
   DOWNLOAD_CLEAR:       'download:clear',       // renderer → main: убрать из списка (id)
   DOWNLOAD_OPEN_FILE:   'download:open-file',   // renderer → main: открыть файл (id)
+  // Нативный OS-drag файла (webContents.startDrag). ⚠️ sendSync, не invoke: startDrag обязан
+  // бежать в том же тике, что dragstart, иначе Electron бросает «Must be called from a drag».
+  // В канал — id записей, не путь: рендерер диск не читает.
+  DOWNLOAD_START_DRAG:  'download:start-drag',  // renderer → main: ids: string[]
   DOWNLOAD_SHOW_FOLDER: 'download:show-folder', // renderer → main: показать в папке (id)
   DOWNLOAD_RETRY:       'download:retry',       // renderer → main: повторить загрузку (id)
   // Иконка файла как в Проводнике. ⚠️ Только id записи, не путь: рендерер не должен читать

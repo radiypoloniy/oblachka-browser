@@ -127,6 +127,7 @@
   "DOWNLOAD_RESUME=download:resume",
   "DOWNLOAD_RETRY=download:retry",
   "DOWNLOAD_SHOW_FOLDER=download:show-folder",
+  "DOWNLOAD_START_DRAG=download:start-drag",
   "DOWNLOAD_SUGGEST_NAME=download:suggest-name",
   "FAVICON_GET=favicon:get",
   "FIND_NEXT=find:next",

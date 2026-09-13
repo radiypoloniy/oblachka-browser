@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('downloadsPopover', {
   resumeDownload:     (id: string) => ipcRenderer.invoke(IPC.DOWNLOAD_RESUME, id) as Promise<void>,
   cancelDownload:     (id: string) => ipcRenderer.invoke(IPC.DOWNLOAD_CANCEL, id) as Promise<void>,
   openDownloadFile:   (id: string) => ipcRenderer.invoke(IPC.DOWNLOAD_OPEN_FILE, id) as Promise<void>,
+  startDownloadDrag:  (ids: string[]) => ipcRenderer.sendSync(IPC.DOWNLOAD_START_DRAG, ids) as void,
   showDownloadFolder: (id: string) => ipcRenderer.invoke(IPC.DOWNLOAD_SHOW_FOLDER, id) as Promise<void>,
   retryDownload:      (id: string) => ipcRenderer.invoke(IPC.DOWNLOAD_RETRY, id) as Promise<void>,
   getDownloadFileIcon: (id: string, thumb?: boolean) => ipcRenderer.invoke(IPC.DOWNLOAD_FILE_ICON, id, thumb) as Promise<DownloadFileIcon | null>,

@@ -24,6 +24,7 @@ declare global {
       resumeDownload: (id: string) => Promise<void>;
       cancelDownload: (id: string) => Promise<void>;
       openDownloadFile: (id: string) => Promise<void>;
+      startDownloadDrag: (ids: string[]) => void;
       showDownloadFolder: (id: string) => Promise<void>;
       retryDownload: (id: string) => Promise<void>;
       getDownloadFileIcon: (id: string, thumb?: boolean) => Promise<DownloadFileIcon | null>;
@@ -206,8 +207,12 @@ function PackRow({ pack }: { pack: DownloadPack<DownloadEntry> }) {
   const host = hostOf(pack.head.url);
   const meta = [host, formatBytes(bytes), whenLabel(pack.head.startedAt)].filter(Boolean).join(' · ');
   const openable = pack.head.state === 'completed' && !pack.head.fileMissing && !!pack.head.savePath;
+  const dragIds = all
+    .filter((d) => d.state === 'completed' && !d.fileMissing && d.savePath)
+    .map((d) => d.id);
   return (
     <HoverRow
+      dragIds={dragIds}
       onOpen={() => { if (openable) void window.downloadsPopover.openDownloadFile(pack.head.id); }}
       icon={photos
         ? <ThumbStack ids={all.map((d) => d.id)} busts={all.map(iconBust)} />
@@ -267,6 +272,7 @@ function FileRow({ entry: d }: { entry: DownloadEntry }) {
   return (
     <HoverRow
       failed={isFailed}
+      dragIds={openable ? [d.id] : null}
       onOpen={() => { if (openable) void window.downloadsPopover.openDownloadFile(d.id); }}
       icon={isActive
         ? <ProgressRing pct={d.totalBytes > 0 ? Math.round(d.receivedBytes / d.totalBytes * 100) : 0} known={d.totalBytes > 0} />
@@ -304,7 +310,7 @@ function FileRow({ entry: d }: { entry: DownloadEntry }) {
 }
 
 function HoverRow({
-  icon, title, meta, metaWarn, failed, onOpen,
+  icon, title, meta, metaWarn, failed, onOpen, dragIds,
   folderId, nameable, onName, naming, onApplyName, onCancelName,
 }: {
   icon: React.ReactNode;
@@ -313,6 +319,7 @@ function HoverRow({
   metaWarn?: boolean;
   failed?: boolean;
   onOpen: () => void;
+  dragIds?: string[] | null;
   folderId?: string | null;
   nameable?: boolean;
   onName?: () => void;
@@ -321,17 +328,29 @@ function HoverRow({
   onCancelName?: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const skipClick = useRef(false);
+  const canDrag = !!dragIds && dragIds.length > 0;
   const showHoverActs = hovered || naming === 'proposed';
   return (
     <div
+      draggable={canDrag}
+      onDragStart={canDrag ? (e) => {
+        e.preventDefault();
+        skipClick.current = true;
+        window.downloadsPopover.startDownloadDrag(dragIds ?? []);
+      } : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={onOpen}
+      onClick={() => {
+        if (skipClick.current) { skipClick.current = false; return; }
+        onOpen();
+      }}
       style={{
         display: 'flex', alignItems: 'center', gap: sp(3),
         padding: `${sp(2)}px ${sp(3)}px`, borderRadius: RADIUS.control,
         background: hovered ? 'var(--surface-hover)' : 'transparent',
         cursor: 'default',
+        userSelect: canDrag ? 'none' : undefined,
       }}
     >
       {icon}

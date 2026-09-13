@@ -5,8 +5,8 @@
 // ⚠️ Отличие от VPN: содержимое здесь ЖИВОЕ. Пока поповер открыт, прогресс капает раз в 200 мс,
 // и без явного пуша в саму вью (broadcastDownloads ниже) полоска замерла бы до переоткрытия —
 // DOWNLOADS_CHANGED из main уходит только в chromeView.
-import { WebContentsView, ipcMain } from 'electron';
-import type { BrowserWindow } from 'electron';
+import { WebContentsView, ipcMain, webContents } from 'electron';
+import type { BrowserWindow, InputEvent, WebContents } from 'electron';
 import path from 'node:path';
 import type { ContentBounds, DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision } from '../shared/ipc';
 import { IPC } from '../shared/ipc';
@@ -193,6 +193,7 @@ export function resolveDuplicatePrompt(decision: DuplicateDownloadDecision): voi
 }
 
 export function closeDownloadsPopover(): void {
+  endDownloadsFileDrag();
   if (!isOpen) return;
   isOpen = false;
   // ⚠️ Закрыли, не ответив (клик мимо, смена вкладки) — это ОТКАЗ от загрузки. Молча качать
@@ -212,3 +213,61 @@ export function closeDownloadsPopover(): void {
   }
   if (win && !win.isDestroyed()) onClosedCb?.(win);
 }
+
+// ── OS-drag файла из карточки ────────────────────────────────────────────────
+//
+// ⚠️ Поповер — отдельная WebContentsView поверх страницы. Нативный startDrag идёт с ЭТОЙ вью,
+// и закрывать её в dragstart нельзя: removeChildView оборвёт жест. У View в Electron 42 нет
+// setIgnoreMouseEvents (он только у окна), поэтому на время жеста прячем карточку setVisible(false):
+// хит-тест проходит на страницу, drop в <input type="file"> доходит, webContents жив.
+//
+// Конец жеста renderer после preventDefault на dragstart часто не присылает. Смотрим mouseUp
+// на всех вью и blur окна — тот же приём, что у DropZoneManager. Escape во время OS-drag
+// система часто съедает сама.
+
+const FILE_DRAG_MAX_MS = 60_000;
+
+let fileDrag: { timer: ReturnType<typeof setTimeout>; unwatch: () => void } | null = null;
+
+export function beginDownloadsFileDrag(sender: WebContents): void {
+  if (!popoverView || popoverView.webContents !== sender) return;
+  endDownloadsFileDrag();
+  try { popoverView.setVisible(false); } catch { /* вью могла уже сняться */ }
+
+  const win = attachedWin;
+  const watched: WebContents[] = [];
+  const startedAt = Date.now();
+  const finish = (): void => { endDownloadsFileDrag(); };
+  const onInput = (_e: Electron.Event, input: InputEvent): void => {
+    // startDrag иногда синтезирует mouseUp в том же тике, что dragstart — это не конец жеста.
+    if (Date.now() - startedAt < 250) return;
+    if (input.type === 'mouseUp') finish();
+  };
+  if (win && !win.isDestroyed()) win.on('blur', finish);
+  for (const wc of webContents.getAllWebContents()) {
+    if (wc.isDestroyed()) continue;
+    wc.on('input-event', onInput);
+    watched.push(wc);
+  }
+  fileDrag = {
+    timer: setTimeout(finish, FILE_DRAG_MAX_MS),
+    unwatch: () => {
+      if (win && !win.isDestroyed()) win.removeListener('blur', finish);
+      for (const wc of watched) {
+        if (!wc.isDestroyed()) wc.removeListener('input-event', onInput);
+      }
+    },
+  };
+}
+
+export function endDownloadsFileDrag(): void {
+  if (fileDrag) {
+    clearTimeout(fileDrag.timer);
+    fileDrag.unwatch();
+    fileDrag = null;
+  }
+  if (popoverView && !popoverView.webContents.isDestroyed() && isOpen) {
+    try { popoverView.setVisible(true); } catch { /* окно могло закрыться */ }
+  }
+}
+

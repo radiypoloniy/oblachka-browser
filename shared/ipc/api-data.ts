@@ -110,6 +110,8 @@ export interface DataApi {
   cancelDownload(id: string): Promise<void>;
   clearDownload(id: string): Promise<void>;
   openDownloadFile(id: string): Promise<void>;
+  // Нативный OS-drag скачанного файла. ids — записи, не пути. sendSync, см. DOWNLOAD_START_DRAG.
+  startDownloadDrag(ids: string[]): void;
   showDownloadFolder(id: string): Promise<void>;
   retryDownload(id: string): Promise<void>;
   // Иконка как в Проводнике. Путь рендерер не передаёт — только id. thumb=false в архиве:

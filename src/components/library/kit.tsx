@@ -132,7 +132,7 @@ export function Rows({ children }: { children: React.ReactNode }) {
  * заголовком и отъедал у него ширину: длинные заголовки обрезались вдвое раньше, чем нужно, при
  * том что домен и так виден на значке сайта.
  */
-export function Row({ lead, icon, title, subtitle, meta, actions, selected, onClick, title2 }: {
+export function Row({ lead, icon, title, subtitle, meta, actions, selected, onClick, title2, draggable, onFileDrag }: {
   /** Узкая колонка слева: время, размер. Место держится всегда — иначе список «дышит». */
   lead?: React.ReactNode;
   icon?: React.ReactNode;
@@ -147,9 +147,17 @@ export function Row({ lead, icon, title, subtitle, meta, actions, selected, onCl
   onClick?: () => void;
   /** Подсказка при наведении — обычно полный адрес. */
   title2?: string;
+  /** Нативный OS-drag файла (архив загрузок). */
+  draggable?: boolean;
+  onFileDrag?: () => void;
 }) {
   return (
     <div
+      draggable={draggable || undefined}
+      onDragStart={draggable && onFileDrag ? (e) => {
+        e.preventDefault();
+        onFileDrag();
+      } : undefined}
       onClick={onClick}
       title={title2}
       style={{
@@ -158,6 +166,7 @@ export function Row({ lead, icon, title, subtitle, meta, actions, selected, onCl
         background: selected ? 'var(--selected)' : 'transparent',
         boxShadow: 'inset 0 -1px 0 var(--divider)',
         transition: motion.hover('background'),
+        userSelect: draggable ? 'none' : undefined,
       }}
       onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--surface-hover)'; }}
       onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'transparent'; }}

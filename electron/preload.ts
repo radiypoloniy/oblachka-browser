@@ -356,6 +356,7 @@ const api: OblakoApi = {
   cancelDownload:     (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_CANCEL, id),
   clearDownload:      (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_CLEAR, id),
   openDownloadFile:   (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_OPEN_FILE, id),
+  startDownloadDrag:  (ids: string[]) => ipcRenderer.sendSync(IPC.DOWNLOAD_START_DRAG, ids) as void,
   showDownloadFolder: (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_SHOW_FOLDER, id),
   retryDownload:      (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_RETRY, id),
   getDownloadFileIcon: (id: string, thumb?: boolean) => ipcRenderer.invoke(IPC.DOWNLOAD_FILE_ICON, id, thumb),
@@ -369,8 +370,7 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.DOWNLOADS_OPEN, handler);
     return () => ipcRenderer.removeListener(IPC.DOWNLOADS_OPEN, handler);
   },
-  // Разрешения сайтов моста хрома БОЛЬШЕ НЕ КАСАЮТСЯ: вопрос рисует своя WebContentsView
-  // (electron/PermissionPopoverManager.ts) со своим preload — preload-permissionpopover.ts.
+  // Разрешения сайтов моста хрома БОЛЬШЕ НЕ КАСАЮТСЯ: вопрос рисует своя WebContentsView (electron/PermissionPopoverManager.ts) со своим preload — preload-permissionpopover.ts.
 
   // Атомарный снимок состояния (вкладки + узлы сайдбара в одном сообщении)
   getSyncState: () => ipcRenderer.invoke(IPC.SYNC_GET) as Promise<SyncState>,
