@@ -11,7 +11,7 @@ import { FileWell, ProgressRing, ThumbStack, formatBytes, formatSpeed } from './
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
-import { CAPS, DISPLAY_CARD, DISPLAY_ROW, RADIUS, TEXT, pad, sp } from './styles/system';
+import { CAPS, DISPLAY_CARD, DISPLAY_ROW, RADIUS, TEXT, motion, pad, sp } from './styles/system';
 import { groupDownloads, hostOf, type DownloadPack } from '../shared/downloadGroups';
 import { PopoverActions, PrimaryButton, QuietButton } from './components/popoverKit';
 import { EmptyState } from './components/EmptyState';
@@ -81,7 +81,7 @@ function DownloadsPopoverApp() {
   }, [entries.length, prompt]);
 
   // ⚠️ Раскладка по ярусам — ЧИСТАЯ ЛОГИКА в shared/downloadGroups.ts под своей проверкой.
-  // Здесь только отрисовка: пачка — одна строка, «раньше» и сломанное — дверь в архив, не ярус.
+  // Здесь только отрисовка: пачка — строка, клик раскрывает, «раньше» и сломанное — дверь в архив.
   const tiers = groupDownloads(entries, Date.now());
   const hasList = !!tiers.active || tiers.today.length > 0 || tiers.failed.length > 0 || tiers.older.length > 0;
 
@@ -196,6 +196,7 @@ function packOfPhotos(pack: DownloadPack<DownloadEntry>): boolean {
 }
 
 function PackRow({ pack }: { pack: DownloadPack<DownloadEntry> }) {
+  const [open, setOpen] = useState(false);
   if (pack.rest.length === 0) return <FileRow entry={pack.head} />;
   const all = [pack.head, ...pack.rest];
   const n = all.length;
@@ -210,17 +211,24 @@ function PackRow({ pack }: { pack: DownloadPack<DownloadEntry> }) {
   const dragIds = all
     .filter((d) => d.state === 'completed' && !d.fileMissing && d.savePath)
     .map((d) => d.id);
+  // Клик раскрывает пачку: иначе из «3 фото» нельзя вытащить одну. Свёрнутую по-прежнему
+  // можно утащить целиком (dragIds на шапке). Раскрытая шапка — только свернуть, не drag.
   return (
-    <HoverRow
-      dragIds={dragIds}
-      onOpen={() => { if (openable) void window.downloadsPopover.openDownloadFile(pack.head.id); }}
-      icon={photos
-        ? <ThumbStack ids={all.map((d) => d.id)} busts={all.map(iconBust)} />
-        : <FileWell id={pack.head.id} bust={iconBust(pack.head)} />}
-      title={title}
-      meta={meta}
-      folderId={openable ? pack.head.id : null}
-    />
+    <>
+      <HoverRow
+        dragIds={open ? null : dragIds}
+        onOpen={() => setOpen((v) => !v)}
+        disclosure
+        expanded={open}
+        icon={photos
+          ? <ThumbStack ids={all.map((d) => d.id)} busts={all.map(iconBust)} />
+          : <FileWell id={pack.head.id} bust={iconBust(pack.head)} />}
+        title={title}
+        meta={meta}
+        folderId={openable && !open ? pack.head.id : null}
+      />
+      {open && all.map((d) => <FileRow key={d.id} entry={d} />)}
+    </>
   );
 }
 
@@ -312,6 +320,7 @@ function FileRow({ entry: d }: { entry: DownloadEntry }) {
 function HoverRow({
   icon, title, meta, metaWarn, failed, onOpen, dragIds,
   folderId, nameable, onName, naming, onApplyName, onCancelName,
+  disclosure, expanded,
 }: {
   icon: React.ReactNode;
   title: React.ReactNode;
@@ -326,6 +335,8 @@ function HoverRow({
   naming?: 'idle' | 'working' | 'proposed' | 'error';
   onApplyName?: () => void;
   onCancelName?: () => void;
+  disclosure?: boolean;
+  expanded?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const skipClick = useRef(false);
@@ -382,6 +393,17 @@ function HoverRow({
             )}
             {folderId && showHoverActs && (
               <WordBtn onClick={() => void window.downloadsPopover.showDownloadFolder(folderId)}>В папке</WordBtn>
+            )}
+            {disclosure && (
+              <ChevronRight
+                size={15}
+                style={{
+                  flex: 'none',
+                  color: 'var(--text-muted)',
+                  transform: expanded ? 'rotate(90deg)' : 'none',
+                  transition: motion.state('transform'),
+                }}
+              />
             )}
           </>
         )}
