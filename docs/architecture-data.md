@@ -12,7 +12,9 @@
   `shared/historyIndex.ts` (когда снимать текст: не ждать load, если страница уже
   готова; title-шум на did-navigate не запоминать — «YouTube» до имени ролика;
   повтор на page-title-updated; очередь из двух; снимок перед усыплением;
-  охват withContent/noisy/missing; выбор страниц для тихого добора).
+  охват withContent/noisy/missing; выбор страниц для тихого добора;
+  скелетон «Загружается... (собрано 74%)» — не успех, извлечь снова;
+  SPA: pathname/search — визит, якорь — нет).
   Прогон — `npm test -- history-index`. `HistoryNoiseFilter.ts` реэкспортирует фильтр.
 - **Закладки в сайдбаре** — `src/components/SidebarBookmarks.tsx` + переключатель
   `ModeSwitch` в `Sidebar.tsx`. ⚠️ Раскладка ПОВТОРЯЕТ режим вкладок, а не изобретает

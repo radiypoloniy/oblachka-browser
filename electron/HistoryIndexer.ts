@@ -21,6 +21,7 @@ import { createLimiter } from '../shared/limitConcurrency';
 import {
   classifyHistoryNoise,
   decideHistoryIndex,
+  isUnusableHistoryText,
   shouldWaitForPageLoad,
   HISTORY_INDEX_CONCURRENCY,
   type HistoryIndexTrigger,
@@ -31,11 +32,9 @@ import {
 // с 10 закреплёнными вкладками — каждая переиндексировалась заново при том, что содержимое не
 // менялось. Причина была здесь: раньше этот Set был ЕДИНСТВЕННЫМ источником факта «уже
 // проиндексирована» — не персистентно между перезапусками, поэтому каждый рестарт считал всё
-// заново непроиндексированным. Источник истины теперь HistoryManager.hasContentForVersion()
-// (БД, переживает рестарт) — см. indexVisit ниже. Set остаётся как дешёвый кэш ПОВЕРХ БД-проверки:
-// экономит один SQL-запрос на повторные навигации в рамках уже открытого процесса (recordVisit —
-// upsert, стреляет на любой повторный визит, не только на первый), но НЕ является источником
-// истины сам по себе — на старте процесса он пуст, и это нормально, БД-проверка ниже подхватывает.
+// заново непроиндексированным. Источник истины — чанки в БД, но только если текст не скелетон
+// («Загружается... (собрано 74%)»): иначе повторный визит должен извлечь снова, а не no-op.
+// Set — дешёвый кэш ПОВЕРХ этой проверки. На старте он пуст, это нормально.
 const indexedHistoryIds = new Set<number>();
 const inFlight = new Map<number, Promise<void>>();
 const lastNoise = new Map<number, HistoryNoiseKind>();
@@ -54,7 +53,7 @@ const EXTRACTION_TIMEOUT_MS = 8000;
 const SPA_SETTLE_DELAY_MS = 1200;
 // Повторный снимок ПОСЛЕ первого — если текст заметно вырос, первый снимок поймал страницу
 // в процессе дорисовки. Один повтор с фиксированным бюджетом, не опрос до полной стабилизации —
-// для страниц, которым и этого мало, остаётся fallback на title+hostname, не зависание.
+// для страниц, которым и этого мало, скелетон в индекс не кладём — следующий визит повторит.
 const SPA_SETTLE_RECHECK_MS = 1000;
 const SPA_SETTLE_GROWTH_RATIO = 1.3;
 
@@ -149,6 +148,15 @@ function stillOnPage(wc: WebContents, url: string): boolean {
 // quick — страница уже была на экране (усыпление): не ждать load и SPA, один снимок.
 // loadWait — слушатель, повешенный ДО очереди извлечения (indexVisit), иначе did-finish-load
 // пролетает, пока мы ждём слот, и внутри снова ждали бы 8 с.
+function acceptExtractedText(text: string): string | null {
+  return isUnusableHistoryText(text) ? null : text;
+}
+
+function hasUsableStoredContent(history: HistoryManager, historyId: number): boolean {
+  if (!history.hasContentForVersion(historyId, TEXT_EXTRACTION_VERSION)) return false;
+  return !isUnusableHistoryText(history.getContentText(historyId, TEXT_EXTRACTION_VERSION));
+}
+
 export async function extractEnrichedText(
   wc: WebContents | null,
   url: string,
@@ -159,7 +167,7 @@ export async function extractEnrichedText(
   if (opts?.quick) {
     if (!onPage()) return null;
     const shot = await extractPageText(wc);
-    return shot.text || null;
+    return acceptExtractedText(shot.text);
   }
   await (opts?.loadWait ?? armFinishLoad(wc))();
   if (!onPage()) return null;
@@ -168,17 +176,18 @@ export async function extractEnrichedText(
   await wait(SPA_SETTLE_DELAY_MS);
   if (!onPage()) return null;
   const first = await extractPageText(wc);
-  if (!onPage()) return first.text || null;
+  if (!onPage()) return acceptExtractedText(first.text);
 
   // Повторный снимок: если текст заметно вырос — страница ещё дорисовывалась на первом снимке,
   // берём более полный второй. Иначе первый снимок уже стабилен — не тратим лишний прогон.
   await wait(SPA_SETTLE_RECHECK_MS);
-  if (!onPage()) return first.text || null;
+  if (!onPage()) return acceptExtractedText(first.text);
   const second = await extractPageText(wc);
-  if (!onPage()) return first.text || null;
+  if (!onPage()) return acceptExtractedText(first.text) ?? acceptExtractedText(second.text);
 
-  if (second.text.length > first.text.length * SPA_SETTLE_GROWTH_RATIO) return second.text || null;
-  return first.text || second.text || null;
+  const pick = second.text.length > first.text.length * SPA_SETTLE_GROWTH_RATIO ? second.text : first.text;
+  // Если выбранный кадр — лоадер, берём другой: рост мог не дотянуть до порога, а второй уже страница.
+  return acceptExtractedText(pick) ?? acceptExtractedText(second.text) ?? acceptExtractedText(first.text);
 }
 
 export async function indexVisit(
@@ -197,12 +206,12 @@ export async function indexVisit(
 
   const noise = classifyHistoryNoise(url, title);
   const previousNoise = lastNoise.get(historyId) ?? null;
-  const already = indexedHistoryIds.has(historyId)
-    || history.hasContentForVersion(historyId, TEXT_EXTRACTION_VERSION);
+  const memoryDone = indexedHistoryIds.has(historyId);
+  const hasContent = hasUsableStoredContent(history, historyId);
   const decision = decideHistoryIndex({
     trigger,
-    hasContent: already,
-    memoryDone: indexedHistoryIds.has(historyId),
+    hasContent,
+    memoryDone,
     inFlight: inFlight.has(historyId),
     noise,
     previousNoise,
@@ -210,7 +219,7 @@ export async function indexVisit(
   lastNoise.set(historyId, noise);
 
   if (decision === 'skip') {
-    if (already) indexedHistoryIds.add(historyId);
+    if (hasContent) indexedHistoryIds.add(historyId);
     return;
   }
   if (decision === 'remember-url-noise') {

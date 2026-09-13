@@ -193,3 +193,30 @@ export function pickIdleCatchupPages<T extends { lastVisit: number; noisy: boole
     .sort((a, b) => b.lastVisit - a.lastVisit)
     .slice(0, IDLE_CATCHUP_MAX_PAGES);
 }
+
+// Скелетон вместо страницы: живой аудит поймал чанк «Загружается... (собрано 74%)».
+// Короткий снимок и явный лоадер не пишем в FTS — иначе повторный визит no-op навсегда.
+export const HISTORY_TEXT_MIN_CHARS = 80;
+export const HISTORY_SKELETON_MAX_CHARS = 240;
+
+const SKELETON_RE = /загружается|loading\.\.\.|loading…|please wait|один момент|собрано\s+\d+\s*%|loading\s+\d+\s*%/i;
+
+export function isUnusableHistoryText(text: string): boolean {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length < HISTORY_TEXT_MIN_CHARS) return true;
+  if (normalized.length <= HISTORY_SKELETON_MAX_CHARS && SKELETON_RE.test(normalized)) return true;
+  return false;
+}
+
+/** SPA: новый маршрут, не якорь. Hash-only не страница. Пустой from — ещё не было did-navigate. */
+export function isSpaRouteChange(from: string, to: string): boolean {
+  if (!from || !to || from === to) return false;
+  try {
+    const a = new URL(from);
+    const b = new URL(to);
+    if (a.origin !== b.origin) return true;
+    return a.pathname !== b.pathname || a.search !== b.search;
+  } catch {
+    return false;
+  }
+}

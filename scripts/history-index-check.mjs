@@ -3,7 +3,8 @@
 // Живой путь должен снимать текст при просмотре, не только кнопкой «Полная индексация».
 // Эти случаи — дыры, которые уже случались: 8 с ожидания на уже загруженной странице,
 // «YouTube» на did-navigate навсегда вычёркивал ролик, SPA-тики заголовка не должны
-// заново гнать Readability.
+// заново гнать Readability, скелетон лоадера не должен считаться страницей, якорь
+// не должен плодить визиты.
 //
 // Запуск: npm test -- history-index
 import {
@@ -16,11 +17,15 @@ import {
   formatOnboardingIndexLead,
   pickIdleCatchupPages,
   shouldRunIdleCatchup,
+  isUnusableHistoryText,
+  isSpaRouteChange,
   HISTORY_INDEX_CONCURRENCY,
   SLEEP_INDEX_BUDGET_MS,
   IDLE_CATCHUP_MAX_PAGES,
   IDLE_CATCHUP_MAX_AGE_MS,
   IDLE_CATCHUP_IDLE_SECONDS,
+  HISTORY_TEXT_MIN_CHARS,
+  HISTORY_SKELETON_MAX_CHARS,
 } from '../shared/historyIndex.ts';
 
 let passed = 0;
@@ -172,6 +177,31 @@ check('полная индексация важнее тихого добора'
   shouldRunIdleCatchup({ backfillRunning: true, catchupRunning: false, idleSeconds: 900 }), false);
 check('уже идёт добор — не второй',
   shouldRunIdleCatchup({ backfillRunning: false, catchupRunning: true, idleSeconds: 900 }), false);
+
+check('минимум текста — 80', HISTORY_TEXT_MIN_CHARS, 80);
+check('скелетон не длиннее 240', HISTORY_SKELETON_MAX_CHARS, 240);
+check('живой скелетон Диска не страница',
+  isUnusableHistoryText('Загружается... (собрано 74%)'), true);
+check('короче 80 символов — не страница',
+  isUnusableHistoryText('a'.repeat(79)), true);
+check('ровно 80 без лоадера — страница',
+  isUnusableHistoryText('a'.repeat(80)), false);
+check('статья со словом loading внутри — страница',
+  isUnusableHistoryText(`The chapter about loading cargo onto ships in the harbour runs for many paragraphs of real reportage that a reader would actually want to find later when searching history. ${'word '.repeat(40)}`),
+  false);
+check('короткий please wait — скелетон',
+  isUnusableHistoryText(`Please wait ${'x'.repeat(90)}`), true);
+
+check('якорь — не смена маршрута',
+  isSpaRouteChange('https://app.example/inbox#a', 'https://app.example/inbox#b'), false);
+check('тот же адрес — не смена',
+  isSpaRouteChange('https://app.example/inbox', 'https://app.example/inbox'), false);
+check('пустой from — ещё не было did-navigate',
+  isSpaRouteChange('', 'https://app.example/inbox'), false);
+check('pathname сменился — маршрут',
+  isSpaRouteChange('https://app.example/inbox', 'https://app.example/inbox/msg/1'), true);
+check('search сменился — маршрут',
+  isSpaRouteChange('https://app.example/p?id=1', 'https://app.example/p?id=2'), true);
 
 console.log(`\n${passed} прошло, ${failed} провалов`);
 process.exit(failed === 0 ? 0 : 1);

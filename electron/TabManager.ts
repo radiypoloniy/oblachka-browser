@@ -29,6 +29,7 @@ import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_PANE_RADIUS, splitPaneBounds, clampSplitRatio } from '../shared/layout';
 import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTimer, pressureCandidates, SLEEP_CHECK_INTERVAL, PRESSURE_SLEEP_PER_CHECK, MEDIA_GRACE } from '../shared/sleepPolicy';
 import { prepareSleepUnload } from './tabSleepIndex';
+import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
 import { findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
@@ -36,7 +37,6 @@ import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
 import { isRussianCaCandidate } from './CertificateTrust';
 import { pushClosed, popClosed, peekClosed, type ClosedTab } from '../shared/closedTabStack';
-
 // Менеджер паролей, шаг 2 — ПЕРВЫЙ preload на гостевых страницах (сканер форм, см.
 // electron/preload-content.ts). Тот же приём резолва пути, что AiPanelManager.ts использует
 // для preload-aipanel.js (__dirname здесь и там — один и тот же dist-electron/electron после
@@ -1699,6 +1699,7 @@ export class TabManager {
       // Записываем визит: один URL = один UPSERT с инкрементом счётчика. Инкогнито НЕ пишем в
       // историю — приватная вкладка не оставляет следа (onNavigate у нас только про историю/индекс).
       if (!this.tabMap.get(id)?.incognito) this.onNavigateCb?.(wc.getURL(), wc.getTitle(), wc);
+      rememberSpaNavigation(wc);
       // Правила-автоматизации. Порядок важен: сначала отдаём наверх «откуда пришли», и только
       // потом запоминаем текущий адрес как источник для СЛЕДУЮЩЕЙ навигации этой вкладки.
       const currentUrl = wc.getURL();
@@ -1711,7 +1712,7 @@ export class TabManager {
       this.#navFrom.set(id, hostOfUrl(currentUrl));
       notify();
     });
-    wc.on('did-navigate-in-page', notify);
+    wc.on('did-navigate-in-page', (_e, url, isMainFrame) => handleSpaInPageNavigate(wc, url, isMainFrame, !!this.tabMap.get(id)?.incognito, notify, this.onNavigateCb));
 
     // Полноэкранное видео. Без этого «на весь экран» означало лишь «на всю дырку под
     // контент»: Chromium растягивает видео по своей WebContentsView, а она у нас занимает
