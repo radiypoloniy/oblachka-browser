@@ -1,26 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Plus, X, Search } from 'lucide-react'
-import { DISPLAY, RADIUS, TEXT, motion, pad, sp } from '../styles/system'
+import { DISPLAY, RADIUS, TEXT, card, motion, pad, sp } from '../styles/system'
 import { searchTimeZones, zoneAbbrev, zoneCity } from '../../shared/timeZones'
+import {
+  DAY_MAX_MINUTES, DAY_MINUTES, formatClock, formatOffset, hmFromMinutes, instantWithClock,
+  maskClockInput, minutesOfDay, offsetMinutes, parseClock, snapClockMinutes, wallParts,
+} from '../../shared/civilTime'
 
 // Приложение «Пояса»: сколько времени у собеседника и когда ему удобно.
 //
 // ⚠️ БЕЗ СЕТИ. Сайты-конвертеры поясов выглядят как источник данных, но данных там нет: перевод
-// времени — это вычисление, и вся база поясов (400+) лежит в ICU прямо в Chromium. Поэтому
-// приложение работает офлайн, не знает промахов и не устареет вместе с чужим сайтом.
+// времени — это вычисление, и вся база поясов (400+) лежит в ICU прямо в Chromium.
 //
-// ⚠️ Главное здесь не «который час», а ПОЛЗУНОК. Час текущий человек и так знает; вопрос,
-// ради которого открывают такой конвертер, всегда один — «если я позвоню в 18:00, сколько
-// у него будет и не ночь ли это». Отсюда две вещи, которых нет у обычных мировых часов:
-// сдвиг времени и полоса суток, на которой ночь видна глазом, а не вычитанием в уме.
+// ⚠️ Вопрос не «который час», а «если у меня 18:45, сколько у него и не ночь ли». Поэтому
+// шкала 0…24 живёт В РЯДУ пояса, а не отдельным сдвигом от сейчас: тащишь любые сутки, остальные
+// едут за тем же моментом. «Сейчас» возвращает живые часы.
+//
+// ⚠️ Край шкалы не переносит дату: 24:00 на полосе — 23:45 этого дня. Иначе курсор, зажатый
+// справа, крутит сутки (сентябрь уезжал в декабрь, и летнее EDT становилось зимним EST).
 
 const STORE_KEY = 'oblako-zones-app'
-
-/** Предел сдвига в каждую сторону, минут. Сутки вперёд и назад закрывают все живые случаи. */
-const SHIFT_MAX = 24 * 60
-const SHIFT_STEP = 15
-
-/** Рабочий день — по нему красится полоса суток. */
+const HOUR_KEY = 'oblako-zones-hour12'
 const WORK_FROM = 9
 const WORK_TO = 18
 
@@ -44,26 +44,6 @@ function localZone(): string {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } catch { return 'UTC' }
 }
 
-/** Части времени в поясе. ⚠️ Через formatToParts, а не парсингом строки: формат зависит от локали. */
-function partsIn(zone: string, at: Date): { h: number; m: number; day: number; month: number; weekday: string } {
-  try {
-    const fmt = new Intl.DateTimeFormat('ru-RU', {
-      timeZone: zone, hour: '2-digit', minute: '2-digit', hour12: false,
-      day: 'numeric', month: 'short', weekday: 'short',
-    })
-    const p = Object.fromEntries(fmt.formatToParts(at).map((x) => [x.type, x.value]))
-    return {
-      h: Number(p.hour ?? 0),
-      m: Number(p.minute ?? 0),
-      day: Number(p.day ?? 0),
-      month: 0,
-      weekday: String(p.weekday ?? ''),
-    }
-  } catch {
-    return { h: 0, m: 0, day: 0, month: 0, weekday: '' }
-  }
-}
-
 function dateLabel(zone: string, at: Date): string {
   try {
     return new Intl.DateTimeFormat('ru-RU', { timeZone: zone, day: 'numeric', month: 'short' }).format(at)
@@ -72,38 +52,16 @@ function dateLabel(zone: string, at: Date): string {
   }
 }
 
-/**
- * Смещение пояса относительно другого, в минутах.
- *
- * ⚠️ Считается через сравнение отформатированных дат, а не по таблице сдвигов: летнее время,
- * получасовые пояса (Индия) и сорокапятиминутные (Непал) иначе дают ложь ровно тогда, когда
- * человек и полез проверять.
- */
-function offsetMinutes(zone: string, base: string, at: Date): number {
-  const val = (tz: string): number => {
-    try {
-      const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
-        timeZone: tz, hour12: false,
-        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-      }).formatToParts(at).map((x) => [x.type, x.value]))
-      return Date.UTC(
-        Number(p.year), Number(p.month) - 1, Number(p.day),
-        Number(p.hour) % 24, Number(p.minute),
-      )
-    } catch {
-      return 0
-    }
+function weekdayLabel(zone: string, at: Date): string {
+  try {
+    return new Intl.DateTimeFormat('ru-RU', { timeZone: zone, weekday: 'short' }).format(at)
+  } catch {
+    return ''
   }
-  return Math.round((val(zone) - val(base)) / 60_000)
 }
 
-function fmtOffset(min: number): string {
-  if (min === 0) return 'как у вас'
-  const sign = min > 0 ? '+' : '−'
-  const abs = Math.abs(min)
-  const h = Math.floor(abs / 60)
-  const m = abs % 60
-  return `${sign}${h}${m ? `:${String(m).padStart(2, '0')}` : ''} ч`
+function loadHour12(): boolean {
+  try { return localStorage.getItem(HOUR_KEY) === '1' } catch { return false }
 }
 
 function loadZones(): ZoneRow[] {
@@ -125,87 +83,92 @@ function loadZones(): ZoneRow[] {
 
 export default function ZonesApp() {
   const [rows, setRows] = useState<ZoneRow[]>(loadZones)
-  const [shift, setShift] = useState(0)
-  const [now, setNow] = useState(() => Date.now())
+  const [live, setLive] = useState(true)
+  const [instant, setInstant] = useState(() => Date.now())
   const [adding, setAdding] = useState(false)
   const [query, setQuery] = useState('')
+  const [copied, setCopied] = useState<string | 'all' | null>(null)
+  const [hour12, setHour12] = useState(loadHour12)
   const searchRef = useRef<HTMLInputElement>(null)
+  const copiedTimer = useRef<number | null>(null)
 
   const home = useMemo(() => localZone(), [])
 
   useEffect(() => {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(rows)) } catch { /* квота */ }
   }, [rows])
+  useEffect(() => {
+    try { localStorage.setItem(HOUR_KEY, hour12 ? '1' : '0') } catch { /* квота */ }
+  }, [hour12])
 
   // ⚠️ Тик раз в 15 секунд, а не в секунду: секунд на плитках нет, а лишние перерисовки на
-  // домашнем экране панели стоят дороже точности, которой не видно.
+  // домашнем экране панели стоят дороже точности, которой не видно. Замороженный момент не тикаем.
   useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 15_000)
+    if (!live) return
+    const t = window.setInterval(() => setInstant(Date.now()), 15_000)
     return () => window.clearInterval(t)
-  }, [])
+  }, [live])
 
   useEffect(() => { if (adding) searchRef.current?.focus() }, [adding])
+  useEffect(() => () => { if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current) }, [])
 
-  const at = useMemo(() => new Date(now + shift * 60_000), [now, shift])
+  const at = useMemo(() => new Date(instant), [instant])
   const zones = useMemo(() => allZones(), [])
-  // ⚠️ Поиск идёт через shared/timeZones: люди пишут EDT, МСК, «Нью-Йорк», а таких строк
-  // в списке ICU нет вовсе — живой случай, с которого началась эта правка.
   const found = useMemo(
     () => searchTimeZones(query, zones, rows.map((r) => r.id)),
     [zones, rows, query],
   )
 
-  const homeParts = partsIn(home, at)
+  const goLive = (): void => {
+    setLive(true)
+    setInstant(Date.now())
+  }
+
+  const setClock = (zone: string, h: number, m: number): void => {
+    setLive(false)
+    setInstant((prev) => instantWithClock(zone, prev, h, m))
+  }
+
+  const markCopied = (key: string | 'all'): void => {
+    setCopied(key)
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+    copiedTimer.current = window.setTimeout(() => setCopied((cur) => (cur === key ? null : cur)), 1200)
+  }
+
+  const copyText = (text: string, key: string | 'all'): void => {
+    void navigator.clipboard.writeText(text).then(
+      () => markCopied(key),
+      () => { /* буфер недоступен — подпись не подтвердит */ },
+    )
+  }
+
+  const copyAll = (): void => {
+    const text = rows.map((row) => {
+      const p = wallParts(row.id, at)
+      return `${formatClock(p.h, p.m, hour12)} ${row.label || zoneCity(row.id)}`
+    }).join(' · ')
+    copyText(text, 'all')
+  }
+
+  const homeDay = dateLabel(home, at)
+  const crossedDays = rows.some((row) => dateLabel(row.id, at) !== homeDay)
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      {/* ── Ползунок времени ─────────────────────────────────────────────────
-          ⚠️ Он ведущий, а не вспомогательный: ради «а если в 18:00?» приложение и открывают.
-          Поэтому он вверху и всегда на виду, а не спрятан под кнопкой. */}
-      <div style={{
-        flex: 'none', padding: pad(3, 4), display: 'flex', flexDirection: 'column', gap: sp(2),
-        borderBottom: '1px solid var(--divider)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: sp(2) }}>
-          <span style={{ ...TEXT.caption, flex: 1 }}>
-            {shift === 0 ? 'Сейчас' : `${shift > 0 ? 'через' : ''} ${fmtShift(shift)}`}
-          </span>
-          <span style={{
-            ...DISPLAY, fontSize: 20, fontWeight: 600, color: 'var(--text-strong)',
-            fontVariantNumeric: 'tabular-nums',
-          }}>
-            {String(homeParts.h).padStart(2, '0')}:{String(homeParts.m).padStart(2, '0')}
-          </span>
-          {shift !== 0 && (
-            <button
-              onClick={() => setShift(0)}
-              style={{
-                ...TEXT.caption, padding: pad(1, 2), cursor: 'pointer', borderRadius: RADIUS.pill,
-                border: '1px solid var(--divider-strong)', background: 'transparent',
-                color: 'var(--text-body)', transition: motion.hover('background', 'color'),
-              }}
-            >Сейчас</button>
-          )}
-        </div>
-        <input
-          type="range"
-          min={-SHIFT_MAX}
-          max={SHIFT_MAX}
-          step={SHIFT_STEP}
-          value={shift}
-          onChange={(e) => setShift(Number(e.target.value))}
-          style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer' }}
-        />
-      </div>
+      <ZonesChrome hour12={hour12} live={live} onHour12={setHour12} onLive={goLive} />
 
-      {/* ── Ряды поясов ─────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: pad(3, 4), display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: pad(2, 4), display: 'flex', flexDirection: 'column', gap: sp(2) }}>
         {rows.map((row) => (
           <ZoneCard
             key={row.id}
             row={row}
             at={at}
             home={home}
+            copied={copied === row.id}
+            hour12={hour12}
+            showDate={crossedDays}
+            onClock={(h, m) => setClock(row.id, h, m)}
+            onCopy={(text) => copyText(text, row.id)}
             onRemove={rows.length > 1 ? () => setRows(rows.filter((r) => r.id !== row.id)) : undefined}
           />
         ))}
@@ -260,7 +223,7 @@ export default function ZonesApp() {
                   onClick={() => { setRows([...rows, { id: z }]); setAdding(false) }}
                   style={{
                     ...TEXT.caption, padding: pad(1, 2), cursor: 'pointer', borderRadius: RADIUS.pill,
-                    border: '1px solid var(--divider)', background: 'var(--surface-sunken)',
+                    border: '1px solid var(--accent-soft-border)', background: 'var(--card)',
                     color: 'var(--text-body)', transition: motion.hover('background', 'color'),
                   }}
                 >{zoneCity(z)}{zoneAbbrev(z) ? ` · ${zoneAbbrev(z)}` : ''}</button>
@@ -269,46 +232,141 @@ export default function ZonesApp() {
           </div>
         )}
       </div>
+
+      <div style={{
+        flex: 'none', padding: pad(2, 4), borderTop: '1px solid var(--divider)',
+      }}>
+        <button
+          onClick={copyAll}
+          style={{
+            ...TEXT.body, fontWeight: 600, width: '100%', padding: pad(2, 3), cursor: 'pointer',
+            borderRadius: RADIUS.control, border: 'none',
+            background: copied === 'all' ? 'var(--accent-soft)' : 'var(--card)',
+            color: copied === 'all' ? 'var(--text-strong)' : 'var(--text-body)',
+            transition: motion.hover('background', 'color'),
+          }}
+        >{copied === 'all' ? 'Скопировано' : 'Скопировать все'}</button>
+      </div>
     </div>
   )
 }
 
-function fmtShift(min: number): string {
-  const abs = Math.abs(min)
-  const h = Math.floor(abs / 60)
-  const m = abs % 60
-  const body = h ? `${h} ч${m ? ` ${m} мин` : ''}` : `${m} мин`
-  return min > 0 ? body : `${body} назад`
-}
-
-function ZoneCard({ row, at, home, onRemove }: {
-  row: ZoneRow; at: Date; home: string; onRemove?: () => void
+function ZonesChrome({ hour12, live, onHour12, onLive }: {
+  hour12: boolean
+  live: boolean
+  onHour12: (v: boolean) => void
+  onLive: () => void
 }) {
-  const p = partsIn(row.id, at)
-  const off = offsetMinutes(row.id, home, at)
-  const hereDay = dateLabel(home, at)
-  const thereDay = dateLabel(row.id, at)
-  const night = p.h < 7 || p.h >= 22
-  // ⚠️ Ярлык живой: зимой EST, летом EDT. Он есть не у всех поясов — у Москвы Intl отдаёт
-  // «GMT+3», а это то же самое, что уже посчитанное смещение рядом.
-  const abbr = zoneAbbrev(row.id, at)
+  const chip = (active: boolean): CSSProperties => ({
+    ...TEXT.caption, fontWeight: 600, padding: pad(1, 2), cursor: 'pointer',
+    borderRadius: RADIUS.pill, border: 'none',
+    background: active ? 'var(--accent)' : 'transparent',
+    color: active ? 'var(--on-accent)' : 'var(--text-muted)',
+  })
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', gap: sp(2), padding: pad(3),
-      borderRadius: RADIUS.box, background: 'var(--surface-sunken)',
-      border: '1px solid var(--divider)',
+      flex: 'none', padding: pad(2, 4), display: 'flex', alignItems: 'center', gap: sp(2),
+      borderBottom: '1px solid var(--divider)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: sp(2) }}>
-        <span style={{
-          ...TEXT.body, fontWeight: 600, color: 'var(--text-strong)',
-          minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{row.label || zoneCity(row.id)}</span>
-        <span style={{ ...TEXT.caption, flex: 1 }}>
-          {abbr ? `${abbr} · ` : ''}{fmtOffset(off)}
-        </span>
-        {/* ⚠️ Другой день — самое частое, на чём ошибаются вручную: показываем словом, а не
-            предлагаем человеку заметить это самому. */}
-        {thereDay !== hereDay && <span style={{ ...TEXT.caption }}>{thereDay}</span>}
+      <div style={{
+        display: 'flex', gap: sp(1), padding: sp(1), borderRadius: RADIUS.pill,
+        background: 'var(--accent-soft)',
+      }}>
+        <button type="button" aria-pressed={!hour12} onClick={() => onHour12(false)} style={chip(!hour12)}>24</button>
+        <button type="button" aria-pressed={hour12} onClick={() => onHour12(true)} style={chip(hour12)}>12</button>
+      </div>
+      <button
+        onClick={onLive}
+        aria-pressed={live}
+        style={{
+          ...TEXT.caption, fontWeight: 600, padding: pad(1, 3), cursor: 'pointer', marginLeft: 'auto',
+          borderRadius: RADIUS.pill,
+          border: live ? '1px solid transparent' : '1px solid var(--divider-strong)',
+          background: live ? 'var(--accent)' : 'transparent',
+          color: live ? 'var(--on-accent)' : 'var(--text-body)',
+          transition: motion.hover('background', 'color'),
+        }}
+      >Сейчас</button>
+    </div>
+  )
+}
+
+function ZoneCard({ row, at, home, copied, hour12, showDate, onClock, onCopy, onRemove }: {
+  row: ZoneRow
+  at: Date
+  home: string
+  copied: boolean
+  hour12: boolean
+  showDate: boolean
+  onClock: (h: number, m: number) => void
+  onCopy: (text: string) => void
+  onRemove?: () => void
+}) {
+  const p = wallParts(row.id, at)
+  const off = offsetMinutes(row.id, home, at)
+  const thereDay = dateLabel(row.id, at)
+  const night = p.h < 7 || p.h >= 22
+  const abbr = zoneAbbrev(row.id, at)
+  const clock = formatClock(p.h, p.m, hour12)
+  const [draft, setDraft] = useState<string | null>(null)
+  const shown = draft ?? clock
+  const meta = [
+    abbr,
+    formatOffset(off),
+    night ? 'ночь' : '',
+    copied ? 'скопировано' : '',
+  ].filter(Boolean).join(' · ')
+
+  return (
+    <div style={{
+      ...card(),
+      display: 'flex', flexDirection: 'column', gap: sp(2), padding: pad(3),
+      borderRadius: RADIUS.box,
+      border: '1px solid var(--accent-soft-border)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{
+            ...TEXT.body, fontWeight: 600, color: 'var(--text-strong)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{row.label || zoneCity(row.id)}</div>
+          <div style={{ ...TEXT.caption }}>{meta}</div>
+        </div>
+        {/* ⚠️ День стоит под часами, не в подписи слева: иначе 00:00 и 17:00 читаются
+            как 17 часов разницы, хотя это полночь понедельника и воскресенье −7 ч. */}
+        <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+          <input
+            value={shown}
+            maxLength={hour12 ? 8 : 5}
+            inputMode={hour12 ? 'text' : 'numeric'}
+            spellCheck={false}
+            aria-label={`Время ${row.label || zoneCity(row.id)}`}
+            onClick={(e) => {
+              e.currentTarget.select()
+              onCopy(clock)
+            }}
+            onChange={(e) => setDraft((prev) => maskClockInput(e.target.value, prev ?? clock))}
+            onBlur={() => {
+              if (draft === null) return
+              const parsed = parseClock(draft)
+              setDraft(null)
+              if (parsed) onClock(parsed.h, parsed.m)
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            style={{
+              ...DISPLAY, ...TEXT.title, lineHeight: 1, textAlign: 'right',
+              width: hour12 ? '8.5ch' : '5.2ch',
+              border: 'none', background: 'transparent', padding: 0, outline: 'none',
+              caretColor: 'var(--accent)',
+            }}
+          />
+          <span style={{
+            ...TEXT.caption,
+            color: showDate ? 'var(--text-strong)' : 'var(--text-faint)',
+          }}>
+            {weekdayLabel(row.id, at)}{showDate ? ` · ${thereDay}` : ''}
+          </span>
+        </div>
         {onRemove && (
           <button
             onClick={onRemove}
@@ -321,49 +379,95 @@ function ZoneCard({ row, at, home, onRemove }: {
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: sp(3) }}>
-        <span style={{
-          ...DISPLAY, fontSize: 34, fontWeight: 600, letterSpacing: '-0.03em',
-          color: 'var(--text-strong)', fontVariantNumeric: 'tabular-nums', lineHeight: 1,
-        }}>
-          {String(p.h).padStart(2, '0')}:{String(p.m).padStart(2, '0')}
-        </span>
-        <span style={{ ...TEXT.caption, paddingBottom: 2 }}>
-          {p.weekday}{night ? ' · ночь' : ''}
-        </span>
-      </div>
-
-      <DayStrip hour={p.h} />
+      <DayStrip
+        minutes={minutesOfDay(p.h, p.m)}
+        hour12={hour12}
+        onScrub={(min) => {
+          const hm = hmFromMinutes(min)
+          onClock(hm.h, hm.m)
+        }}
+      />
     </div>
   )
 }
 
 /**
- * Полоса суток: 24 деления, рабочие часы выделены, текущий час — акцентом.
+ * Полоса суток — единственный ползунок. 0…24, шаг 15 минут.
  *
- * ⚠️ Ради неё половина конструкции и затевалась. «12:40 в Нью-Йорке» человек всё равно
- * переводит в вопрос «он спит или нет», и полоса отвечает на него глазом, без арифметики.
+ * ⚠️ Не 24 серых столбика: это и был «колодец». Дорожка — чернила палитры, рабочие часы —
+ * мягкий акцент, бегунок — капсула с кромкой карточки, чтобы читалась на любой земле.
+ *
+ * ⚠️ Правый край УПИРАЕТСЯ, а не переносит сутки. 24:00 на шкале — 23:45 этого дня: иначе
+ * зажатый курсор накручивает даты (сентябрь уезжал в декабрь, летнее EDT становилось EST).
  */
-function DayStrip({ hour }: { hour: number }) {
+function DayStrip({ minutes, hour12, onScrub }: {
+  minutes: number
+  hour12: boolean
+  onScrub: (min: number) => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+
+  const read = (clientX: number): number => {
+    const el = ref.current
+    if (!el) return minutes
+    const r = el.getBoundingClientRect()
+    const x = Math.min(Math.max(clientX - r.left, 0), r.width)
+    return snapClockMinutes((x / Math.max(r.width, 1)) * DAY_MINUTES)
+  }
+
+  const labels = hour12 ? ['12am', '6', '12pm', '6', '12am'] : ['0', '6', '12', '18', '24']
+  const workLeft = `${(WORK_FROM / 24) * 100}%`
+  const workWidth = `${((WORK_TO - WORK_FROM) / 24) * 100}%`
+
   return (
-    <div style={{ display: 'flex', gap: 2, height: 10 }}>
-      {Array.from({ length: 24 }, (_, h) => {
-        const work = h >= WORK_FROM && h < WORK_TO
-        const on = h === hour
-        return (
-          <span
-            key={h}
-            title={`${String(h).padStart(2, '0')}:00`}
-            style={{
-              // RADIUS.tight — ступень шкалы ровно для этого: индикатор внутри контрола.
-              flex: 1, borderRadius: RADIUS.tight,
-              background: on ? 'var(--accent)' : work ? 'var(--accent-soft)' : 'var(--divider)',
-              opacity: on ? 1 : work ? 1 : 0.5,
-              transition: motion.hover('background', 'opacity'),
-            }}
-          />
-        )
-      })}
+    <div>
+      <div
+        ref={ref}
+        role="slider"
+        aria-valuemin={0}
+        aria-valuemax={DAY_MAX_MINUTES}
+        aria-valuenow={minutes}
+        aria-label="Сутки"
+        onPointerDown={(e) => {
+          dragging.current = true
+          e.currentTarget.setPointerCapture(e.pointerId)
+          onScrub(read(e.clientX))
+        }}
+        onPointerMove={(e) => { if (dragging.current) onScrub(read(e.clientX)) }}
+        onPointerUp={() => { dragging.current = false }}
+        onPointerCancel={() => { dragging.current = false }}
+        style={{
+          position: 'relative', height: sp(8), borderRadius: RADIUS.pill,
+          cursor: 'pointer', touchAction: 'none', userSelect: 'none',
+          background: 'color-mix(in srgb, var(--text-faint) 16%, transparent)',
+        }}
+      >
+        <span
+          aria-hidden
+          title={`${formatClock(WORK_FROM, 0, hour12)}–${formatClock(WORK_TO, 0, hour12)}`}
+          style={{
+            position: 'absolute', top: 0, bottom: 0, left: workLeft, width: workWidth,
+            background: 'var(--accent-soft)', borderRadius: RADIUS.pill, pointerEvents: 'none',
+          }}
+        />
+        <span
+          aria-hidden
+          style={{
+            position: 'absolute', top: sp(1), bottom: sp(1), width: sp(3),
+            left: `${(minutes / DAY_MINUTES) * 100}%`,
+            transform: 'translateX(-50%)',
+            background: 'var(--accent)', borderRadius: RADIUS.pill, pointerEvents: 'none',
+            boxShadow: '0 0 0 3px var(--card), 0 1px 6px color-mix(in srgb, var(--accent) 35%, transparent)',
+          }}
+        />
+      </div>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', marginTop: sp(1),
+        ...TEXT.caption, color: 'var(--text-faint)',
+      }}>
+        {labels.map((lab, i) => <span key={i}>{lab}</span>)}
+      </div>
     </div>
   )
 }

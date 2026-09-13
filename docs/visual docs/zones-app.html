@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Пояса — макет</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@600;700&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Пояса. Адаптация под дизайн-систему (не серый колодец).
+   Ряд = --card (акцент 10% в поверхность), цвет в элементах: 12/24, «Сейчас»,
+   рабочие часы, бегунок. Полоса — чернила, не 24 столбика. День под часами.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --r-tight:4px; --r-control:8px; --r-box:12px; --r-island:20px; --r-pill:999px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n3:#EEEEF1; --n5:#DBDCE3; --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF; --accent-shade:#000;
+  --app-bg:var(--n5); --surface:var(--n1);
+  --divider:rgba(60,60,67,.14); --divider-strong:rgba(60,60,67,.24);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+  --accent-soft:color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-soft-border:color-mix(in srgb, var(--accent) 35%, transparent);
+  --card:color-mix(in srgb, var(--accent) 10%, var(--surface));
+  --card-high:color-mix(in srgb, var(--accent) 19%, var(--surface));
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n3:#212123; --n5:#343439; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213; --accent-shade:#fff;
+  --app-bg:var(--n1); --surface:#29292D;
+  --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+  --shadow-tint:#000;
+  --accent-soft:color-mix(in srgb, var(--accent) 22%, transparent);
+  --card:color-mix(in srgb, var(--accent) 13%, var(--surface));
+  --card-high:color-mix(in srgb, var(--accent) 21%, var(--surface));
+}
+:root {
+  --shadow:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.55);
+}
+:root[data-theme="dark"] { --inner-light: inset 0 1px 0 rgba(255,255,255,.06); }
+
+* { box-sizing:border-box; }
+html, body { margin:0; min-height:100%; }
+body {
+  font-family:var(--font-ui); font-size:14px; color:var(--text-body);
+  background:var(--app-bg); -webkit-font-smoothing:antialiased;
+}
+.ground { position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:linear-gradient(168deg,var(--ground-1) 0%,var(--ground-2) 46%,var(--ground-3) 100%); }
+.ground::after {
+  content:""; position:absolute; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px; opacity:var(--grain-op); mix-blend-mode:overlay;
+}
+
+.page { position:relative; z-index:1; min-height:100%; display:flex; flex-direction:column; align-items:center; padding:20px 16px 48px; }
+.top { display:flex; align-items:center; gap:8px; width:min(400px,100%); margin-bottom:10px; }
+.top span { font-size:12.5px; color:var(--text-faint); flex:1; }
+.note {
+  width:min(400px,100%); margin:0 0 16px;
+  font-size:12.5px; line-height:1.45; color:var(--text-muted);
+}
+.note b { color:var(--text-strong); font-weight:600; }
+.seg { display:flex; gap:2px; padding:3px; border-radius:999px; background:color-mix(in srgb, var(--surface) 80%, transparent); }
+.seg button {
+  border:0; cursor:pointer; font:inherit; font-size:12.5px; font-weight:500;
+  padding:5px 12px; border-radius:999px; background:transparent; color:var(--text-muted);
+}
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); font-weight:600; }
+
+.slot {
+  width:min(400px,100%); height:min(680px, calc(100vh - 140px));
+  display:flex; flex-direction:column;
+  background:var(--surface); border-radius:20px;
+  box-shadow:var(--shadow), var(--inner-light); overflow:hidden;
+}
+.slot-head {
+  flex:none; display:flex; align-items:center; gap:10px;
+  padding:12px 14px 10px;
+}
+.badge {
+  width:28px; height:28px; border-radius:9px; display:grid; place-items:center;
+  background:#17293E; color:#E8B86D;
+}
+.slot-head b { flex:1; font-size:14px; font-weight:600; color:var(--text-strong); }
+.icon {
+  width:28px; height:28px; border:0; background:transparent; color:var(--text-faint);
+  display:grid; place-items:center; cursor:pointer; border-radius:8px; padding:0;
+}
+.icon:hover { background:var(--accent-soft); color:var(--text-body); }
+
+.app { flex:1; min-height:0; display:flex; flex-direction:column; }
+
+.bar {
+  flex:none; display:flex; align-items:center; gap:8px;
+  padding:8px 16px; border-bottom:1px solid var(--divider);
+}
+.fmt {
+  display:flex; gap:4px; padding:4px; border-radius:999px; background:var(--accent-soft);
+}
+.fmt button {
+  border:0; cursor:pointer; font:inherit; font-size:12.5px; font-weight:600;
+  padding:4px 8px; border-radius:999px; background:transparent; color:var(--text-muted);
+}
+.fmt button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+.now-btn {
+  margin-left:auto; border:1px solid var(--divider-strong); background:transparent;
+  color:var(--text-body); font:inherit; font-size:12.5px; font-weight:600;
+  padding:6px 12px; border-radius:999px; cursor:pointer;
+}
+.now-btn[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); border-color:transparent; }
+
+.list { flex:1; min-height:0; overflow:auto; padding:8px 16px; display:flex; flex-direction:column; gap:8px; }
+
+.row {
+  padding:12px; border-radius:12px; background:var(--card);
+  border:1px solid var(--accent-soft-border);
+  display:flex; flex-direction:column; gap:8px;
+}
+.row-top { display:flex; align-items:center; gap:8px; }
+.who { min-width:0; flex:1; }
+.city { font-weight:600; color:var(--text-strong); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.meta { font-size:12.5px; color:var(--text-faint); }
+.clock { flex:none; display:flex; flex-direction:column; align-items:flex-end; }
+.time {
+  width:5.2ch; border:0; background:transparent; padding:0; text-align:right;
+  font-family:var(--font-display); font-size:22px; font-weight:700; letter-spacing:-.02em;
+  line-height:1; color:var(--text-strong); font-variant-numeric:tabular-nums;
+  outline:none; caret-color:var(--accent);
+}
+.row[data-h12="1"] .time { width:8.5ch; }
+.time:focus { color:var(--accent); }
+.day { font-size:12.5px; color:var(--text-faint); }
+.day.cross { color:var(--text-strong); }
+
+.strip { position:relative; height:32px; border-radius:999px; cursor:pointer; touch-action:none; user-select:none;
+  background:color-mix(in srgb, var(--text-faint) 16%, transparent); }
+.work {
+  position:absolute; top:0; bottom:0; left:37.5%; width:37.5%;
+  background:var(--accent-soft); border-radius:999px; pointer-events:none;
+}
+.play {
+  position:absolute; top:4px; bottom:4px; width:12px; margin-left:-6px;
+  background:var(--accent); border-radius:999px; pointer-events:none;
+  box-shadow:
+    0 0 0 3px var(--card),
+    0 1px 6px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.labs { display:flex; justify-content:space-between; margin-top:4px; font-size:12.5px; color:var(--text-faint); font-variant-numeric:tabular-nums; }
+
+.add {
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  padding:8px 12px; border-radius:8px; border:1px dashed var(--divider-strong);
+  background:transparent; color:var(--text-muted); font:inherit; font-size:14px; cursor:pointer;
+}
+.add:hover { background:var(--accent-soft); color:var(--text-body); }
+.search { display:flex; flex-direction:column; gap:8px; }
+.search-box {
+  display:flex; align-items:center; gap:8px; padding:8px 12px;
+  border-radius:8px; border:1px solid var(--divider-strong); background:var(--surface);
+}
+.search-box input {
+  flex:1; min-width:0; border:0; outline:none; background:transparent;
+  font:inherit; font-size:14px; color:var(--text-strong);
+}
+.chips { display:flex; flex-wrap:wrap; gap:4px; max-height:140px; overflow:auto; }
+.chip {
+  border:1px solid var(--accent-soft-border); background:var(--card); color:var(--text-body);
+  font:inherit; font-size:12.5px; padding:4px 8px; border-radius:999px; cursor:pointer;
+}
+.chip:hover { background:var(--card-high); }
+
+.foot { flex:none; padding:8px 16px 14px; border-top:1px solid var(--divider); }
+.foot button {
+  width:100%; border:0; border-radius:8px; padding:10px 12px; cursor:pointer;
+  font:inherit; font-size:14px; font-weight:600;
+  background:var(--card); color:var(--text-body);
+}
+.foot button.ok { background:var(--accent-soft); color:var(--text-strong); }
+
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="ground"></div>
+<div class="page">
+  <div class="top">
+    <span>макет · ширина панели</span>
+    <div class="seg" role="group" aria-label="Тема">
+      <button type="button" data-theme="light" aria-pressed="true">Светлая</button>
+      <button type="button" data-theme="dark" aria-pressed="false">Тёмная</button>
+    </div>
+  </div>
+  <p class="note">
+    Серый колодец убран. Ряд лежит на <b>--card</b> (акцент, подмешанный в поверхность) —
+    тот же материал, что у виджетов стола. Цвет в элементах: сегмент 12/24, «Сейчас»,
+    рабочие 9–18, капсула бегунка. Двоеточие после двух цифр ставится само.
+  </p>
+  <div class="slot">
+    <div class="slot-head">
+      <span class="badge" aria-hidden="true">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7.5" cy="7.5" r="5.5"/><path d="M7.5 4.5v3l2 1.2"/></svg>
+      </span>
+      <b>Пояса</b>
+      <button class="icon" type="button" title="Закрыть" aria-label="Закрыть">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3l8 8M11 3l-8 8"/></svg>
+      </button>
+    </div>
+    <div class="app">
+      <div class="bar">
+        <div class="fmt" role="group" aria-label="Формат часов">
+          <button type="button" id="h24" aria-pressed="true">24</button>
+          <button type="button" id="h12" aria-pressed="false">12</button>
+        </div>
+        <button class="now-btn" type="button" id="nowBtn" aria-pressed="true">Сейчас</button>
+      </div>
+      <div class="list" id="list"></div>
+      <div class="foot">
+        <button type="button" id="copyAll">Скопировать все</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ALIAS = {
+  edt:'America/New_York', est:'America/New_York', et:'America/New_York',
+  cdt:'America/Chicago', pst:'America/Los_Angeles', pdt:'America/Los_Angeles',
+  msk:'Europe/Moscow', мск:'Europe/Moscow', москва:'Europe/Moscow',
+  cet:'Europe/Berlin', gmt:'Europe/London', bst:'Europe/London', utc:'UTC',
+  jst:'Asia/Tokyo', токио:'Asia/Tokyo', ist:'Asia/Kolkata', gst:'Asia/Dubai',
+  'нью-йорк':'America/New_York', лондон:'Europe/London', берлин:'Europe/Berlin',
+  пари:'Europe/Paris', париж:'Europe/Paris', дубай:'Asia/Dubai',
+  владивосток:'Asia/Vladivostok', екатеринбург:'Asia/Yekaterinburg',
+  сидней:'Australia/Sydney', сеул:'Asia/Seoul',
+};
+const CITY = (id) => (id.split('/').pop() || id).replace(/_/g, ' ');
+const MONTHS = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+const WK = ['вс','пн','вт','ср','чт','пт','сб'];
+const WORK_FROM = 9, WORK_TO = 18, STEP = 15, DAY = 1440, MAX = 1425;
+
+function allZones() {
+  try {
+    const f = Intl.supportedValuesOf;
+    return typeof f === 'function' ? f('timeZone') : [];
+  } catch { return []; }
+}
+const ZONES = allZones();
+function localZone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
+  catch { return 'UTC'; }
+}
+
+function partsIn(zone, at) {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone, hourCycle:'h23',
+      year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit',
+    });
+    const p = Object.fromEntries(fmt.formatToParts(at).map((x) => [x.type, x.value]));
+    return { y:+p.year, mo:+p.month, d:+p.day, h:(+p.hour) % 24, m:+p.minute };
+  } catch {
+    return { y:1970, mo:1, d:1, h:0, m:0 };
+  }
+}
+function wallUtc(zone, at) {
+  const p = partsIn(zone, at);
+  return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.m);
+}
+function instantFromCivil(zone, y, mo, d, h, m) {
+  const target = Date.UTC(y, mo - 1, d, h, m);
+  let t = target;
+  for (let i = 0; i < 4; i++) t += target - wallUtc(zone, new Date(t));
+  return t;
+}
+function offsetMin(zone, home, at) {
+  return Math.round((wallUtc(zone, at) - wallUtc(home, at)) / 60000);
+}
+function fmtOffset(min) {
+  if (min === 0) return 'как у вас';
+  const sign = min > 0 ? '+' : '−';
+  const abs = Math.abs(min);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return `${sign}${h}${m ? `:${String(m).padStart(2,'0')}` : ''} ч`;
+}
+function fmtDate(p) { return `${p.d} ${MONTHS[p.mo - 1]}`; }
+function fmtHm(h, m) { return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
+function fmtClock(h, m, h12) {
+  if (!h12) return fmtHm(h, m);
+  const period = h >= 12 ? 'pm' : 'am';
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return `${hr}:${String(m).padStart(2,'0')} ${period}`;
+}
+function abbr(id, at) {
+  try {
+    const raw = new Intl.DateTimeFormat('en-US', { timeZone:id, timeZoneName:'short' })
+      .formatToParts(at).find((x) => x.type === 'timeZoneName')?.value ?? '';
+    return /^[A-Z]{2,5}$/.test(raw) ? raw : '';
+  } catch { return ''; }
+}
+function parseTime(s) {
+  let t = s.trim().toLowerCase().replace('.', ':').replace(/\s/g, '');
+  let period = null;
+  if (t.endsWith('am') || t.endsWith('pm')) { period = t.slice(-2); t = t.slice(0, -2); }
+  let h, m = 0;
+  if (/^\d{3,4}$/.test(t)) {
+    const n = t.padStart(4, '0');
+    h = +n.slice(0, 2); m = +n.slice(2);
+  } else {
+    const mm = t.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+    if (!mm) return null;
+    h = +mm[1]; m = mm[2] !== undefined ? +mm[2] : 0;
+  }
+  if (m < 0 || m > 59) return null;
+  if (period) {
+    if (h < 1 || h > 12) return null;
+    h = period === 'am' ? (h === 12 ? 0 : h) : (h === 12 ? 12 : h + 12);
+  } else if (h === 24 && m === 0) {
+    return { h:23, m:45 };
+  } else if (h < 0 || h > 23) return null;
+  return { h, m };
+}
+function maskClock(raw, prev = '') {
+  const lower = raw.trim().toLowerCase();
+  let suffix = '', body = lower;
+  if (body.endsWith('am') || body.endsWith('pm')) { suffix = ' ' + body.slice(-2); body = body.slice(0, -2); }
+  else if (body.endsWith('a') || body.endsWith('p')) { suffix = ' ' + body.slice(-1); body = body.slice(0, -1); }
+  const digits = body.replace(/\D/g, '').slice(0, 4);
+  const prevBody = prev.trim().toLowerCase().replace(/\s?(am|pm|a|p)$/, '');
+  const prevDigits = prevBody.replace(/\D/g, '').slice(0, 4);
+  if (digits.length < 2) return digits + suffix;
+  if (digits.length === 2) {
+    const dropped = prevDigits === digits && prevBody.includes(':') && !body.includes(':');
+    return dropped ? digits + suffix : digits + ':' + suffix;
+  }
+  return digits.slice(0, 2) + ':' + digits.slice(2) + suffix;
+}
+function snap(min) {
+  const c = Math.min(Math.max(min, 0), MAX);
+  return Math.round(c / STEP) * STEP;
+}
+function searchZones(q, exclude) {
+  const skip = new Set(exclude);
+  const n = q.toLowerCase().replace(/[_\s]+/g, ' ').trim();
+  const compact = n.replace(/\s/g, '');
+  const out = [];
+  const push = (id) => {
+    if (!id || skip.has(id) || out.includes(id)) return;
+    out.push(id);
+  };
+  if (!n) return ZONES.filter((z) => !skip.has(z)).slice(0, 24);
+  if (ALIAS[compact] || ALIAS[n]) push(ALIAS[compact] || ALIAS[n]);
+  const pool = ZONES.length ? ZONES : Object.values(ALIAS);
+  for (const z of pool) {
+    if (out.length >= 24) break;
+    if (!skip.has(z) && (z.toLowerCase().includes(n) || CITY(z).toLowerCase().includes(n))) push(z);
+  }
+  return out;
+}
+
+const home = localZone();
+const seed = [home, 'Europe/Moscow', 'America/New_York'].filter((z, i, a) => a.indexOf(z) === i);
+const state = {
+  live: true,
+  hour12: false,
+  instant: Date.now(),
+  rows: seed.slice(0, 3),
+  adding: false,
+  copied: null,
+  copiedAll: false,
+  query: '',
+};
+
+function freeze() { state.live = false; }
+function goLive() { state.live = true; state.instant = Date.now(); }
+function setFromZone(zone, h, m) {
+  freeze();
+  if (h === 24) { h = 23; m = 45; }
+  const p = partsIn(zone, new Date(state.instant));
+  state.instant = instantFromCivil(zone, p.y, p.mo, p.d, h, m);
+}
+
+function copyText(text, kind) {
+  navigator.clipboard.writeText(text).then(() => {
+    if (kind === 'all') {
+      state.copiedAll = true;
+      window.setTimeout(() => { state.copiedAll = false; paint(); }, 1200);
+    } else {
+      state.copied = kind;
+      window.setTimeout(() => { if (state.copied === kind) state.copied = null; paint(); }, 1200);
+    }
+    paint();
+  }, () => {});
+}
+
+function weekday(p) {
+  const t = Date.UTC(p.y, p.mo - 1, p.d);
+  return WK[new Date(t).getUTCDay()];
+}
+
+function rowHtml(id) {
+  return `<article class="row" data-zone="${id}" data-h12="${state.hour12 ? '1' : '0'}">
+    <div class="row-top">
+      <div class="who">
+        <div class="city">${CITY(id)}</div>
+        <div class="meta"></div>
+      </div>
+      <div class="clock">
+        <input class="time" data-time="${id}" value="00:00" maxlength="${state.hour12 ? 8 : 5}" spellcheck="false" inputmode="${state.hour12 ? 'text' : 'numeric'}" aria-label="Время ${CITY(id)}">
+        <span class="day"></span>
+      </div>
+      ${state.rows.length > 1 ? `<button class="icon" type="button" data-remove="${id}" aria-label="Убрать" title="Убрать">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 2.5l8 8M10.5 2.5l-8 8"/></svg>
+      </button>` : ''}
+    </div>
+    <div class="strip" data-strip="${id}" role="slider" aria-valuemin="0" aria-valuemax="${MAX}" aria-valuenow="0" aria-label="Сутки ${CITY(id)}">
+      <div class="work"></div>
+      <div class="play"></div>
+    </div>
+    <div class="labs">${state.hour12
+      ? '<span>12am</span><span>6</span><span>12pm</span><span>6</span><span>12am</span>'
+      : '<span>0</span><span>6</span><span>12</span><span>18</span><span>24</span>'}</div>
+  </article>`;
+}
+
+function addHtml() {
+  if (state.rows.length >= 8) return '';
+  if (!state.adding) {
+    return `<button class="add" type="button" id="addBtn"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.5v9M2.5 7h9"/></svg> Добавить пояс</button>`;
+  }
+  const found = searchZones(state.query, state.rows);
+  const chips = found.map((z) => {
+    const a = abbr(z, new Date(state.instant));
+    return `<button class="chip" type="button" data-add="${z}">${CITY(z)}${a ? ` · ${a}` : ''}</button>`;
+  }).join('');
+  return `<div class="search" id="searchBox">
+    <div class="search-box">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6" cy="6" r="4"/><path d="m9.5 9.5 3 3"/></svg>
+      <input id="q" placeholder="EDT, МСК, Нью-Йорк, tokyo…">
+      <button class="icon" type="button" id="cancelAdd" aria-label="Отмена">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3l8 8M11 3l-8 8"/></svg>
+      </button>
+    </div>
+    <div class="chips" id="chips">${chips || '<span class="meta">Ничего не нашлось</span>'}</div>
+  </div>`;
+}
+
+let listKey = '';
+function layoutKey() { return state.rows.join('|') + (state.adding ? '|add' : '') + (state.hour12 ? '|12' : '|24'); }
+
+function rebuild() {
+  const list = document.getElementById('list');
+  list.innerHTML = state.rows.map(rowHtml).join('') + addHtml();
+  listKey = layoutKey();
+  if (state.adding) {
+    const q = document.getElementById('q');
+    if (q) { q.value = state.query; q.focus(); q.setSelectionRange(state.query.length, state.query.length); }
+  }
+}
+
+function paint() {
+  if (listKey !== layoutKey()) rebuild();
+  const at = new Date(state.instant);
+  const homeP = partsIn(home, at);
+  const homeDay = fmtDate(homeP);
+  const crossed = state.rows.some((id) => fmtDate(partsIn(id, at)) !== homeDay);
+  document.getElementById('nowBtn').setAttribute('aria-pressed', String(state.live));
+  document.getElementById('h24').setAttribute('aria-pressed', String(!state.hour12));
+  document.getElementById('h12').setAttribute('aria-pressed', String(state.hour12));
+
+  const list = document.getElementById('list');
+  const focused = document.activeElement;
+  const focusZone = focused && focused.matches?.('input[data-time]') ? focused.getAttribute('data-time') : null;
+
+  for (const id of state.rows) {
+    const row = list.querySelector(`[data-zone="${id}"]`);
+    if (!row) continue;
+    const p = partsIn(id, at);
+    const off = offsetMin(id, home, at);
+    const a = abbr(id, at);
+    const night = p.h < 7 || p.h >= 22;
+    const bits = [a, fmtOffset(off), night ? 'ночь' : '', state.copied === id ? 'скопировано' : ''].filter(Boolean);
+    row.querySelector('.meta').textContent = bits.join(' · ');
+    const input = row.querySelector('.time');
+    if (focusZone !== id) input.value = fmtClock(p.h, p.m, state.hour12);
+    const day = row.querySelector('.day');
+    day.textContent = crossed ? `${weekday(p)} · ${fmtDate(p)}` : weekday(p);
+    day.classList.toggle('cross', crossed);
+    const mins = Math.min(p.h * 60 + p.m, MAX);
+    row.querySelector('.play').style.left = `${(mins / DAY) * 100}%`;
+    row.querySelector('.strip').setAttribute('aria-valuenow', String(mins));
+  }
+
+  if (state.adding) {
+    const chips = document.getElementById('chips');
+    if (chips) {
+      const found = searchZones(state.query, state.rows);
+      chips.innerHTML = found.map((z) => {
+        const a = abbr(z, at);
+        return `<button class="chip" type="button" data-add="${z}">${CITY(z)}${a ? ` · ${a}` : ''}</button>`;
+      }).join('') || '<span class="meta">Ничего не нашлось</span>';
+    }
+  }
+
+  const copy = document.getElementById('copyAll');
+  copy.textContent = state.copiedAll ? 'Скопировано' : 'Скопировать все';
+  copy.classList.toggle('ok', state.copiedAll);
+}
+
+function bindList() {
+  const list = document.getElementById('list');
+  list.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add]');
+    if (add) {
+      state.rows.push(add.getAttribute('data-add'));
+      state.adding = false; state.query = '';
+      paint(); return;
+    }
+    const rm = e.target.closest('[data-remove]');
+    if (rm) {
+      state.rows = state.rows.filter((z) => z !== rm.getAttribute('data-remove'));
+      paint(); return;
+    }
+    if (e.target.closest('#addBtn')) { state.adding = true; paint(); document.getElementById('q')?.focus(); return; }
+    if (e.target.closest('#cancelAdd')) { state.adding = false; state.query = ''; paint(); }
+  });
+  list.addEventListener('input', (e) => {
+    if (e.target.id === 'q') { state.query = e.target.value; paint(); }
+    if (e.target.matches('input[data-time]')) {
+      const prev = e.target.dataset.prev ?? e.target.value;
+      e.target.value = maskClock(e.target.value, prev);
+      e.target.dataset.prev = e.target.value;
+    }
+  });
+  list.addEventListener('keydown', (e) => {
+    if (e.target.id === 'q' && e.key === 'Escape') {
+      state.adding = false; state.query = ''; paint();
+    }
+    if (e.target.matches('input[data-time]') && e.key === 'Enter') e.target.blur();
+  });
+  list.addEventListener('focusin', (e) => {
+    const input = e.target.closest('input[data-time]');
+    if (!input) return;
+    input.dataset.prev = input.value;
+    input.select();
+    copyText(input.value, input.getAttribute('data-time'));
+  });
+  list.addEventListener('change', (e) => {
+    const input = e.target.closest('input[data-time]');
+    if (!input) return;
+    const parsed = parseTime(input.value);
+    const id = input.getAttribute('data-time');
+    if (!parsed) { paint(); return; }
+    setFromZone(id, parsed.h, parsed.m);
+    paint();
+  });
+
+  let drag = null;
+  const readStrip = (el, clientX) => {
+    const r = el.getBoundingClientRect();
+    const x = Math.min(Math.max(clientX - r.left, 0), r.width);
+    return snap((x / r.width) * DAY);
+  };
+  list.addEventListener('pointerdown', (e) => {
+    const strip = e.target.closest('[data-strip]');
+    if (!strip) return;
+    e.preventDefault();
+    strip.setPointerCapture(e.pointerId);
+    drag = strip.getAttribute('data-strip');
+    const mins = readStrip(strip, e.clientX);
+    setFromZone(drag, Math.floor(mins / 60), mins % 60);
+    paint();
+  });
+  list.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const strip = list.querySelector(`[data-strip="${drag}"]`);
+    if (!strip) return;
+    const mins = readStrip(strip, e.clientX);
+    setFromZone(drag, Math.floor(mins / 60), mins % 60);
+    paint();
+  });
+  list.addEventListener('pointerup', () => { drag = null; });
+  list.addEventListener('pointercancel', () => { drag = null; });
+}
+
+document.getElementById('nowBtn').addEventListener('click', () => { goLive(); paint(); });
+document.getElementById('h24').addEventListener('click', () => { state.hour12 = false; paint(); });
+document.getElementById('h12').addEventListener('click', () => { state.hour12 = true; paint(); });
+document.getElementById('copyAll').addEventListener('click', () => {
+  const at = new Date(state.instant);
+  const text = state.rows.map((id) => {
+    const p = partsIn(id, at);
+    return `${fmtClock(p.h, p.m, state.hour12)} ${CITY(id)}`;
+  }).join(' · ');
+  copyText(text, 'all');
+});
+document.querySelectorAll('[data-theme]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.documentElement.setAttribute('data-theme', btn.dataset.theme);
+    document.querySelectorAll('[data-theme]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+  });
+});
+
+bindList();
+paint();
+window.setInterval(() => {
+  if (!state.live) return;
+  state.instant = Date.now();
+  paint();
+}, 15000);
+</script>
+</body>
+</html>
