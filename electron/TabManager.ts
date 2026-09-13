@@ -28,6 +28,7 @@ import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/ba
 import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_PANE_RADIUS, splitPaneBounds, clampSplitRatio } from '../shared/layout';
 import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTimer, pressureCandidates, SLEEP_CHECK_INTERVAL, PRESSURE_SLEEP_PER_CHECK, MEDIA_GRACE } from '../shared/sleepPolicy';
+import { prepareSleepUnload } from './tabSleepIndex';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
 import { findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
@@ -267,13 +268,10 @@ export class TabManager {
   private onFindCloseCb: () => void;
   private onOmniboxFocusCb: () => void;
   private onFocusChromeCb: () => void;
-  // wc — третий параметр (заход на обогащение эмбеддинга истории контентом страницы): даёт
-  // HistoryIndexer.ts доступ именно к WebContents НАВИГИРОВАВШЕЙ вкладки, а не к активной —
-  // важно для фоновых вкладок, у которых getActiveWebContents() вернул бы чужой DOM.
+  // wc — навигировавшая вкладка, не активная (фоновая чужого профиля).
   private onNavigateCb?: (url: string, title: string, wc: WebContents) => void;
-  // wc в колбэке — чтобы получатель знал ПРОФИЛЬ вкладки: заголовок обновляет любая
-  // вкладка, включая фоновую чужого профиля, а история теперь на профиль.
   private onTitleUpdateCb?: (url: string, title: string, wc: WebContents) => void;
+  private onBeforeSleepCb?: (url: string, title: string, wc: WebContents) => Promise<boolean>;
   /** Висит ли поверх хрома модальный экран (см. setChromeModal). */
   private chromeModal = false;
   private onHistoryOpenCb?: () => void;
@@ -1228,24 +1226,26 @@ export class TabManager {
   }
 
   // ── Усыпление: выгружаем WebContentsView, сохраняем метаданные ──
-  private sleepTab(id: string): void {
+  private sleepTab(id: string): void { void this.sleepTabAsync(id); }
+
+  private async sleepTabAsync(id: string): Promise<void> {
     const tab = this.tabMap.get(id);
     if (!tab || !this.isHttpView(tab.view) || tab.sleeping) return;
     const wc = tab.view.webContents;
     const url = wc.getURL();
-    // Не усыпляем вкладки без реального URL (about:blank и т.п.)
     if (!/^https?:\/\//i.test(url)) return;
+    if (!(await prepareSleepUnload(this.onBeforeSleepCb, wc))) return;
+    if (tab.sleeping || id === this.activeId || !this.isHttpView(tab.view)) return;
+    const live = tab.view.webContents;
+    if (live.isDestroyed() || !/^https?:\/\//i.test(live.getURL())) return;
     tab.sleeping = {
-      url,
-      title: wc.getTitle() || url,
-      faviconUrl: (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon ?? null,
-      // Base64-кэш (см. #cacheFaviconData) — если фоновый fetch уже успел завершиться к моменту
-      // усыпления. Если нет — faviconUrl выше остаётся фоллбэком для текущей сессии, а данные
-      // всё равно попадут в session.json при следующем реальном пробуждении+усыплении.
-      faviconData: (wc as unknown as { _oblakoFaviconData?: string })._oblakoFaviconData ?? null,
+      url: live.getURL(),
+      title: live.getTitle() || live.getURL(),
+      faviconUrl: (live as unknown as { _oblakoFavicon?: string })._oblakoFavicon ?? null,
+      faviconData: (live as unknown as { _oblakoFaviconData?: string })._oblakoFaviconData ?? null,
     };
     try { this.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
-    try { (wc as unknown as { close?: () => void }).close?.(); } catch { /* noop */ }
+    try { (live as unknown as { close?: () => void }).close?.(); } catch { /* noop */ }
     tab.view = null;
     this.errors.delete(id);
     this.onChange();
@@ -3619,6 +3619,7 @@ export class TabManager {
   setOnAutofillDismiss(cb: () => void): void { this.onAutofillDismissCb = cb; }
   setOnPasswordDismiss(cb: () => void): void { this.onPasswordDismissCb = cb; }
   setOnMediaReport(cb: (tabId: string, report: MediaSessionReport, url: string) => void): void { this.onMediaReportCb = cb; }
+  setOnBeforeSleep(cb: (url: string, title: string, wc: WebContents) => Promise<boolean>): void { this.onBeforeSleepCb = cb; }
 
   // Команда медиасессии — в ту вкладку, что сейчас играет. ⚠️ Спящая вкладка команду не получает
   // и получить не может: живого webContents у неё нет, а будить её ради «паузы» бессмысленно —

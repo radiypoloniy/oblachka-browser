@@ -7,8 +7,11 @@
   Полнотекстовый поиск поверх неё: `HistoryIndexer.ts` (FTS5-индекс контента,
   стемминг через `textStemming.ts`/`snowball-stemmers`), `HistorySearch.ts`
   (умный поиск — FTS5 + Qwen-реранк, без эмбеддингов, см. «Стек» выше),
-  `HistoryContentBackfill.ts` (докачка контента старых визитов),
-  `HistoryNoiseFilter.ts` (фильтр шумных URL из выдачи).
+  `HistoryContentBackfill.ts` (докачка контента старых визитов; только по кнопке),
+  `shared/historyIndex.ts` (когда снимать текст: не ждать load, если страница уже
+  готова; title-шум на did-navigate не запоминать — «YouTube» до имени ролика;
+  повтор на page-title-updated; очередь из двух; снимок перед усыплением).
+  Прогон — `npm test -- history-index`. `HistoryNoiseFilter.ts` реэкспортирует фильтр.
 - **Закладки в сайдбаре** — `src/components/SidebarBookmarks.tsx` + переключатель
   `ModeSwitch` в `Sidebar.tsx`. ⚠️ Раскладка ПОВТОРЯЕТ режим вкладок, а не изобретает
   свою: сетка вверху (там, где закреплённые) — папки корня, список ниже (там, где

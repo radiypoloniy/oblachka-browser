@@ -11,11 +11,21 @@
 // индексировать нечего (раньше был fallback title+hostname, но он кормил только whole-page
 // эмбеддинг, которого больше нет — просто пропускаем визит, следующий попробует снова). Реюз
 // extractPageText из AiPanelManager.ts — тот же пайплайн, что у AI-панели, не дублируем его.
+//
+// ⚠️ Политика «извлекать / ждать load / шум» — shared/historyIndex.ts, под npm test -- history-index.
 import type { WebContents } from 'electron';
 import type { HistoryManager } from './HistoryManager';
 import { extractPageText } from './AiPanelManager';
-import { isNoisyForEmbedding } from './HistoryNoiseFilter';
 import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
+import { createLimiter } from '../shared/limitConcurrency';
+import {
+  classifyHistoryNoise,
+  decideHistoryIndex,
+  shouldWaitForPageLoad,
+  HISTORY_INDEX_CONCURRENCY,
+  type HistoryIndexTrigger,
+  type HistoryNoiseKind,
+} from '../shared/historyIndex';
 
 // Живой замер (диагностика "переиндексация при рестарте"): 750-850% CPU на 40с при рестарте
 // с 10 закреплёнными вкладками — каждая переиндексировалась заново при том, что содержимое не
@@ -27,6 +37,9 @@ import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
 // upsert, стреляет на любой повторный визит, не только на первый), но НЕ является источником
 // истины сам по себе — на старте процесса он пуст, и это нормально, БД-проверка ниже подхватывает.
 const indexedHistoryIds = new Set<number>();
+const inFlight = new Map<number, Promise<void>>();
+const lastNoise = new Map<number, HistoryNoiseKind>();
+const extractLimiter = createLimiter(HISTORY_INDEX_CONCURRENCY);
 
 // Сколько ждать did-finish-load, прежде чем сдаться и уйти в fallback (title+hostname) —
 // страница может вообще не догрузиться (сеть/ошибка/редирект в никуда), fire-and-forget
@@ -49,6 +62,11 @@ const HISTORY_CHUNK_SOURCE_MAX_CHARS = 12_000;
 const HISTORY_CHUNK_TARGET_CHARS = 1400;
 const HISTORY_CHUNK_OVERLAP_CHARS = 220;
 const HISTORY_CHUNK_MAX = 8;
+
+export type IndexVisitOpts = {
+  /** По умолчанию navigate — did-navigate. title — page-title-updated. sleep — перед выгрузкой. */
+  trigger?: HistoryIndexTrigger;
+};
 
 // Экспортирована для HistoryContentBackfill.ts — тот же пайплайн чанкинга для тихого
 // переоткрытия старых страниц, дублировать логику незачем.
@@ -75,6 +93,12 @@ export function buildTextChunks(text: string): string[] {
   return chunks;
 }
 
+/** Живое извлечение этой записи ещё идёт — вкладку нельзя выгружать, снимок умрёт вместе с вью. */
+export function isHistoryIndexInFlight(history: HistoryManager, url: string): boolean {
+  const id = history.getIdByUrl(url);
+  return id !== null && inFlight.has(id);
+}
+
 // Резолвится либо по событию did-finish-load ЭТОЙ вкладки, либо по таймауту — что раньше.
 // Не различает, чья именно навигация закончилась (см. extractEnrichedText — проверка URL после).
 function waitForFinishLoad(wc: WebContents): Promise<void> {
@@ -90,6 +114,17 @@ function waitForFinishLoad(wc: WebContents): Promise<void> {
     wc.once('did-finish-load', finish);
     const timer = setTimeout(finish, EXTRACTION_TIMEOUT_MS);
   });
+}
+
+// Слушатель вешается СРАЗУ, до очереди и sqlite-await: иначе на быстрой странице did-finish-load
+// уже был, и мы ждали бы следующие 8 с (или уход человека).
+function armFinishLoad(wc: WebContents | null): () => Promise<void> {
+  if (!wc || wc.isDestroyed()) return () => Promise.resolve();
+  let loading = false;
+  try { loading = wc.isLoading(); } catch { return () => Promise.resolve(); }
+  if (!shouldWaitForPageLoad({ destroyed: false, loading })) return () => Promise.resolve();
+  const pending = waitForFinishLoad(wc);
+  return () => pending;
 }
 
 function wait(ms: number): Promise<void> {
@@ -111,14 +146,22 @@ function stillOnPage(wc: WebContents, url: string): boolean {
 // Проверка «юзер ушёл со страницы» осмысленна только для реальной вкладки: там смена URL
 // значит «извлекать больше нечего». В своей вью смена URL — это обычный клиентский редирект
 // (магазины так делают постоянно), и бросать работу из-за него — терять страницу на ровном месте.
+// quick — страница уже была на экране (усыпление): не ждать load и SPA, один снимок.
+// loadWait — слушатель, повешенный ДО очереди извлечения (indexVisit), иначе did-finish-load
+// пролетает, пока мы ждём слот, и внутри снова ждали бы 8 с.
 export async function extractEnrichedText(
   wc: WebContents | null,
   url: string,
-  opts?: { allowNavigation?: boolean },
+  opts?: { allowNavigation?: boolean; quick?: boolean; loadWait?: () => Promise<void> },
 ): Promise<string | null> {
   if (!wc || wc.isDestroyed()) return null;
   const onPage = (): boolean => (opts?.allowNavigation ? !wc.isDestroyed() : stillOnPage(wc, url));
-  await waitForFinishLoad(wc);
+  if (opts?.quick) {
+    if (!onPage()) return null;
+    const shot = await extractPageText(wc);
+    return shot.text || null;
+  }
+  await (opts?.loadWait ?? armFinishLoad(wc))();
   if (!onPage()) return null;
 
   // Первый снимок — не сразу: см. SPA_SETTLE_DELAY_MS про скелетон/спиннер SPA на did-finish-load.
@@ -143,58 +186,81 @@ export async function indexVisit(
   url: string,
   title: string,
   wc: WebContents | null,
+  opts?: IndexVisitOpts,
 ): Promise<void> {
+  const trigger: HistoryIndexTrigger = opts?.trigger ?? 'navigate';
   // Шаг 1: id. getIdByUrl() уже не бросает (свой try/catch внутри HistoryManager.ts, заход G
   // блок 2) — здесь дополнительный try/catch был бы мёртвым кодом на сценарий, который не
   // может случиться; null уже покрывает и «не найдено», и «БД недоступна».
   const historyId = history.getIdByUrl(url);
   if (historyId === null) return; // #shouldRecord отфильтровал (about:/поиск-result/…) — индексировать нечего
 
-  // Идемпотентность (блок 4): ревизит уже проиндексированной страницы — no-op. Сначала дешёвый
-  // in-memory кэш (без похода в БД для уже проверенных в этом процессе historyId), потом источник
-  // истины — БД на TEXT_EXTRACTION_VERSION. Раньше здесь был IPC-round-trip до renderer за версией
-  // эмбеддинг-модели (requestEmbeddingModelVersion(), с fail-closed гонкой на закреплённых вкладках,
-  // см. git log) — TEXT_EXTRACTION_VERSION синхронная константа, никакого моста не нужно.
-  if (indexedHistoryIds.has(historyId)) return;
-  const already = history.hasContentForVersion(historyId, TEXT_EXTRACTION_VERSION);
-  if (already) {
-    indexedHistoryIds.add(historyId); // закэшировать — не спрашивать БД повторно в этом процессе
+  const noise = classifyHistoryNoise(url, title);
+  const previousNoise = lastNoise.get(historyId) ?? null;
+  const already = indexedHistoryIds.has(historyId)
+    || history.hasContentForVersion(historyId, TEXT_EXTRACTION_VERSION);
+  const decision = decideHistoryIndex({
+    trigger,
+    hasContent: already,
+    memoryDone: indexedHistoryIds.has(historyId),
+    inFlight: inFlight.has(historyId),
+    noise,
+    previousNoise,
+  });
+  lastNoise.set(historyId, noise);
+
+  if (decision === 'skip') {
+    if (already) indexedHistoryIds.add(historyId);
+    return;
+  }
+  if (decision === 'remember-url-noise') {
+    indexedHistoryIds.add(historyId);
     return;
   }
 
-  // Шумные страницы (логин/OAuth/голый домен/техническая заглушка, см. HistoryNoiseFilter.ts) —
-  // в history остаются как есть, просто не извлекаем текст. Без записи заглушки в
-  // history_content_chunks: indexVisit не работает через очередь «дай непроиндексированное»
-  // (в отличие от HistoryContentBackfill.ts), вечного цикла нет — достаточно молча пропускать
-  // на каждый визит, ничего не персистим.
-  if (isNoisyForEmbedding(url, title)) {
-    indexedHistoryIds.add(historyId); // не пересчитывать фильтр на каждый повторный визит
-    return;
-  }
+  // Слушатель load — до очереди: слот можем ждать секунды, а did-finish-load не повторится.
+  const waitLoad = trigger === 'sleep' ? () => Promise.resolve() : armFinishLoad(wc);
+  const job = extractLimiter.run(async () => {
+    let enrichedText: string | null = null;
+    try {
+      enrichedText = trigger === 'sleep'
+        ? await extractEnrichedText(wc, url, { quick: true })
+        : await extractEnrichedText(wc, url, { loadWait: waitLoad });
+    } catch (e) {
+      console.warn(`[HistoryIndexer] извлечение контента не удалось для ${url}:`, (e as Error).message);
+    }
+    // Раньше здесь был fallback на title+hostname — кормил только whole-page эмбеддинг, которого
+    // больше нет. Без реального текста индексировать нечего: не помечаем как проиндексированную,
+    // следующий визит попробует извлечь снова.
+    if (!enrichedText) return;
 
-  let enrichedText: string | null = null;
+    // Редирект на логин после settle — текст формы входа в индекс не кладём.
+    const liveTitle = (!wc || wc.isDestroyed() ? title : wc.getTitle()) || title;
+    if (classifyHistoryNoise(url, liveTitle) === 'url') {
+      indexedHistoryIds.add(historyId);
+      return;
+    }
+
+    const chunks = buildTextChunks(enrichedText);
+    if (chunks.length === 0) return;
+    // Векторные колонки history_content_chunks (vector/dims) — NOT NULL, но мёртвые: эмбеддинги
+    // убраны из пути индексации на этом этапе (см. git log), схему не мигрируем (нет механизма,
+    // риск дороже пустых колонок) — пишем пустышку, а не считаем настоящий вектор.
+    const chunkInputs = chunks.map((chunkText, i) => ({
+      chunkIndex: i,
+      url,
+      title: liveTitle,
+      text: chunkText,
+      vector: new Float32Array(0),
+      dims: 0,
+    }));
+    history.saveContentChunks(historyId, chunkInputs, TEXT_EXTRACTION_VERSION);
+    indexedHistoryIds.add(historyId); // помечаем ТОЛЬКО после реально успешной записи
+  });
+  inFlight.set(historyId, job);
   try {
-    enrichedText = await extractEnrichedText(wc, url);
-  } catch (e) {
-    console.warn(`[HistoryIndexer] извлечение контента не удалось для ${url}:`, (e as Error).message);
+    await job;
+  } finally {
+    inFlight.delete(historyId);
   }
-  // Раньше здесь был fallback на title+hostname — кормил только whole-page эмбеддинг, которого
-  // больше нет. Без реального текста индексировать нечего: не помечаем как проиндексированную,
-  // следующий визит попробует извлечь снова.
-  if (!enrichedText) return;
-
-  const chunks = buildTextChunks(enrichedText);
-  // Векторные колонки history_content_chunks (vector/dims) — NOT NULL, но мёртвые: эмбеддинги
-  // убраны из пути индексации на этом этапе (см. git log), схему не мигрируем (нет механизма,
-  // риск дороже пустых колонок) — пишем пустышку, а не считаем настоящий вектор.
-  const chunkInputs = chunks.map((chunkText, i) => ({
-    chunkIndex: i,
-    url,
-    title,
-    text: chunkText,
-    vector: new Float32Array(0),
-    dims: 0,
-  }));
-  history.saveContentChunks(historyId, chunkInputs, TEXT_EXTRACTION_VERSION);
-  indexedHistoryIds.add(historyId); // помечаем ТОЛЬКО после реально успешной записи
 }
