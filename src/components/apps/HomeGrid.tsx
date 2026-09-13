@@ -157,7 +157,7 @@ export function IconMenu({ app, x, y, opened, onOpen, onClose, onHide, onRemove,
   )
 }
 
-export function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weatherCity, labelTone }: {
+export function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weatherCity, labelTone, grow = 1 }: {
   apps: AppDef[]
   openApps: AppId[]
   onOpen: (id: AppId) => void
@@ -168,6 +168,8 @@ export function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widget
   widgets: WidgetsConfig
   weatherCity: string
   labelTone: LabelTone
+  /** Доля высоты против открытого слота. Без слота — единица, сетка на всю колонку. */
+  grow?: number
 }) {
   // Тащим — призрак под курсором (DragOverlay), соседи расступаются сами (rectSortingStrategy).
   // ⚠️ activationConstraint.distance обязателен: без него первое же нажатие на иконку считалось бы
@@ -188,7 +190,7 @@ export function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widget
   }
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 2px' }}>
+    <div style={{ flex: grow, minHeight: 0, overflowY: 'auto', padding: '10px 2px' }}>
       {(widgets.weather || widgets.currency) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
           {widgets.weather && <WeatherWidget city={weatherCity} />}

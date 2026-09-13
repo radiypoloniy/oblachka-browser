@@ -259,6 +259,7 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   // Раскладка «как телефон»: 0 открытых — вся площадь под сеткой иконок; 1 — приложение сверху,
   // сетка снизу (выбрать второе); 2 — оба слота заняты, сетка скрыта до закрытия одного (крестик
   // в шапке слота). Обои — фон всего острова (см. aipanel.tsx), слоты «парят» над ними карточками.
+  // Доля высоты при одном слоте — против сетки, иначе карточку нельзя ужать.
   return (
     <div ref={slotsRef} style={{
       flex: 1, minHeight: 0, marginTop: 10, position: 'relative',
@@ -290,10 +291,9 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
             const app = allApps.find((a) => a.id === id)
             if (!app) return []
             const both = openApps.length === 2
+            const solo = openApps.length === 1
             const onSwap = both ? swapSlots : undefined
-            // Доля высоты действует только когда открыты ОБА: с одним приложением второй
-            // половиной владеет сетка иконок, и её долю человек не двигал.
-            const grow = both ? (slotIndex === 0 ? splitRatio : 1 - splitRatio) : 1
+            const grow = slotIndex === 0 ? splitRatio : 1 - splitRatio
             // ⚠️ «Активен» и «нарисовать рамку» — РАЗНЫЕ вещи. Единственное открытое приложение
             // активно всегда (клавиши обязаны идти в него), но подсвечивать нечего: выбора нет.
             const active = both ? activeApp === id : true
@@ -306,16 +306,16 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
               : <AppSlot key={id} app={app} grow={grow}
                   active={active} showRing={both && active} onActivate={onActivate}
                   onSwap={onSwap} onClose={() => closeApp(id)} />
-            // Разделитель — отдельный элемент того же списка, со своим постоянным ключом.
-            return slotIndex === 1
-              ? [<SlotDivider key="slot-divider" onPointerDown={startResize} active={resizing} />, slot]
-              : [slot]
+            const divider = <SlotDivider key="slot-divider" onPointerDown={startResize} active={resizing} />
+            if (solo) return [slot, divider]
+            return slotIndex === 1 ? [divider, slot] : [slot]
           })}
         </SortableContext>
       </DndContext>
 
       {openApps.length < 2 && (
         <HomeGrid
+          grow={openApps.length === 1 ? 1 - splitRatio : 1}
           apps={allApps}
           openApps={openApps}
           onOpen={openApp}
