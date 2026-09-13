@@ -41,8 +41,8 @@ export function firstUrlFromArgv(argv: string[]): string | null {
     if (/^file:\/\//i.test(arg)) return arg;
     // Свои же файлы вкладкой не открываем — см. разбор у insideAppBundle.
     if (insideAppBundle(arg)) continue;
-    // ⚠️ И ПУТЬ К ФАЙЛУ ТОЖЕ. Установщик регистрирует за нами .htm/.html, то есть система
-    // запускает `Oblako.exe "C:\...\page.html"` — без этой ветки такой запуск не открывал ничего
+    // ⚠️ И ПУТЬ К ФАЙЛУ ТОЖЕ. Установщик регистрирует за нами .htm/.html/.pdf, то есть система
+    // запускает `Oblako.exe "C:\...\file.pdf"` — без этой ветки такой запуск не открывал ничего
     // вовсе. Существование файла проверяется внутри, каталоги отсекаются там же: в dev-режиме
     // аргументом идёт папка приложения.
     const file = localPathToFileUrl(arg);

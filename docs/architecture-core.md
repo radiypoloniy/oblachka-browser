@@ -481,6 +481,12 @@
   называется. Чтобы Oblako вообще появился в том списке, установщик пишет
   RegisteredApplications/Capabilities — `build/installer.nsh` (подключён через
   `nsis.include` в electron-builder.yml). UI — `settings/DefaultBrowserBlock.tsx`.
+  ⚠️ **«Открыть с помощью» у файла — не тот же список.** Capabilities делают нас видимыми
+  в «Приложения по умолчанию». Меню Проводника смотрит в `OpenWithProgids` у расширения
+  и в `Applications\<exe>\SupportedTypes`. Поэтому `.pdf` регистрируется отдельным ProgID
+  `Oblako.PDF`, а не вешается на `Oblako.HTML`: иначе в редких местах светилось бы
+  «Oblako HTML Document». Проверка — на **установленной** сборке (`npm run dist`), не на
+  `npm start`: unzip/dev в реестр не пишут.
   ⚠️ Лицо первой установки — не мастер Windows. `customInit` запускает
   `build/oblako-setup-ui.exe` (исходники `build/installer-stub/`, сборка
   `npm run build-installer-ui`) и переводит NSIS в Silent: файлы, ярлыки и реестр
@@ -490,8 +496,11 @@
   карточке; апдейтер по-прежнему передаёт `--force-run`.
   ⚠️ Вместе с этим в `main.ts` появился `requestSingleInstanceLock`: система запускает
   браузер заново на КАЖДУЮ ссылку, и без замка это был бы второй процесс на том же
-  userData — два владельца session.json и открытых SQLite разом. Адрес из argv берётся
-  только по схемам http/https (`firstUrlFromArgv`), на macOS — событием `open-url`.
+  userData — два владельца session.json и открытых SQLite разом. Адрес из argv берёт
+  `firstUrlFromArgv`: http/https, `file://` и локальный путь (`Oblako.exe "C:\file.pdf"`),
+  на macOS — событием `open-url`. Произвольные ключи Chromium и файлы внутри бандла
+  отсекаются (живой случай: `node-llama-cpp` форкал второй экземпляр и открывал свой
+  `.js` вкладкой).
 - `electron/BrowserIdentity.ts` — как браузер представляется сайтам: подменяет
   `app.userAgentFallback` на UA настоящего Chrome (без токена `Electron/` и с
   редуцированной версией `Chrome/N.0.0.0`, как шлёт Chrome с 2022 года) —

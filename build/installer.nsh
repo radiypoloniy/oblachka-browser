@@ -7,7 +7,14 @@
 ;
 ; Сам выбор по умолчанию отсюда НЕ назначается и назначен быть не может: UserChoice в реестре
 ; подписан хэшем пользователя, и запись мимо системного диалога Windows считает подделкой
-; (см. electron/DefaultBrowser.ts). Здесь только «мы умеем открывать http/https и .html».
+; (см. electron/DefaultBrowser.ts). Здесь только заявка «мы умеем открывать http/https, .html и .pdf».
+;
+; ⚠️ PDF — это FileAssociations, не URL. Capabilities одних недостаточно: «Открыть с помощью»
+; в Проводнике смотрит в OpenWithProgids у расширения. Без этой записи Chrome и Edge в списке
+; есть, а Oblako нет — хотя в «Приложения по умолчанию» мы уже видны. Отдельный ProgID Oblako.PDF,
+; а не повесить PDF на Oblako.HTML: в редких местах Windows показывает дружественное имя класса,
+; и «Oblako HTML Document» у PDF-файла было бы ложью. Путь в argv уже открывается
+; (electron/startUrlArgv.ts → file://); регистрация только делает нас кандидатом в меню.
 ;
 ; SHCTX — контекст установки, который electron-builder выставляет сам: HKCU при установке в
 ; профиль пользователя (наш случай, perMachine: false), HKLM при машинной. Жёстко писать HKCU
@@ -58,6 +65,11 @@
   WriteRegStr SHCTX "Software\Classes\Oblako.HTML\DefaultIcon" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME},0"
   WriteRegStr SHCTX "Software\Classes\Oblako.HTML\shell\open\command" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "%1"'
 
+  WriteRegStr SHCTX "Software\Classes\Oblako.PDF" "" "PDF-документ Oblako"
+  WriteRegStr SHCTX "Software\Classes\Oblako.PDF\Application" "ApplicationName" "Oblako"
+  WriteRegStr SHCTX "Software\Classes\Oblako.PDF\DefaultIcon" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME},0"
+  WriteRegStr SHCTX "Software\Classes\Oblako.PDF\shell\open\command" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "%1"'
+
   ; Возможности приложения: какие схемы и типы файлов мы открываем.
   WriteRegStr SHCTX "Software\Oblako\Capabilities" "ApplicationName" "Oblako"
   WriteRegStr SHCTX "Software\Oblako\Capabilities" "ApplicationDescription" "Приватный браузер со встроенными VPN и ИИ"
@@ -65,9 +77,24 @@
   WriteRegStr SHCTX "Software\Oblako\Capabilities\URLAssociations" "https" "Oblako.HTML"
   WriteRegStr SHCTX "Software\Oblako\Capabilities\FileAssociations" ".htm" "Oblako.HTML"
   WriteRegStr SHCTX "Software\Oblako\Capabilities\FileAssociations" ".html" "Oblako.HTML"
+  WriteRegStr SHCTX "Software\Oblako\Capabilities\FileAssociations" ".pdf" "Oblako.PDF"
 
   ; Заявка в общий список приложений системы — именно она делает нас видимыми в настройках.
   WriteRegStr SHCTX "Software\RegisteredApplications" "Oblako" "Software\Oblako\Capabilities"
+
+  ; Меню «Открыть с помощью» у файла. Ключ .pdf системе принадлежит (Edge/Adobe) — пишем только
+  ; значение ProgID, весь ключ не трогаем. На удалении снимаем значение, не ветку.
+  WriteRegStr SHCTX "Software\Classes\.pdf\OpenWithProgids" "Oblako.PDF" ""
+
+  ; «Выбрать другое приложение»: список строится по Applications\<exe>\SupportedTypes, а не по
+  ; Capabilities. Chrome и Edge пишут то же; без этого пункта нас нет и в расширенном выборе.
+  WriteRegStr SHCTX "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}\shell\open\command" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "%1"'
+  WriteRegStr SHCTX "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}\SupportedTypes" ".pdf" ""
+  WriteRegStr SHCTX "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}\SupportedTypes" ".htm" ""
+  WriteRegStr SHCTX "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}\SupportedTypes" ".html" ""
+
+  ; Explorer кэширует ассоциации; без уведомления список не обновляется до перезахода.
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
 
   ; Карточка ждёт эту строку, чтобы показать «Готово» и знать, какой exe открыть.
   FileOpen $1 "$TEMP\oblako-setup-ui.state" w
@@ -78,8 +105,12 @@
 
 !macro customUnInstall
   ; Чистим за собой полностью: оставленный ProgID показывался бы в системных списках как
-  ; приложение-призрак, которое ничего не открывает.
+  ; приложение-призрак, которое ничего не открывает. Ключ .pdf не наш — снимаем только значение.
   DeleteRegKey SHCTX "Software\Classes\Oblako.HTML"
+  DeleteRegKey SHCTX "Software\Classes\Oblako.PDF"
+  DeleteRegValue SHCTX "Software\Classes\.pdf\OpenWithProgids" "Oblako.PDF"
+  DeleteRegKey SHCTX "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}"
   DeleteRegKey SHCTX "Software\Oblako"
   DeleteRegValue SHCTX "Software\RegisteredApplications" "Oblako"
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
 !macroend

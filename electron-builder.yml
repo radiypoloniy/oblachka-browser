@@ -122,9 +122,9 @@ win:
 artifactName: ${productName}-Setup-${version}.${ext}
 
 nsis:
-  # Регистрация браузера в реестре Windows (RegisteredApplications/Capabilities). Без неё
-  # Oblako не появляется в системном списке «Приложения по умолчанию», и назначить его
-  # браузером нельзя в принципе — см. build/installer.nsh и electron/DefaultBrowser.ts.
+  # Регистрация браузера в реестре Windows (RegisteredApplications/Capabilities +
+  # OpenWithProgids для PDF). Без неё Oblako не появляется в «Приложения по умолчанию»
+  # и в «Открыть с помощью» у файла — см. build/installer.nsh и electron/DefaultBrowser.ts.
   # Лицо установки — не MUI, а oblako-setup-ui.exe: customInit прячет мастер (SetSilent)
   # и показывает карточку. Сборка лица: npm run build-installer-ui, до electron-builder.
   include: build/installer.nsh
