@@ -126,3 +126,70 @@ export function decideHistoryIndex(s: {
   }
   return 'extract';
 }
+
+// ── Охват индекса: не один знаменатель «из всех строк history» ───────────────
+//
+// Старый «N из M» делил любые чанки на count(*) history. После импорта из Chrome M — тысячи
+// адресов без текста, и счётчик всегда плохой, хотя живой путь мог работать идеально.
+// noisy — логин/голый домен, их умный поиск и не должен видеть.
+// missing — вот дыра: страница могла бы искаться по тексту, но чанка нет.
+
+export type HistoryCoverageParts = {
+  withContent: number;
+  noisy: number;
+  missing: number;
+  total: number;
+};
+
+export function coverageFromCounts(
+  withContent: number,
+  without: ReadonlyArray<{ noisy: boolean }>,
+): HistoryCoverageParts {
+  let noisy = 0;
+  for (const row of without) if (row.noisy) noisy++;
+  const missing = without.length - noisy;
+  const safeWith = Math.max(0, withContent);
+  return { withContent: safeWith, noisy, missing, total: safeWith + without.length };
+}
+
+export function formatHistoryCoverageLine(p: HistoryCoverageParts): string {
+  if (p.total === 0) return 'История пуста — умный поиск появится после просмотра страниц.';
+  if (p.missing === 0 && p.noisy === 0) return `Полный текст: ${p.withContent} из ${p.total} страниц`;
+  if (p.missing === 0) {
+    return `Полный текст: ${p.withContent} из ${p.total}. Остальные ${p.noisy} — вход и служебные, в поиск по смыслу не идут.`;
+  }
+  return `Полный текст: ${p.withContent} из ${p.total}. Ещё ${p.missing} без текста — умный поиск их не видит, пока не откроете снова или не запустите полную индексацию.`;
+}
+
+export function formatOnboardingIndexLead(imported: number): string {
+  if (imported <= 0) return '';
+  return `Перенесли ${imported} страниц: есть адрес и заголовок, текста нет. Умный поиск по смыслу их не видит, пока не откроете снова — или не проиндексируете сейчас.`;
+}
+
+// Тихий добор в простое — НЕ полная индексация. Только свои недавние визиты без чанка.
+// Импорт 2019 года last_visit старый — сюда не попадает. Стоп, если человек вернулся к компьютеру.
+export const IDLE_CATCHUP_MAX_PAGES = 8;
+export const IDLE_CATCHUP_MAX_AGE_MS = 129_600_000; // 36 часов
+export const IDLE_CATCHUP_IDLE_SECONDS = 90;
+export const IDLE_CATCHUP_TICK_MS = 30_000;
+export const IDLE_CATCHUP_START_DELAY_MS = 120_000;
+
+export function shouldRunIdleCatchup(s: {
+  backfillRunning: boolean;
+  catchupRunning: boolean;
+  idleSeconds: number;
+}): boolean {
+  if (s.backfillRunning || s.catchupRunning) return false;
+  return s.idleSeconds >= IDLE_CATCHUP_IDLE_SECONDS;
+}
+
+export function pickIdleCatchupPages<T extends { lastVisit: number; noisy: boolean }>(
+  rows: readonly T[],
+  now: number,
+): T[] {
+  const minVisit = now - IDLE_CATCHUP_MAX_AGE_MS;
+  return rows
+    .filter((row) => !row.noisy && row.lastVisit >= minVisit)
+    .sort((a, b) => b.lastVisit - a.lastVisit)
+    .slice(0, IDLE_CATCHUP_MAX_PAGES);
+}

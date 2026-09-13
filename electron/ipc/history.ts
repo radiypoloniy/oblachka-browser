@@ -6,9 +6,10 @@ import { IPC } from '../../shared/ipc';
 import type { BackfillProgress, BookmarkFolderProposal, HistoryClearPeriod, ImportDataType } from '../../shared/ipc';
 import { suggestBookmarkFolders } from '../BookmarkOrganizer';
 import { cancelContentBackfill, setContentBackfillProgressListener, startContentBackfill } from '../HistoryContentBackfill';
+import { startHistoryIdleCatchup } from '../HistoryIdleCatchup';
 import { searchHistorySmart } from '../HistorySearch';
 import { fetchSearchSuggestions } from '../SearchSuggestFetcher';
-import { broadcastToChrome, contextFromSender } from '../WindowRegistry';
+import { broadcastToChrome, contextFromSender, mainContext } from '../WindowRegistry';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
 
@@ -16,10 +17,7 @@ export function registerHistoryIpc(d: IpcDeps): void {
   const { bookmarkImporters, bookmarks, history, importManager, settings, showBookmarkMenu, winOf } = d;
 
   // не подписка: панель настроек открывают редко, push-канал ради этого избыточен.
-  ipcMain.handle(IPC.HISTORY_CONTENT_COVERAGE, () => ({
-    withContent: history().countHistoryWithContent(),
-    total: history().countAll(),
-  }));
+  ipcMain.handle(IPC.HISTORY_CONTENT_COVERAGE, () => history().getContentCoverage());
 
   // Рискованный бэкфилл полного текста (electron/HistoryContentBackfill.ts) — тихое переоткрытие
   // старых URL, отдельная секция в Settings.tsx с явным предупреждением. Нужен win (создаёт
@@ -33,6 +31,11 @@ export function registerHistoryIpc(d: IpcDeps): void {
     const w = winOf(e); if (w) void startContentBackfill(history(), w); });
   ipcMain.on(IPC.HISTORY_CONTENT_BACKFILL_CANCEL, () => { cancelContentBackfill(); });
   ipcMain.handle(IPC.HISTORY_CONTENT_BACKFILL_STATUS, () => lastContentBackfillProgress);
+
+  startHistoryIdleCatchup({
+    history,
+    getWin: () => mainContext()?.win ?? null,
+  });
 
   // Заход 10: живые suggest-подсказки — движок берём из settings (тот же источник истины, что
   // капсула выбора поисковика), а не отдельным параметром от renderer — не может разойтись.

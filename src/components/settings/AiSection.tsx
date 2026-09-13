@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, KeyRound, Search, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import type { BackfillProgress, HistoryContentCoverage, InstalledModel, TranslationEngineId, BergamotStatus } from '../../../shared/ipc';
+import { formatHistoryCoverageLine } from '../../../shared/historyIndex';
 import ModelsSection from '../ModelsSection';
 import SkillsSection from './SkillsSection';
 import { AiConnectionsBlock } from './AiConnectionsBlock';
@@ -437,11 +438,8 @@ function TranslationEngineSection() {
 }
 
 // ── Индекс полнотекстового поиска по истории ───────────────────────────────────
-// Индексация текста идёт сама при обычном посещении/повторном визите — здесь только счётчик
-// охвата и (ниже) отдельная секция ручного бэкфилла старых страниц. Разовый эмбеддинг-бэкфилл
-// (кнопка «Индексировать историю» по заголовку+домену) убран вместе с эмбеддингами — счётчик
-// ниже всегда считает страницы с реально сохранённым текстом, эмбеддинги в этом счёте
-// никогда не участвовали.
+// Индексация текста идёт сама при обычном просмотре — здесь честный счётчик охвата
+// (текст / шум / дыра умного поиска) и кнопка полной докачки импорта.
 function HistoryBackfillSection() {
   const [coverage, setCoverage] = useState<HistoryContentCoverage | null>(null);
 
@@ -454,15 +452,11 @@ function HistoryBackfillSection() {
   return (
     <Subsection
       title="Индексация истории для поиска"
-      description="Полный текст страницы для умного поиска появляется сам при обычном посещении/повторном
-        визите — счётчик ниже показывает, сколько страниц уже имеют полный текст. Всё считается
-        локально на устройстве."
+      description="Текст страницы для умного поиска появляется при обычном просмотре. Перенесённые из другого браузера адреса без повторного визита в поиск по смыслу не попадают — их добирает кнопка ниже."
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
-          {coverage
-            ? `Полный текст: ${coverage.withContent} из ${coverage.total} страниц`
-            : 'Полный текст: считаю…'}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: sp(2) }}>
+        <span style={{ ...TEXT.caption, color: 'var(--text-body)' }}>
+          {coverage ? formatHistoryCoverageLine(coverage) : 'Полный текст: считаю…'}
         </span>
         <button
           onClick={loadCoverage}
@@ -511,9 +505,7 @@ function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
   return (
     <Subsection
       title="Полная индексация истории"
-      description="Тихо переоткрывает старые страницы из истории в фоне (невидимо для вас), чтобы забрать
-        их текст для умного поиска. Может занять долго на большой истории, остановить можно в любой
-        момент."
+      description="Для страниц, которые вы больше не откроете (например перенесённых из другого браузера). Тихо переоткрывает их в фоне и забирает текст. На большой истории занимает время, остановить можно в любой момент."
     >
       {/* ⚠️ Предупреждение — СТРОКОЙ со значком, а не красным абзацем описания. Красный текст был
           единственным во всём интерфейсе и противоречил закону цвета: статус говорит значком и

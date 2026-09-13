@@ -13,6 +13,7 @@ import { btnPrimary } from './settings/kit';
 import { Progress, gb, bigGhost } from './onboarding/parts';
 import { ImportStep } from './onboarding/ImportStep';
 import { IndexStep, ModelStep } from './onboarding/steps';
+import { formatOnboardingIndexLead } from '../../shared/historyIndex';
 import { CAPS, RADIUS, TEXT, DISPLAY, grain, sp } from '../styles/system';
 
 // Экран первого запуска: короткий рассказ о том, чем этот браузер отличается, и перенос данных
@@ -239,7 +240,7 @@ export default function Onboarding({ onFinish }: Props) {
     } : kind === 'index' ? {
       art: null,
       title: 'Подготовить историю к поиску?',
-      text: 'Из другого браузера переехали адреса и заголовки. Чтобы искать по смыслу — «та статья про ипотеку», — страницы нужно один раз прочитать.',
+      text: formatOnboardingIndexLead(report?.history?.inserted ?? 0),
     } : {
       art: <LookStep />,
       title: 'Как ему выглядеть?',

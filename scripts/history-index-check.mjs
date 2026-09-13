@@ -11,8 +11,16 @@ import {
   isNoisyForEmbedding,
   shouldWaitForPageLoad,
   decideHistoryIndex,
+  coverageFromCounts,
+  formatHistoryCoverageLine,
+  formatOnboardingIndexLead,
+  pickIdleCatchupPages,
+  shouldRunIdleCatchup,
   HISTORY_INDEX_CONCURRENCY,
   SLEEP_INDEX_BUDGET_MS,
+  IDLE_CATCHUP_MAX_PAGES,
+  IDLE_CATCHUP_MAX_AGE_MS,
+  IDLE_CATCHUP_IDLE_SECONDS,
 } from '../shared/historyIndex.ts';
 
 let passed = 0;
@@ -109,6 +117,61 @@ console.log('\n— бюджеты, литералы рядом с инвариа
 check('не больше двух извлечений разом', HISTORY_INDEX_CONCURRENCY, 2);
 check('бюджет сна 1.5 с, не таймаут загрузки', SLEEP_INDEX_BUDGET_MS, 1500);
 check('бюджет сна короче восьми секунд ожидания load', SLEEP_INDEX_BUDGET_MS < 8000, true);
+
+console.log('\n— охват: дыра умного поиска отдельно от шума и импорта —');
+check('сумма частей — все строки, не count(*) сбоку',
+  coverageFromCounts(12, [{ noisy: true }, { noisy: true }, { noisy: false }, { noisy: false }]),
+  { withContent: 12, noisy: 2, missing: 2, total: 16 });
+check('пустая история', coverageFromCounts(0, []), { withContent: 0, noisy: 0, missing: 0, total: 0 });
+check('всё с текстом', coverageFromCounts(5, []), { withContent: 5, noisy: 0, missing: 0, total: 5 });
+check('только шум без чанка',
+  coverageFromCounts(3, [{ noisy: true }, { noisy: true }]),
+  { withContent: 3, noisy: 2, missing: 0, total: 5 });
+check('строка когда всё на месте',
+  formatHistoryCoverageLine({ withContent: 12, noisy: 0, missing: 0, total: 12 }),
+  'Полный текст: 12 из 12 страниц');
+check('строка когда дыра в умном поиске',
+  formatHistoryCoverageLine({ withContent: 12, noisy: 8, missing: 20, total: 40 }),
+  'Полный текст: 12 из 40. Ещё 20 без текста — умный поиск их не видит, пока не откроете снова или не запустите полную индексацию.');
+check('строка когда без текста только шум',
+  formatHistoryCoverageLine({ withContent: 12, noisy: 8, missing: 0, total: 20 }),
+  'Полный текст: 12 из 20. Остальные 8 — вход и служебные, в поиск по смыслу не идут.');
+check('пустая история в настройках',
+  formatHistoryCoverageLine({ withContent: 0, noisy: 0, missing: 0, total: 0 }),
+  'История пуста — умный поиск появится после просмотра страниц.');
+check('онбординг после импорта называет число',
+  formatOnboardingIndexLead(1240),
+  'Перенесли 1240 страниц: есть адрес и заголовок, текста нет. Умный поиск по смыслу их не видит, пока не откроете снова — или не проиндексируете сейчас.');
+check('онбординг без импорта молчит', formatOnboardingIndexLead(0), '');
+
+console.log('\n— тихий добор: только недавние свои, не архив 2019 —');
+check('не больше восьми за простой', IDLE_CATCHUP_MAX_PAGES, 8);
+check('окно давности 36 часов', IDLE_CATCHUP_MAX_AGE_MS, 129600000);
+check('компьютер простаивает полторы минуты', IDLE_CATCHUP_IDLE_SECONDS, 90);
+const NOW = 1_700_000_000_000;
+const HOUR = 3_600_000;
+check('вчерашний визит берём, визит 2019 — нет',
+  pickIdleCatchupPages([
+    { lastVisit: NOW - 20 * HOUR, noisy: false, id: 'recent' },
+    { lastVisit: NOW - 40 * HOUR, noisy: false, id: 'old' },
+    { lastVisit: Date.UTC(2019, 0, 1), noisy: false, id: 'archive' },
+  ], NOW).map((r) => r.id),
+  ['recent']);
+check('шумный недавний не берём',
+  pickIdleCatchupPages([{ lastVisit: NOW - HOUR, noisy: true, id: 'login' }], NOW).length,
+  0);
+check('девятый недавний не берём',
+  pickIdleCatchupPages(
+    Array.from({ length: 9 }, (_, i) => ({ lastVisit: NOW - i * 60_000, noisy: false, id: String(i) })),
+    NOW,
+  ).map((r) => r.id),
+  ['0', '1', '2', '3', '4', '5', '6', '7']);
+check('в простое можно', shouldRunIdleCatchup({ backfillRunning: false, catchupRunning: false, idleSeconds: 90 }), true);
+check('89 секунд ещё рано', shouldRunIdleCatchup({ backfillRunning: false, catchupRunning: false, idleSeconds: 89 }), false);
+check('полная индексация важнее тихого добора',
+  shouldRunIdleCatchup({ backfillRunning: true, catchupRunning: false, idleSeconds: 900 }), false);
+check('уже идёт добор — не второй',
+  shouldRunIdleCatchup({ backfillRunning: false, catchupRunning: true, idleSeconds: 900 }), false);
 
 console.log(`\n${passed} прошло, ${failed} провалов`);
 process.exit(failed === 0 ? 0 : 1);

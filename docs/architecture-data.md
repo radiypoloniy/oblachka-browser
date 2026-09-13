@@ -8,9 +8,11 @@
   стемминг через `textStemming.ts`/`snowball-stemmers`), `HistorySearch.ts`
   (умный поиск — FTS5 + Qwen-реранк, без эмбеддингов, см. «Стек» выше),
   `HistoryContentBackfill.ts` (докачка контента старых визитов; только по кнопке),
+  `HistoryIdleCatchup.ts` (в простое — не больше 8 своих визитов за 36 часов, не импорт 2019),
   `shared/historyIndex.ts` (когда снимать текст: не ждать load, если страница уже
   готова; title-шум на did-navigate не запоминать — «YouTube» до имени ролика;
-  повтор на page-title-updated; очередь из двух; снимок перед усыплением).
+  повтор на page-title-updated; очередь из двух; снимок перед усыплением;
+  охват withContent/noisy/missing; выбор страниц для тихого добора).
   Прогон — `npm test -- history-index`. `HistoryNoiseFilter.ts` реэкспортирует фильтр.
 - **Закладки в сайдбаре** — `src/components/SidebarBookmarks.tsx` + переключатель
   `ModeSwitch` в `Sidebar.tsx`. ⚠️ Раскладка ПОВТОРЯЕТ режим вкладок, а не изобретает

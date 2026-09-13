@@ -1,7 +1,8 @@
 // Рискованный бэкфилл: тихое переоткрытие уже накопленных URL в скрытой фоновой вьюхе, чтобы
 // забрать полный текст страницы для history_content_chunks (обычный HistoryBackfill.ts даёт
-// только заголовок+домен, см. его комментарий). Запускается ТОЛЬКО по явному, отдельному
-// действию пользователя в Settings.tsx — с явным предупреждением в UI, никогда автоматически.
+// только заголовок+домен, см. его комментарий). ПОЛНЫЙ прогон — ТОЛЬКО по явному действию
+// в Settings / онбординге, с предупреждением. Тихий добор недавних (HistoryIdleCatchup.ts) —
+// другой путь: максимум 8 страниц за 36 часов, и только когда компьютер простаивает.
 //
 // Риски, которые здесь сознательно приняты (обсуждено с пользователем перед реализацией):
 // - сайт может успел разлогинить/показать капчу/уже не существовать — тихо пропускаем,
@@ -89,6 +90,34 @@ function closeHidden(win: BrowserWindow, view: WebContentsView): void {
   try { if (!view.webContents.isDestroyed()) view.webContents.close(); } catch { /* уже закрыт */ }
 }
 
+export async function indexHiddenHistoryRow(
+  history: HistoryManager,
+  win: BrowserWindow,
+  row: { id: number; url: string; title: string },
+): Promise<'saved' | 'skipped' | 'failed'> {
+  if (isNoisyForEmbedding(row.url, row.title) || SKIP_URL_EXT_RE.test(row.url)) return 'skipped';
+  if (win.isDestroyed()) return 'failed';
+  const view = await openHidden(win, row.url);
+  if (!view) return 'failed';
+  try {
+    const enrichedText = await extractEnrichedText(view.webContents, row.url);
+    if (!enrichedText) return 'failed';
+    const chunks = buildTextChunks(enrichedText);
+    if (chunks.length === 0) return 'failed';
+    const chunkInputs = chunks.map((chunkText, i) => ({
+      chunkIndex: i, url: row.url, title: row.title,
+      text: chunkText, vector: new Float32Array(0), dims: 0,
+    }));
+    history.saveContentChunks(row.id, chunkInputs, TEXT_EXTRACTION_VERSION);
+    return 'saved';
+  } catch (e) {
+    console.warn(`[HistoryContentBackfill] страница пропущена (${row.url}):`, (e as Error).message);
+    return 'failed';
+  } finally {
+    closeHidden(win, view);
+  }
+}
+
 export async function startContentBackfill(history: HistoryManager, win: BrowserWindow): Promise<void> {
   if (running) return;
   running = true;
@@ -106,35 +135,7 @@ export async function startContentBackfill(history: HistoryManager, win: Browser
       if (cancelRequested) break;
       if (win.isDestroyed()) break;
 
-      // Шумные (логин/OAuth/голый домен) и прямые ссылки на файлы — не открываем вообще,
-      // не только не индексируем результат (экономит сеть и не рискует случайной загрузкой).
-      if (isNoisyForEmbedding(row.url, row.title) || SKIP_URL_EXT_RE.test(row.url)) {
-        processed++;
-        report();
-        continue;
-      }
-
-      const view = await openHidden(win, row.url);
-      if (view) {
-        try {
-          const enrichedText = await extractEnrichedText(view.webContents, row.url);
-          if (enrichedText) {
-            const chunks = buildTextChunks(enrichedText);
-            // Векторные колонки (vector/dims) — NOT NULL, но мёртвые: эмбеддинги убраны из пути
-            // индексации на этом этапе (см. git log), схему не мигрируем — пишем пустышку.
-            const chunkInputs = chunks.map((chunkText, i) => ({
-              chunkIndex: i, url: row.url, title: row.title,
-              text: chunkText, vector: new Float32Array(0), dims: 0,
-            }));
-            history.saveContentChunks(row.id, chunkInputs, TEXT_EXTRACTION_VERSION);
-          }
-        } catch (e) {
-          console.warn(`[HistoryContentBackfill] страница пропущена (${row.url}):`, (e as Error).message);
-        } finally {
-          closeHidden(win, view);
-        }
-      }
-
+      await indexHiddenHistoryRow(history, win, row);
       processed++;
       report();
 

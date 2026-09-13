@@ -75,7 +75,7 @@ export function IndexStep({ backfill, indexAsked }: {
               <span style={{
                 ...TEXT.section, fontWeight: 450, color: 'var(--text-body)', lineHeight: 1.5,
               }}>
-                Браузер по одной откроет перенесённые адреса, чтобы прочитать текст.
+                Без этого шага умный поиск не увидит перенесённые страницы, пока вы сами их не откроете. Сейчас браузер по одной откроет их в фоне и прочитает текст.
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
                 <IndexNote>Это займёт время и потребует сети.</IndexNote>

@@ -160,11 +160,12 @@ export interface BackfillProgress {
   cancelled: boolean;
 }
 
-// Индикатор качества индекса умного поиска (см. HistoryManager.ts::countHistoryWithContent) —
-// withContent считает страницы с реально извлечённым текстом, не только заголовок+домен
-// (который получает КАЖДАЯ проиндексированная строка, включая шумные/непроверенные).
+// Индикатор качества индекса умного поиска. withContent — есть текст, noisy — логин/заглушка
+// без чанка, missing — дыра умного поиска (импорт или сорвавшийся визит). Сумма = total.
 export interface HistoryContentCoverage {
   withContent: number;
+  noisy: number;
+  missing: number;
   total: number;
 }
 
