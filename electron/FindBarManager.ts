@@ -23,12 +23,9 @@ import { IPC } from '../shared/ipc'
 import type { ContentBounds, FindResult } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
-import { closeWindowView } from './viewTeardown';
+import { closeWindowView } from './viewTeardown'
+import { FINDBAR_MIN_HEIGHT, FINDBAR_WIDTH } from '../shared/overlayMetrics'
 
-// ⚠️ Держать в синхроне с BAR_WIDTH в src/findbar.tsx. Шире прежних 360 — из-за кнопки режима
-// «по смыслу» и словесного статуса вместо «3 / 12» (см. SmartFind.ts).
-const FINDBAR_WIDTH = 420
-const FINDBAR_HEIGHT = 48
 const TOP_GAP = 8 // отступ от верха контентной зоны (под тулбаром — контентная зона и так под ним)
 // Прозрачный запас под CSS box-shadow — WebContentsView обрезает всё, что рисуется за границей
 // своего прямоугольника (тот же приём, что SHADOW_MARGIN в TranslatePopoverManager.ts/AiPanelManager.ts,
@@ -96,7 +93,7 @@ function computeBounds(st: WindowFindBar): { x: number; y: number; width: number
     x: x - SHADOW_MARGIN,
     y: y - SHADOW_MARGIN,
     width: FINDBAR_WIDTH + SHADOW_MARGIN * 2,
-    height: FINDBAR_HEIGHT + SHADOW_MARGIN * 2,
+    height: FINDBAR_MIN_HEIGHT + SHADOW_MARGIN * 2,
   }
 }
 

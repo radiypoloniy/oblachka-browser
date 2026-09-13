@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Поиск на странице</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700;800&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   ПОИСК НА СТРАНИЦЕ — предложения, не правки кода.
+   Жест Ctrl+F не пересматриваем. Панель остаётся оверлеем поверх страницы,
+   находка живёт ПОДСВЕТКОЙ в тексте, не списком в карточке.
+
+   Сейчас: 48×420, искра без подписи, счётчик 56px faint, красная лужа
+   в поле при «нет». Выглядит как чужой Chrome find, плюс секретная кнопка.
+
+   Пилюля «Текст / Смысл» — компактная (кегль подписи, узкие поля). Поле ввода —
+   главное: шире полоса, крупнее набор, без собственной рамки, которая съедала ширину.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --r-tight:4px; --r-control:8px; --r-box:12px; --r-island:20px; --r-pill:999px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1); --ease-standard:cubic-bezier(.2,0,.2,1);
+  --dur-fast:120ms; --dur-base:180ms;
+  --success:#34C759; --warning:#FF9500; --danger:#FF3B30;
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEEF1; --n4:#E2E3E8; --n5:#DBDCE3;
+  --n7:#BBBECE; --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --app-bg:var(--n5); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14); --divider-strong:rgba(60,60,67,.24);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+  --overlay-plate:color-mix(in srgb, var(--accent) 7%, var(--surface));
+  --selected:color-mix(in srgb, var(--accent) 16%, var(--surface));
+  --accent-soft:color-mix(in srgb, var(--accent) 14%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439;
+    --n7:#55555E; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --on-accent:#121213;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+    --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+    --shadow-tint:#000000;
+    --overlay-plate:color-mix(in srgb, var(--accent) 7%, var(--surface));
+    --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+    --accent-soft:color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439;
+  --n7:#55555E; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+  --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+  --shadow-tint:#000000;
+  --overlay-plate:color-mix(in srgb, var(--accent) 7%, var(--surface));
+  --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+  --accent-soft:color-mix(in srgb, var(--accent) 22%, transparent);
+}
+:root {
+  --shadow-lvl1: 0 0 0 1px color-mix(in srgb, var(--shadow-tint) 5%, transparent), 0 1px 2px color-mix(in srgb, var(--shadow-tint) 5%, transparent);
+  --shadow-lvl2:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.55);
+}
+:root[data-theme="dark"] { --inner-light: inset 0 1px 0 rgba(255,255,255,.06); }
+
+* { box-sizing:border-box; }
+body { margin:0; font-family:var(--font-ui); font-size:14px; line-height:1.5; color:var(--text-body); background:var(--app-bg); -webkit-font-smoothing:antialiased; }
+button, input { font:inherit; }
+button { cursor:default; }
+.ground { position:fixed; inset:0; z-index:0; pointer-events:none; background:linear-gradient(168deg,var(--ground-1) 0%,var(--ground-2) 46%,var(--ground-3) 100%); }
+.ground::after {
+  content:""; position:absolute; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:var(--grain-op); mix-blend-mode:overlay;
+}
+.wrap { position:relative; z-index:1; max-width:1120px; margin:0 auto; padding:var(--sp6) var(--sp4) 88px; }
+h1,h2,h3 { margin:0; text-wrap:balance; }
+.display { font-family:var(--font-display); font-weight:700; letter-spacing:-.03em; line-height:1.05; color:var(--text-strong); }
+.caps { font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); }
+.lede { max-width:68ch; color:var(--text-muted); margin:var(--sp3) 0 0; }
+p { margin:var(--sp3) 0 0; max-width:68ch; }
+b { color:var(--text-strong); }
+code { font-family:var(--font-mono); font-size:12px; background:var(--sunken); padding:1px 5px; border-radius:4px; }
+
+.head { padding:var(--sp8) 0 var(--sp6); display:flex; justify-content:space-between; gap:var(--sp4); align-items:end; flex-wrap:wrap; }
+.head h1 { font-size:clamp(30px,4.4vw,50px); }
+.meta { display:flex; flex-wrap:wrap; gap:var(--sp2); margin-top:var(--sp6); }
+.pill {
+  font-family:var(--font-mono); font-size:11px; letter-spacing:.06em;
+  padding:5px var(--sp3); border-radius:var(--r-pill);
+  background:var(--surface); color:var(--text-muted); box-shadow:var(--shadow-lvl1); border:none;
+}
+.pill.on { background:var(--text-strong); color:var(--app-bg); }
+
+.section {
+  margin-top:var(--sp8); padding:var(--sp8) var(--sp6);
+  border-radius:var(--r-island); background:var(--surface);
+  box-shadow:var(--shadow-lvl2), var(--inner-light);
+}
+.section > .caps { display:block; margin-bottom:var(--sp2); }
+.section h2 { font-size:26px; font-family:var(--font-display); font-weight:700; letter-spacing:-.025em; color:var(--text-strong); }
+.note {
+  margin-top:var(--sp4); padding:var(--sp4);
+  border-left:3px solid var(--accent); border-radius:0 var(--r-box) var(--r-box) 0;
+  background:var(--sunken); max-width:none;
+}
+.note p { margin-top:var(--sp2); font-size:13.5px; max-width:none; }
+.note p:first-child { margin-top:0; }
+
+.grid2 { margin-top:var(--sp6); display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:var(--sp4); }
+.facts { margin-top:var(--sp4); display:grid; gap:var(--sp3); }
+.fact { padding:var(--sp4); border-radius:var(--r-box); background:var(--sunken); }
+.fact dt { font-weight:650; color:var(--text-strong); }
+.fact dd { margin:6px 0 0; font-size:13px; color:var(--text-muted); }
+
+/* page mock */
+.page-stage {
+  margin-top:var(--sp6); border-radius:var(--r-box); overflow:hidden;
+  background:var(--n3); min-height:280px; position:relative;
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+.article {
+  padding:56px 28px 32px; max-width:640px; margin:0 auto;
+  font-size:16px; line-height:1.55; color:var(--text-body);
+}
+.article h3 { font-size:22px; margin-bottom:12px; color:var(--text-strong); }
+.article mark {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: inherit; border-radius: 3px; padding: 0 2px;
+}
+.article mark.on { background: var(--accent); color: var(--on-accent); }
+
+.bar-now[hidden], .bar-next[hidden] { display: none !important; }
+
+/* current bar */
+.bar-now {
+  position:absolute; top:8px; left:50%; transform:translateX(-50%);
+  width:420px; height:48px; display:flex; align-items:center; gap:4px;
+  padding:5px 6px; border-radius:12px;
+  background: var(--overlay-plate);
+  box-shadow: var(--shadow-lvl2); border:1px solid var(--divider);
+}
+.bar-now .spark {
+  width:26px; height:26px; border:0; border-radius:6px; background:none; color:var(--text-muted);
+  display:grid; place-items:center;
+}
+.bar-now input {
+  flex:1; min-width:0; height:32px; border:1px solid var(--divider);
+  border-radius:6px; padding:4px 8px; background:var(--sunken); color:var(--text-strong);
+}
+.bar-now input.miss { background: rgba(200,50,50,.12); }
+.bar-now .cnt { font-size:12px; color:var(--text-faint); min-width:56px; text-align:center; }
+.bar-now .cnt.miss { color: rgba(200,50,50,.8); }
+.bar-now .ico {
+  width:26px; height:26px; border:0; background:none; color:var(--text-muted);
+  display:grid; place-items:center; opacity:.85;
+}
+
+/* proposed bar */
+.bar-next {
+  position:absolute; top:8px; left:50%; transform:translateX(-50%);
+  width:560px;
+  border-radius:var(--r-island); background: var(--overlay-plate);
+  box-shadow: var(--shadow-lvl2), var(--inner-light);
+  border:1px solid var(--divider); overflow:hidden;
+}
+.bar-next .row {
+  display:flex; align-items:center; gap:8px; padding:8px 10px 8px 8px; min-height:52px;
+}
+.seg {
+  display:flex; gap:1px; padding:2px; border-radius:var(--r-pill);
+  background: color-mix(in srgb, var(--text-strong) 6%, transparent); flex-shrink:0;
+}
+.seg button {
+  border:0; font-size:11px; font-weight:500; padding:3px 8px; border-radius:var(--r-pill);
+  background:transparent; color:var(--text-muted); letter-spacing:.01em;
+}
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); font-weight:600; }
+.bar-next input {
+  flex:1; min-width:0; height:36px; border:0; background:transparent;
+  color:var(--text-strong); font-size:16px; font-weight:500; outline:none; padding:0 6px;
+}
+.chip {
+  font-family:var(--font-mono); font-size:12px; font-weight:500;
+  padding:4px 8px; border-radius:var(--r-pill); flex-shrink:0;
+  background: var(--sunken); color: var(--text-strong);
+}
+.chip.miss { color: var(--danger); background: transparent; }
+.nav {
+  display:flex; gap:2px; flex-shrink:0;
+}
+.nav button, .xbtn {
+  width:32px; height:32px; border:0; border-radius:var(--r-control);
+  background:transparent; color:var(--text-muted); display:grid; place-items:center;
+}
+.nav button:hover, .xbtn:hover { background: var(--sunken); color: var(--text-strong); }
+
+svg.ico { width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+
+.choice {
+  text-align:left; padding:var(--sp4); border-radius:var(--r-box);
+  border:1.5px solid var(--divider); background:transparent; color:inherit;
+  display:flex; flex-direction:column; gap:8px;
+}
+.choice.on { border-color:var(--accent); background:var(--selected); }
+.choice .t { font-weight:650; color:var(--text-strong); }
+.choice .d { font-size:12.5px; color:var(--text-muted); }
+.stamp {
+  align-self:flex-start; font-family:var(--font-mono); font-size:10px; letter-spacing:.08em;
+  text-transform:uppercase; padding:3px 8px; border-radius:var(--r-pill);
+  background:var(--text-strong); color:var(--app-bg);
+}
+.k { font-family:var(--font-mono); font-size:11px; padding:1px 6px; border-radius:4px; background:var(--sunken); }
+</style>
+</head>
+<body>
+<div class="ground"></div>
+<div class="wrap">
+
+<header class="head">
+  <div>
+    <span class="caps">Заход по Ctrl+F</span>
+    <h1 class="display">Найти — и понять, что нашлось</h1>
+    <p class="lede">
+      Панель остаётся одной полосой над страницей. Не список результатов, не второе окно.
+      Сейчас она прячет смысл за искрой 14px и красится красной лужей, когда пусто.
+      Ниже — как сделать режимы читаемыми, счётчик — лицом.
+      Пилюля режима узкая; место в полосе отдано полю. Находка живёт подсветкой на странице.
+    </p>
+    <div class="meta">
+      <span class="pill">жест не трогаем</span>
+      <span class="pill">находка на странице</span>
+      <span class="pill">статус не заливка</span>
+    </div>
+  </div>
+  <div class="meta" style="margin-top:0">
+    <button class="pill on" data-theme-btn="light" type="button">Светлая</button>
+    <button class="pill" data-theme-btn="dark" type="button">Тёмная</button>
+  </div>
+</header>
+
+<section class="section">
+  <span class="caps">Диагноз</span>
+  <h2>Почему сейчас плоско</h2>
+  <p>
+    Карточка 48×420: искра, поле, «3 / 12» бледным, две стрелки, крестик.
+    Режим «по смыслу» — квадрат 26px без слова. Пока не наведёшь — не понятно, что это второй поиск, а не украшение.
+    «Нет совпадений» красит фон поля красным. По цветовому закону заливка значит «выбрано»; красный — статус, ему место в слове, не в земле.
+  </p>
+  <div class="note">
+    <p><b>Что не делаем.</b> Не выпадающий список находок поверх статьи — человек и так видит подсветку в тексте. Не отдельная страница. Не фиолетовая искра. Не рост в «AI-чат про страницу».</p>
+  </div>
+</section>
+
+<section class="section">
+  <span class="caps">Сцена</span>
+  <h2>Сейчас и как может быть</h2>
+  <p>Один и тот же запрос «Diablo» на статье. Переключай вид. В смысловом счётчик считает фрагменты; место на странице подсвечено.</p>
+  <div class="meta" style="margin-top:16px">
+    <button class="pill on" type="button" data-view="now">Сейчас</button>
+    <button class="pill" type="button" data-view="next">Предлагаю</button>
+    <button class="pill" type="button" data-state="hit">Есть совпадения</button>
+    <button class="pill" type="button" data-state="miss">Пусто</button>
+    <button class="pill" type="button" data-state="smart">Смысл</button>
+  </div>
+
+  <div class="page-stage" id="stage">
+    <div class="bar-now" id="bar-now">
+      <button class="spark" type="button" title="Искра" aria-label="По смыслу">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/></svg>
+      </button>
+      <input value="Diablo" readonly>
+      <span class="cnt">3 / 12</span>
+      <button class="ico" type="button"><svg class="ico" viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button>
+      <button class="ico" type="button"><svg class="ico" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      <button class="ico" type="button"><svg class="ico" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+
+    <div class="bar-next" id="bar-next" hidden data-mode="text">
+      <div class="row">
+        <div class="seg" role="tablist">
+          <button type="button" aria-pressed="true" data-mode="text">Текст</button>
+          <button type="button" aria-pressed="false" data-mode="smart">Смысл</button>
+        </div>
+        <input id="next-input" value="Diablo" readonly>
+        <span class="chip" id="next-chip">3 / 12</span>
+        <div class="nav">
+          <button type="button" title="Предыдущее · Shift+Enter"><svg class="ico" viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button>
+          <button type="button" title="Следующее · Enter"><svg class="ico" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        </div>
+        <button class="xbtn" type="button" title="Закрыть · Esc"><svg class="ico" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+    </div>
+
+    <div class="article">
+      <h3>Blizzard анонсировала Diablo V</h3>
+      <p>На открытии BlizzCon компания показала <mark class="on">Diablo</mark> V: действие начинается после поражения. Санктуарий пал, <mark>Диабло</mark> победил. Отдельно — сериал с Netflix по вселенной <mark>Diablo</mark>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <span class="caps">Три правки</span>
+  <h2>Функция, яркость, закон цвета</h2>
+  <div class="facts">
+    <div class="fact">
+      <dt>Сегмент «Текст / Смысл», не искра</dt>
+      <dd>Два режима — два названных состояния, но пилюля не спорит с полем: кегль подписи, поля 3×8. Акцент заливает выбранное. Плейсхолдер: «Найти на странице» / «Где про…». Enter в смысле спрашивает модель, не каждый символ. Полоса 560 — чтобы набор не жался между контролами.</dd>
+    </div>
+    <div class="fact">
+      <dt>Счётчик — чип, цифра лицом</dt>
+      <dd>Не <code>text-faint</code> на 56px. Моноширинный чип <code>3 / 12</code>, в смысле — фрагменты. Пусто: слово «нет» цветом <code>--danger-500</code>, без красной подложки поля.</dd>
+    </div>
+    <div class="fact">
+      <dt>Находка — на странице</dt>
+      <dd>Обычный поиск и смысл остаются одной полосой. Модель подсвечивает фрагмент в тексте и прокручивает к нему. Повторять цитату карточкой не нужно: человек уже смотрит на то место.</dd>
+    </div>
+  </div>
+  <p>Радиус острова 20, высота ряда 52, ширина 560. Кнопки 32. Земля — тот же <code>overlay-plate</code>: непрозрачная, с акцентом 7%, как все оверлеи.</p>
+</section>
+
+<section class="section">
+  <span class="caps">Клавиши</span>
+  <h2>Что остаётся привычкой</h2>
+  <div class="grid2">
+    <button class="choice on" type="button">
+      <span class="stamp">берём</span>
+      <div class="t">Те же жесты</div>
+      <div class="d"><span class="k">Enter</span> дальше, <span class="k">Shift+Enter</span> назад, <span class="k">Esc</span> закрыть, повторный <span class="k">Ctrl+F</span> выделяет запрос. В смысле повторный Enter листает цитаты, не гоняет модель заново.</div>
+    </button>
+    <button class="choice" type="button">
+      <div class="t">Не берём</div>
+      <div class="d">Выпадушку «все совпадения списком». Отдельный хоткей на смысл. Перекраску подсветки Chromium — это findInPage, не наша вёрстка.</div>
+    </button>
+  </div>
+</section>
+
+</div>
+<script>
+document.querySelectorAll('[data-theme-btn]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.documentElement.setAttribute('data-theme', btn.getAttribute('data-theme-btn'));
+    document.querySelectorAll('[data-theme-btn]').forEach((b) => b.classList.toggle('on', b === btn));
+  });
+});
+
+const now = document.getElementById('bar-now');
+const next = document.getElementById('bar-next');
+const chip = document.getElementById('next-chip');
+const inputNow = now.querySelector('input');
+const inputNext = document.getElementById('next-input');
+let view = 'now';
+let state = 'hit';
+
+function paint() {
+  now.hidden = view !== 'now';
+  next.hidden = view !== 'next';
+  const miss = state === 'miss';
+  const smart = state === 'smart';
+  inputNow.classList.toggle('miss', miss);
+  now.querySelector('.cnt').textContent = miss ? 'нет' : '3 / 12';
+  now.querySelector('.cnt').classList.toggle('miss', miss);
+  now.querySelector('.spark').style.background = smart ? 'var(--accent-soft)' : 'none';
+  now.querySelector('.spark').style.color = smart ? 'var(--accent)' : 'var(--text-muted)';
+  next.dataset.mode = smart ? 'smart' : 'text';
+  next.querySelectorAll('.seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === (smart ? 'smart' : 'text'))));
+  inputNow.value = smart ? 'где про поражение' : 'Diablo';
+  inputNext.value = smart ? 'где про поражение' : (miss ? 'xyzzy' : 'Diablo');
+  chip.textContent = miss ? 'нет' : (smart ? '1 / 2' : '3 / 12');
+  chip.classList.toggle('miss', miss);
+}
+
+document.querySelectorAll('[data-view]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    view = btn.getAttribute('data-view');
+    document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b === btn));
+    paint();
+  });
+});
+document.querySelectorAll('[data-state]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    state = btn.getAttribute('data-state');
+    document.querySelectorAll('[data-state]').forEach((b) => b.classList.toggle('on', b === btn));
+    paint();
+  });
+});
+next.querySelectorAll('.seg button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    state = btn.dataset.mode === 'smart' ? 'smart' : 'hit';
+    document.querySelectorAll('[data-state]').forEach((b) => b.classList.toggle('on', b.getAttribute('data-state') === state));
+    paint();
+  });
+});
+paint();
+</script>
+</body>
+</html>

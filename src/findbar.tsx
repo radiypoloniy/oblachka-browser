@@ -7,13 +7,15 @@
 // боевые IPC-каналы через свой мост (window.findbar), см. preload-findbar.ts.
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { ChevronUp, ChevronDown, X, Sparkles } from 'lucide-react';
+import { ChevronUp, ChevronDown, X } from 'lucide-react';
 import './styles/global.css';
 import type { FindResult, SmartFindResult } from '../shared/ipc';
+import { FINDBAR_MIN_HEIGHT, FINDBAR_WIDTH } from '../shared/overlayMetrics';
 import { installOverlayReveal } from './overlayReveal';
 // ⚠️ Поверхность оверлея — непрозрачная: карточка живёт в своей вью над страницей, где
 // backdrop-filter не работает (разбор — --overlay-plate в styles/tokens/colors.css).
 import { overlayPlate } from './styles/island';
+import { ICON, NUMERIC, RADIUS, TEXT, glyph, motion, sp, well } from './styles/system';
 
 declare global {
   interface Window {
@@ -31,15 +33,11 @@ declare global {
   }
 }
 
-// ⚠️ Держать в синхроне с FINDBAR_WIDTH в electron/FindBarManager.ts — там ширина самой
-// WebContentsView. Стало шире прежних 360: в панели прибавилась кнопка режима, а статус
-// смыслового поиска — слово («не нашлось»), а не «3 / 12».
-const BAR_WIDTH = 420;
-const BAR_HEIGHT = 48;
 // Держать в синхроне с SHADOW_MARGIN в electron/FindBarManager.ts — тот же паддинг инсетит
 // панель обратно внутри увеличенной под тень WebContentsView (см. TranslatePopoverManager.ts).
 const SHADOW_MARGIN = 20;
 const SEARCH_DEBOUNCE = 250;
+const GLYPH = glyph(ICON.md);
 
 // Что показываем на месте счётчика, пока идёт/провалился смысловой поиск. Отдельного окна с
 // ответом нет намеренно: найденное человек видит НА СТРАНИЦЕ подсветкой, к которой её и
@@ -184,21 +182,20 @@ function FindBar() {
 
   // Смена режима — это смена смысла введённого текста, поэтому прежняя подсветка снимается:
   // «возврат денег» как подстрока и как вопрос дают разные места на странице.
-  const toggleSmart = () => {
+  const setSmartMode = (next: boolean) => {
+    if (next === smart) { inputRef.current?.focus(); return; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     void window.findbar.stop();
     setResult(null);
     setSmartFail(null);
     setQuotes([]);
     lastSmartRef.current = '';
-    setSmart((v) => !v);
+    setSmart(next);
     inputRef.current?.focus();
   };
 
   const hasResults = quotes.length > 0 || (result !== null && result.count > 0);
   const noMatch = (query.trim() !== '' && result !== null && result.count === 0 && quotes.length === 0) || smartFail !== null;
-  // ⚠️ В смысловом режиме счётчик показывает НАЙДЕННЫЕ ФРАГМЕНТЫ, а не совпадения подсвеченной
-  // строки: человек спрашивал про места на странице, их и считаем.
   const statusText = smartBusy ? 'ищу…'
     : smartFail ? SMART_FAIL_TEXT[smartFail]
     : quotes.length > 0 ? `${quoteIdx + 1} / ${quotes.length}`
@@ -206,101 +203,126 @@ function FindBar() {
     : '';
 
   return (
+    <FindBarChrome
+      inputRef={inputRef}
+      query={query}
+      smart={smart}
+      smartBusy={smartBusy}
+      noMatch={noMatch}
+      statusText={statusText}
+      hasResults={hasResults}
+      quotesLen={quotes.length}
+      onQuery={handleChange}
+      onKeyDown={handleKeyDown}
+      onMode={setSmartMode}
+      onPrev={() => (quotes.length > 0 ? goQuote(-1) : void window.findbar.next(false))}
+      onNext={() => (quotes.length > 0 ? goQuote(1) : void window.findbar.next(true))}
+      onClose={close}
+    />
+  );
+}
+
+function FindBarChrome(p: {
+  inputRef: React.RefObject<HTMLInputElement>
+  query: string
+  smart: boolean
+  smartBusy: boolean
+  noMatch: boolean
+  statusText: string
+  hasResults: boolean
+  quotesLen: number
+  onQuery: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  onMode: (smart: boolean) => void
+  onPrev: () => void
+  onNext: () => void
+  onClose: () => void
+}) {
+  return (
     // Прозрачный внешний паддинг — место для вытекания CSS box-shadow (см. SHADOW_MARGIN в
     // electron/FindBarManager.ts — сама WebContentsView увеличена на столько же).
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
       <div style={{
-        width: BAR_WIDTH, height: BAR_HEIGHT, boxSizing: 'border-box',
-        display: 'flex', alignItems: 'center', gap: 4,
-        padding: '5px 6px',
-        // ⚠️ Поверхность оверлея (непрозрачная), а не материал: карточка живёт в своей вью над
-        // страницей, где backdrop-filter не работает вовсе. Разбор — --overlay-plate в colors.css.
+        width: FINDBAR_WIDTH, boxSizing: 'border-box', minWidth: 0,
+        display: 'flex', alignItems: 'center', gap: sp(2),
+        padding: `${sp(2)}px ${sp(2)}px ${sp(2)}px ${sp(2) - 2}px`,
+        minHeight: FINDBAR_MIN_HEIGHT,
         ...overlayPlate,
         boxShadow: 'var(--shadow-card)',
-        borderRadius: 'var(--radius-card)',
-        border: '1px solid var(--glass-edge)',
+        borderRadius: RADIUS.island,
+        overflow: 'hidden',
         userSelect: 'none',
         fontFamily: 'var(--font-sans)',
       }}>
-        <button
-          onClick={toggleSmart}
-          title={smart ? 'Искать по смыслу — включено' : 'Искать по смыслу: спросите словами, где это на странице'}
-          style={{
-            ...btnStyle(false),
-            // Акцент — активное состояние режима, ровно по цветовому закону дизайн-системы.
-            background: smart ? 'var(--accent-soft)' : 'none',
-            color: smart ? 'var(--accent)' : 'var(--text-muted)',
-          }}
-        >
-          <Sparkles size={14} strokeWidth={2} />
-        </button>
+        <ModeSeg smart={p.smart} onMode={p.onMode} />
         <input
-          ref={inputRef}
+          ref={p.inputRef}
           type="text"
           autoFocus
-          value={query}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          placeholder={smart ? 'Где на странице про…' : 'Найти на странице…'}
+          value={p.query}
+          onChange={p.onQuery}
+          onKeyDown={p.onKeyDown}
+          placeholder={p.smart ? 'Где на странице про…' : 'Найти на странице…'}
           style={{
-            flex: 1, minWidth: 0,
-            padding: '4px 8px',
-            background: noMatch ? 'rgba(200,50,50,0.12)' : 'var(--surface-sunken)',
-            border: '1px solid var(--glass-edge)',
-            borderRadius: 'calc(var(--radius-card) / 2)',
-            fontSize: 'var(--fs-sm)',
-            color: 'var(--text-strong)',
+            flex: 1, minWidth: 0, height: 36, padding: `0 ${sp(2)}px`,
+            background: 'transparent', border: 'none',
+            ...TEXT.section, fontWeight: 500, color: 'var(--text-strong)',
             outline: 'none',
-            transition: 'background 0.15s',
           }}
         />
-        {statusText && (
+        {p.statusText ? (
           <span style={{
-            fontSize: 'var(--fs-xs)',
-            color: smartBusy ? 'var(--text-faint)' : noMatch ? 'rgba(200,50,50,0.8)' : 'var(--text-faint)',
-            minWidth: 56,
-            textAlign: 'center',
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
+            ...TEXT.caption, ...NUMERIC, fontFamily: 'var(--font-mono)', fontWeight: 500,
+            padding: `${sp(1)}px ${sp(2)}px`, borderRadius: RADIUS.pill, flexShrink: 0,
+            background: p.noMatch ? 'transparent' : 'var(--surface-sunken)',
+            color: p.smartBusy ? 'var(--text-faint)' : p.noMatch ? 'var(--danger-500)' : 'var(--text-strong)',
           }}>
-            {statusText}
+            {p.statusText}
           </span>
-        )}
+        ) : null}
         <button
-          onClick={() => (quotes.length > 0 ? goQuote(-1) : void window.findbar.next(false))}
-          disabled={!hasResults}
-          title={quotes.length > 0 ? 'Предыдущий фрагмент (Shift+Enter)' : 'Предыдущее (Shift+Enter)'}
-          style={btnStyle(!hasResults)}
+          type="button"
+          className="findbar-btn"
+          onClick={p.onPrev}
+          disabled={!p.hasResults}
+          title={p.quotesLen > 0 ? 'Предыдущий фрагмент (Shift+Enter)' : 'Предыдущее (Shift+Enter)'}
         >
-          <ChevronUp size={14} strokeWidth={2} />
+          <ChevronUp {...GLYPH} />
         </button>
         <button
-          onClick={() => (quotes.length > 0 ? goQuote(1) : void window.findbar.next(true))}
-          disabled={!hasResults}
-          title={quotes.length > 0 ? 'Следующий фрагмент (Enter)' : 'Следующее (Enter)'}
-          style={btnStyle(!hasResults)}
+          type="button"
+          className="findbar-btn"
+          onClick={p.onNext}
+          disabled={!p.hasResults}
+          title={p.quotesLen > 0 ? 'Следующий фрагмент (Enter)' : 'Следующее (Enter)'}
         >
-          <ChevronDown size={14} strokeWidth={2} />
+          <ChevronDown {...GLYPH} />
         </button>
-        <button onClick={close} title="Закрыть (Esc)" style={btnStyle(false)}>
-          <X size={14} strokeWidth={2} />
+        <button type="button" className="findbar-btn" onClick={p.onClose} title="Закрыть (Esc)">
+          <X {...GLYPH} />
         </button>
       </div>
     </div>
   );
 }
 
-function btnStyle(disabled: boolean): React.CSSProperties {
-  return {
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    width: 26, height: 26, flexShrink: 0,
-    background: 'none', border: 'none',
-    borderRadius: 'calc(var(--radius-card) / 2)',
-    color: disabled ? 'var(--text-faint)' : 'var(--text-muted)',
-    cursor: 'default',
-    opacity: disabled ? 0.4 : 1,
-    padding: 0,
-  };
+function ModeSeg({ smart, onMode }: { smart: boolean; onMode: (smart: boolean) => void }) {
+  // Компактнее настроечного SegTrack: кегль подписи и узкие поля, чтобы пилюля не спорила с набором.
+  const btn = (on: boolean): React.CSSProperties => ({
+    ...TEXT.caption, fontWeight: on ? 600 : 500, border: 'none', cursor: 'default',
+    padding: `${sp(1) - 1}px ${sp(2)}px`, borderRadius: RADIUS.pill,
+    background: on ? 'var(--accent)' : 'transparent',
+    color: on ? 'var(--on-accent)' : 'var(--text-muted)',
+    transition: motion.state('background', 'color'),
+  });
+  return (
+    <div role="tablist" aria-label="Режим поиска" style={{
+      display: 'flex', gap: 1, padding: 2, flexShrink: 0, ...well(RADIUS.pill),
+    }}>
+      <button type="button" role="tab" aria-selected={!smart} aria-pressed={!smart} onClick={() => onMode(false)} style={btn(!smart)}>Текст</button>
+      <button type="button" role="tab" aria-selected={smart} aria-pressed={smart} onClick={() => onMode(true)} style={btn(smart)}>Смысл</button>
+    </div>
+  );
 }
 
 installOverlayReveal();
