@@ -10,6 +10,7 @@ import { syncDropZoneBounds } from '../DropZoneManager';
 import { syncFindBarBounds } from '../FindBarManager';
 import { closePasswordPopover, showPasswordPopover, syncPasswordPopoverAnchorBounds } from '../PasswordPopoverManager';
 import { syncPermissionPopoverBounds } from '../PermissionPopoverManager';
+import { syncUpdatePromptBounds } from '../UpdatePromptManager';
 import { syncScreenshotBounds } from '../ScreenshotManager';
 import { syncSearchPopoverBounds } from '../SearchPopoverManager';
 import { closeSitePopover, isSitePopoverOpen, showSitePopover, syncSitePopoverAnchorBounds } from '../SitePopoverManager';
@@ -49,6 +50,7 @@ export function registerOverlaysIpc(d: IpcDeps): void {
       syncDropZoneBounds(fbWin, b); // та же геометрия — зоны дропа рисуются ровно по контенту
       syncScreenshotBounds(fbWin, b); // карточка снимка сидит в правом нижнем углу контента
       syncPermissionPopoverBounds(fbWin, b); // и запрос разрешения — он тоже привязан к контенту
+      syncUpdatePromptBounds(fbWin, b);      // карточка обновления — тот же угол контента
     }
     syncSearchPopoverBounds(b); // тот же сентинел нулевых bounds — прячем поповер вместе с контентом
   });

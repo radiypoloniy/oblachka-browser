@@ -71,6 +71,14 @@ function isAttached(st: WindowPermPopover): boolean {
   return !!st.view && !st.win.isDestroyed() && st.win.contentView.children.includes(st.view)
 }
 
+// Карточка обновления тоже садится в contentView; addChildView кладёт её сверху и накрыл бы
+// вопрос про камеру. Если запрос разрешения уже на экране — возвращаем его наверх.
+export function restackPermissionPopover(win: BrowserWindow): void {
+  const st = popovers.get(win.id)
+  if (!st || !isAttached(st) || !st.view) return
+  try { st.win.contentView.addChildView(st.view) } catch { /* окно могло закрыться */ }
+}
+
 function layout(st: WindowPermPopover): void {
   if (!isAttached(st)) return
   st.view!.setBounds(computeBounds(st))

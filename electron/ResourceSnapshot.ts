@@ -30,6 +30,7 @@ const CHROME_PAGES: Record<string, string> = {
   'dropzones.html': 'Зоны перетаскивания',
   'clipboardpopover.html': 'Буфер обмена',
   'permissionpopover.html': 'Разрешения',
+  'updateprompt.html': 'Обновление',
   'passwordpopover.html': 'Пароли',
   'autofillpopover.html': 'Автозаполнение',
   'searchpopover.html': 'Поиск',

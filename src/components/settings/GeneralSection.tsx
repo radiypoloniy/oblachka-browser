@@ -72,7 +72,7 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
 
       <Subsection
         title="Обновления"
-        description="Браузер проверяет наличие новой версии при запуске. Загрузка и установка — только по вашей команде."
+        description="Браузер сам проверяет новую версию и спрашивает карточкой. Загрузка и установка — только по вашей команде."
       >
         <UpdatesBlock />
       </Subsection>

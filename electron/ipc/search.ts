@@ -12,6 +12,7 @@ import { setActiveEngineId } from '../TranslationEngineRegistry';
 import { broadcastToChrome } from '../WindowRegistry';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
+import { setUpdatePromptHeight, updatePromptAnswered, wireUpdatePrompt, onUpdateStatus } from '../UpdatePromptManager';
 
 // См. комментарий у SETTINGS_GET_HUB_MODE — отличает пассивное восстановление сессии (первый
 // запрос режима хаба за процесс) от реальной навигации пользователя (все последующие).
@@ -19,6 +20,15 @@ let hubModeQueried = false;
 
 export function registerSearchIpc(d: IpcDeps): void {
   const { adblock, bangs, chromeOf, maybeLazyWarmupOnDemand, searchTargets, settings, tabsOf, updates } = d;
+
+  wireUpdatePrompt({
+    getSkipVersion: () => settings.getUpdateSkipVersion(),
+    setSkipVersion: (v) => settings.setUpdateSkipVersion(v),
+    download: () => updates.download(),
+    install: () => updates.install(),
+    enableInstallOnQuit: () => updates.enableInstallOnQuit(),
+  });
+  updates.subscribe(onUpdateStatus);
 
 
   // AdBlock
@@ -84,6 +94,12 @@ export function registerSearchIpc(d: IpcDeps): void {
   ipcMain.on(IPC.UPDATE_DOWNLOAD, () => updates.download());
   ipcMain.on(IPC.UPDATE_INSTALL,  () => updates.install());
   ipcMain.handle(IPC.UPDATE_STATUS, () => updates.getStatus());
+  // Карточка поверх страницы — свои маленькие каналы, как у permission-popover:*.
+  ipcMain.on('update-prompt:respond', (_e, action: unknown) => {
+    if (action === 'update' || action === 'later' || action === 'skip') updatePromptAnswered(action);
+  });
+  ipcMain.on('update-prompt:height', (e, px: number) =>
+    setUpdatePromptHeight(e.sender, Number(px) || 0));
 
   // Настройки
   ipcMain.handle(IPC.SETTINGS_GET_SEARCH_ENGINE, () => settings.getSearchEngine());

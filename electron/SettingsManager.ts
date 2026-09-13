@@ -79,6 +79,8 @@ interface PersistedSettings {
   // про вкладку: закрыл вкладку — правило остаётся, открыл ту же почту завтра — она снова под
   // защитой. Плюс формат сессии не приходится трогать вовсе, а его поломка = потеря вкладок.
   neverSleepSites: string[];
+  // Версия, про которую человек сказал «не спрашивать». Следующий релиз спрашивает снова.
+  updateSkipVersion: string | null;
 }
 
 // Хосты приходят и из меню, и с диска — нормализатор один. Пустые и мусорные строки выбрасываем
@@ -183,6 +185,7 @@ export class SettingsManager {
   // null — набор не трогали, отдаём дефолтный (см. DEFAULT_RECOMMENDED).
   #recommendedSites: RecommendedSite[] | null = null;
   #neverSleepSites: string[] = [];
+  #updateSkipVersion: string | null = null;
   readonly #settingsPath: string;
 
   constructor() {
@@ -345,6 +348,16 @@ export class SettingsManager {
     this.#write();
   }
 
+  getUpdateSkipVersion(): string | null {
+    return this.#updateSkipVersion;
+  }
+
+  setUpdateSkipVersion(version: string | null): void {
+    const v = typeof version === 'string' ? version.trim() : '';
+    this.#updateSkipVersion = v && v.length <= 32 ? v : null;
+    this.#write();
+  }
+
   getRecommendedSites(): RecommendedSite[] {
     return this.#recommendedSites ?? DEFAULT_RECOMMENDED;
   }
@@ -403,6 +416,10 @@ export class SettingsManager {
         const rs = (data as Record<string, unknown>)['recommendedSites'];
         if (rs !== undefined && rs !== null) this.#recommendedSites = normalizeRecommended(rs) ?? [];
         this.#neverSleepSites = normalizeHosts((data as Record<string, unknown>)['neverSleepSites']);
+        const skip = (data as Record<string, unknown>)['updateSkipVersion'];
+        if (typeof skip === 'string' && skip.trim() && skip.trim().length <= 32) {
+          this.#updateSkipVersion = skip.trim();
+        }
       }
     } catch { /* файла нет или битый JSON — остаёмся на дефолте */ }
   }
@@ -425,6 +442,7 @@ export class SettingsManager {
       themePalette: this.#themePalette,
       recommendedSites: this.#recommendedSites,
       neverSleepSites: this.#neverSleepSites,
+      updateSkipVersion: this.#updateSkipVersion,
     };
     const tmpPath = this.#settingsPath + '.tmp';
     try {

@@ -8,8 +8,11 @@ import type { UpdateStatus, UpdateStatusKind } from '../shared/ipc';
 //
 // Политика намеренно консервативная (осознанный выбор, а не упущение):
 //   • autoDownload = false — трафик не тратится без ведома пользователя;
-//   • autoInstallOnAppQuit = false — приложение не подменяет себя при выходе втихую;
-//   • проверка при старте отложена и не блокирует запуск.
+//   • autoInstallOnAppQuit = false — приложение не подменяет себя при выходе втихую
+//     (включается только после «Позже» на уже скачанном файле);
+//   • проверка при старте отложена и не блокирует запуск; повтор раз в 4 часа.
+// Найденное обновление спрашивает карточкой поверх страницы (UpdatePromptManager),
+// а не только блоком в настройках.
 // Для приватного браузера «скачали и подменили молча» — неприемлемое поведение, даже если так
 // делает Chrome.
 //
@@ -51,6 +54,7 @@ function humanizeError(raw: string): string {
 export class UpdateManager {
   #status: UpdateStatus;
   #onChange: ((s: UpdateStatus) => void) | null = null;
+  #subscribers: Array<(s: UpdateStatus) => void> = [];
   #wired = false;
 
   constructor() {
@@ -68,6 +72,12 @@ export class UpdateManager {
 
   getStatus(): UpdateStatus {
     return { ...this.#status };
+  }
+
+  // Карточка поверх страницы слушает тот же поток, что настройки: отдельная подписка, чтобы
+  // не раздувать main.ts (он на храповике размера).
+  subscribe(cb: (s: UpdateStatus) => void): void {
+    this.#subscribers.push(cb);
   }
 
   // Подписка на события апдейтера + отложенная стартовая проверка. В dev-режиме не делает
@@ -88,6 +98,10 @@ export class UpdateManager {
     // удерживать процесс живым при выходе (иначе закрытие браузера ждало бы таймер).
     const timer = setTimeout(() => { this.check(); }, startupCheckDelayMs);
     timer.unref?.();
+    // Пока окно открыто сутками, разовая проверка на старте устаревает: вышел 0.8.1, потом 0.8.2 —
+    // карточка так и предлагала бы утреннюю версию. Повтор раз в четыре часа, тоже unref.
+    const recheck = setInterval(() => { this.check(); }, 4 * 60 * 60 * 1000);
+    recheck.unref?.();
   }
 
   check(): void {
@@ -132,6 +146,13 @@ export class UpdateManager {
     }
   }
 
+  // Человек сказал «позже» на уже скачанном файле: поставить при обычном выходе, не сейчас.
+  enableInstallOnQuit(): void {
+    if (!this.#ensureReady()) return;
+    if (this.#status.kind !== 'downloaded') return;
+    loadUpdaterModule().autoUpdater.autoInstallOnAppQuit = true;
+  }
+
   // ── Приватное ──────────────────────────────────────────────────────────────
 
   #ensureReady(): boolean {
@@ -172,6 +193,8 @@ export class UpdateManager {
 
   #set(patch: Partial<UpdateStatus> & { kind: UpdateStatusKind }): void {
     this.#status = { ...this.#status, ...patch };
-    this.#onChange?.(this.getStatus());
+    const snap = this.getStatus();
+    this.#onChange?.(snap);
+    for (const cb of this.#subscribers) cb(snap);
   }
 }

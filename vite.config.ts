@@ -44,6 +44,8 @@ export default defineConfig({
         sitepopover: resolve(__dirname, 'src/sitepopover.html'),
         // Запрос разрешения сайта (камера/гео/…) — та же техника (см. PermissionPopoverManager.ts).
         permissionpopover: resolve(__dirname, 'src/permissionpopover.html'),
+        // Карточка «доступна новая версия» — та же техника (см. UpdatePromptManager.ts).
+        updateprompt: resolve(__dirname, 'src/updateprompt.html'),
         // Тестовая вью дропдауна подсказок омнибокса (заход 2/5 переезда с chrome-DOM, см.
         // SuggestDropdownManager.ts) — статичный список, не боевая пока.
         suggestdropdown: resolve(__dirname, 'src/suggestdropdown.html'),
