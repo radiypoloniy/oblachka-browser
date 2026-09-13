@@ -5,8 +5,8 @@
 // ⚠️ Отличие от VPN: содержимое здесь ЖИВОЕ. Пока поповер открыт, прогресс капает раз в 200 мс,
 // и без явного пуша в саму вью (broadcastDownloads ниже) полоска замерла бы до переоткрытия —
 // DOWNLOADS_CHANGED из main уходит только в chromeView.
-import { WebContentsView, ipcMain, webContents } from 'electron';
-import type { BrowserWindow, InputEvent, WebContents } from 'electron';
+import { WebContentsView, ipcMain } from 'electron';
+import type { BrowserWindow, WebContents } from 'electron';
 import path from 'node:path';
 import type { ContentBounds, DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision } from '../shared/ipc';
 import { IPC } from '../shared/ipc';
@@ -149,6 +149,9 @@ export function showDownloadsPopover(win: BrowserWindow): void {
     resizeBoundWin = win;
   }
   const view = ensurePopoverView();
+  // После OS-drag вью могла остаться спрятанной (см. beginDownloadsFileDrag) — иначе следующий
+  // клик прикреплял невидимую карточку, и поповер «открывался с задержкой».
+  try { view.setVisible(true); } catch { /* вью могла уже сняться */ }
   view.setBounds(computeBounds());
   if (!isAttached()) win.contentView.addChildView(view);
   if (popoverLoaded) view.webContents.send(IPC.DOWNLOADS_POPOVER_SHOW);
@@ -193,9 +196,12 @@ export function resolveDuplicatePrompt(decision: DuplicateDownloadDecision): voi
 }
 
 export function closeDownloadsPopover(): void {
-  endDownloadsFileDrag();
-  if (!isOpen) return;
+  const wasOpen = isOpen;
   isOpen = false;
+  if (popoverView && !popoverView.webContents.isDestroyed()) {
+    try { popoverView.setVisible(true); } catch { /* окно могло закрыться */ }
+  }
+  if (!wasOpen && !isAttached()) return;
   // ⚠️ Закрыли, не ответив (клик мимо, смена вкладки) — это ОТКАЗ от загрузки. Молча качать
   // второй раз то, о чём человек не сказал «да», нельзя; а бросить загрузку висеть на паузе
   // нельзя тем более — она так и осталась бы в подвешенном состоянии до конца сеанса.
@@ -211,63 +217,26 @@ export function closeDownloadsPopover(): void {
   if (isAttached()) {
     try { attachedWin!.contentView.removeChildView(popoverView!); } catch { /* окно могло уже закрыться */ }
   }
-  if (win && !win.isDestroyed()) onClosedCb?.(win);
+  if (wasOpen && win && !win.isDestroyed()) onClosedCb?.(win);
 }
 
 // ── OS-drag файла из карточки ────────────────────────────────────────────────
 //
-// ⚠️ Поповер — отдельная WebContentsView поверх страницы. Нативный startDrag идёт с ЭТОЙ вью,
-// и закрывать её в dragstart нельзя: removeChildView оборвёт жест. У View в Electron 42 нет
-// setIgnoreMouseEvents (он только у окна), поэтому на время жеста прячем карточку setVisible(false):
-// хит-тест проходит на страницу, drop в <input type="file"> доходит, webContents жив.
+// ⚠️ Поповер — отдельная WebContentsView поверх страницы. startDrag идёт с ЭТОЙ вью, и
+// removeChildView в dragstart оборвал бы жест. У View нет setIgnoreMouseEvents, поэтому
+// карточку прячем setVisible(false): хит-тест проходит на страницу.
 //
-// Конец жеста renderer после preventDefault на dragstart часто не присылает. Смотрим mouseUp
-// на всех вью и blur окна — тот же приём, что у DropZoneManager. Escape во время OS-drag
-// система часто съедает сама.
-
-const FILE_DRAG_MAX_MS = 60_000;
-
-let fileDrag: { timer: ReturnType<typeof setTimeout>; unwatch: () => void } | null = null;
+// ⚠️ Конец жеста НЕ слушаем через input-event. Подписка на getAllWebContents() гонит в main
+// каждый mousemove гостевой страницы — живой случай: после первого перетаскивания поповер
+// снова открывался с задержкой и подтормаживал. Вью остаётся в дереве до close/следующего
+// показа; хром считает карточку закрытой, чтобы кнопка не горела над пустым местом.
 
 export function beginDownloadsFileDrag(sender: WebContents): void {
   if (!popoverView || popoverView.webContents !== sender) return;
-  endDownloadsFileDrag();
   try { popoverView.setVisible(false); } catch { /* вью могла уже сняться */ }
-
+  if (!isOpen) return;
+  isOpen = false;
   const win = attachedWin;
-  const watched: WebContents[] = [];
-  const startedAt = Date.now();
-  const finish = (): void => { endDownloadsFileDrag(); };
-  const onInput = (_e: Electron.Event, input: InputEvent): void => {
-    // startDrag иногда синтезирует mouseUp в том же тике, что dragstart — это не конец жеста.
-    if (Date.now() - startedAt < 250) return;
-    if (input.type === 'mouseUp') finish();
-  };
-  if (win && !win.isDestroyed()) win.on('blur', finish);
-  for (const wc of webContents.getAllWebContents()) {
-    if (wc.isDestroyed()) continue;
-    wc.on('input-event', onInput);
-    watched.push(wc);
-  }
-  fileDrag = {
-    timer: setTimeout(finish, FILE_DRAG_MAX_MS),
-    unwatch: () => {
-      if (win && !win.isDestroyed()) win.removeListener('blur', finish);
-      for (const wc of watched) {
-        if (!wc.isDestroyed()) wc.removeListener('input-event', onInput);
-      }
-    },
-  };
-}
-
-export function endDownloadsFileDrag(): void {
-  if (fileDrag) {
-    clearTimeout(fileDrag.timer);
-    fileDrag.unwatch();
-    fileDrag = null;
-  }
-  if (popoverView && !popoverView.webContents.isDestroyed() && isOpen) {
-    try { popoverView.setVisible(true); } catch { /* окно могло закрыться */ }
-  }
+  if (win && !win.isDestroyed()) onClosedCb?.(win);
 }
 
