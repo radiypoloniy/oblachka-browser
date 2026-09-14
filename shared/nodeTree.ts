@@ -272,6 +272,42 @@ export function pruneEmptyGroups(nodes: SidebarNode[]): void {
   }
 }
 
+// Вставляет готовую split-пару на место двух одиночных узлов. Пара занимает первое из их мест,
+// если обе вкладки были рядом в одном массиве; если родители разные — место вкладки-якоря.
+// Позиции передаёт владелец дерева после своей проверки допустимости, чтобы между проверкой и
+// мутацией он мог безопасно подготовить WebContentsView, не меняя прежний порядок действий.
+export function insertSplitPairAt(
+  nodes: SidebarNode[],
+  anchor: { parent: SidebarNode[]; idx: number },
+  moved: { parent: SidebarNode[]; idx: number },
+  movedId: string,
+  pair: SplitPairNode,
+): void {
+  if (moved.parent !== anchor.parent) {
+    const movedIdx = moved.parent.findIndex(
+      (node) => node.type === 'single' && node.tabId === movedId,
+    );
+    if (movedIdx >= 0) moved.parent.splice(movedIdx, 1);
+    pruneEmptyGroups(nodes);
+  }
+
+  const target = anchor.parent;
+  let inserted = false;
+  const reordered: SidebarNode[] = [];
+  for (const node of target) {
+    if (node.type === 'single' && (node.tabId === pair.leftTabId || node.tabId === pair.rightTabId)) {
+      if (!inserted) {
+        reordered.push(pair);
+        inserted = true;
+      }
+    } else {
+      reordered.push(node);
+    }
+  }
+  if (!inserted) reordered.push(pair);
+  target.splice(0, target.length, ...reordered);
+}
+
 // Заменяет SplitPairNode двумя SingleNode — рекурсивный поиск (пара может быть в группе).
 // Меняет массив на месте, возвращает true, если пара найдена.
 export function dissolveSplitPair(leftId: string, rightId: string, nodes: SidebarNode[]): boolean {

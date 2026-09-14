@@ -8,7 +8,7 @@
 // Запуск: npm test -- node-tree
 import {
   collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, findGroupParent,
-  pruneEmptyGroups, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
+  pruneEmptyGroups, insertSplitPairAt, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
 let passed = 0;
@@ -345,6 +345,40 @@ console.log('\n— уборка пустых групп —');
   pruneEmptyGroups(nodes);
   check('непустая группа остаётся', nodes.length, 1);
   check('а пустая внутри неё убрана', nodes[0].children.map((n) => n.type), ['single']);
+}
+
+console.log('\n— создание split-узла в дереве —');
+{
+  const nodes = [single('moved'), single('between'), single('anchor'), single('after')];
+  const anchor = findTabParent('anchor', nodes);
+  const moved = findTabParent('moved', nodes);
+  const split = pair('anchor', 'moved', 0.5);
+  insertSplitPairAt(nodes, anchor, moved, 'moved', split);
+  check('при общем родителе обе одиночные вкладки заменены одной парой', collectTabIds(nodes), ['anchor', 'moved', 'between', 'after']);
+  check('пара занимает первое из двух прежних мест', nodes[0] === split, true);
+}
+{
+  const movedChildren = [single('moved')];
+  const sourceGroup = group('source', 'Источник', movedChildren);
+  const nodes = [sourceGroup, single('before'), single('anchor'), single('after')];
+  const anchor = findTabParent('anchor', nodes);
+  const moved = findTabParent('moved', nodes);
+  const split = pair('moved', 'anchor', 0.37);
+  insertSplitPairAt(nodes, anchor, moved, 'moved', split);
+  check('из другого родителя вкладка вынута и пара встала на место якоря', collectTabIds(nodes), ['before', 'moved', 'anchor', 'after']);
+  check('опустевшая исходная группа удалена', findGroupById('source', nodes), null);
+  check('объект пары и ratio сохранены', nodes[1] === split && nodes[1].ratio, 0.37);
+}
+{
+  const anchorChildren = [single('anchor'), single('inside')];
+  const targetGroup = group('target', 'Цель', anchorChildren);
+  const nodes = [single('moved'), targetGroup, single('after')];
+  const anchor = findTabParent('anchor', nodes);
+  const moved = findTabParent('moved', nodes);
+  const split = pair('anchor', 'moved');
+  insertSplitPairAt(nodes, anchor, moved, 'moved', split);
+  check('пара может занять место якоря внутри группы', collectTabIds(targetGroup.children), ['anchor', 'moved', 'inside']);
+  check('приводимый корневой узел удалён', collectTabIds(nodes), ['anchor', 'moved', 'inside', 'after']);
 }
 
 console.log('\n— роспуск пары —');

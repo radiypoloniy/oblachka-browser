@@ -32,7 +32,7 @@ import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
 import { buildOrganizedTree } from '../shared/organizeTree';
-import { collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
+import { collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, pruneEmptyGroups, insertSplitPairAt, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
@@ -2658,29 +2658,7 @@ export class TabManager {
     // Пара встаёт на место АКТИВНОЙ вкладки — она остаётся там, где человек её видел.
     const pair: SplitPairNode = { type: 'split-pair', leftTabId: leftId, rightTabId: rightId, ratio: 0.5 };
 
-    // ⚠️ Приводимую вынимаем из ЕЁ массива отдельно и только если он другой: при одном родителе
-    // цикл ниже уберёт обе за один проход, а лишнее удаление вынесло бы и активную тоже.
-    if (movedParent.parent !== anchorParent.parent) {
-      const mp = movedParent.parent;
-      const idx = mp.findIndex((n) => n.type === 'single' && n.tabId === movedId);
-      if (idx >= 0) mp.splice(idx, 1);
-      // Папка, из которой забрали последнюю вкладку, исчезает: пустая папка в списке — мусор,
-      // который человек не создавал и убрать может только руками.
-      this.#pruneEmptyGroups(this.nodes);
-    }
-
-    const targetNodes = anchorParent.parent;
-    let pairInserted = false;
-    const newNodes: SidebarNode[] = [];
-    for (const node of targetNodes) {
-      if (node.type === 'single' && (node.tabId === leftId || node.tabId === rightId)) {
-        if (!pairInserted) { newNodes.push(pair); pairInserted = true; }
-      } else {
-        newNodes.push(node);
-      }
-    }
-    if (!pairInserted) newNodes.push(pair);
-    targetNodes.splice(0, targetNodes.length, ...newNodes);
+    insertSplitPairAt(this.nodes, anchorParent, movedParent, movedId, pair);
 
     // ⚠️ activePanel обязан указывать на сторону АКТИВНОЙ вкладки, а не всегда на левую:
     // activeId остаётся anchorId, и разъедься эти двое — Ctrl-переключение панелей и выход из
