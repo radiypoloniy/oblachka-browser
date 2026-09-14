@@ -31,7 +31,7 @@ import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTim
 import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
-import { collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
+import { collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
@@ -2317,13 +2317,9 @@ export class TabManager {
     const group = this.#findGroupById(groupId);
     if (!group) return [];
     const out: { title: string; url: string }[] = [];
-    for (const child of group.children) {
-      const ids = child.type === 'single' ? [child.tabId]
-        : child.type === 'split-pair' ? [child.leftTabId, child.rightTabId] : [];
-      for (const id of ids) {
-        const tab = this.tabMap.get(id);
-        if (tab) out.push({ title: this.#tabTitle(tab) ?? '', url: this.#tabUrl(tab) });
-      }
+    for (const id of collectDirectGroupTabIds(group)) {
+      const tab = this.tabMap.get(id);
+      if (tab) out.push({ title: this.#tabTitle(tab) ?? '', url: this.#tabUrl(tab) });
     }
     return out;
   }
@@ -2573,22 +2569,13 @@ export class TabManager {
 
   // Возвращает true если вкладка находится в какой-либо группе.
   isTabInGroup(tabId: string): boolean {
-    const found = this.#findTabParent(tabId);
-    return !!found && found.parent !== this.nodes;
+    return this.#groupContaining(tabId) !== null;
   }
 
   // Возвращает groupId если вкладка непосредственно в группе, иначе null.
   // Phase 3: группы не вложены, достаточно одного уровня.
   getTabGroupId(tabId: string): string | null {
-    for (const node of this.nodes) {
-      if (node.type !== 'group') continue;
-      for (const child of node.children) {
-        if (child.type === 'single' && child.tabId === tabId) return node.id;
-        if (child.type === 'split-pair' &&
-            (child.leftTabId === tabId || child.rightTabId === tabId)) return node.id;
-      }
-    }
-    return null;
+    return findTopLevelGroupId(tabId, this.nodes);
   }
 
   // Перезагружает все живые (не спящие) вкладки. Если domain задан — только с этим hostname

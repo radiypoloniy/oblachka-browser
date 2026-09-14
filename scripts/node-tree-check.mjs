@@ -7,7 +7,7 @@
 //
 // Запуск: npm test -- node-tree
 import {
-  collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, findGroupParent,
+  collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, findGroupParent,
   pruneEmptyGroups, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
@@ -44,6 +44,30 @@ console.log('\n— плоский порядок вкладок —');
   );
   check('collapsed не меняет состав дерева', collectTabIds(nodes).includes('deep-left'), true);
   check('пустое дерево даёт пустой список', collectTabIds([]), []);
+}
+
+console.log('\n— непосредственные вкладки группы —');
+{
+  const nested = group('nested', 'Вложенная', [single('deep')]);
+  const target = group('g', 'Группа', [single('a'), pair('left', 'right'), nested]);
+  check(
+    'single и обе половины split возвращены в порядке группы',
+    collectDirectGroupTabIds(target),
+    ['a', 'left', 'right'],
+  );
+  check('вложенная группа намеренно не раскрыта', collectDirectGroupTabIds(target).includes('deep'), false);
+  check('пустая группа даёт пустой список', collectDirectGroupTabIds(group('empty', 'Пустая', [])), []);
+}
+{
+  const nodes = [
+    single('root'),
+    group('top', 'Верхняя', [single('a'), pair('left', 'right'), group('nested', 'Вложенная', [single('deep')])]),
+  ];
+  check('верхняя группа найдена по single', findTopLevelGroupId('a', nodes), 'top');
+  check('верхняя группа найдена по правой половине split', findTopLevelGroupId('right', nodes), 'top');
+  check('корневая вкладка не считается сгруппированной', findTopLevelGroupId('root', nodes), null);
+  check('вложенная вкладка не меняет одноуровневый контракт', findTopLevelGroupId('deep', nodes), null);
+  check('неизвестной вкладки нет', findTopLevelGroupId('missing', nodes), null);
 }
 
 console.log('\n— перестановка узлов —');

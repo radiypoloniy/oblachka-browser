@@ -31,6 +31,27 @@ export function collectTabIds(nodes: SidebarNode[]): string[] {
   return result;
 }
 
+// Вкладки, лежащие в группе НЕПОСРЕДСТВЕННО: single даёт одну, split-пара — обе половины,
+// вложенная группа не раскрывается. Этот контракт нужен старым публичным операциям TabManager,
+// где группы UI пока одноуровневые; рекурсивный состав по-прежнему даёт collectTabIds().
+export function collectDirectGroupTabIds(group: GroupNode): string[] {
+  const result: string[] = [];
+  for (const child of group.children) {
+    if (child.type === 'single') result.push(child.tabId);
+    else if (child.type === 'split-pair') result.push(child.leftTabId, child.rightTabId);
+  }
+  return result;
+}
+
+// id группы ВЕРХНЕГО УРОВНЯ, непосредственным ребёнком которой является вкладка. Намеренно не
+// рекурсивна: это сохраняет контракт getTabGroupId(), используемый контекстным меню текущего UI.
+export function findTopLevelGroupId(tabId: string, nodes: SidebarNode[]): string | null {
+  for (const node of nodes) {
+    if (node.type === 'group' && collectDirectGroupTabIds(node).includes(tabId)) return node.id;
+  }
+  return null;
+}
+
 // Порядок верхнего уровня по item-id из renderer. Узел split считается одним элементом по id
 // левой панели, группа — по `group:${id}`: это ровно те ключи, которые рисует sidebar.
 //
