@@ -31,6 +31,34 @@ export function collectTabIds(nodes: SidebarNode[]): string[] {
   return result;
 }
 
+// Порядок верхнего уровня по item-id из renderer. Узел split считается одним элементом по id
+// левой панели, группа — по `group:${id}`: это ровно те ключи, которые рисует sidebar.
+//
+// Команде не доверяем вслепую: неизвестные и повторные id пропускаются, а не упомянутые узлы
+// дописываются в прежнем порядке. Возвращаются ТЕ ЖЕ объекты узлов — меняется только массив;
+// состояние групп и split-пар при drag-and-drop не должно копироваться или пересобираться.
+export function reorderNodes(nodes: SidebarNode[], orderedIds: string[]): SidebarNode[] {
+  const byId = new Map<string, SidebarNode>();
+  for (const node of nodes) {
+    const id = node.type === 'single' ? node.tabId
+      : node.type === 'split-pair' ? node.leftTabId
+        : `group:${node.id}`;
+    byId.set(id, node);
+  }
+
+  const seen = new Set<string>();
+  const finalIds: string[] = [];
+  for (const id of orderedIds) {
+    if (!byId.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    finalIds.push(id);
+  }
+  for (const id of byId.keys()) {
+    if (!seen.has(id)) finalIds.push(id);
+  }
+  return finalIds.map((id) => byId.get(id)!);
+}
+
 // Ищет родительский массив и индекс узла, содержащего tabId (рекурсивно).
 export function findTabParent(
   tabId: string,

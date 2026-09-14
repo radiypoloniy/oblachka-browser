@@ -7,7 +7,7 @@
 //
 // Запуск: npm test -- node-tree
 import {
-  collectTabIds, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
+  collectTabIds, reorderNodes, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
   pruneEmptyGroups, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
@@ -44,6 +44,27 @@ console.log('\n— плоский порядок вкладок —');
   );
   check('collapsed не меняет состав дерева', collectTabIds(nodes).includes('deep-left'), true);
   check('пустое дерево даёт пустой список', collectTabIds([]), []);
+}
+
+console.log('\n— перестановка узлов —');
+{
+  const a = single('a');
+  const split = pair('left', 'right', 0.37);
+  const g = group('g', 'Группа', [single('inside')], { collapsed: true });
+  const b = single('b');
+  const reordered = reorderNodes([a, split, g, b], ['group:g', 'left', 'a', 'b']);
+  check('single, split и группа переставлены по item-id', collectTabIds(reordered), ['inside', 'left', 'right', 'a', 'b']);
+  check('перестановка сохраняет объекты узлов', reordered[0] === g && reordered[1] === split, true);
+}
+{
+  const nodes = [single('a'), single('b'), single('c')];
+  check(
+    'неизвестный и повторный id отброшены, пропущенный узел дописан в прежнем порядке',
+    collectTabIds(reorderNodes(nodes, ['b', 'unknown', 'b'])),
+    ['b', 'a', 'c'],
+  );
+  check('пустая команда сохраняет исходный порядок', collectTabIds(reorderNodes(nodes, [])), ['a', 'b', 'c']);
+  check('пустое дерево остаётся пустым', reorderNodes([], ['a']), []);
 }
 
 console.log('\n— поиск родителя вкладки —');

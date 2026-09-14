@@ -31,7 +31,7 @@ import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTim
 import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
-import { collectTabIds, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
+import { collectTabIds, reorderNodes, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
@@ -2236,29 +2236,7 @@ export class TabManager {
       const byId = new Map(this.pinnedTabs.map((t) => [t.id, t]));
       this.pinnedTabs = final.map((id) => byId.get(id)!);
     } else {
-      // Строим карту itemId → узел (только верхний уровень; внутри групп — отдельный reorder).
-      // SingleNode: itemId=tabId. SplitPairNode: itemId=leftTabId. GroupNode: itemId='group:${id}'.
-      const itemToNode = new Map<string, SidebarNode>();
-      for (const node of this.nodes) {
-        if (node.type === 'single') {
-          itemToNode.set(node.tabId, node);
-        } else if (node.type === 'split-pair') {
-          itemToNode.set(node.leftTabId, node);
-        } else if (node.type === 'group') {
-          itemToNode.set(`group:${node.id}`, node);
-        }
-      }
-
-      const allItemIds = [...itemToNode.keys()];
-      const currentSet = new Set(allItemIds);
-      const valid = orderedIds.filter((id) => currentSet.has(id));
-      const seen = new Set<string>();
-      const deduped = valid.filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
-      const missing = allItemIds.filter((id) => !seen.has(id));
-      const final = [...deduped, ...missing];
-
-      // Реконструируем nodes из итогового порядка item-ID.
-      this.nodes = final.map((id) => itemToNode.get(id)!);
+      this.nodes = reorderNodes(this.nodes, orderedIds);
     }
     this.onChange(); // → TABS_CHANGED немедленно + scheduleSave (debounce 1.5s)
   }
@@ -2643,17 +2621,7 @@ export class TabManager {
     const group = this.#findGroupById(groupId);
     if (!group) return;
     this.clearOrganizeSnapshot();
-    const childMap = new Map<string, SidebarNode>();
-    for (const child of group.children) {
-      if (child.type === 'single')     childMap.set(child.tabId, child);
-      else if (child.type === 'split-pair') childMap.set(child.leftTabId, child);
-      else if (child.type === 'group') childMap.set(`group:${child.id}`, child);
-    }
-    const allIds = [...childMap.keys()];
-    const seen = new Set<string>();
-    const deduped = orderedIds.filter((id) => childMap.has(id) && (seen.has(id) ? false : (seen.add(id), true)));
-    const missing = allIds.filter((id) => !seen.has(id));
-    group.children = [...deduped, ...missing].map((id) => childMap.get(id)!);
+    group.children = reorderNodes(group.children, orderedIds);
     this.onChange();
   }
 
