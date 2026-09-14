@@ -19,6 +19,17 @@ export class SplitPairRegistry implements Iterable<SplitPair> {
     return this.containing(activeId);
   }
 
+  sideOf(tabId: string): 'left' | 'right' | null {
+    const pair = this.containing(tabId);
+    if (!pair) return null;
+    return tabId === pair.leftId ? 'left' : 'right';
+  }
+
+  visibleTabIds(tabId: string): Set<string> {
+    const pair = this.containing(tabId);
+    return pair ? new Set([pair.leftId, pair.rightId]) : new Set([tabId]);
+  }
+
   add(pair: SplitPair): void {
     this.#pairs.push(pair);
   }
@@ -27,6 +38,38 @@ export class SplitPairRegistry implements Iterable<SplitPair> {
     const index = this.#pairs.indexOf(pair);
     if (index === -1) return false;
     this.#pairs.splice(index, 1);
+    return true;
+  }
+
+  replacePanel(pair: SplitPair, panelId: string, newId: string): 'left' | 'right' | null {
+    if (!this.#pairs.includes(pair)) return null;
+    if (panelId === pair.leftId) {
+      pair.leftId = newId;
+      return 'left';
+    }
+    if (panelId === pair.rightId) {
+      pair.rightId = newId;
+      return 'right';
+    }
+    return null;
+  }
+
+  setRatio(pair: SplitPair, ratio: number): boolean {
+    if (!this.#pairs.includes(pair)) return false;
+    pair.splitRatio = ratio;
+    return true;
+  }
+
+  focus(pair: SplitPair, side: 'left' | 'right'): string | null {
+    if (!this.#pairs.includes(pair)) return null;
+    pair.activePanel = side;
+    return side === 'left' ? pair.leftId : pair.rightId;
+  }
+
+  swap(pair: SplitPair): boolean {
+    if (!this.#pairs.includes(pair)) return false;
+    [pair.leftId, pair.rightId] = [pair.rightId, pair.leftId];
+    pair.activePanel = pair.activePanel === 'left' ? 'right' : 'left';
     return true;
   }
 

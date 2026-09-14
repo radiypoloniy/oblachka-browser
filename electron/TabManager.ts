@@ -713,17 +713,13 @@ export class TabManager {
   // обязан уезжать со всего, что скрылось, и возвращаться во всё, что показалось.
   // Хаб вкладкой не является и в множество не попадает — sendPip его и так не знает.
   #visibleTabIds(id: string): Set<string> {
-    const pair = this.#pairContaining(id);
-    if (pair) return new Set([pair.leftId, pair.rightId]);
-    return id && id !== HUB_ID ? new Set([id]) : new Set();
+    return id && id !== HUB_ID ? this.splitPairs.visibleTabIds(id) : new Set();
   }
 
   // Сторона вкладки в СВОЕЙ паре (не в показываемой — TabState.splitSide отражает
   // "я вообще в сплите", парковка на это не влияет, см. Sidebar.tsx).
   #tabSplitSide(id: string): 'left' | 'right' | null {
-    const pair = this.#pairContaining(id);
-    if (!pair) return null;
-    return id === pair.leftId ? 'left' : 'right';
+    return this.splitPairs.sideOf(id);
   }
 
   // Вычисляет SavedActiveRef (v4 формат: 'url' вместо 'normal'/'split').
@@ -2801,12 +2797,13 @@ export class TabManager {
     if (!newTab || (!this.isHttpView(newTab.view) && !newTab.sleeping)) return;
     this.clearOrganizeSnapshot();
 
-    const side: 'left' | 'right' = panelId === pair.leftId ? 'left' : 'right';
+    const side = this.splitPairs.sideOf(panelId);
+    if (!side) return;
     if (newTab.sleeping) this.wakeTab(newId);
 
     replaceSplitPairPanelNode(this.nodes, panelId, newId, side);
 
-    if (side === 'left') pair.leftId = newId; else pair.rightId = newId;
+    this.splitPairs.replacePanel(pair, panelId, newId);
     // ⚠️ activeId переставляем ДО repositionViews: #activePair() ищет пару по activeId, и с
     // прежним (уже выселенным) id пара перестала бы находиться — раскладка на кадр схлопнулась
     // бы в одиночную вкладку.
@@ -2892,7 +2889,7 @@ export class TabManager {
     const pair = this.#activePair();
     if (!pair) return;
     const clamped = clampSplitRatio(ratio);
-    pair.splitRatio = clamped;
+    this.splitPairs.setRatio(pair, clamped);
     // Синхронизируем с SplitPairNode, чтобы следующий сейв взял актуальный ratio.
     const { leftId, rightId } = pair;
     setSplitPairNodeRatio(this.nodes, leftId, rightId, clamped);
@@ -2913,7 +2910,7 @@ export class TabManager {
     if (prevWc) { prevWc.stopFindInPage('clearSelection'); this.lastQuery = ''; }
     this.findBarOpen = false;
 
-    pair.activePanel = side;
+    this.splitPairs.focus(pair, side);
     this.activeId = newId;
     const tab = this.tabMap.get(newId);
     if (tab) tab.lastActiveAt = Date.now();
@@ -3038,9 +3035,7 @@ export class TabManager {
 
     swapSplitPairNode(this.nodes, leftId, rightId);
 
-    pair.leftId  = rightId;
-    pair.rightId = leftId;
-    pair.activePanel = pair.activePanel === 'left' ? 'right' : 'left';
+    this.splitPairs.swap(pair);
 
     if (!shown) { this.onChange(); return; }
 

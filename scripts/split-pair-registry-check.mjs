@@ -48,6 +48,43 @@ console.log('\n— добавление, удаление и восстанов�
   check('объекты восстановленных пар сохранены', registry.containing('d')?.activePanel, 'right');
 }
 
+console.log('\n— runtime-операции пары —');
+{
+  const registry = new SplitPairRegistry();
+  const current = pair('left', 'right', 'left', 0.5);
+  registry.add(current);
+  check('сторона левой панели определена', registry.sideOf('left'), 'left');
+  check('сторона правой панели определена', registry.sideOf('right'), 'right');
+  check('у чужой вкладки стороны нет', registry.sideOf('outside'), null);
+  check('для панели видимы обе половины', [...registry.visibleTabIds('right')], ['left', 'right']);
+  check('для одиночной вкладки видна она сама', [...registry.visibleTabIds('single')], ['single']);
+
+  check('левая панель заменена', registry.replacePanel(current, 'left', 'incoming'), 'left');
+  check('новый id записан в пару', [current.leftId, current.rightId], ['incoming', 'right']);
+  check('не принадлежащая паре панель не заменена', registry.replacePanel(current, 'outside', 'x'), null);
+  check('пара после отказа не изменена', [current.leftId, current.rightId], ['incoming', 'right']);
+
+  check('ratio обновлён', registry.setRatio(current, 0.37), true);
+  check('новый ratio сохранён', current.splitRatio, 0.37);
+  check('фокус переведён вправо и вернул id', registry.focus(current, 'right'), 'right');
+  check('активная сторона обновлена', current.activePanel, 'right');
+
+  check('половины обменяны', registry.swap(current), true);
+  check('id и активная сторона синхронно перевёрнуты', [current.leftId, current.rightId, current.activePanel], ['right', 'incoming', 'left']);
+  check('ratio при обмене остался у слотов', current.splitRatio, 0.37);
+}
+{
+  const registry = new SplitPairRegistry();
+  const foreign = pair('left', 'right');
+  check('чужую пару нельзя изменить через реестр', [
+    registry.replacePanel(foreign, 'left', 'x'),
+    registry.setRatio(foreign, 0.2),
+    registry.focus(foreign, 'right'),
+    registry.swap(foreign),
+  ], [null, false, null, false]);
+  check('чужой объект остался неизменным', foreign, pair('left', 'right'));
+}
+
 console.log('\n— диагностическая сериализация —');
 {
   const registry = new SplitPairRegistry();
