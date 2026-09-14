@@ -205,6 +205,29 @@ export function findGroupById(groupId: string, nodes: SidebarNode[]): GroupNode 
   return null;
 }
 
+// Метаданные группы меняются отдельно от её состава: эти операции не переставляют детей и не
+// затрагивают вкладки. Boolean позволяет владельцу дерева послать onChange только при успехе.
+export function renameGroupNode(groupId: string, label: string, nodes: SidebarNode[]): boolean {
+  const group = findGroupById(groupId, nodes);
+  if (!group) return false;
+  group.label = label.trim() || 'Группа';
+  return true;
+}
+
+export function setGroupNodeColor(groupId: string, color: string | null, nodes: SidebarNode[]): boolean {
+  const group = findGroupById(groupId, nodes);
+  if (!group) return false;
+  group.color = color;
+  return true;
+}
+
+export function toggleGroupNodeCollapse(groupId: string, nodes: SidebarNode[]): boolean {
+  const group = findGroupById(groupId, nodes);
+  if (!group) return false;
+  group.collapsed = !group.collapsed;
+  return true;
+}
+
 // Возвращает родительский массив для группы (или null если группа не найдена).
 export function findGroupParent(groupId: string, nodes: SidebarNode[]): SidebarNode[] | null {
   for (const node of nodes) {

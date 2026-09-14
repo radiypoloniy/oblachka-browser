@@ -31,7 +31,7 @@ import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTim
 import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
-import { collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
+import { collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
@@ -2387,23 +2387,17 @@ export class TabManager {
   }
 
   renameGroup(groupId: string, label: string): void {
-    const group = this.#findGroupById(groupId);
-    if (!group) return;
-    group.label = label.trim() || 'Группа';
+    if (!renameGroupNode(groupId, label, this.nodes)) return;
     this.onChange();
   }
 
   setGroupColor(groupId: string, color: string | null): void {
-    const group = this.#findGroupById(groupId);
-    if (!group) return;
-    group.color = color;
+    if (!setGroupNodeColor(groupId, color, this.nodes)) return;
     this.onChange();
   }
 
   toggleGroupCollapse(groupId: string): void {
-    const group = this.#findGroupById(groupId);
-    if (!group) return;
-    group.collapsed = !group.collapsed;
+    if (!toggleGroupNodeCollapse(groupId, this.nodes)) return;
     this.onChange();
   }
 

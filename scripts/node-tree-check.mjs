@@ -7,7 +7,7 @@
 //
 // Запуск: npm test -- node-tree
 import {
-  collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
+  collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, findGroupParent,
   pruneEmptyGroups, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
@@ -275,6 +275,32 @@ console.log('\n— поиск группы —');
   check('родитель группы верхнего уровня — корень', findGroupParent('g1', nodes) === nodes, true);
   check('родитель вложенной — массив детей внешней', findGroupParent('g2', nodes) === innerChildren, true);
   check('родителя несуществующей нет', findGroupParent('нет', nodes), null);
+}
+
+console.log('\n— метаданные группы —');
+{
+  const nested = group('nested', 'Старое имя', [single('x')], { color: 'blue', collapsed: false });
+  const nodes = [group('outer', 'Внешняя', [nested])];
+  check('вложенная группа переименована', renameGroupNode('nested', '  Новое имя  ', nodes), true);
+  check('пробелы имени убраны', nested.label, 'Новое имя');
+  renameGroupNode('nested', '   ', nodes);
+  check('пустое имя заменено безопасным', nested.label, 'Группа');
+  check('цвет изменён', setGroupNodeColor('nested', 'red', nodes), true);
+  check('новый цвет сохранён', nested.color, 'red');
+  setGroupNodeColor('nested', null, nodes);
+  check('цвет можно сбросить', nested.color, null);
+  check('свёрнутость переключена', toggleGroupNodeCollapse('nested', nodes), true);
+  check('группа действительно свёрнута', nested.collapsed, true);
+  toggleGroupNodeCollapse('nested', nodes);
+  check('повторное переключение раскрывает группу', nested.collapsed, false);
+}
+{
+  const nodes = [group('g', 'Без изменений', [single('x')])];
+  const before = JSON.stringify(nodes);
+  check('несуществующая группа не переименована', renameGroupNode('missing', 'Имя', nodes), false);
+  check('несуществующей группе не задан цвет', setGroupNodeColor('missing', 'red', nodes), false);
+  check('несуществующая группа не свёрнута', toggleGroupNodeCollapse('missing', nodes), false);
+  check('дерево при промахах не изменено', JSON.stringify(nodes), before);
 }
 
 console.log('\n— уборка пустых групп —');
