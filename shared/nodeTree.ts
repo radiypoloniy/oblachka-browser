@@ -83,6 +83,24 @@ export function filterNodesByTab(
   return result;
 }
 
+// Заворачивает узел, содержащий вкладку, в новую группу на том же месте. Если tabId указывает
+// на половину split-пары, группа получает пару ЦЕЛИКОМ: дробить её при обычном DnD нельзя.
+// Меняет переданное дерево на месте и возвращает созданный GroupNode; null — вкладки нет.
+export function wrapTabInGroup(
+  tabId: string,
+  group: Omit<GroupNode, 'type' | 'children'>,
+  nodes: SidebarNode[],
+): GroupNode | null {
+  const found = findTabParent(tabId, nodes);
+  if (!found) return null;
+  const node = found.parent[found.idx];
+  if (node.type === 'group') return null;
+
+  const created: GroupNode = { type: 'group', ...group, children: [node] };
+  found.parent.splice(found.idx, 1, created);
+  return created;
+}
+
 // Ищет родительский массив и индекс узла, содержащего tabId (рекурсивно).
 export function findTabParent(
   tabId: string,

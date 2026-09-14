@@ -7,7 +7,7 @@
 //
 // Запуск: npm test -- node-tree
 import {
-  collectTabIds, reorderNodes, filterNodesByTab, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
+  collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
   pruneEmptyGroups, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
@@ -95,6 +95,42 @@ console.log('\n— фильтрация дерева по вкладкам —')
   const nodes = [group('g', 'Г', [single('a')])];
   check('если нельзя ничего, дерево пусто', filterNodesByTab(nodes, () => false), []);
   check('пустое исходное дерево остаётся пустым', filterNodesByTab([], () => true), []);
+}
+
+console.log('\n— создание группы вокруг вкладки —');
+{
+  const a = single('a');
+  const b = single('b');
+  const nodes = [a, b];
+  const created = wrapTabInGroup('b', {
+    id: 'g', label: 'Новая группа', color: null, collapsed: false,
+  }, nodes);
+  check('single заменён группой на прежнем месте', nodes.map((n) => n.type), ['single', 'group']);
+  check('созданная группа возвращена вызывающему', created === nodes[1], true);
+  check('исходный узел сохранён ребёнком без копирования', created?.children[0] === b, true);
+}
+{
+  const split = pair('left', 'right', 0.37);
+  const nodes = [single('a'), split];
+  const created = wrapTabInGroup('right', {
+    id: 'g', label: 'Пара', color: 'blue', collapsed: true,
+  }, nodes);
+  check('клик по правой половине переносит split целиком', created?.children[0] === split, true);
+  check('ratio и свойства новой группы сохранены', [created?.children[0].ratio, created?.color, created?.collapsed], [0.37, 'blue', true]);
+}
+{
+  const inner = [single('deep')];
+  const nodes = [group('outer', 'Внешняя', inner)];
+  wrapTabInGroup('deep', { id: 'inner', label: 'Внутренняя', color: null, collapsed: false }, nodes);
+  check('вложенная вкладка завёрнута на своём уровне', inner[0].type === 'group' && inner[0].id, 'inner');
+}
+{
+  const nodes = [single('a')];
+  const before = JSON.stringify(nodes);
+  check('несуществующая вкладка не создаёт группу', wrapTabInGroup('missing', {
+    id: 'g', label: 'Г', color: null, collapsed: false,
+  }, nodes), null);
+  check('дерево при промахе не изменено', JSON.stringify(nodes), before);
 }
 
 console.log('\n— поиск родителя вкладки —');

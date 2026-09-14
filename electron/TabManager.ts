@@ -31,7 +31,7 @@ import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTim
 import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
-import { collectTabIds, reorderNodes, filterNodesByTab, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
+import { collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
@@ -2306,16 +2306,11 @@ export class TabManager {
   // Возвращает id созданной группы (или null), чтобы вызывающий мог, например, предложить ей имя
   // моделью (AI-IDEAS.md №5). Прежние void-вызовы значение просто игнорируют.
   createGroup(tabId: string): string | null {
-    const found = this.#findTabParent(tabId);
-    if (!found) return null;
+    const group = wrapTabInGroup(tabId, {
+      id: randomUUID(), label: 'Новая группа', color: null, collapsed: false,
+    }, this.nodes);
+    if (!group) return null;
     this.clearOrganizeSnapshot();
-    const node = found.parent[found.idx];
-    if (node.type === 'group') return null; // группы не вложены (Phase 3) — сюда не попадаем
-    const group: GroupNode = {
-      type: 'group', id: randomUUID(),
-      label: 'Новая группа', color: null, collapsed: false, children: [node],
-    };
-    found.parent.splice(found.idx, 1, group);
     this.onChange();
     return group.id;
   }
