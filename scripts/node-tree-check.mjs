@@ -7,7 +7,7 @@
 //
 // Запуск: npm test -- node-tree
 import {
-  findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
+  collectTabIds, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
   pruneEmptyGroups, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
@@ -26,6 +26,25 @@ const pair = (leftTabId, rightTabId, ratio = 0.5) => ({ type: 'split-pair', left
 const group = (id, label, children, extra = {}) => ({
   type: 'group', id, label, color: null, collapsed: false, children, ...extra,
 });
+
+console.log('\n— плоский порядок вкладок —');
+{
+  const nodes = [
+    single('a'),
+    pair('left', 'right'),
+    group('g1', 'Внешняя', [
+      single('b'),
+      group('g2', 'Внутренняя', [pair('deep-left', 'deep-right')], { collapsed: true }),
+    ]),
+  ];
+  check(
+    'single, обе половины split и вложенные группы идут в визуальном порядке',
+    collectTabIds(nodes),
+    ['a', 'left', 'right', 'b', 'deep-left', 'deep-right'],
+  );
+  check('collapsed не меняет состав дерева', collectTabIds(nodes).includes('deep-left'), true);
+  check('пустое дерево даёт пустой список', collectTabIds([]), []);
+}
 
 console.log('\n— поиск родителя вкладки —');
 {

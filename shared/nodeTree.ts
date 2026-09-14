@@ -13,6 +13,24 @@
 // ⚠️ Значимых импортов тут быть НЕ должно, только типовые — см. ту же причину в shared/sessionTree.ts.
 import type { SidebarNode, GroupNode, SplitPairNode } from './ipc';
 
+// Листовые вкладки в визуальном порядке дерева. Split-пара даёт две вкладки — сначала левую,
+// потом правую; группы раскрываются рекурсивно независимо от collapsed (свёрнутость влияет только
+// на показ строк, а не на состав дерева). Здесь возвращаются id, потому что сами ManagedTab и
+// tabMap принадлежат Electron-слою TabManager.
+export function collectTabIds(nodes: SidebarNode[]): string[] {
+  const result: string[] = [];
+  for (const node of nodes) {
+    if (node.type === 'single') {
+      result.push(node.tabId);
+    } else if (node.type === 'split-pair') {
+      result.push(node.leftTabId, node.rightTabId);
+    } else if (node.type === 'group') {
+      result.push(...collectTabIds(node.children));
+    }
+  }
+  return result;
+}
+
 // Ищет родительский массив и индекс узла, содержащего tabId (рекурсивно).
 export function findTabParent(
   tabId: string,

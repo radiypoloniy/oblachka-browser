@@ -31,7 +31,7 @@ import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTim
 import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
-import { findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
+import { collectTabIds, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
@@ -621,18 +621,9 @@ export class TabManager {
   // Плоский список ManagedTab из дерева узлов (рекурсивный — обходит группы).
   #flattenNodes(nodes: SidebarNode[] = this.nodes): ManagedTab[] {
     const result: ManagedTab[] = [];
-    for (const node of nodes) {
-      if (node.type === 'single') {
-        const t = this.tabMap.get(node.tabId);
-        if (t) result.push(t);
-      } else if (node.type === 'split-pair') {
-        const left = this.tabMap.get(node.leftTabId);
-        const right = this.tabMap.get(node.rightTabId);
-        if (left) result.push(left);
-        if (right) result.push(right);
-      } else if (node.type === 'group') {
-        result.push(...this.#flattenNodes(node.children));
-      }
+    for (const id of collectTabIds(nodes)) {
+      const tab = this.tabMap.get(id);
+      if (tab) result.push(tab);
     }
     return result;
   }
