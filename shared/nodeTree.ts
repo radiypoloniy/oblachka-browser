@@ -101,6 +101,24 @@ export function wrapTabInGroup(
   return created;
 }
 
+// Перемещает узел, содержащий вкладку, в конец указанной группы. Split-пара остаётся одним
+// узлом: обычное добавление вкладки в группу не должно незаметно разрушать split-состояние.
+// Меняет дерево на месте и возвращает false, если вкладка не найдена или указывает на группу.
+export function moveTabNodeToGroup(
+  group: GroupNode,
+  tabId: string,
+  nodes: SidebarNode[],
+): boolean {
+  const found = findTabParent(tabId, nodes);
+  if (!found) return false;
+  const node = found.parent[found.idx];
+  if (node.type === 'group') return false;
+
+  found.parent.splice(found.idx, 1);
+  group.children.push(node);
+  return true;
+}
+
 // Ищет родительский массив и индекс узла, содержащего tabId (рекурсивно).
 export function findTabParent(
   tabId: string,

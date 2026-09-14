@@ -7,7 +7,7 @@
 //
 // Запуск: npm test -- node-tree
 import {
-  collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
+  collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
   pruneEmptyGroups, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
@@ -130,6 +130,40 @@ console.log('\n— создание группы вокруг вкладки —
   check('несуществующая вкладка не создаёт группу', wrapTabInGroup('missing', {
     id: 'g', label: 'Г', color: null, collapsed: false,
   }, nodes), null);
+  check('дерево при промахе не изменено', JSON.stringify(nodes), before);
+}
+
+console.log('\n— перенос вкладки в группу —');
+{
+  const moved = single('a');
+  const target = group('g', 'Группа', [single('inside')]);
+  const nodes = [moved, target, single('b')];
+  check('одиночная вкладка перенесена', moveTabNodeToGroup(target, 'a', nodes), true);
+  check('узел удалён с прежнего места', collectTabIds(nodes), ['inside', 'a', 'b']);
+  check('тот же объект добавлен в конец группы', target.children[1] === moved, true);
+}
+{
+  const split = pair('left', 'right', 0.37);
+  const target = group('g', 'Группа', []);
+  const nodes = [split, target];
+  moveTabNodeToGroup(target, 'right', nodes);
+  check('правая половина переносит split целиком', target.children[0] === split, true);
+  check('порядок половин и ratio сохранены', collectTabIds(target.children), ['left', 'right']);
+  check('доля split сохранена', target.children[0].ratio, 0.37);
+}
+{
+  const first = single('first');
+  const last = single('last');
+  const target = group('g', 'Группа', [first, last]);
+  const nodes = [target];
+  moveTabNodeToGroup(target, 'first', nodes);
+  check('вкладка из той же группы переставлена в конец', target.children, [last, first]);
+}
+{
+  const target = group('g', 'Группа', []);
+  const nodes = [single('a'), target];
+  const before = JSON.stringify(nodes);
+  check('несуществующая вкладка не переносится', moveTabNodeToGroup(target, 'missing', nodes), false);
   check('дерево при промахе не изменено', JSON.stringify(nodes), before);
 }
 

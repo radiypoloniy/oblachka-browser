@@ -31,7 +31,7 @@ import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTim
 import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
-import { collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
+import { collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
@@ -2338,12 +2338,7 @@ export class TabManager {
     const group = this.#findGroupById(groupId);
     if (!group) return;
     this.clearOrganizeSnapshot();
-    const found = this.#findTabParent(tabId);
-    if (!found) return;
-    const node = found.parent[found.idx];
-    if (node.type === 'group') return;
-    found.parent.splice(found.idx, 1);
-    group.children.push(node);
+    if (!moveTabNodeToGroup(group, tabId, this.nodes)) return;
     this.onChange();
   }
 
