@@ -11,6 +11,8 @@ import { closeWindowView } from './viewTeardown';
 import { wirePageContextMenu } from './pageContextMenu';
 import { wireWindowOpenPolicy } from './windowOpenPolicy';
 import type { WindowOpenHost } from './windowOpenPolicy';
+import { SplitPairRegistry } from './SplitPairRegistry';
+import type { SplitPair } from './SplitPairRegistry';
 import type { PageContextMenuHost } from './pageContextMenu';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
 
@@ -90,14 +92,6 @@ interface SleepingMeta {
 // Прямоугольник (селекшена или фоллбэк-точки клика) в координатах ОКНА — уже с добавленным
 // оффсетом view.getBounds(), готов к использованию для позиционирования поповера в main.ts.
 export interface SelectionRect { x: number; y: number; width: number; height: number }
-
-// Элемент коллекции активных split-пар (см. TabManager#splitPairs).
-interface SplitPair {
-  leftId: string;
-  rightId: string;
-  activePanel: 'left' | 'right';
-  splitRatio: number;
-}
 
 interface ManagedTab {
   id: string;
@@ -342,12 +336,10 @@ export class TabManager {
   // человек может по отдельности — вернуть привычные названия, но оставить разложенные группы.
   private renameSnapshot: Map<string, string | undefined> | null = null;
   // Коллекция активных split-пар. splitRatio — доля левой панели (0.2..0.8).
-  // Коммит 3: guard в enterSplit (см. ниже) по-прежнему не пускает вторую пару —
-  // коллекция здесь ради формы модели (готовит почву под несколько одновременных
-  // split), но фактически всегда держит ≤1 элемент, пока guard не снят отдельным
-  // коммитом. "Показываемая сейчас" пара — не отдельное поле, а #activePair():
-  // та единственная пара из коллекции, где activeId — одна из двух панелей.
-  private splitPairs: SplitPair[] = [];
+  // Пар может быть несколько, но показывается только та, где activeId — одна из двух панелей;
+  // остальные припаркованы. Самой коллекцией владеет реестр, чтобы восстановление, добавление и
+  // удаление не расходились по разным вариантам мутации массива.
+  private readonly splitPairs = new SplitPairRegistry();
 
   constructor(
     win: BrowserWindow,
@@ -707,13 +699,13 @@ export class TabManager {
   // в splitPairs, где activeId — одна из двух панелей. Остальные пары (если появятся) —
   // «припаркованы»: существуют в коллекции, но их вьюхи скрыты.
   #activePair(): SplitPair | undefined {
-    return this.splitPairs.find((p) => p.leftId === this.activeId || p.rightId === this.activeId);
+    return this.splitPairs.active(this.activeId);
   }
 
   // Пара, содержащая конкретный tabId (не обязательно показываемая сейчас) — для мест,
   // которым нужно "эта вкладка вообще в какой-то паре", а не "она в показываемой".
   #pairContaining(id: string): SplitPair | undefined {
-    return this.splitPairs.find((p) => p.leftId === id || p.rightId === id);
+    return this.splitPairs.containing(id);
   }
 
   // Какие вкладки ВИДНЫ, когда активна эта. Для одиночной — она сама, для панели split — обе
@@ -830,8 +822,8 @@ export class TabManager {
     this.nodes = buildNodesFromSaved(savedNodes, urlToIds);
     // Регистрируем КАЖДУЮ найденную пару, не только первую: какая окажется показываемой,
     // решает activate(targetId) через #pairContaining, а не порядок здесь.
-    this.splitPairs = collectSplitPairs(this.nodes)
-      .map((p) => ({ leftId: p.leftId, rightId: p.rightId, activePanel: 'left' as const, splitRatio: p.ratio }));
+    this.splitPairs.replace(collectSplitPairs(this.nodes)
+      .map((p) => ({ leftId: p.leftId, rightId: p.rightId, activePanel: 'left' as const, splitRatio: p.ratio })));
   }
 
   // DBG: проверяет, что каждый SplitPairNode в дереве ссылается на существующие tabMap-записи.
@@ -1160,7 +1152,7 @@ export class TabManager {
           // общий блок ниже (#findTabParent(id)) уберёт SingleNode самого id, останется
           // только otherId, как и раньше. Активную пару (если есть другая) не трогаем.
           this.#dissolveSplitPair(pair.leftId, pair.rightId);
-          this.splitPairs = this.splitPairs.filter((p) => p !== pair);
+          this.splitPairs.remove(pair);
         }
       }
       // Теперь id гарантированно в SingleNode — убираем из nodes (рекурсивно, если в группе).
@@ -2027,7 +2019,7 @@ export class TabManager {
         // общий блок ниже (#findTabParent(id)) уберёт SingleNode самой закрываемой вкладки,
         // останется только otherId. Другие пары (если есть) не трогаем.
         this.#dissolveSplitPair(leftId, rightId);
-        this.splitPairs = this.splitPairs.filter((p) => p !== closingPair);
+        this.splitPairs.remove(closingPair);
       }
     }
 
@@ -2663,7 +2655,7 @@ export class TabManager {
     // ⚠️ activePanel обязан указывать на сторону АКТИВНОЙ вкладки, а не всегда на левую:
     // activeId остаётся anchorId, и разъедься эти двое — Ctrl-переключение панелей и выход из
     // сплита без keepId начнут врать (тот же инвариант, что сторожит комментарий у #activePair).
-    this.splitPairs.push({
+    this.splitPairs.add({
       leftId, rightId, splitRatio: 0.5,
       activePanel: anchorId === leftId ? 'left' : 'right',
     });
@@ -2715,7 +2707,7 @@ export class TabManager {
       // текущий показ не трогаем — её вьюхи уже скрыты с момента парковки, activeId в этой
       // паре не участвует (иначе она была бы #activePair()).
       this.#dissolveSplitPair(leftId, rightId);
-      this.splitPairs = this.splitPairs.filter((p) => p !== pair);
+      this.splitPairs.remove(pair);
       this.onChange();
       return;
     }
@@ -2723,7 +2715,7 @@ export class TabManager {
     // Показываемая пара — прежняя логика без изменений (фокус/видимость/bounds).
     // Всегда разворачиваем SplitPairNode → два SingleNode (до удаления пары из коллекции).
     this.#dissolveSplitPair(leftId, rightId);
-    this.splitPairs = this.splitPairs.filter((p) => p !== pair);
+    this.splitPairs.remove(pair);
 
     const stayId = keepId ?? (activePanel === 'left' ? leftId : rightId);
     const hideId = stayId === leftId ? rightId : leftId;
