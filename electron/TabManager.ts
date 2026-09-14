@@ -31,6 +31,7 @@ import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTim
 import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
+import { buildOrganizedTree } from '../shared/organizeTree';
 import { collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
@@ -3896,44 +3897,9 @@ export class TabManager {
   applyOrganize(clusters: import('../shared/ipc').OrganizeCluster[]): void {
     if (clusters.length === 0) return;
 
-    // Глубокая копия через JSON: SidebarNode сериализуем по определению.
-    this.organizeSnapshot = JSON.parse(JSON.stringify(this.nodes)) as SidebarNode[];
-
-    const toGroup = new Set<string>();
-    for (const c of clusters) for (const id of c.nodeIds) toGroup.add(id);
-
-    // Узлы, не входящие ни в одну предложенную группу, остаются на верхнем уровне.
-    const remaining: SidebarNode[] = this.nodes.filter((node) => {
-      if (node.type === 'single')     return !toGroup.has(node.tabId);
-      if (node.type === 'split-pair') return !toGroup.has(node.leftTabId);
-      return true; // существующие GroupNode — не трогаем
-    });
-
-    // Строим новые GroupNode по предложениям кластеризации.
-    const newGroups: GroupNode[] = [];
-    for (const c of clusters) {
-      const children: SidebarNode[] = [];
-      for (let i = 0; i < c.nodeIds.length; i++) {
-        const nodeId = c.nodeIds[i]!;
-        const ntype  = c.nodeTypes[i]!;
-        if (ntype === 'single') {
-          children.push({ type: 'single', tabId: nodeId });
-        } else {
-          // split-pair: берём оригинальный узел чтобы сохранить ratio
-          const orig = (this.organizeSnapshot as SidebarNode[]).find(
-            (n): n is SplitPairNode => n.type === 'split-pair' && n.leftTabId === nodeId,
-          );
-          if (orig) children.push({ ...orig });
-        }
-      }
-      if (children.length === 0) continue;
-      newGroups.push({
-        type: 'group', id: randomUUID(),
-        label: c.label, color: null, collapsed: true, children,
-      });
-    }
-
-    this.nodes = [...remaining, ...newGroups];
+    const organized = buildOrganizedTree(this.nodes, clusters, randomUUID);
+    this.organizeSnapshot = organized.snapshot;
+    this.nodes = organized.nodes;
 
     // Инвариант: каждый таб в tabMap должен присутствовать ровно один раз.
     const flatCount = this.#flattenNodes().length;
