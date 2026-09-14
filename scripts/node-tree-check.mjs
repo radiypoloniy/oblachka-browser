@@ -8,7 +8,7 @@
 // Запуск: npm test -- node-tree
 import {
   collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, findGroupParent,
-  pruneEmptyGroups, insertSplitPairAt, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
+  pruneEmptyGroups, insertSplitPairAt, replaceSplitPairPanelNode, setSplitPairNodeRatio, swapSplitPairNode, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
 let passed = 0;
@@ -379,6 +379,48 @@ console.log('\n— создание split-узла в дереве —');
   insertSplitPairAt(nodes, anchor, moved, 'moved', split);
   check('пара может занять место якоря внутри группы', collectTabIds(targetGroup.children), ['anchor', 'moved', 'inside']);
   check('приводимый корневой узел удалён', collectTabIds(nodes), ['anchor', 'moved', 'inside', 'after']);
+}
+
+console.log('\n— синхронизация split-узла —');
+{
+  const split = pair('left', 'right', 0.37);
+  const nodes = [split, single('incoming'), single('after')];
+  check('левая панель заменена', replaceSplitPairPanelNode(nodes, 'left', 'incoming', 'left'), true);
+  check('входящая вкладка заняла сторону пары', [split.leftTabId, split.rightTabId], ['incoming', 'right']);
+  check('выселенная вкладка стала single сразу после пары', nodes.slice(0, 3).map((n) => n.type === 'single' ? n.tabId : 'pair'), ['pair', 'left', 'after']);
+  check('ratio при замене не изменён', split.ratio, 0.37);
+}
+{
+  const split = pair('left', 'right');
+  const source = group('source', 'Источник', [single('incoming')]);
+  const target = group('target', 'Цель', [split, single('inside')]);
+  const nodes = [source, target];
+  replaceSplitPairPanelNode(nodes, 'right', 'incoming', 'right');
+  check('вкладка из другой группы заменяет правую панель', [split.leftTabId, split.rightTabId], ['left', 'incoming']);
+  check('опустевшая исходная группа удалена', findGroupById('source', nodes), null);
+  check('выселенная вкладка остаётся внутри родителя пары', collectTabIds(target.children), ['left', 'incoming', 'right', 'inside']);
+}
+{
+  const nodes = [single('incoming')];
+  check('потерянный узел пары сообщает об отказе', replaceSplitPairPanelNode(nodes, 'evicted', 'incoming', 'left'), false);
+  check('выселенная вкладка при отказе возвращена в корень', collectTabIds(nodes), ['evicted']);
+}
+{
+  const split = pair('left', 'right', 0.5);
+  const nodes = [group('g', 'Группа', [split])];
+  check('ratio вложенной пары обновлён', setSplitPairNodeRatio(nodes, 'left', 'right', 0.7), true);
+  check('новый ratio сохранён в узле', split.ratio, 0.7);
+  check('обратная ориентация не считается той же парой', setSplitPairNodeRatio(nodes, 'right', 'left', 0.2), false);
+  check('ratio при несовпадении не изменён', split.ratio, 0.7);
+}
+{
+  const split = pair('left', 'right', 0.37);
+  const nodes = [group('g', 'Группа', [split])];
+  check('вложенная пара обменяна', swapSplitPairNode(nodes, 'left', 'right'), true);
+  check('стороны поменялись местами', [split.leftTabId, split.rightTabId], ['right', 'left']);
+  check('ratio относится к слотам и не перевёрнут', split.ratio, 0.37);
+  check('повтор со старой ориентацией отклонён', swapSplitPairNode(nodes, 'left', 'right'), false);
+  check('дерево после отказа не изменено', [split.leftTabId, split.rightTabId], ['right', 'left']);
 }
 
 console.log('\n— роспуск пары —');

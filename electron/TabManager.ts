@@ -32,7 +32,7 @@ import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
 import { buildOrganizedTree } from '../shared/organizeTree';
-import { collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, pruneEmptyGroups, insertSplitPairAt, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
+import { collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, pruneEmptyGroups, insertSplitPairAt, replaceSplitPairPanelNode, setSplitPairNodeRatio, swapSplitPairNode, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
@@ -2812,23 +2812,7 @@ export class TabManager {
     const side: 'left' | 'right' = panelId === pair.leftId ? 'left' : 'right';
     if (newTab.sleeping) this.wakeTab(newId);
 
-    // Дерево: приводимую вынимаем из её места (пустая папка после этого исчезает — тот же
-    // приём, что в enterSplit), выселенную кладём сразу за узлом пары.
-    const movedParent = this.#findTabParent(newId);
-    if (movedParent && movedParent.parent[movedParent.idx]?.type === 'single') {
-      movedParent.parent.splice(movedParent.idx, 1);
-      this.#pruneEmptyGroups(this.nodes);
-    }
-    const pairNode = this.#findTabParent(panelId);
-    const node = pairNode ? pairNode.parent[pairNode.idx] : undefined;
-    if (pairNode && node?.type === 'split-pair') {
-      if (side === 'left') node.leftTabId = newId; else node.rightTabId = newId;
-      pairNode.parent.splice(pairNode.idx + 1, 0, { type: 'single', tabId: panelId });
-    } else {
-      // Узел пары не нашёлся — быть такого не должно, но выселенная вкладка не имеет права
-      // пропасть из списка: она жива, и без узла до неё нельзя было бы добраться вовсе.
-      this.nodes.push({ type: 'single', tabId: panelId });
-    }
+    replaceSplitPairPanelNode(this.nodes, panelId, newId, side);
 
     if (side === 'left') pair.leftId = newId; else pair.rightId = newId;
     // ⚠️ activeId переставляем ДО repositionViews: #activePair() ищет пару по activeId, и с
@@ -2919,13 +2903,7 @@ export class TabManager {
     pair.splitRatio = clamped;
     // Синхронизируем с SplitPairNode, чтобы следующий сейв взял актуальный ratio.
     const { leftId, rightId } = pair;
-    const found = this.#findTabParent(leftId);
-    if (found) {
-      const node = found.parent[found.idx];
-      if (node.type === 'split-pair' && node.leftTabId === leftId && node.rightTabId === rightId) {
-        node.ratio = clamped;
-      }
-    }
+    setSplitPairNodeRatio(this.nodes, leftId, rightId, clamped);
     this.repositionViews();
   }
 
@@ -3066,12 +3044,7 @@ export class TabManager {
     const drag = this.panelDrag;
     this.panelDrag = null;
 
-    const found = this.#findTabParent(leftId);
-    const node = found ? found.parent[found.idx] : null;
-    if (node && node.type === 'split-pair' && node.leftTabId === leftId && node.rightTabId === rightId) {
-      node.leftTabId  = rightId;
-      node.rightTabId = leftId;
-    }
+    swapSplitPairNode(this.nodes, leftId, rightId);
 
     pair.leftId  = rightId;
     pair.rightId = leftId;

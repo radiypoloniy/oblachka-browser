@@ -308,6 +308,64 @@ export function insertSplitPairAt(
   target.splice(0, target.length, ...reordered);
 }
 
+// Заменяет одну панель пары обычной вкладкой: входящая исчезает со старого места, выселенная
+// становится single сразу после пары. Если узел пары потерян, выселенную всё равно возвращаем в
+// корень — живая вкладка не должна стать недоступной из сайдбара.
+export function replaceSplitPairPanelNode(
+  nodes: SidebarNode[],
+  panelId: string,
+  newId: string,
+  side: 'left' | 'right',
+): boolean {
+  const incoming = findTabParent(newId, nodes);
+  if (incoming && incoming.parent[incoming.idx]?.type === 'single') {
+    incoming.parent.splice(incoming.idx, 1);
+    pruneEmptyGroups(nodes);
+  }
+
+  const found = findTabParent(panelId, nodes);
+  const node = found ? found.parent[found.idx] : undefined;
+  if (found && node?.type === 'split-pair') {
+    if (side === 'left') node.leftTabId = newId;
+    else node.rightTabId = newId;
+    found.parent.splice(found.idx + 1, 0, { type: 'single', tabId: panelId });
+    return true;
+  }
+
+  nodes.push({ type: 'single', tabId: panelId });
+  return false;
+}
+
+// Синхронизация runtime-доли с узлом дерева. Ориентацию проверяем целиком: совпадения только по
+// leftId недостаточно, иначе повреждённая или уже заменённая пара получила бы чужой ratio.
+export function setSplitPairNodeRatio(
+  nodes: SidebarNode[],
+  leftId: string,
+  rightId: string,
+  ratio: number,
+): boolean {
+  const found = findTabParent(leftId, nodes);
+  const node = found ? found.parent[found.idx] : undefined;
+  if (!node || node.type !== 'split-pair' || node.leftTabId !== leftId || node.rightTabId !== rightId) {
+    return false;
+  }
+  node.ratio = ratio;
+  return true;
+}
+
+// Меняет панели местами только в каноническом узле дерева; ratio относится к слотам и остаётся
+// прежним. Runtime-пару и activePanel синхронно обновляет владелец после успеха своей валидации.
+export function swapSplitPairNode(nodes: SidebarNode[], leftId: string, rightId: string): boolean {
+  const found = findTabParent(leftId, nodes);
+  const node = found ? found.parent[found.idx] : undefined;
+  if (!node || node.type !== 'split-pair' || node.leftTabId !== leftId || node.rightTabId !== rightId) {
+    return false;
+  }
+  node.leftTabId = rightId;
+  node.rightTabId = leftId;
+  return true;
+}
+
 // Заменяет SplitPairNode двумя SingleNode — рекурсивный поиск (пара может быть в группе).
 // Меняет массив на месте, возвращает true, если пара найдена.
 export function dissolveSplitPair(leftId: string, rightId: string, nodes: SidebarNode[]): boolean {
