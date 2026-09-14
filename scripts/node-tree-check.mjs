@@ -7,7 +7,7 @@
 //
 // Запуск: npm test -- node-tree
 import {
-  collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
+  collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
   pruneEmptyGroups, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
@@ -164,6 +164,46 @@ console.log('\n— перенос вкладки в группу —');
   const nodes = [single('a'), target];
   const before = JSON.stringify(nodes);
   check('несуществующая вкладка не переносится', moveTabNodeToGroup(target, 'missing', nodes), false);
+  check('дерево при промахе не изменено', JSON.stringify(nodes), before);
+}
+
+console.log('\n— извлечение вкладки из группы —');
+{
+  const moved = single('x');
+  const target = group('g', 'Группа', [moved, single('y')]);
+  const nodes = [single('a'), target, single('b')];
+  check('одиночная вкладка извлечена', removeTabNodeFromGroup(target, 'x', nodes), true);
+  check('она поставлена сразу после непустой группы', collectTabIds(nodes), ['a', 'y', 'x', 'b']);
+  check('исходный объект узла сохранён', nodes[2] === moved, true);
+}
+{
+  const split = pair('left', 'right', 0.37);
+  const target = group('g', 'Группа', [split, single('inside')]);
+  const nodes = [target, single('after')];
+  removeTabNodeFromGroup(target, 'right', nodes);
+  check('правая половина извлекает split целиком', nodes[1] === split, true);
+  check('порядок половин и ratio сохранены', [nodes[1].leftTabId, nodes[1].rightTabId, nodes[1].ratio], ['left', 'right', 0.37]);
+}
+{
+  const only = single('only');
+  const target = group('g', 'Группа', [only]);
+  const nodes = [single('before'), target, single('after')];
+  removeTabNodeFromGroup(target, 'only', nodes);
+  check('опустевшая группа распущена', findGroupById('g', nodes), null);
+  check('единственный ребёнок возвращён в конец корня', collectTabIds(nodes), ['before', 'after', 'only']);
+}
+{
+  const target = group('inner', 'Внутренняя', [single('x'), single('y')]);
+  const outer = group('outer', 'Внешняя', [single('before'), target, single('after')]);
+  const nodes = [outer];
+  removeTabNodeFromGroup(target, 'x', nodes);
+  check('из вложенной группы узел встаёт после неё на том же уровне', collectTabIds(outer.children), ['before', 'y', 'x', 'after']);
+}
+{
+  const target = group('g', 'Группа', [single('x')]);
+  const nodes = [target];
+  const before = JSON.stringify(nodes);
+  check('непрямой или отсутствующий ребёнок не извлекается', removeTabNodeFromGroup(target, 'missing', nodes), false);
   check('дерево при промахе не изменено', JSON.stringify(nodes), before);
 }
 

@@ -31,7 +31,7 @@ import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTim
 import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
-import { collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
+import { collectTabIds, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
@@ -646,10 +646,6 @@ export class TabManager {
 
   #findGroupById(groupId: string, nodes: SidebarNode[] = this.nodes): GroupNode | null {
     return findGroupById(groupId, nodes);
-  }
-
-  #findGroupParent(groupId: string, nodes: SidebarNode[] = this.nodes): SidebarNode[] | null {
-    return findGroupParent(groupId, nodes);
   }
 
   // URL вкладки: из sleeping-метаданных или из живого WebContents.
@@ -2348,22 +2344,7 @@ export class TabManager {
     const group = this.#findGroupById(groupId);
     if (!group) return;
     this.clearOrganizeSnapshot();
-    const childIdx = group.children.findIndex((c) =>
-      (c.type === 'single' && c.tabId === tabId) ||
-      (c.type === 'split-pair' && (c.leftTabId === tabId || c.rightTabId === tabId)),
-    );
-    if (childIdx === -1) return;
-    const [node] = group.children.splice(childIdx, 1);
-    if (group.children.length === 0) {
-      // Пустая группа — расформировываем.
-      this.#disbandGroupIn(groupId, this.nodes);
-      this.nodes.push(node);
-    } else {
-      // Вставляем после группы в её родительском массиве.
-      const groupParent = this.#findGroupParent(groupId) ?? this.nodes;
-      const gi = groupParent.findIndex((n) => n.type === 'group' && (n as GroupNode).id === groupId);
-      groupParent.splice(gi + 1, 0, node);
-    }
+    if (!removeTabNodeFromGroup(group, tabId, this.nodes)) return;
     this.onChange();
   }
 
@@ -2429,12 +2410,8 @@ export class TabManager {
   // Расформировывает группу: дети выносятся на место группы в родительском массиве.
   disbandGroup(groupId: string): void {
     this.clearOrganizeSnapshot();
-    this.#disbandGroupIn(groupId, this.nodes);
+    disbandGroup(groupId, this.nodes);
     this.onChange();
-  }
-
-  #disbandGroupIn(groupId: string, nodes: SidebarNode[]): boolean {
-    return disbandGroup(groupId, nodes);
   }
 
   // {url,title} каждой листовой вкладки группы (рекурсивно, split-pair — обе половины) — для

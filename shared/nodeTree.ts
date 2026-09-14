@@ -119,6 +119,35 @@ export function moveTabNodeToGroup(
   return true;
 }
 
+// Вынимает из группы узел, содержащий вкладку, и ставит его сразу после группы. Если это был
+// последний ребёнок, пустая группа распускается, а узел возвращается на верхний уровень — это
+// прежняя семантика TabManager, которую перенос сохраняет без изменений. Split-пара выходит
+// целиком. Возвращает false, если прямого ребёнка с таким tabId в группе нет.
+export function removeTabNodeFromGroup(
+  group: GroupNode,
+  tabId: string,
+  nodes: SidebarNode[],
+): boolean {
+  const childIdx = group.children.findIndex((child) =>
+    (child.type === 'single' && child.tabId === tabId) ||
+    (child.type === 'split-pair' && (child.leftTabId === tabId || child.rightTabId === tabId)),
+  );
+  if (childIdx === -1) return false;
+
+  const [node] = group.children.splice(childIdx, 1);
+  if (group.children.length === 0) {
+    disbandGroup(group.id, nodes);
+    nodes.push(node);
+  } else {
+    const groupParent = findGroupParent(group.id, nodes) ?? nodes;
+    const groupIdx = groupParent.findIndex((candidate) =>
+      candidate.type === 'group' && candidate.id === group.id,
+    );
+    groupParent.splice(groupIdx + 1, 0, node);
+  }
+  return true;
+}
+
 // Ищет родительский массив и индекс узла, содержащего tabId (рекурсивно).
 export function findTabParent(
   tabId: string,
