@@ -31,7 +31,7 @@ import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTim
 import { prepareSleepUnload } from './tabSleepIndex';
 import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
-import { collectTabIds, reorderNodes, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
+import { collectTabIds, reorderNodes, filterNodesByTab, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
@@ -775,25 +775,10 @@ export class TabManager {
    * и обязано остаться целым, иначе переключение обратно вернуло бы пустоту.
    */
   #nodesOfActiveProfile(nodes: SidebarNode[]): SidebarNode[] {
-    const out: SidebarNode[] = [];
-    for (const node of nodes) {
-      if (node.type === 'single') {
-        const t = this.tabMap.get(node.tabId);
-        if (t && this.#inActiveProfile(t)) out.push(node);
-        continue;
-      }
-      if (node.type === 'split-pair') {
-        const l = this.tabMap.get(node.leftTabId);
-        const r = this.tabMap.get(node.rightTabId);
-        // Половина пары в чужом профиле — показывать половину сплита нечестно: пара
-        // существует только целиком. Обе наши — берём, иначе пропускаем.
-        if (l && r && this.#inActiveProfile(l) && this.#inActiveProfile(r)) out.push(node);
-        continue;
-      }
-      const children = this.#nodesOfActiveProfile(node.children);
-      if (children.length > 0) out.push({ ...node, children });
-    }
-    return out;
+    return filterNodesByTab(nodes, (tabId) => {
+      const tab = this.tabMap.get(tabId);
+      return !!tab && this.#inActiveProfile(tab);
+    });
   }
 
   // Структурированный снимок для сериализации (рекурсивный — поддерживает группы).

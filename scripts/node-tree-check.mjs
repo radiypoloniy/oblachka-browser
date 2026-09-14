@@ -7,7 +7,7 @@
 //
 // Запуск: npm test -- node-tree
 import {
-  collectTabIds, reorderNodes, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
+  collectTabIds, reorderNodes, filterNodesByTab, findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
   pruneEmptyGroups, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
@@ -65,6 +65,36 @@ console.log('\n— перестановка узлов —');
   );
   check('пустая команда сохраняет исходный порядок', collectTabIds(reorderNodes(nodes, [])), ['a', 'b', 'c']);
   check('пустое дерево остаётся пустым', reorderNodes([], ['a']), []);
+}
+
+console.log('\n— фильтрация дерева по вкладкам —');
+{
+  const own = single('own');
+  const ownPair = pair('own-left', 'own-right', 0.4);
+  const foreignPair = pair('own-half', 'foreign-half', 0.6);
+  const visibleGroup = group('visible', 'Можно видеть', [single('foreign'), single('nested-own')]);
+  const secretGroup = group('secret', 'Скрытое имя', [single('secret-tab')]);
+  const nested = group('outer', 'Внешняя', [
+    group('inner', 'Внутренняя', [single('deep-own'), single('deep-foreign')]),
+  ]);
+  const source = [own, ownPair, foreignPair, visibleGroup, secretGroup, nested];
+  const allowed = new Set(['own', 'own-left', 'own-right', 'own-half', 'nested-own', 'deep-own']);
+  const filtered = filterNodesByTab(source, (id) => allowed.has(id));
+
+  check(
+    'чужие single и неполная split-пара скрыты, целая пара сохранена',
+    collectTabIds(filtered),
+    ['own', 'own-left', 'own-right', 'nested-own', 'deep-own'],
+  );
+  check('пустая группа не выдаёт своё имя', findGroupById('secret', filtered), null);
+  check('непустая вложенная группа сохраняет путь к разрешённой вкладке', findGroupById('inner', filtered)?.children.length, 1);
+  check('single и целая split-пара сохраняют идентичность', filtered[0] === own && filtered[1] === ownPair, true);
+  check('исходное дерево и дети групп не мутируют', visibleGroup.children.length === 2 && source.length === 6, true);
+}
+{
+  const nodes = [group('g', 'Г', [single('a')])];
+  check('если нельзя ничего, дерево пусто', filterNodesByTab(nodes, () => false), []);
+  check('пустое исходное дерево остаётся пустым', filterNodesByTab([], () => true), []);
 }
 
 console.log('\n— поиск родителя вкладки —');

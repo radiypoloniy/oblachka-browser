@@ -59,6 +59,30 @@ export function reorderNodes(nodes: SidebarNode[], orderedIds: string[]): Sideba
   return finalIds.map((id) => byId.get(id)!);
 }
 
+// Копия дерева только с разрешёнными вкладками. Нужна границе профилей: renderer не должен
+// увидеть ни вкладку другого профиля, ни имя группы, которая после фильтра стала пустой.
+//
+// Split-пара существует только целиком — если запрещена или отсутствует хотя бы одна половина,
+// не показываем обе. Одиночные узлы и целые пары сохраняют идентичность; GroupNode копируется,
+// потому что его children фильтруются, а исходное дерево владельца менять нельзя.
+export function filterNodesByTab(
+  nodes: SidebarNode[],
+  includeTab: (tabId: string) => boolean,
+): SidebarNode[] {
+  const result: SidebarNode[] = [];
+  for (const node of nodes) {
+    if (node.type === 'single') {
+      if (includeTab(node.tabId)) result.push(node);
+    } else if (node.type === 'split-pair') {
+      if (includeTab(node.leftTabId) && includeTab(node.rightTabId)) result.push(node);
+    } else {
+      const children = filterNodesByTab(node.children, includeTab);
+      if (children.length > 0) result.push({ ...node, children });
+    }
+  }
+  return result;
+}
+
 // Ищет родительский массив и индекс узла, содержащего tabId (рекурсивно).
 export function findTabParent(
   tabId: string,
