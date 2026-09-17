@@ -14,6 +14,7 @@ import GeneralSection from './settings/GeneralSection';
 import PermissionsSection from './settings/PermissionsSection';
 import AppearanceSection from './settings/AppearanceSection';
 import ProfilesSection from './settings/ProfilesSection';
+import { useLanguage } from '../i18n';
 import RulesSection from './settings/RulesSection';
 import HelpSection from './settings/HelpSection';
 import { useRubberBand } from '../rubberBand';
@@ -110,6 +111,7 @@ const PLAIN_SECTION: Partial<Record<SectionId, ComponentType>> = {
 const FIRST_SECTION = NAV_ITEMS[0].id as SectionId;
 
 export default function Settings({ onClose, defaultSection, onOpenImport, onSectionChange }: SettingsProps) {
+  const { t } = useLanguage();
   // Пружинистая отдача на краях прокрутки — своя, платформа такого не даёт.
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useRubberBand(scrollRef);
@@ -274,7 +276,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
               if (e.key === 'Enter' && hits[0]) openHit(hits[0]);
               if (e.key === 'Escape') setQuery('');
             }}
-            placeholder="Поиск по настройкам"
+            placeholder={t('Поиск по настройкам')}
             style={{
               width: '100%', boxSizing: 'border-box',
               padding: '7px 10px 7px 30px', borderRadius: 'var(--radius-sm)',
@@ -303,10 +305,10 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
                   <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
-                    {entry.label}
+                    {t(entry.label)}
                   </span>
                   <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
-                    {entry.sectionLabel}
+                    {t(entry.sectionLabel)}
                   </span>
                 </button>
               ))}
@@ -318,12 +320,12 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
                   padding: '6px 9px', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
                 }}>
                   <Sparkles size={12} />
-                  {smartWorking ? 'Ищу по смыслу…' : 'Найдено по смыслу'}
+                  {smartWorking ? t('Ищу по смыслу…') : t('Найдено по смыслу')}
                 </div>
               )}
               {!hits.length && !smartWorking && (
                 <div style={{ padding: '10px 9px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-                  Ничего не нашлось
+                  {t('Ничего не нашлось')}
                 </div>
               )}
             </div>
@@ -355,14 +357,14 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
               {/* Надпись группы — тот же приём, что держит группы в сайдбаре: моноширинная
                   капса, а не жирная строка. Она обязана быть ТИШЕ пунктов, которые называет. */}
               {group && (
-                <div style={{ ...CAPS, padding: `${sp(4)}px ${sp(3)}px ${sp(1)}px` }}>{group}</div>
+                <div style={{ ...CAPS, padding: `${sp(4)}px ${sp(3)}px ${sp(1)}px` }}>{t(group)}</div>
               )}
               <button
                 className="settings-nav-item"
                 disabled={!!soon}
                 onClick={() => { if (!soon) goToSection(id as SectionId); }}
-                title={label}
-                aria-label={label}
+                title={t(label)}
+                aria-label={t(label)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: sp(3),
                   padding: pad(3), borderRadius: RADIUS.control, border: 'none',
@@ -399,7 +401,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
                 }}>
                   <Icon size={18} strokeWidth={active ? 2.2 : 1.9} />
                 </span>
-                <span className="settings-nav-label">{label}</span>
+                <span className="settings-nav-label">{t(label)}</span>
                 {/* ⚠️ Точка тона раздела. Раздел узнаётся по цвету ДО клика — то же, что делает
                     цветная шапка, но заранее: глаз запоминает «блокировка оранжевая» и в
                     следующий раз идёт к ней, не читая подписи. Показываем только у НЕактивного:
@@ -412,7 +414,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
                 )}
                 {soon && (
                   <span className="settings-nav-badge" style={{ marginLeft: 'auto', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontWeight: 400 }}>
-                    скоро
+                    {t('скоро')}
                   </span>
                 )}
               </button>

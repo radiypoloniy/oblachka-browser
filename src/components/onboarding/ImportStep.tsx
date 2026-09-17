@@ -5,6 +5,7 @@ import BrowserLogo from '../BrowserLogo';
 import FirefoxPasswordPrompt from '../FirefoxPasswordPrompt';
 import { islandPlate } from '../../styles/island';
 import { Muted, resultLine, TYPE_LABELS, bigGhost } from './parts';
+import { useLanguage } from '../../i18n';
 
 /**
  * Тело шага переноса данных из другого браузера.
@@ -33,12 +34,13 @@ export function ImportStep({
   setPrimaryPassword: (v: string) => void;
   handleRun: () => void;
 }) {
+  const { language, t } = useLanguage();
   return (
         <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: sp(3) }}>
           {sources === null ? (
-            <Muted>Ищем браузеры на компьютере…</Muted>
+            <Muted>{t('Ищем браузеры на компьютере…')}</Muted>
           ) : sources.length === 0 ? (
-            <Muted>Других браузеров с данными не нашлось — переносить нечего.</Muted>
+            <Muted>{t('Других браузеров с данными не нашлось — переносить нечего.')}</Muted>
           ) : (
             <>
               {/* ⚠️ ШИРОКИЕ СТРОКИ ВО ВСЮ ШИРИНУ, а не квадратные марки по центру. Прежние
@@ -46,7 +48,7 @@ export function ImportStep({
                   правая половина выглядела незаполненной, а сам выбор — мелким. Строка даёт
                   место для того, что человеку и нужно знать, — что именно переедет и сколько
                   записей. */}
-              <span style={{ ...CAPS }}>Нашли на этом компьютере</span>
+              <span style={{ ...CAPS }}>{t('Нашли на этом компьютере')}</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
                 {sources.map((source) => {
                   const active = source.id === selectedId;
@@ -73,7 +75,7 @@ export function ImportStep({
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>{source.label}</span>
                         <span style={{ display: 'block', ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) }}>
-                          {source.dataTypes.map((t) => TYPE_LABELS[t].toLowerCase()).join(', ')}
+                          {source.dataTypes.map((type) => t(TYPE_LABELS[type]).toLowerCase()).join(', ')}
                         </span>
                       </span>
                       <span style={{
@@ -93,7 +95,7 @@ export function ImportStep({
                   из браузеров, хотя относятся к ВЫБРАННОМУ. */}
               {selected && !report && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2), marginTop: sp(2) }}>
-                  <span style={{ ...CAPS }}>Что перенести</span>
+                  <span style={{ ...CAPS }}>{t('Что перенести')}</span>
                   <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
                     {selected.dataTypes.map((type) => {
                       const on = checked.has(type);
@@ -112,7 +114,7 @@ export function ImportStep({
                           }}
                         >
                           {on && <Check size={14} strokeWidth={3} />}
-                          {TYPE_LABELS[type]}
+                          {t(TYPE_LABELS[type])}
                         </button>
                       );
                     })}
@@ -127,7 +129,7 @@ export function ImportStep({
                 }}>
                   {(Object.keys(report) as ImportDataType[]).map((type) => (
                     <div key={type} style={{ ...TEXT.body, color: 'var(--text-body)' }}>
-                      ✅ {resultLine(type, report[type] ?? null)}
+                      ✅ {resultLine(type, report[type] ?? null, language)}
                     </div>
                   ))}
                 </div>
@@ -154,9 +156,15 @@ export function ImportStep({
                   display: 'flex', flexDirection: 'column', gap: sp(3),
                 }}>
                   <span style={{ ...TEXT.body, color: 'var(--text-body)', lineHeight: 1.5 }}>
-                    Пароли современного Chrome зашифрованы и напрямую не переносятся. Экспортируйте
-                    их в браузере (<b>Настройки → Пароли → ⋮ → Экспорт паролей</b>) и выберите
-                    CSV-файл здесь.
+                    {language === 'ru' ? <>
+                      Пароли современного Chrome зашифрованы и напрямую не переносятся. Экспортируйте
+                      их в браузере (<b>Настройки → Пароли → ⋮ → Экспорт паролей</b>) и выберите
+                      CSV-файл здесь.
+                    </> : <>
+                      Recent Chrome passwords cannot be imported directly because they are encrypted.
+                      Export them in Chrome (<b>Settings → Password Manager → Export passwords</b>),
+                      then choose the CSV file here.
+                    </>}
                   </span>
                   <button
                     onClick={() => void handleCsvImport()}
@@ -166,10 +174,10 @@ export function ImportStep({
                     {csvBusy
                       ? <Loader2 size={15} style={{ animation: 'oblako-spin 1s linear infinite' }} />
                       : <FileUp size={15} />}
-                    Выбрать CSV-файл
+                    {t('Выбрать CSV-файл')}
                   </button>
                   {csvMsg && (
-                    <span style={{ ...TEXT.body, color: 'var(--text-body)' }}>{csvMsg}</span>
+                    <span style={{ ...TEXT.body, color: 'var(--text-body)' }}>{t(csvMsg)}</span>
                   )}
                 </div>
               )}

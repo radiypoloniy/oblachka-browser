@@ -166,6 +166,13 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.THEME_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.THEME_CHANGED, handler);
   },
+  getUiLanguage: () => ipcRenderer.invoke(IPC.UI_LANGUAGE_GET) as Promise<'en' | 'ru'>,
+  setUiLanguage: (language: 'en' | 'ru') => ipcRenderer.invoke(IPC.UI_LANGUAGE_SET, language) as Promise<void>,
+  onUiLanguageChanged: (cb: (language: 'en' | 'ru') => void) => {
+    const handler = (_e: unknown, language: 'en' | 'ru') => cb(language);
+    ipcRenderer.on(IPC.UI_LANGUAGE_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.UI_LANGUAGE_CHANGED, handler);
+  },
   getWeather: (city: string) => ipcRenderer.invoke(IPC.WEATHER_GET, city) as Promise<WeatherInfo>,
   getCurrencyRates: () => ipcRenderer.invoke(IPC.CURRENCY_GET) as Promise<CurrencyRatesInfo>,
   getNextHoliday: (country?: string) => ipcRenderer.invoke(IPC.HOLIDAY_GET, country) as Promise<NextHolidayInfo>,

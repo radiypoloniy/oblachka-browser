@@ -7,6 +7,7 @@ import { glyph } from '../../styles/system';
 import { ProgressRing } from './ProgressRing';
 import { useMcpAgent } from './useMcpAgent';
 import { WindowControls } from './WindowControls';
+import { useLanguage } from '../../i18n';
 
 /**
  * Правая группа тулбара: AI-панель, буфер скопированного, загрузки.
@@ -51,6 +52,7 @@ export function RightCluster(props: {
     clipboardRef, clipboardCount, clipboardOpen, onToggleClipboard, onHoverClipboard,
     downloadsRef, downloadsOpen, onToggleDownloads, flying, downloadsActive, downloadsProgress,
   } = props;
+  const { t } = useLanguage();
 
   // ⚠️ Состояние берётся ХУКОМ прямо здесь, а не приходит пропом: метка не про адресную строку и
   // не про страницу — она про то, что снаружи браузером кто-то управляет (см. useMcpAgent).
@@ -77,7 +79,7 @@ export function RightCluster(props: {
           <span style={{
             width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flex: 'none',
           }} />
-          Внешний агент
+          {t('Внешний агент')}
         </div>
       )}
       <div style={chromeCluster()}>
@@ -86,7 +88,7 @@ export function RightCluster(props: {
         {/* ⚠️ В лёгком окне кнопка ТА ЖЕ и на том же месте — расходится только подпись. Значок
             один намеренно: место в кластере запоминается рукой, а два разных глифа на одной
             кнопке читались бы как две разные кнопки. */}
-        <button className="chrome-btn" title={isLightWindow ? 'Приложения' : 'AI-панель'}
+        <button className="chrome-btn" title={isLightWindow ? t('Приложения') : t('AI-панель')}
           onClick={onToggleAiPanel} style={clusterBtn({ active: aiPanelOpen })}>
           <SparkGlyph size={18} />
         </button>
@@ -103,8 +105,8 @@ export function RightCluster(props: {
           <button className="chrome-btn"
             disabled={clipboardCount === 0}
             title={clipboardCount === 0
-              ? 'Скопированное со страниц — пока пусто'
-              : 'Скопированное со страниц (Ctrl+Shift+B)'}
+              ? t('Скопированное со страниц — пока пусто')
+              : t('Скопированное со страниц (Ctrl+Shift+B)')}
             onClick={onToggleClipboard}
             style={clusterBtn({ active: clipboardOpen, disabled: clipboardCount === 0 })}
           >
@@ -117,7 +119,7 @@ export function RightCluster(props: {
             должна уезжать открытая страница. Полный список — со дна поповера. */}
         <div ref={downloadsRef} style={{ display: 'inline-flex' }}>
           <button
-            title="Загрузки"
+            title={t('Загрузки')}
             onClick={onToggleDownloads}
             style={{ ...clusterBtn({ active: downloadsOpen }), position: 'relative' }}
           >

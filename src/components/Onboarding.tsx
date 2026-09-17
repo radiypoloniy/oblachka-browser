@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useOnboarding } from './onboarding/useOnboarding';
+import { useLanguage } from '../i18n';
 import type React from 'react';
 import {
   Loader2, ArrowRight, ArrowLeft,
@@ -76,6 +77,7 @@ const MAP_SPOTS: { key: string; label: string; box: React.CSSProperties }[] = [
 ];
 
 function WindowMap() {
+  const { t } = useLanguage();
   return (
     <div style={{
       position: 'relative', width: '100%', height: 300,
@@ -137,7 +139,7 @@ function WindowMap() {
             position: 'absolute', top: -9, left: 5, ...CAPS,
             background: 'var(--poster-tangerine)', color: 'var(--on-poster-dark)',
             padding: '1px 6px', borderRadius: RADIUS.tight, whiteSpace: 'nowrap',
-          }}>{s.label}</span>
+          }}>{t(s.label)}</span>
         </span>
       ))}
     </div>
@@ -204,6 +206,7 @@ const GUIDE: { title: string; text: string }[] = [
 
 
 export default function Onboarding({ onFinish }: Props) {
+  const { language, t } = useLanguage();
   const o = useOnboarding();
   const {
     step, setStep, steps, kind, importStep, isLastStep,
@@ -240,7 +243,9 @@ export default function Onboarding({ onFinish }: Props) {
     } : kind === 'index' ? {
       art: null,
       title: 'Подготовить историю к поиску?',
-      text: formatOnboardingIndexLead(report?.history?.inserted ?? 0),
+      text: language === 'en' && (report?.history?.inserted ?? 0) > 0
+        ? `Imported ${report!.history!.inserted} pages with titles and addresses, but no page text. Semantic search cannot find them until you open them or index them now.`
+        : formatOnboardingIndexLead(report?.history?.inserted ?? 0),
     } : {
       art: <LookStep />,
       title: 'Как ему выглядеть?',
@@ -300,7 +305,7 @@ export default function Onboarding({ onFinish }: Props) {
           onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
           onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; }}
         >
-          Пропустить
+          {t('Пропустить')}
         </button>
 
         {/* ── Левая половина: тон, номер шага, заголовок, одна фраза ── */}
@@ -315,7 +320,7 @@ export default function Onboarding({ onFinish }: Props) {
               «напечатано» от «залито в макете». */}
           <div style={grain} />
           <span style={{ ...CAPS, color: 'inherit', opacity: 0.66, position: 'relative', marginTop: sp(6) }}>
-            Шаг {step + 1} из {steps.length}
+            {t('Шаг')} {step + 1} {t('из')} {steps.length}
           </span>
           {/* ⚠️ Дисплейная гарнитура — онбординг один из трёх экранов, где она разрешена (см.
               CLAUDE.md): это «лицо» продукта, а не интерфейс. lineHeight поднят против её
@@ -324,7 +329,7 @@ export default function Onboarding({ onFinish }: Props) {
             ...DISPLAY, fontSize: 44, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.04,
             marginTop: sp(3), color: 'inherit', position: 'relative',
           }}>
-            {head.title}
+            {t(head.title)}
           </div>
           <div style={{
             // Кегль РОЛИ «section» (16), но обычным весом: это лид-абзац, а не заголовок.
@@ -332,7 +337,7 @@ export default function Onboarding({ onFinish }: Props) {
             marginTop: sp(4), ...TEXT.section, fontWeight: 400, lineHeight: 1.6, opacity: 0.82,
             color: 'inherit', position: 'relative', maxWidth: '32ch',
           }}>
-            {head.text}
+            {t(head.text)}
           </div>
           <div style={{ marginTop: 'auto', display: 'flex', gap: 6, position: 'relative' }}>
             {steps.map((_, i) => (
@@ -390,8 +395,8 @@ export default function Onboarding({ onFinish }: Props) {
           <div style={{ marginTop: sp(4) }}>
             <Progress
               done={dl.receivedBytes} total={dl.totalBytes}
-              label={`Модель качается — ${gb(dl.receivedBytes)}${dl.totalBytes ? ` из ${gb(dl.totalBytes)}` : ''}`}
-              hint="Можно закрывать этот экран: загрузка продолжится в фоне."
+              label={`${t('Модель качается —')} ${gb(dl.receivedBytes)}${dl.totalBytes ? ` ${t('из')} ${gb(dl.totalBytes)}` : ''}`}
+              hint={t('Можно закрывать этот экран: загрузка продолжится в фоне.')}
             />
           </div>
         )}
@@ -415,7 +420,7 @@ export default function Onboarding({ onFinish }: Props) {
                 style={{ ...bigGhost, display: 'inline-flex', alignItems: 'center', gap: 7 }}
                 onClick={() => setStep((s) => s - 1)}
               >
-                <ArrowLeft size={16} /> Назад
+                <ArrowLeft size={16} /> {t('Назад')}
               </button>
             )}
             {/* Тихий отказ от предложения этого шага. ⚠️ Ведёт ДАЛЬШЕ по мастеру, а не наружу:
@@ -425,7 +430,7 @@ export default function Onboarding({ onFinish }: Props) {
               || (kind === 'model' && modelOffer && !dl?.running && !modelDone)
               || (kind === 'index' && !backfill?.running && !indexAsked)) && (
               <button style={bigGhost} onClick={() => (isLastStep ? onFinish() : setStep((s) => s + 1))}>
-                Не сейчас
+                {t('Не сейчас')}
               </button>
             )}
 
@@ -435,20 +440,20 @@ export default function Onboarding({ onFinish }: Props) {
                 onClick={() => void handleRun()}
               >
                 {running && <Loader2 size={15} style={{ animation: 'oblako-spin 1s linear infinite' }} />}
-                {running ? 'Переносим…' : 'Перенести'}
+                {running ? t('Переносим…') : t('Перенести')}
               </button>
             ) : kind === 'model' && modelOffer && !dl?.running && !modelDone ? (
-              <button style={bigPrimary} onClick={() => handleDownload()}>Скачать модель</button>
+              <button style={bigPrimary} onClick={() => handleDownload()}>{t('Скачать модель')}</button>
             ) : kind === 'index' && !backfill?.running && !indexAsked ? (
-              <button style={bigPrimary} onClick={() => handleIndex()}>Проиндексировать</button>
+              <button style={bigPrimary} onClick={() => handleIndex()}>{t('Проиндексировать')}</button>
             ) : isLastStep ? (
-              <button style={bigPrimary} onClick={onFinish}>Начать пользоваться</button>
+              <button style={bigPrimary} onClick={onFinish}>{t('Начать пользоваться')}</button>
             ) : (
               <button
                 style={{ ...bigPrimary, display: 'inline-flex', alignItems: 'center', gap: 8 }}
                 onClick={() => setStep((s) => s + 1)}
               >
-                Дальше <ArrowRight size={16} />
+                {t('Дальше')} <ArrowRight size={16} />
               </button>
             )}
           </div>
@@ -497,6 +502,7 @@ const bigPrimary: React.CSSProperties = {
 // четыре подписи под ней — ЧТО, одной фразой. Раньше здесь одновременно стояли и схема, и сетка
 // карточек с теми же четырьмя абзацами: шаг читался кашей и требовал прокрутки.
 function ArtGuide() {
+  const { t } = useLanguage();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       <WindowMap />
@@ -504,9 +510,9 @@ function ArtGuide() {
         {GUIDE.map((g) => (
           <div key={g.title}>
             <div style={{ ...DISPLAY, fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-strong)' }}>
-              {g.title}
+              {t(g.title)}
             </div>
-            <div style={{ marginTop: sp(1), ...TEXT.body, color: 'var(--text-muted)' }}>{g.text}</div>
+            <div style={{ marginTop: sp(1), ...TEXT.body, color: 'var(--text-muted)' }}>{t(g.text)}</div>
           </div>
         ))}
       </div>
@@ -564,6 +570,7 @@ function LookSwatch({ swatch }: { swatch: [string, string, string] }) {
 }
 
 function LookStep() {
+  const { t } = useLanguage();
   const [theme, setTheme] = useState<ThemePrefs>({ mode: 'light', palette: 'charcoal', systemDark: false });
   useEffect(() => {
     void window.oblako.getTheme().then(setTheme).catch(() => { /* останется дефолт */ });
@@ -578,7 +585,7 @@ function LookStep() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4) }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-        <span style={{ ...CAPS }}>Тема</span>
+        <span style={{ ...CAPS }}>{t('Тема')}</span>
         <div style={{ display: 'flex', gap: sp(2) }}>
           {LOOK_MODES.map((m) => {
             const on = theme.mode === m.id;
@@ -608,7 +615,7 @@ function LookStep() {
                   <LookSwatch swatch={m.id === 'dark' ? LOOK_PALETTES[0].dark : LOOK_PALETTES[0].light} />
                 )}
                 <span style={{ ...TEXT.body, fontWeight: on ? 650 : 450, color: 'var(--text-strong)' }}>
-                  {m.label}
+                  {t(m.label)}
                 </span>
               </button>
             );
@@ -617,14 +624,14 @@ function LookStep() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-        <span style={{ ...CAPS }}>Палитра</span>
+        <span style={{ ...CAPS }}>{t('Палитра')}</span>
         <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
           {LOOK_PALETTES.map((pal) => {
             const on = theme.palette === pal.id;
             return (
               <button
                 key={pal.id}
-                title={pal.label}
+                title={t(pal.label)}
                 onClick={() => apply(theme.mode, pal.id)}
                 style={{
                   width: 76, padding: 0, border: 'none', background: 'none', cursor: 'default',
@@ -639,7 +646,7 @@ function LookStep() {
                   <LookSwatch swatch={dark ? pal.dark : pal.light} />
                 </span>
                 <span style={{ ...TEXT.caption, color: on ? 'var(--text-strong)' : 'var(--text-muted)' }}>
-                  {pal.label}
+                  {t(pal.label)}
                 </span>
               </button>
             );
@@ -649,4 +656,3 @@ function LookStep() {
     </div>
   );
 }
-

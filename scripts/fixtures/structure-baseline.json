@@ -1,10 +1,4 @@
 {
-  "electron/AiPanelManager.ts": {
-    "lines": 814,
-    "fn": 252,
-    "effects": 0,
-    "ipc": 0
-  },
   "electron/ModelDownloader.ts": {
     "lines": 541,
     "fn": 283,
@@ -12,7 +6,7 @@
     "ipc": 0
   },
   "electron/TabManager.ts": {
-    "lines": 3244,
+    "lines": 3243,
     "fn": 106,
     "effects": 0,
     "ipc": 0
@@ -42,7 +36,7 @@
     "ipc": 0
   },
   "electron/preload.ts": {
-    "lines": 852,
+    "lines": 859,
     "fn": 6,
     "effects": 0,
     "ipc": 0
@@ -102,20 +96,20 @@
     "ipc": 22
   },
   "src/components/Onboarding.tsx": {
-    "lines": 653,
-    "fn": 255,
+    "lines": 659,
+    "fn": 258,
     "effects": 1,
     "ipc": 3
   },
   "src/components/Settings.tsx": {
-    "lines": 459,
-    "fn": 347,
+    "lines": 461,
+    "fn": 348,
     "effects": 4,
     "ipc": 8
   },
   "src/components/Sidebar.tsx": {
-    "lines": 709,
-    "fn": 627,
+    "lines": 711,
+    "fn": 628,
     "effects": 1,
     "ipc": 4
   },
@@ -150,7 +144,7 @@
     "ipc": 2
   },
   "src/components/desktop/SidePanel.tsx": {
-    "lines": 611,
+    "lines": 638,
     "fn": 297,
     "effects": 2,
     "ipc": 0

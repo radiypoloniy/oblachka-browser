@@ -122,6 +122,9 @@ export const SHELL = {
   THEME_GET:     'theme:get',
   THEME_SET:     'theme:set',
   THEME_CHANGED: 'theme:changed', // main → renderer: выбор сменили в другом окне ИЛИ система переключила тему
+  UI_LANGUAGE_GET: 'ui-language:get',
+  UI_LANGUAGE_SET: 'ui-language:set',
+  UI_LANGUAGE_CHANGED: 'ui-language:changed',
   WEATHER_GET: 'weather:get', // renderer → main: погода по городу для виджета новой вкладки (WeatherService)
   HOLIDAY_GET: 'holiday:get',   // renderer → main: ближайший праздник (виджет стола)
   CURRENCY_GET: 'currency:get', // renderer → main: курсы ЦБ РФ для виджета новой вкладки (CurrencyRates)

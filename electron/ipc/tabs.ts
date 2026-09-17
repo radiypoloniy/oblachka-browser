@@ -12,6 +12,7 @@ import { isModelWarm } from '../TranslationService';
 import { allContexts, broadcastToChrome, contextFromSender } from '../WindowRegistry';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
+import { isUiLanguage, type UiLanguage } from '../../shared/uiLanguage';
 
 // Идёт ли прямо сейчас смысловой поиск вкладки (см. TABS_SEARCH_SMART) — один за раз на всё
 // приложение, как и сама модель.
@@ -48,6 +49,12 @@ export function registerTabsIpc(d: IpcDeps): void {
   // Выбор темы: читает настройки, пишет настройки, рассылает всем окнам. Применяет по-прежнему
   // рендерер у себя (см. App.tsx) — main только владеет значением и системным признаком.
   ipcMain.handle(IPC.THEME_GET, (): ThemePrefs => currentThemePrefs());
+  ipcMain.handle(IPC.UI_LANGUAGE_GET, (): UiLanguage => settings.getUiLanguage());
+  ipcMain.handle(IPC.UI_LANGUAGE_SET, (_e, language: unknown) => {
+    if (!isUiLanguage(language)) return;
+    settings.setUiLanguage(language);
+    broadcastToChrome(IPC.UI_LANGUAGE_CHANGED, language);
+  });
   ipcMain.handle(IPC.THEME_SET, (_e, mode: ThemeMode, palette: ThemePaletteId) => {
     settings.setTheme(mode, palette);
     broadcastToChrome(IPC.THEME_CHANGED, currentThemePrefs());

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
-import { SectionHeader, Subsection, StatusCard, btnPrimary, FactGrid, Fact } from './kit';
+import { SectionHeader, Subsection, StatusCard, btnPrimary, FactGrid, Fact, Segmented } from './kit';
 import UpdatesBlock from './UpdatesBlock';
 import BangsBlock from './BangsBlock';
 import SearchChipsBlock from './SearchChipsBlock';
@@ -12,18 +12,31 @@ import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../../shared/searc
 import type { SearchEngineId } from '../../../shared/searchEngines';
 import { subscribeDefaultSearchEngine } from '../../searchEngineSetting';
 import { sp } from '../../styles/system';
+import { useLanguage } from '../../i18n';
 
 interface GeneralSectionProps {
   onOpenImport: () => void;
 }
 
 export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
+  const { language, setLanguage, t } = useLanguage();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
-      <SectionHeader title="Браузер">
-        Поиск из адресной строки, бэнги, загрузки и то, как браузер ведёт себя на этом компьютере.
+      <SectionHeader title={t('Браузер')}>
+        {t('Поиск из адресной строки, бэнги, загрузки и то, как браузер ведёт себя на этом компьютере.')}
       </SectionHeader>
       <BrowserOverview />
+
+      <Subsection
+        title={t('Язык интерфейса')}
+        description={t('Меняет язык браузера, но не язык сайтов и не язык ответов AI.')}
+      >
+        <Segmented
+          value={language}
+          options={[{ id: 'en', label: 'English' }, { id: 'ru', label: 'Русский' }]}
+          onChange={(next) => { void setLanguage(next); }}
+        />
+      </Subsection>
 
       <Subsection
         title="Поиск по умолчанию"

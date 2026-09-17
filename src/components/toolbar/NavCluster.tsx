@@ -1,6 +1,7 @@
 import type React from 'react';
 import { BackGlyph, ForwardGlyph, RefreshGlyph } from '../glyphs';
 import { chromeCluster, clusterBtn } from '../../styles/island';
+import { useLanguage } from '../../i18n';
 
 /**
  * Назад · Вперёд · Обновить — парящая плашка-остров слева в тулбаре.
@@ -20,15 +21,16 @@ export function NavCluster({ canGoBack, canGoForward, isHub, onBack, onForward, 
   onForward: () => void;
   onReload: () => void;
 }): React.ReactElement {
+  const { t } = useLanguage();
   return (
     <div className="no-drag" style={chromeCluster()}>
-      <button className="chrome-btn" title="Назад" disabled={!canGoBack} onClick={onBack}
+      <button className="chrome-btn" title={t('Назад')} disabled={!canGoBack} onClick={onBack}
         style={clusterBtn({ disabled: !canGoBack })}><BackGlyph size={18} /></button>
-      <button className="chrome-btn" title="Вперёд" disabled={!canGoForward} onClick={onForward}
+      <button className="chrome-btn" title={t('Вперёд')} disabled={!canGoForward} onClick={onForward}
         style={clusterBtn({ disabled: !canGoForward })}><ForwardGlyph size={18} /></button>
       {/* ⚠️ 18, а не 17: соседние стрелки восемнадцатые, и на глаз «Обновить» выглядела мельче
           остальных. Высоту группы это не двигает — та задана явно (ISLAND_HEIGHT). */}
-      <button className="chrome-btn" title="Обновить" disabled={isHub} onClick={onReload}
+      <button className="chrome-btn" title={t('Обновить')} disabled={isHub} onClick={onReload}
         style={clusterBtn({ disabled: isHub })}><RefreshGlyph size={18} /></button>
     </div>
   );

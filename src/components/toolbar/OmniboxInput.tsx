@@ -1,4 +1,5 @@
 import type { OmniboxPillProps } from './OmniboxPill';
+import { useLanguage } from '../../i18n';
 
 /**
  * Само поле адреса: значение, фокус, выделение, клавиши.
@@ -12,6 +13,7 @@ import type { OmniboxPillProps } from './OmniboxPill';
  * держать два списка в синхроне ради экономии, которой нет.
  */
 export function OmniboxInput(p: OmniboxPillProps) {
+  const { t } = useLanguage();
   const {
     tab, value, inputRef, draftsRef, focusTracker, pointerInInputRef,
     selectAllPendingRef, setValue, setEditing, triggerSuggest, showTopSites,
@@ -21,7 +23,7 @@ export function OmniboxInput(p: OmniboxPillProps) {
   <input
     ref={inputRef}
     value={value}
-    placeholder={placeholderVisible ? 'Введите запрос или адрес' : ''}
+    placeholder={placeholderVisible ? t('Введите запрос или адрес') : ''}
     // ⚠️ Файл или ссылка, бро́шенные в строку, ВСТАВЛЯЮТСЯ ТЕКСТОМ, а переходит человек
     // сам по Enter — как в Edge и Chrome. Без своего обработчика тут работало поведение
     // Chromium по умолчанию, и дроп уводил браузер в отдельное голое окно без вкладок и

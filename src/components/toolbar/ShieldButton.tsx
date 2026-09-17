@@ -2,6 +2,7 @@ import type React from 'react';
 import type { RefObject } from 'react';
 import { ShieldGlyph } from '../glyphs';
 import { profileHint } from './useProfileBadge';
+import { useLanguage } from '../../i18n';
 import type { ProfileBadge } from './useProfileBadge';
 
 /**
@@ -34,10 +35,11 @@ export function ShieldButton({ btnRef, vpnOn, popoverOpen, profile, permHint, on
   permHint: 'ask' | 'blocked' | null;
   onToggle: () => void;
 }): React.ReactElement {
+  const { language, t } = useLanguage();
   return (
     <button
       ref={btnRef}
-      title={profileHint(profile, vpnOn)}
+      title={profileHint(profile, vpnOn, language)}
       onClick={onToggle}
       style={{
         border: 'none', background: popoverOpen ? 'var(--accent-soft)' : 'transparent',
@@ -57,8 +59,8 @@ export function ShieldButton({ btnRef, vpnOn, popoverOpen, profile, permHint, on
         <span
           className={permHint === 'ask' ? 'oblako-led' : undefined}
           title={permHint === 'ask'
-            ? 'Сайт ждёт ответа на запрос доступа'
-            : 'Сайту отказано по прежнему решению — нажмите, чтобы изменить'}
+            ? t('Сайт ждёт ответа на запрос доступа')
+            : t('Сайту отказано по прежнему решению — нажмите, чтобы изменить')}
           style={{
             position: 'absolute', right: 0, top: 0,
             width: 7, height: 7, borderRadius: 'var(--radius-pill)',

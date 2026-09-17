@@ -17,6 +17,7 @@ import { DragGhostPlate } from './sidebar/DragGhostPlate';
 import { SortableGroupBlock } from './sidebar/GroupBlock';
 import { asideBase, utilIconBtn, ModeSwitch, SectionLabel, UndoChip } from './sidebar/chrome';
 import { useSidebarDrag } from './sidebar/useSidebarDrag';
+import { useLanguage } from '../i18n';
 import { TabRow, SortableTabRow, PairTile, SortablePairBlock, IconCell, SortablePinCell } from './sidebar/rows';
 
 
@@ -80,6 +81,7 @@ export default function Sidebar({
   onOrganize, onOrganizeApply, onOrganizeCancel, onOrganizeRollback,
   onRenameRollback, onRollbackAll, onDismissUndo,
 }: SidebarProps) {
+  const { language, t } = useLanguage();
 
   const dragOverPage = useTabDragOverPage();
   // Перетаскивание и оптимистичный порядок — в useSidebarDrag. Там же разбор, почему порядок
@@ -161,7 +163,7 @@ export default function Sidebar({
           <button
             className="no-drag"
             onClick={() => onCollapsedChange(false)}
-            title="Развернуть панель"
+            title={t('Развернуть панель')}
             style={{ ...utilIconBtn, transform: 'scaleX(-1)' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
             // ⚠️ Возврат — к ПОДКРАШЕННОМУ фону, иначе кнопка после наведения навсегда белела.
@@ -266,7 +268,7 @@ export default function Sidebar({
         }}>
           <button
             className="no-drag"
-            title="Новая вкладка (ПКМ — инкогнито / восстановить)"
+            title={t('Новая вкладка (ПКМ — инкогнито / восстановить)')}
             // Тот же остров, что у развёрнутой «Новой вкладки»: главное действие панели.
             style={{ ...utilIconBtn, ...islandPlate, borderRadius: 'var(--radius-card)' }}
             onClick={handleNewTab}
@@ -274,8 +276,8 @@ export default function Sidebar({
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--plate-bg, var(--surface))'; }}
           ><PlusGlyph size={17} /></button>
-          <button className="icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><ClockGlyph size={17} /></button>
-          <button className="icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><SlidersGlyph size={17} /></button>
+          <button className="icon-btn" title={t('История и закладки')} style={iconBtn} onClick={onHistory}><ClockGlyph size={17} /></button>
+          <button className="icon-btn" title={t('Настройки')} style={iconBtn} onClick={onSettings}><SlidersGlyph size={17} /></button>
         </div>
       </aside>
     );
@@ -298,7 +300,7 @@ export default function Sidebar({
         className="no-drag"
         onPointerDown={onHandlePointerDown}
         onDoubleClick={onHandleDoubleClick}
-        title="Потяните, чтобы изменить ширину (двойной щелчок — вернуть)"
+        title={t('Потяните, чтобы изменить ширину (двойной щелчок — вернуть)')}
         style={{
           position: 'absolute', top: 0, right: -SIDEBAR_HANDLE_OUTSET, bottom: 0,
           width: SIDEBAR_HANDLE_OUTSET + 8,
@@ -311,7 +313,7 @@ export default function Sidebar({
         <button
           className="no-drag"
           onClick={() => onCollapsedChange(true)}
-          title="Свернуть панель"
+          title={t('Свернуть панель')}
           style={{ ...utilIconBtn }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -355,7 +357,7 @@ export default function Sidebar({
             Плашка-обёртка — СНАРУЖИ SortableContext, сам dnd-контекст и ячейки не тронуты. */}
         {pinned.length > 0 && (
           <div className="no-drag" style={{ padding: '2px 0 6px', marginBottom: 6 }}>
-            <SectionLabel count={pinned.length}>Закреплённые</SectionLabel>
+            <SectionLabel count={pinned.length}>{t('Закреплённые')}</SectionLabel>
             {/* rect-, а не verticalList-стратегия: пины лежат сеткой с переносом строк, и
                 вертикальная стратегия расталкивала соседей по Y — не в ту сторону, куда
                 едет курсор. rectSortingStrategy считает по реальным прямоугольникам. */}
@@ -374,7 +376,7 @@ export default function Sidebar({
         {/* ⚠️ Подпись СНАРУЖИ SortableContext: внутри он ждёт только сортируемые элементы, и
             лишний узел между ними сбивает расчёт позиций при перетаскивании. */}
         {effectiveNodes.length > 0 && organizeState !== 'preview' && (
-          <SectionLabel count={openIds.length}>Открыто</SectionLabel>
+          <SectionLabel count={openIds.length}>{t('Открыто')}</SectionLabel>
         )}
         {/* Верхний уровень: singles, pairs, groups — все в одном SortableContext */}
         <SortableContext items={openIds} strategy={verticalListSortingStrategy}>
@@ -385,7 +387,7 @@ export default function Sidebar({
           }}>
             {effectiveNodes.length === 0 && (
               <div style={{ padding: '8px 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-                Пока пусто. Введите адрес в строке сверху.
+                {t('Пока пусто. Введите адрес в строке сверху.')}
               </div>
             )}
             {effectiveNodes.map((node) => {
@@ -500,7 +502,7 @@ export default function Sidebar({
           overflow: 'hidden', marginTop: 4,
         }}>
           <div style={eyebrow}>
-            Предложение: {organizeProposal.length} {organizeProposal.length === 1 ? 'группа' : organizeProposal.length < 5 ? 'группы' : 'групп'}
+            {t('Предложение:')} {organizeProposal.length} {language === 'en' ? 'groups' : organizeProposal.length === 1 ? 'группа' : organizeProposal.length < 5 ? 'группы' : 'групп'}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {organizeProposal.map((p, i) => (
@@ -536,7 +538,7 @@ export default function Sidebar({
                   ))}
                   {p.titles.length > 4 && (
                     <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', padding: '1px 0' }}>
-                      и ещё {p.titles.length - 4}…
+                      {t('и ещё')} {p.titles.length - 4}…
                     </div>
                   )}
                 </div>
@@ -552,7 +554,7 @@ export default function Sidebar({
                 borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: 'var(--on-accent)',
                 fontSize: 'var(--fs-sm)', fontWeight: 600,
               }}
-            >Применить</button>
+            >{t('Применить')}</button>
             <button
               className="no-drag"
               onClick={onOrganizeCancel}
@@ -563,7 +565,7 @@ export default function Sidebar({
               }}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >Отмена</button>
+            >{t('Отмена')}</button>
           </div>
         </div>
       )}
@@ -593,17 +595,17 @@ export default function Sidebar({
                 border: '2px solid var(--divider-strong)', borderTopColor: 'var(--accent)',
                 animation: 'oblako-spin 0.7s linear infinite',
               }} />
-              {organizeLongWait ? 'Модель загружается в память, это займёт около минуты, потерпите' : 'Читаю вкладки…'}
+              {organizeLongWait ? t('Модель загружается в память, это займёт около минуты, потерпите') : t('Читаю вкладки…')}
             </>
           ) : organizeState === 'model-error' ? (
             <>
               <span style={{ fontSize: 'var(--fs-sm)', lineHeight: 1 }}>⚠</span>
-              Повторить
+              {t('Повторить')}
             </>
           ) : (
             <>
               <SparkGlyph size={16} />
-              Навести порядок
+              {t('Навести порядок')}
             </>
           )}
         </button>
@@ -622,7 +624,7 @@ export default function Sidebar({
             animation: 'oblako-spin 0.7s linear infinite',
           }} />
           <span style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
-            Придумываю названия… {renameProgress.done} из {renameProgress.total}
+            {t('Придумываю названия…')} {renameProgress.done} {t('из')} {renameProgress.total}
           </span>
         </div>
       )}
@@ -642,14 +644,14 @@ export default function Sidebar({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
-              {hasOrganizeSnapshot && hasRenameSnapshot ? 'Порядок наведён'
-                : hasOrganizeSnapshot ? 'Вкладки сгруппированы'
-                : 'Вкладки переименованы'}
+              {hasOrganizeSnapshot && hasRenameSnapshot ? t('Порядок наведён')
+                : hasOrganizeSnapshot ? t('Вкладки сгруппированы')
+                : t('Вкладки переименованы')}
             </span>
             <button
               className="no-drag"
               onClick={onDismissUndo}
-              title="Скрыть"
+              title={t('Скрыть')}
               style={{
                 border: 'none', background: 'transparent', cursor: 'default',
                 padding: 2, borderRadius: RADIUS.tight, color: 'var(--text-faint)', display: 'inline-flex', flex: 'none',
@@ -658,13 +660,13 @@ export default function Sidebar({
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {hasRenameSnapshot && (
-              <UndoChip label="названия" onClick={onRenameRollback} />
+              <UndoChip label={t('названия')} onClick={onRenameRollback} />
             )}
             {hasOrganizeSnapshot && (
-              <UndoChip label="группы" onClick={onOrganizeRollback} />
+              <UndoChip label={t('группы')} onClick={onOrganizeRollback} />
             )}
             {hasOrganizeSnapshot && hasRenameSnapshot && (
-              <UndoChip label="всё" onClick={onRollbackAll} />
+              <UndoChip label={t('всё')} onClick={onRollbackAll} />
             )}
           </div>
         </div>
@@ -673,7 +675,7 @@ export default function Sidebar({
       {/* «Новая вкладка» — отдельная плашка-остров; история/настройки — лёгкие иконки рядом,
           НЕ часть плашки (не сливаются в общую пластину). */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
-        <button className="no-drag" title="Новая вкладка (ПКМ — инкогнито / восстановить)"
+        <button className="no-drag" title={t('Новая вкладка (ПКМ — инкогнито / восстановить)')}
           // ⚠️ ОСТРОВ здесь уместен и остаётся. Единая земля — это про ФОН, а не про запрет
           // поверхностей вообще: главное действие панели имеет право быть выпуклой кнопкой.
           // Убирать надо было обоймы-контейнеры (пины, папки, подкраску сайдбара), которые
@@ -689,10 +691,10 @@ export default function Sidebar({
           onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--plate-bg, var(--surface))'; }}
         >
           <PlusGlyph size={17} />
-          <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>
+          <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>{t('Новая вкладка')}</span>
         </button>
-        <button className="no-drag icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><ClockGlyph size={17} /></button>
-        <button className="no-drag icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><SlidersGlyph size={17} /></button>
+        <button className="no-drag icon-btn" title={t('История и закладки')} style={iconBtn} onClick={onHistory}><ClockGlyph size={17} /></button>
+        <button className="no-drag icon-btn" title={t('Настройки')} style={iconBtn} onClick={onSettings}><SlidersGlyph size={17} /></button>
       </div>
     </aside>
   );

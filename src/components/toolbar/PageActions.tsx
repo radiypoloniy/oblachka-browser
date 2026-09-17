@@ -4,6 +4,7 @@ import { Copy, Check, KeyRound, Loader2, MoreHorizontal } from 'lucide-react';
 import { StarGlyph } from '../glyphs';
 import { glyph } from '../../styles/system';
 import type { PageTranslateState, PageTranslateProgress } from '../../../shared/ipc';
+import { useLanguage } from '../../i18n';
 
 /** Общий вид значка-кнопки внутри таблетки омнибокса: без фона, крохотное поле, свой цвет. */
 const iconBtn = (color: string, background = 'transparent'): React.CSSProperties => ({
@@ -39,6 +40,7 @@ export function PageActions(props: {
   translateProgress: PageTranslateProgress | null;
   onMore: () => void;
 }): React.ReactElement | null {
+  const { t } = useLanguage();
   const {
     visible, hasPasswords, passwordsRef, passwordsOpen, onTogglePasswords,
     copied, onCopy, bookmarked, onToggleBookmark,
@@ -49,17 +51,17 @@ export function PageActions(props: {
 
   const moreTitle = translateState === 'translating'
     ? (translateProgress
-      ? `Перевожу страницу… ${Math.min(translateProgress.batchIndex + 1, translateProgress.batchCount)}/${translateProgress.batchCount} · ${translateProgress.charsStreamed} симв.`
-      : 'Перевожу страницу…')
-    : translateState === 'translated' ? 'Страница переведена — ещё действия'
-      : 'Ещё действия со страницей';
+      ? `${t('Перевожу страницу…')} ${Math.min(translateProgress.batchIndex + 1, translateProgress.batchCount)}/${translateProgress.batchCount} · ${translateProgress.charsStreamed} ${t('симв.')}`
+      : t('Перевожу страницу…'))
+    : translateState === 'translated' ? t('Страница переведена — ещё действия')
+      : t('Ещё действия со страницей');
 
   return (
     <>
       {hasPasswords && (
         <div ref={passwordsRef} style={{ display: 'inline-flex', flex: 'none' }}>
           <button
-            title="Пароли"
+            title={t('Пароли')}
             onClick={onTogglePasswords}
             style={{
               ...iconBtn(passwordsOpen ? 'var(--accent)' : 'var(--text-muted)',
@@ -74,12 +76,12 @@ export function PageActions(props: {
 
       {/* Скопировано — зелёная галочка на пару секунд: это единственный отклик, других
           подтверждений копирования у нас нет. */}
-      <button title="Копировать адрес" onClick={onCopy}
+      <button title={t('Копировать адрес')} onClick={onCopy}
         style={iconBtn(copied ? 'var(--dot-local)' : 'var(--text-faint)')}>
         {copied ? <Check {...glyph(14)} /> : <Copy {...glyph(14)} />}
       </button>
 
-      <button title={bookmarked ? 'Удалить из закладок' : 'Добавить в закладки'}
+      <button title={bookmarked ? t('Удалить из закладок') : t('Добавить в закладки')}
         onClick={onToggleBookmark}
         style={iconBtn(bookmarked ? 'var(--accent)' : 'var(--text-muted)')}>
         <StarGlyph size={14} filled={bookmarked} />

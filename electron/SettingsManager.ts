@@ -6,6 +6,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import { THEME_PALETTE_IDS } from '../shared/ipc';
 import type { HubMode, ModelLoadMode, PageLength, RecommendedSite, SearchChipsConfig, ThemeMode, ThemePaletteId } from '../shared/ipc';
 import type { EngineId } from './TranslationEngine';
+import { initialUiLanguage, isUiLanguage, type UiLanguage } from '../shared/uiLanguage';
 
 const DEFAULT_HUB_MODE: HubMode = 'tiles';
 // Ширина AI-дока (заход 3 — из поповера в правый split-view-подобный док). Клампы —
@@ -47,6 +48,7 @@ const DEFAULT_RECOMMENDED: RecommendedSite[] = [
 const RECOMMENDED_MAX = 8;
 
 interface PersistedSettings {
+  uiLanguage: UiLanguage;
   searchEngine: SearchEngineId;
   hubMode: HubMode;
   translationEngine: EngineId;
@@ -161,6 +163,7 @@ function isThemePalette(v: unknown): v is ThemePaletteId {
 // атомарная запись через tmp-файл, по паттерну AdBlockManager#writeSettings. Записи редкие
 // (смена настройки вручную/капсулой), поэтому без дебаунса — пишем сразу.
 export class SettingsManager {
+  #uiLanguage: UiLanguage = 'en';
   #searchEngine: SearchEngineId = DEFAULT_SEARCH_ENGINE_ID;
   #hubMode: HubMode = DEFAULT_HUB_MODE;
   #translationEngine: EngineId = DEFAULT_TRANSLATION_ENGINE;
@@ -189,8 +192,24 @@ export class SettingsManager {
   readonly #settingsPath: string;
 
   constructor() {
-    this.#settingsPath = path.join(app.getPath('userData'), 'settings.json');
+    const userData = app.getPath('userData');
+    this.#settingsPath = path.join(userData, 'settings.json');
+    // settings.json мог ещё не возникнуть у старого пользователя: он создаётся только после
+    // первой смены настройки. session.json тоже свидетельствует о старом профиле. Другие БД
+    // здесь нельзя использовать: некоторые менеджеры создают их ещё до SettingsManager при
+    // самом первом старте, и новая установка ошибочно считалась бы старой.
+    const hadProfile = ['settings.json', 'session.json']
+      .some((name) => fs.existsSync(path.join(userData, name)));
+    this.#uiLanguage = initialUiLanguage(undefined, hadProfile);
     this.#load();
+  }
+
+  getUiLanguage(): UiLanguage { return this.#uiLanguage; }
+
+  setUiLanguage(language: UiLanguage): void {
+    if (!isUiLanguage(language) || language === this.#uiLanguage) return;
+    this.#uiLanguage = language;
+    this.#write();
   }
 
   getSearchEngine(): SearchEngineId {
@@ -379,8 +398,12 @@ export class SettingsManager {
   #load(): void {
     try {
       const raw = fs.readFileSync(this.#settingsPath, 'utf8');
+      // Существующий settings.json — достаточное свидетельство старого профиля, даже если
+      // JSON повреждён. Так обновление не переключит человека на английский из-за ошибки чтения.
+      this.#uiLanguage = initialUiLanguage(undefined, true);
       const data = JSON.parse(raw) as unknown;
       if (typeof data === 'object' && data !== null) {
+        this.#uiLanguage = initialUiLanguage((data as Record<string, unknown>)['uiLanguage'], true);
         const v = (data as Record<string, unknown>)['searchEngine'];
         if (isSearchEngineId(v)) this.#searchEngine = v;
         const hm = (data as Record<string, unknown>)['hubMode'];
@@ -426,6 +449,7 @@ export class SettingsManager {
 
   #write(): void {
     const data: PersistedSettings = {
+      uiLanguage: this.#uiLanguage,
       searchEngine: this.#searchEngine,
       hubMode: this.#hubMode,
       translationEngine: this.#translationEngine,

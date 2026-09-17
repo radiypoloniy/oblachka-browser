@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CHROME_OVERLAY_PX } from '../../../shared/chromeGround';
+import { useLanguage } from '../../i18n';
 
 /**
  * Кнопки окна — свернуть, развернуть-вернуть, закрыть. Рисуем их МЫ, а не Windows.
@@ -69,6 +70,7 @@ function ControlButton({ label, danger, onClick, children }: {
 }
 
 export function WindowControls() {
+  const { t } = useLanguage();
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => window.oblako.onWindowMaximized(setMaximized), []);
@@ -84,11 +86,11 @@ export function WindowControls() {
       position: 'absolute', top: 0, right: 0, height: CHROME_OVERLAY_PX,
       display: 'flex', alignItems: 'stretch',
     }}>
-      <ControlButton label="Свернуть" onClick={() => void window.oblako.minimizeWindow()}>
+      <ControlButton label={t('Свернуть')} onClick={() => void window.oblako.minimizeWindow()}>
         <Glyph d="M1 6h10" />
       </ControlButton>
       <ControlButton
-        label={maximized ? 'Вернуть размер' : 'Развернуть'}
+        label={maximized ? t('Вернуть размер') : t('Развернуть')}
         onClick={() => void window.oblako.toggleMaximizeWindow()}
       >
         {maximized
@@ -96,7 +98,7 @@ export function WindowControls() {
           ? <Glyph d="M1.5 4.5h6v6h-6zM3.9 4.5V2.4a.9.9 0 0 1 .9-.9h4.8a.9.9 0 0 1 .9.9v4.8a.9.9 0 0 1-.9.9H7.5" />
           : <Glyph d="M1.5 1.5h9v9h-9z" />}
       </ControlButton>
-      <ControlButton label="Закрыть" danger onClick={() => void window.oblako.closeWindow()}>
+      <ControlButton label={t('Закрыть')} danger onClick={() => void window.oblako.closeWindow()}>
         <Glyph d="M1.7 1.7l8.6 8.6M10.3 1.7l-8.6 8.6" />
       </ControlButton>
     </div>

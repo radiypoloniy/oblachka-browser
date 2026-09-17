@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { LanguageProvider } from './i18n';
 import './styles/global.css';
 
 // Окно держится скрытым (show:false в main.ts) до этого сигнала — против белого экрана на старте.
@@ -18,7 +19,9 @@ function ChromeReadySignal() {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
-    <ChromeReadySignal />
+    <LanguageProvider>
+      <App />
+      <ChromeReadySignal />
+    </LanguageProvider>
   </React.StrictMode>,
 );

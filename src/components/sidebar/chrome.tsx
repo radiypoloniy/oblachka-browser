@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { well, RADIUS, glyph, CAPS } from '../../styles/system';
+import { useLanguage } from '../../i18n';
 
 // ── «Цветной» сайдбар: градиент + шум ────────────────────────────────────────────────────────
 //
@@ -65,6 +66,7 @@ export const utilIconBtn: CSSProperties = {
 // текстом, а не иконками: две иконки рядом (страница и звезда) в 20 px читаются хуже, чем два
 // коротких слова, а места занимают столько же.
 export function ModeSwitch({ mode, onChange }: { mode: 'tabs' | 'bookmarks'; onChange: (m: 'tabs' | 'bookmarks') => void }) {
+  const { t } = useLanguage();
   const seg = (m: 'tabs' | 'bookmarks', label: string): ReactNode => {
     const active = mode === m;
     return (
@@ -95,8 +97,8 @@ export function ModeSwitch({ mode, onChange }: { mode: 'tabs' | 'bookmarks'; onC
       // на любой земле. Тот же well() стоит под сегментами настроек — один элемент, не два.
       ...well(RADIUS.control),
     }}>
-      {seg('tabs', 'Вкладки')}
-      {seg('bookmarks', 'Закладки')}
+      {seg('tabs', t('Вкладки'))}
+      {seg('bookmarks', t('Закладки'))}
     </div>
   );
 }

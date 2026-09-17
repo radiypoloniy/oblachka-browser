@@ -13,6 +13,7 @@ import type { BookmarkEntry, DayDigestState, HistoryClearPeriod, HistoryEntry, R
 import type { AdBlockState, MatchSuggestion, OmniboxResume, PageChangesResult, ParsedAddressPart, ProductState, SmartTabHit, StuffHit, TrackedProduct, TrackingEvent } from './omnibox';
 import type { AiActivityState } from './ai';
 import type { CryptoRatesInfo, CurrencyRatesInfo, DragCard, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, WeatherInfo, WindowRole } from './app';
+import type { UiLanguage } from '../uiLanguage';
 
 
 export interface CoreApi {
@@ -154,6 +155,9 @@ export interface CoreApi {
   getTheme(): Promise<ThemePrefs>;
   setTheme(mode: ThemeMode, palette: ThemePaletteId): Promise<void>;
   onThemeChanged(cb: (prefs: ThemePrefs) => void): () => void;
+  getUiLanguage(): Promise<UiLanguage>;
+  setUiLanguage(language: UiLanguage): Promise<void>;
+  onUiLanguageChanged(cb: (language: UiLanguage) => void): () => void;
 
   getWeather(city: string): Promise<WeatherInfo>; // погода для виджета новой вкладки
   /** Таймер стола: состояние держит main, виджет только показывает (см. TimerService.ts). */

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DEFAULT_PROFILE_ID } from '../../../shared/profiles';
 import type { ProfilesState } from '../../../shared/profiles';
+import type { UiLanguage } from '../../../shared/uiLanguage';
 
 /** Что тулбару нужно знать о профиле — только для точки у щита, не весь профиль целиком. */
 export interface ProfileBadge {
@@ -38,7 +39,14 @@ export function useProfileBadge(): ProfileBadge | null {
 }
 
 /** Подсказка щита: сначала то, что сломано, потом обычное состояние. */
-export function profileHint(profile: ProfileBadge | null, vpnOn: boolean): string {
+export function profileHint(profile: ProfileBadge | null, vpnOn: boolean, language: UiLanguage = 'ru'): string {
+  if (language === 'en') {
+    if (profile && !profile.isDefault && profile.strict && !vpnOn) {
+      return `Profile “${profile.name}” requires VPN, but the tunnel is off`;
+    }
+    const base = vpnOn ? 'Protection: VPN on' : 'Protection: VPN, ad blocking and site information';
+    return profile && !profile.isDefault ? `${base} · profile “${profile.name}”` : base;
+  }
   if (profile && !profile.isDefault && profile.strict && !vpnOn) {
     return `Профиль «${profile.name}» открывает сайты только через VPN, а туннель выключен`;
   }

@@ -2,6 +2,7 @@ import type React from 'react';
 import type { ImportDataType, ImportTypeResult } from '../../../shared/ipc';
 import { sp, CAPS, TEXT, DISPLAY, RADIUS } from '../../styles/system';
 import { btnGhost } from '../settings/kit';
+import type { UiLanguage } from '../../../shared/uiLanguage';
 
 // Мелочи, общие для шагов мастера. Живут отдельно, потому что нужны и корню, и шагу переноса:
 // держать их в Onboarding.tsx значило бы импортировать экран из его собственной части.
@@ -12,8 +13,16 @@ export const TYPE_LABELS: Record<ImportDataType, string> = {
   passwords: 'Пароли',
 };
 
-export function resultLine(type: ImportDataType, res: ImportTypeResult | null): string {
-  const label = TYPE_LABELS[type];
+export function resultLine(type: ImportDataType, res: ImportTypeResult | null, language: UiLanguage = 'ru'): string {
+  const label = language === 'en' ? { bookmarks: 'Bookmarks', history: 'History', passwords: 'Passwords' }[type] : TYPE_LABELS[type];
+  if (language === 'en') {
+    if (res === null) return `${label}: could not read`;
+    if (res.needsPrimaryPassword) return `${label}: Firefox primary password needed`;
+    const parts = [`imported ${res.inserted}`];
+    if (res.skipped > 0) parts.push(`already present ${res.skipped}`);
+    if (res.unsupported && res.unsupported > 0) parts.push(`unsupported ${res.unsupported}`);
+    return `${label}: ${parts.join(', ')}`;
+  }
   if (res === null) return `${label}: не удалось прочитать`;
   // Раньше подсчёта: «перенесено 0» здесь было бы враньём — переносить есть что, хранилище закрыто.
   if (res.needsPrimaryPassword) return `${label}: нужен мастер-пароль Firefox`;
