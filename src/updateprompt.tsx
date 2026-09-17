@@ -3,6 +3,7 @@
 // текущий UpdateStatus, null — карточки нет.
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import type { UpdateStatus } from '../shared/ipc';
 import UpdatePrompt from './components/UpdatePrompt';
 import './styles/global.css';
@@ -65,6 +66,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <UpdatePromptApp />
+    <StandaloneLanguageProvider><UpdatePromptApp /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

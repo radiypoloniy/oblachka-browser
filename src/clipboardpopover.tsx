@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import { Clipboard, Copy, Check, Trash2, X, ChevronDown, ChevronRight, CornerUpRight, Link2, Pin, PinOff } from 'lucide-react';
 import type { ClipboardEntry, ClipboardRevealResult } from '../shared/ipc';
 // ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
@@ -424,6 +425,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ClipboardPopoverApp />
+    <StandaloneLanguageProvider><ClipboardPopoverApp /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

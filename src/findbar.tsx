@@ -7,6 +7,7 @@
 // боевые IPC-каналы через свой мост (window.findbar), см. preload-findbar.ts.
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider, useLanguage } from './i18n';
 import { ChevronUp, ChevronDown, X } from 'lucide-react';
 import './styles/global.css';
 import type { FindResult, SmartFindResult } from '../shared/ipc';
@@ -50,6 +51,7 @@ const SMART_FAIL_TEXT: Record<NonNullable<SmartFindResult['reason']>, string> = 
 };
 
 function FindBar() {
+  const { t } = useLanguage();
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<FindResult | null>(null);
   // Режим «по смыслу»: вопрос вместо подстроки, ответ ищет локальная модель (см. SmartFind.ts).
@@ -196,10 +198,10 @@ function FindBar() {
 
   const hasResults = quotes.length > 0 || (result !== null && result.count > 0);
   const noMatch = (query.trim() !== '' && result !== null && result.count === 0 && quotes.length === 0) || smartFail !== null;
-  const statusText = smartBusy ? 'ищу…'
-    : smartFail ? SMART_FAIL_TEXT[smartFail]
+  const statusText = smartBusy ? t('ищу…')
+    : smartFail ? t(SMART_FAIL_TEXT[smartFail])
     : quotes.length > 0 ? `${quoteIdx + 1} / ${quotes.length}`
-    : (query.trim() && result) ? (result.count === 0 ? 'нет' : `${result.activeMatch} / ${result.count}`)
+    : (query.trim() && result) ? (result.count === 0 ? t('нет') : `${result.activeMatch} / ${result.count}`)
     : '';
 
   return (
@@ -238,6 +240,7 @@ function FindBarChrome(p: {
   onNext: () => void
   onClose: () => void
 }) {
+  const { t } = useLanguage();
   return (
     // Прозрачный внешний паддинг — место для вытекания CSS box-shadow (см. SHADOW_MARGIN в
     // electron/FindBarManager.ts — сама WebContentsView увеличена на столько же).
@@ -262,7 +265,7 @@ function FindBarChrome(p: {
           value={p.query}
           onChange={p.onQuery}
           onKeyDown={p.onKeyDown}
-          placeholder={p.smart ? 'Где на странице про…' : 'Найти на странице…'}
+          placeholder={p.smart ? t('Где на странице про…') : t('Найти на странице…')}
           style={{
             flex: 1, minWidth: 0, height: 36, padding: `0 ${sp(2)}px`,
             background: 'transparent', border: 'none',
@@ -285,7 +288,7 @@ function FindBarChrome(p: {
           className="findbar-btn"
           onClick={p.onPrev}
           disabled={!p.hasResults}
-          title={p.quotesLen > 0 ? 'Предыдущий фрагмент (Shift+Enter)' : 'Предыдущее (Shift+Enter)'}
+          title={p.quotesLen > 0 ? t('Предыдущий фрагмент (Shift+Enter)') : t('Предыдущее (Shift+Enter)')}
         >
           <ChevronUp {...GLYPH} />
         </button>
@@ -294,11 +297,11 @@ function FindBarChrome(p: {
           className="findbar-btn"
           onClick={p.onNext}
           disabled={!p.hasResults}
-          title={p.quotesLen > 0 ? 'Следующий фрагмент (Enter)' : 'Следующее (Enter)'}
+          title={p.quotesLen > 0 ? t('Следующий фрагмент (Enter)') : t('Следующее (Enter)')}
         >
           <ChevronDown {...GLYPH} />
         </button>
-        <button type="button" className="findbar-btn" onClick={p.onClose} title="Закрыть (Esc)">
+        <button type="button" className="findbar-btn" onClick={p.onClose} title={t('Закрыть (Esc)')}>
           <X {...GLYPH} />
         </button>
       </div>
@@ -307,6 +310,7 @@ function FindBarChrome(p: {
 }
 
 function ModeSeg({ smart, onMode }: { smart: boolean; onMode: (smart: boolean) => void }) {
+  const { t } = useLanguage();
   // Компактнее настроечного SegTrack: кегль подписи и узкие поля, чтобы пилюля не спорила с набором.
   const btn = (on: boolean): React.CSSProperties => ({
     ...TEXT.caption, fontWeight: on ? 600 : 500, border: 'none', cursor: 'default',
@@ -316,11 +320,11 @@ function ModeSeg({ smart, onMode }: { smart: boolean; onMode: (smart: boolean) =
     transition: motion.state('background', 'color'),
   });
   return (
-    <div role="tablist" aria-label="Режим поиска" style={{
+    <div role="tablist" aria-label={t('Режим поиска')} style={{
       display: 'flex', gap: 1, padding: 2, flexShrink: 0, ...well(RADIUS.pill),
     }}>
-      <button type="button" role="tab" aria-selected={!smart} aria-pressed={!smart} onClick={() => onMode(false)} style={btn(!smart)}>Текст</button>
-      <button type="button" role="tab" aria-selected={smart} aria-pressed={smart} onClick={() => onMode(true)} style={btn(smart)}>Смысл</button>
+      <button type="button" role="tab" aria-selected={!smart} aria-pressed={!smart} onClick={() => onMode(false)} style={btn(!smart)}>{t('Текст')}</button>
+      <button type="button" role="tab" aria-selected={smart} aria-pressed={smart} onClick={() => onMode(true)} style={btn(smart)}>{t('Смысл')}</button>
     </div>
   );
 }
@@ -329,6 +333,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <FindBar />
+    <StandaloneLanguageProvider><FindBar /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

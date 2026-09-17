@@ -14,6 +14,7 @@
 // мышью и читают краем глаза.
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider, useLanguage } from './i18n';
 import { Search, CornerDownLeft, Clock, Star, PanelTop, Globe, ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react';
 import './styles/global.css';
 import type { SearchTarget, QuickHit, QuickQueryResult } from '../shared/ipc';
@@ -145,6 +146,7 @@ function Chip({ target, selected, showKey, onClick }: {
 }
 
 function SearchPopover() {
+  const { language, t } = useLanguage();
   const [targets, setTargets] = useState<SearchTarget[]>([]);
   const [selected, setSelected] = useState(0);
   const [query, setQuery] = useState('');
@@ -172,7 +174,6 @@ function SearchPopover() {
   // Номер запроса: ответы приходят асинхронно и могут разъехаться с текущим вводом —
   // применяем только ответ на последний.
   const querySeqRef = useRef(0);
-
   useEffect(() => {
     return window.searchPopover.onShow((p) => {
       setTargets(p.targets);
@@ -332,7 +333,7 @@ function SearchPopover() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={active ? `Искать в ${active.name}…` : 'Что найти?'}
+            placeholder={active ? (language === 'en' ? `Search ${active.name}…` : `Искать в ${active.name}…`) : t('Что найти?')}
             style={{
               flex: 1, minWidth: 0, border: 'none', background: 'transparent',
               ...DISPLAY, fontSize: 24, fontWeight: 700, letterSpacing: '-0.025em',
@@ -346,7 +347,7 @@ function SearchPopover() {
             ...CAPS, color: 'var(--text-muted)',
           }}>
             <CornerDownLeft size={14} />
-            новая вкладка
+            {t('новая вкладка')}
           </span>
         </div>
 
@@ -360,15 +361,15 @@ function SearchPopover() {
                 одинаковых прямоугольника: что полоса целей отвечает на «куда искать», а список
                 ниже — на «у вас это уже есть», приходилось выводить из содержимого. */}
             <span style={{ ...CAPS, paddingLeft: 4 }}>
-              {bangTarget ? 'цель задана бэнгом' : 'куда искать'}
+              {bangTarget ? t('цель задана бэнгом') : t('куда искать')}
             </span>
             {bangTarget ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 4px' }}>
                 <Chip target={bangTarget} selected onClick={() => inputRef.current?.focus()} />
                 <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
                   {strippedQuery
-                    ? <>цель задана бэнгом <b>!{bangTarget.bangKey}</b> — Enter ищет здесь</>
-                    : <>после <b>!{bangTarget.bangKey}</b> допишите запрос, иначе откроется сам сайт</>}
+                    ? <>{t('цель задана бэнгом')} <b>!{bangTarget.bangKey}</b> — {t('Enter ищет здесь')}</>
+                    : <>{t('после')} <b>!{bangTarget.bangKey}</b> {t('допишите запрос, иначе откроется сам сайт')}</>}
                 </span>
               </div>
             ) : (
@@ -400,7 +401,7 @@ function SearchPopover() {
                 {targets.length > CHIPS_COLLAPSED && (
                   <button
                     onClick={() => setChipsExpanded((v) => !v)}
-                    title={chipsExpanded ? 'Свернуть список целей' : 'Показать все цели'}
+                    title={chipsExpanded ? t('Свернуть список целей') : t('Показать все цели')}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none',
                       height: CHIP_H, padding: '0 16px', borderRadius: RADIUS.pill,
@@ -410,8 +411,8 @@ function SearchPopover() {
                     }}
                   >
                     {chipsExpanded
-                      ? <><ChevronUp size={15} />свернуть</>
-                      : <><ChevronDown size={15} />ещё {targets.length - CHIPS_COLLAPSED}</>}
+                      ? <><ChevronUp size={15} />{t('свернуть')}</>
+                      : <><ChevronDown size={15} />{t('ещё')} {targets.length - CHIPS_COLLAPSED}</>}
                   </button>
                 )}
               </div>
@@ -422,7 +423,7 @@ function SearchPopover() {
         {/* ── Остров 3: находки в своих данных ── */}
         {hits.length > 0 && (
           <div style={{ ...islandCard, padding: 10, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ ...CAPS, padding: '2px 4px 6px' }}>у вас уже есть</span>
+            <span style={{ ...CAPS, padding: '2px 4px 6px' }}>{t('у вас уже есть')}</span>
             {hits.map((h, i) => {
               const Icon = HIT_ICON[h.kind];
               const isSelected = i === hitIndex;
@@ -459,7 +460,7 @@ function SearchPopover() {
                     flex: 'none', padding: '5px 10px', borderRadius: RADIUS.pill,
                     background: 'var(--surface-sunken)', border: '1px solid var(--glass-edge)',
                     ...CAPS, color: 'var(--text-muted)',
-                  }}>{HIT_LABEL[h.kind]}</span>
+                  }}>{t(HIT_LABEL[h.kind])}</span>
                 </button>
               );
             })}
@@ -474,6 +475,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <SearchPopover />
+    <StandaloneLanguageProvider><SearchPopover /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

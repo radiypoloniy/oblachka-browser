@@ -3,6 +3,7 @@
 // сюда приезжает ровно один текущий вопрос, а null означает «очередь пуста».
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import type { PermissionRequest } from '../shared/ipc';
 import PermissionPrompt from './components/PermissionPrompt';
 import './styles/global.css';
@@ -62,6 +63,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <PermissionPopoverApp />
+    <StandaloneLanguageProvider><PermissionPopoverApp /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

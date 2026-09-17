@@ -11,6 +11,7 @@
 // ответа сейчас» (разрешение сайта, разрешение внешней программы, обновление браузера).
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider, useLanguage } from './i18n';
 import { Plug, PenLine } from 'lucide-react';
 import type { McpPromptRequest } from '../shared/ipc';
 import { PopoverCard, PopoverActions, PrimaryButton, QuietButton } from './components/popoverKit';
@@ -80,6 +81,7 @@ function McpPromptApp() {
 }
 
 function PromptCard({ request }: { request: McpPromptRequest }) {
+  const { t } = useLanguage();
   const [remember, setRemember] = useState(false);
   const connect = request.kind === 'connect';
   const Icon = connect ? Plug : PenLine;
@@ -129,16 +131,16 @@ function PromptCard({ request }: { request: McpPromptRequest }) {
               onChange={(e) => setRemember(e.target.checked)}
               style={{ cursor: 'default', accentColor: 'var(--accent)' }}
             />
-            Больше не спрашивать об этом действии
+            {t('Больше не спрашивать об этом действии')}
           </label>
         )}
 
         <PopoverActions>
           <PrimaryButton stretch big onClick={() => window.mcpPrompt.respond(request.id, true, remember)}>
-            {connect ? 'Подключить' : 'Разрешить'}
+            {connect ? t('Подключить') : t('Разрешить')}
           </PrimaryButton>
           <QuietButton stretch big invert onClick={() => window.mcpPrompt.respond(request.id, false, false)}>
-            Отказать
+            {t('Отказать')}
           </QuietButton>
         </PopoverActions>
       </PopoverCard>
@@ -148,5 +150,5 @@ function PromptCard({ request }: { request: McpPromptRequest }) {
 
 installOverlayReveal();
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><McpPromptApp /></React.StrictMode>,
+  <React.StrictMode><StandaloneLanguageProvider><McpPromptApp /></StandaloneLanguageProvider></React.StrictMode>,
 );

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import { MapPin, CreditCard, X } from 'lucide-react';
 import type { AddressProfile, CardMeta } from '../shared/ipc';
 // ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
@@ -212,6 +213,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AutofillPopoverApp />
+    <StandaloneLanguageProvider><AutofillPopoverApp /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

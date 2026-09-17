@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import { ChevronRight, Download, Sparkles, Check, X } from 'lucide-react';
 import { isDocumentFile, isImageFile } from '../shared/documentFormats';
 import type { DownloadEntry, DownloadFileIcon, DuplicateDownloadPrompt, DuplicateDownloadDecision, DownloadNameSuggestion, DownloadRenameResult } from '../shared/ipc';
@@ -558,6 +559,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <DownloadsPopoverApp />
+    <StandaloneLanguageProvider><DownloadsPopoverApp /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

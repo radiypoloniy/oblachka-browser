@@ -1,5 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { UiLanguage } from '../shared/uiLanguage';
+import { isUiLanguage } from '../shared/uiLanguage';
+
+const CACHE_KEY = 'oblako-ui-language';
 
 // Ключ — уже существующий русский текст. Такой каталог позволяет переносить экраны по одному,
 // не меняя русский интерфейс и не вводя фиктивные идентификаторы для каждой подписи.
@@ -140,6 +143,40 @@ const EN: Record<string, string> = {
   'Вернуть размер': 'Restore window',
   'Развернуть': 'Maximize',
   'Закрыть': 'Close',
+  'нет модели': 'no model',
+  'пусто': 'empty',
+  'не нашлось': 'not found',
+  'ищу…': 'searching…',
+  'нет': 'none',
+  'Где на странице про…': 'Where does this page discuss…',
+  'Найти на странице…': 'Find on page…',
+  'Предыдущий фрагмент (Shift+Enter)': 'Previous passage (Shift+Enter)',
+  'Предыдущее (Shift+Enter)': 'Previous (Shift+Enter)',
+  'Следующий фрагмент (Enter)': 'Next passage (Enter)',
+  'Следующее (Enter)': 'Next (Enter)',
+  'Закрыть (Esc)': 'Close (Esc)',
+  'Режим поиска': 'Search mode',
+  'Текст': 'Text',
+  'Смысл': 'Meaning',
+  'Что найти?': 'What are you looking for?',
+  'новая вкладка': 'new tab',
+  'цель задана бэнгом': 'bang-selected target',
+  'куда искать': 'where to search',
+  'Enter ищет здесь': 'Enter searches here',
+  'после': 'after',
+  'допишите запрос, иначе откроется сам сайт': 'enter a query, or the site itself will open',
+  'Свернуть список целей': 'Collapse search targets',
+  'Показать все цели': 'Show all search targets',
+  'свернуть': 'collapse',
+  'ещё': 'more',
+  'у вас уже есть': 'already in your browser',
+  'вкладка': 'tab',
+  'история': 'history',
+  'закладка': 'bookmark',
+  'Больше не спрашивать об этом действии': 'Do not ask again for this action',
+  'Подключить': 'Connect',
+  'Разрешить': 'Allow',
+  'Отказать': 'Deny',
   'Поиск из адресной строки, бэнги, загрузки и то, как браузер ведёт себя на этом компьютере.': 'Address-bar search, bangs, downloads, and how the browser behaves on this computer.',
   'Язык интерфейса': 'Interface language',
   'Меняет язык браузера, но не язык сайтов и не язык ответов AI.': 'Changes the browser interface, not website languages or AI replies.',
@@ -147,6 +184,10 @@ const EN: Record<string, string> = {
   'Русский': 'Russian',
   'Язык сайтов': 'Website language',
   'Как в приложении': 'Same as app',
+  'Браузер закроется ненадолго и откроется сам. Вкладки на месте.': 'The browser will close briefly and reopen. Your tabs will still be there.',
+  'Не спрашивать об этой версии': 'Do not ask about this version again',
+  'Перезапустить': 'Restart',
+  'Позже': 'Later',
 };
 
 export function translate(language: UiLanguage, source: string): string {
@@ -167,18 +208,28 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let live = true;
     void window.oblako.getUiLanguage().then((value) => {
-      if (live) setLanguageState(value);
+      if (live) {
+        try { localStorage.setItem(CACHE_KEY, value); } catch { /* storage может быть выключен */ }
+        setLanguageState(value);
+      }
     }).catch(() => {
       if (live) setLanguageState('ru');
     });
     const unsubscribe = window.oblako.onUiLanguageChanged((value) => {
-      if (live) setLanguageState(value);
+      if (live) {
+        try { localStorage.setItem(CACHE_KEY, value); } catch { /* storage может быть выключен */ }
+        setLanguageState(value);
+      }
     });
     return () => { live = false; unsubscribe(); };
   }, []);
 
   useEffect(() => {
-    if (language) document.documentElement.lang = language;
+    if (!language) return;
+    document.documentElement.lang = language;
+    // Отдельные chrome-вью имеют собственный preload и не видят window.oblako. Это только
+    // зеркало для них; источник истины остаётся settings.json в main.
+    try { localStorage.setItem(CACHE_KEY, language); } catch { /* storage может быть выключен */ }
   }, [language]);
 
   const value = useMemo<LanguageContextValue | null>(() => language ? {
@@ -195,4 +246,33 @@ export function useLanguage(): LanguageContextValue {
   const value = useContext(LanguageContext);
   if (!value) throw new Error('LanguageProvider отсутствует');
   return value;
+}
+
+function cachedLanguage(): UiLanguage {
+  try {
+    const value = localStorage.getItem(CACHE_KEY);
+    if (isUiLanguage(value)) return value;
+  } catch { /* storage может быть выключен */ }
+  return 'ru';
+}
+
+/** Для изолированных chrome-вью: язык приходит из зеркала, без доступа к боевому preload. */
+export function StandaloneLanguageProvider({ children }: { children: ReactNode }) {
+  const [language, setLanguage] = useState<UiLanguage>(cachedLanguage);
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === CACHE_KEY && isUiLanguage(event.newValue)) setLanguage(event.newValue);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+  const value = useMemo<LanguageContextValue>(() => ({
+    language,
+    t: (source) => translate(language, source),
+    setLanguage: async () => { throw new Error('Менять язык можно только из настроек браузера'); },
+  }), [language]);
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }

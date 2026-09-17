@@ -4,6 +4,7 @@
 // страницу — см. DropZoneManager.ts). Здесь только подсветка и подпись, потому что у одного
 // дропа два исхода, и человек должен видеть, какой получит, ДО того как отпустит.
 import { createRoot } from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import { useEffect, useState } from 'react';
 import './styles/global.css';
 
@@ -291,4 +292,4 @@ function DropZones() {
   return null;
 }
 
-createRoot(document.getElementById('root')!).render(<DropZones />);
+createRoot(document.getElementById('root')!).render(<StandaloneLanguageProvider><DropZones /></StandaloneLanguageProvider>);

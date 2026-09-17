@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import { Lock, ShieldOff, Camera, Mic, MapPin, Bell, Maximize, Clipboard, RotateCcw, History, ExternalLink, Wand2 } from 'lucide-react';
 import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
 // ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
@@ -513,6 +514,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <SitePopoverApp />
+    <StandaloneLanguageProvider><SitePopoverApp /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

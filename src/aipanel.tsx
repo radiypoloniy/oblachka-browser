@@ -9,6 +9,7 @@
 // целиком при каждом onContext (переключили вкладку → другая лента, не дописывание к старой).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import { Sparkles, LayoutGrid, Plus } from 'lucide-react';
 import './styles/global.css';
 import { AiActivityPill } from './aipanel/AiActivityPill';
@@ -444,6 +445,6 @@ const APPS_ONLY = new URLSearchParams(window.location.search).get('kind') === 'a
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {APPS_ONLY ? <AppsPanel /> : <AiPanel />}
+    <StandaloneLanguageProvider>{APPS_ONLY ? <AppsPanel /> : <AiPanel />}</StandaloneLanguageProvider>
   </React.StrictMode>,
 );

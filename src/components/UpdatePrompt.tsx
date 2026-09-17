@@ -4,6 +4,7 @@ import type { UpdateStatus } from '../../shared/ipc';
 import { updateOfferPhase } from '../../shared/updateOffer';
 import { PopoverCard, PopoverActions, PrimaryButton, QuietButton } from './popoverKit';
 import { sp, RADIUS, TEXT, DISPLAY } from '../styles/system';
+import { useLanguage } from '../i18n';
 
 // Карточка «доступна новая версия». Живёт в собственной WebContentsView поверх страницы
 // (см. electron/UpdatePromptManager.ts) — тот же рецепт, что запрос разрешения сайта.
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export default function UpdatePrompt({ status, onRespond }: Props) {
+  const { t, language } = useLanguage();
   const [skip, setSkip] = useState(false);
   const phase = updateOfferPhase(status.kind);
   const version = status.newVersion ?? '';
@@ -24,16 +26,18 @@ export default function UpdatePrompt({ status, onRespond }: Props) {
   let hint: string;
   let Icon = Download;
   if (phase === 'progress') {
-    title = `Скачиваем версию ${version}…`;
+    title = language === 'en' ? `Downloading version ${version}…` : `Скачиваем версию ${version}…`;
     hint = `${status.percent}%`;
     Icon = Download;
   } else if (phase === 'restart') {
-    title = `Перезапустить и поставить ${version}?`;
-    hint = 'Браузер закроется ненадолго и откроется сам. Вкладки на месте.';
+    title = language === 'en' ? `Restart and install ${version}?` : `Перезапустить и поставить ${version}?`;
+    hint = t('Браузер закроется ненадолго и откроется сам. Вкладки на месте.');
     Icon = RotateCcw;
   } else {
-    title = `Поставить версию ${version}?`;
-    hint = `Сейчас стоит ${status.currentVersion}. Скачается в фоне, вкладки сохранятся.`;
+    title = language === 'en' ? `Install version ${version}?` : `Поставить версию ${version}?`;
+    hint = language === 'en'
+      ? `You have ${status.currentVersion}. The update will download in the background; your tabs will stay open.`
+      : `Сейчас стоит ${status.currentVersion}. Скачается в фоне, вкладки сохранятся.`;
     Icon = RefreshCw;
   }
 
@@ -86,17 +90,17 @@ export default function UpdatePrompt({ status, onRespond }: Props) {
               onChange={(e) => setSkip(e.target.checked)}
               style={{ cursor: 'default', accentColor: 'var(--accent)' }}
             />
-            Не спрашивать об этой версии
+            {t('Не спрашивать об этой версии')}
           </label>
         )}
 
         {phase !== 'progress' && (
           <PopoverActions>
             <PrimaryButton stretch big onClick={() => onRespond('update')}>
-              {phase === 'restart' ? 'Перезапустить' : 'Обновить'}
+              {phase === 'restart' ? t('Перезапустить') : t('Обновить')}
             </PrimaryButton>
             <QuietButton stretch big invert onClick={() => onRespond(skip ? 'skip' : 'later')}>
-              {phase === 'restart' ? 'Позже' : 'Не сейчас'}
+              {phase === 'restart' ? t('Позже') : t('Не сейчас')}
             </QuietButton>
           </PopoverActions>
         )}

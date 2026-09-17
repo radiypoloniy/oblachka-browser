@@ -22,6 +22,7 @@
 // скроллиться внутри), а не фиксированный размер вью.
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider, useLanguage } from './i18n';
 import './styles/global.css';
 import type { SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit } from '../shared/ipc';
 import { RowIcon } from './components/suggest/siteIcons';
@@ -64,6 +65,7 @@ function ListView({ items, activeIdx, onHover, onLeave }: {
   items: SuggestDropdownItem[]; activeIdx: number;
   onHover: (e: React.MouseEvent, idx: number) => void; onLeave: (idx: number) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <>
       {items.map((item, idx) => {
@@ -133,7 +135,7 @@ function ListView({ items, activeIdx, onHover, onLeave }: {
               </div>
               {item.kind === 'tab' && (
                 <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
-                  вкладка
+                  {t('вкладка')}
                 </span>
               )}
             </div>
@@ -267,6 +269,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <SuggestDropdown />
+    <StandaloneLanguageProvider><SuggestDropdown /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

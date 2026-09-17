@@ -3,6 +3,7 @@
 // порог храповика, а жест Ctrl+Shift+S / Ctrl+S обязан остаться тонким.
 import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 import { ScreenshotRoot } from './screenshot/Root';
@@ -32,6 +33,6 @@ declare global {
 installOverlayReveal();
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ScreenshotRoot />
+    <StandaloneLanguageProvider><ScreenshotRoot /></StandaloneLanguageProvider>
   </StrictMode>,
 );

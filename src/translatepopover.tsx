@@ -6,6 +6,7 @@
 // текст с капом + внутренний скролл сверх капа — сам кап и позиция живут в main).
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import ReactMarkdown from 'react-markdown';
 import { Languages, Wand2, HelpCircle, ListChecks, SpellCheck, Scissors, Smile, X, type LucideIcon } from 'lucide-react';
 import './styles/global.css';
@@ -215,6 +216,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Popover />
+    <StandaloneLanguageProvider><Popover /></StandaloneLanguageProvider>
   </React.StrictMode>,
 )

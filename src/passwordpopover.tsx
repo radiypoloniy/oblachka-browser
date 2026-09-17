@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import type { PasswordIndicatorState } from '../shared/ipc';
 import PasswordIndicatorPopover from './components/PasswordIndicatorPopover';
 import './styles/global.css';
@@ -59,6 +60,6 @@ installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <PasswordPopoverApp />
+    <StandaloneLanguageProvider><PasswordPopoverApp /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

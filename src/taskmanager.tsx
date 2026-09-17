@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { StandaloneLanguageProvider } from './i18n';
 import './styles/global.css';
 import { BREAK, CAPS, COL, NUMERIC, PAGE_MAX, TEXT, pad, sp } from './styles/system';
 import {
@@ -373,4 +374,4 @@ function TaskManager() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<TaskManager />);
+createRoot(document.getElementById('root')!).render(<StandaloneLanguageProvider><TaskManager /></StandaloneLanguageProvider>);
