@@ -11,7 +11,7 @@ import { wireWindowOpenPolicy } from './windowOpenPolicy';
 import type { WindowOpenHost } from './windowOpenPolicy';
 import { SplitPairRegistry } from './SplitPairRegistry';
 import { startPageFind, findQuoteInWebContents } from './tabFind';
-import { disputedPageAction, disputedKeyStuckInFrame } from './tabHotkeyPolicy';
+import { wireTabHotkeys } from './tabHotkeys';
 import { wireTabNavigationGuard } from './tabNavigationGuard';
 import { wireTabGuestSignals } from './tabGuestSignals';
 import { wireTabPageLifecycle } from './tabPageLifecycle';
@@ -2930,7 +2930,7 @@ export class TabManager {
    *
    * ⚠️ Слушатель один на менеджер, а не на вкладку, и он обязан проверять принадлежность
    * отправителя: `ipcMain.on` глобален, и без гварда одно нажатие в одном окне сработало бы во
-   * всех — ровно та же ловушка, что уже разобрана у `before-input-event` ниже (после переезда
+   * всех — ровно та же ловушка, что у `before-input-event` в `tabHotkeys.ts` (после переезда
    * вкладки её слушатель остаётся у прежнего менеджера навсегда).
    */
   private pageHotkeyBound = false;
@@ -2958,194 +2958,45 @@ export class TabManager {
     }
   }
 
-  /**
-   * Застряла ли спорная клавиша в ЧУЖОМ КАДРЕ.
-   *
-   * ⚠️ Разбор живой жалобы «Ctrl+F срабатывает не каждый раз». Спорные клавиши приходят снизу, из
-   * preload страницы, — но preload намеренно НЕ выполняется в iframe (структурный гвард против
-   * чтения чужого origin, см. webPreferences вкладки). Значит, когда фокус стоит во встроенном
-   * кадре — плеере, комментариях, рекламном блоке, встроенной карте, — keydown всплывает до окна
-   * ЭТОГО кадра, наш слушатель его не видит, и клавиша пропадает совсем: сверху мы её не
-   * перехватываем, снизу никто не присылает. Отсюда и «через раз»: зависит от того, куда человек
-   * кликнул последним.
-   *
-   * ⚠️ ORIGIN СРАВНИВАЕТСЯ НЕ ИЗ ПЕДАНТИЗМА. Кадр СВОЕГО origin — это, как правило, часть самого
-   * приложения: у Google Документов ввод с клавиатуры живёт в скрытом кадре, и отобрав у него
-   * Ctrl+F, мы вернули бы ровно тот баг, который чинили, отдавая редакторам их клавиши. Поэтому
-   * вмешиваемся только в ЧУЖОЙ кадр: встроенный чужой контент своего поиска почти никогда не
-   * имеет, а наш ему в самый раз.
-   */
-  // source — откуда пришёл ввод. Слой хрома принадлежит окну навсегда и никуда не переезжает;
-  // вкладка — может (см. detachTabForMove), и это решает всё, см. гвард ниже.
+  // Вкладка после передачи сохраняет listener, но старый менеджер больше не владеет её wc.
   registerHotkeyHandler(wc: WebContents, source: 'chrome' | 'tab' = 'tab'): void {
     this.bindPageHotkeys();
-    wc.on('before-input-event', (event, input) => {
-      // ⚠️ Тот же закон, что у mine() в wirePageEvents, только здесь он был пропущен: после
-      // переезда вкладки в другое окно слушатель ПРЕЖНЕГО менеджера остаётся на её webContents
-      // навсегда, снять его нечем. Без этой проверки один Ctrl+W закрывал бы вкладку и здесь,
-      // и в старом окне (там — свою активную, ни в чём не виноватую), а Ctrl+T открывал бы хаб
-      // в обоих. Поймано живой проверкой возврата вкладки: жест срабатывал сразу в двух окнах
-      // и отменял сам себя.
-      if (source === 'tab' && !this.ownsWebContents(wc.id)) return;
-      if (input.type !== 'keyDown') return;
-      const { code, shift } = input;
-
-      // ── Без Ctrl ──────────────────────────────────────────────────────────
-      if (!input.control) {
-        // Esc: приоритет — убрать карточку снимка (она появилась последней и висит поверх всего),
-        // затем закрыть FindBar; иначе — остановить загрузку страницы.
-        if (code === 'Escape' && !shift) {
-          if (this.screenshotOpen) {
-            event.preventDefault();
-            this.screenshotOpen = false;    // немедленный сброс — как у findBarOpen ниже
-            this.onScreenshotCloseCb?.();
-          } else if (this.findBarOpen) {
-            event.preventDefault();
-            this.findBarOpen = false;   // немедленный сброс, чтобы второй Esc не зацикливался
-            this.onFindCloseCb();
-          } else if (this.omniboxEditing) {
-            // Строку правят — клавиша принадлежит омнибоксу. Не гасим: React-обработчик вернёт
-            // прежний адрес (Toolbar::handleKeyDown), а загрузку останавливать не просили.
-          } else {
-            const active = this.getActiveWebContents();
-            if (active) { event.preventDefault(); active.stop(); }
-          }
-          return;
-        }
-        // Shift+Esc: диспетчер задач. ⚠️ Стоит РЯДОМ с обычным Esc и отдельной веткой: без явной
-        // проверки shift обычный Esc (остановить загрузку, закрыть панель поиска) и диспетчер
-        // спорили бы за одну клавишу. Та же клавиша, что у Chrome, — жанр общий, привычка тоже.
-        if (code === 'Escape' && shift) {
-          event.preventDefault();
-          this.onTaskManagerCb?.();
-          return;
-        }
-        // F5: обновить активную вкладку. Ctrl+F5 (мимо кэша) сюда не попадает — он разбирается
-        // ниже, в Ctrl-ветке, вместе с Ctrl+Shift+R.
-        if (code === 'F5' && !shift) {
-          event.preventDefault();
-          this.reload(this.activeId);
-          return;
-        }
-        // F12: DevTools активной вкладки (открыть / закрыть).
-        if (code === 'F12' && !shift && !input.alt) {
-          event.preventDefault();
-          this.toggleActiveDevTools();
-          return;
-        }
-        // Alt+← / Alt+→: назад / вперёд (клавиатурная альтернатива Mouse4/Mouse5).
-        // Боковые кнопки мыши (XButton1/2) обрабатываются нативно через WebContentsViewAura.
-        if (code === 'ArrowLeft' && input.alt && !shift) {
-          event.preventDefault();
-          this.goBack(this.activeId);
-          return;
-        }
-        if (code === 'ArrowRight' && input.alt && !shift) {
-          event.preventDefault();
-          this.goForward(this.activeId);
-          return;
-        }
-        return;
-      }
-
-      // ── Ctrl+... ──────────────────────────────────────────────────────────
-      if (code === 'KeyT' && !shift) {
-        event.preventDefault();
-        this.activate(HUB_ID);             // Ctrl+T: открыть хаб
-      } else if (code === 'KeyT' && shift) {
-        event.preventDefault();
-        this.reopenLastClosedTab();         // Ctrl+Shift+T: восстановить закрытую
-      } else if (code === 'KeyN' && !shift) {
-        event.preventDefault();
-        this.onNewWindowCb?.();             // Ctrl+N: новое окно (main решает, какой роли)
-      } else if (code === 'KeyN' && shift) {
-        event.preventDefault();
-        this.createTab(undefined, false, false, true); // Ctrl+Shift+N: новая вкладка инкогнито
-      } else if (code === 'KeyM' && shift) {
-        event.preventDefault();
-        this.onReturnTabCb?.(this.activeId); // Ctrl+Shift+M: вернуть вкладку в другое окно
-      } else if (code === 'KeyW' && !shift) {
-        event.preventDefault();
-        this.closeTab(this.activeId);       // Ctrl+W: закрыть активную (хаб защищён)
-      } else if (code === 'Tab' && !shift) {
-        event.preventDefault();
-        this.selectNext();                  // Ctrl+Tab: следующая вкладка
-      } else if (code === 'Tab' && shift) {
-        event.preventDefault();
-        this.selectPrev();                  // Ctrl+Shift+Tab: предыдущая вкладка
-      } else if (code === 'Equal' || code === 'NumpadAdd') {
-        event.preventDefault();
-        this.adjustZoom(ZOOM_STEP);         // Ctrl+= / Ctrl++
-      } else if (code === 'Minus' || code === 'NumpadSubtract') {
-        event.preventDefault();
-        this.adjustZoom(-ZOOM_STEP);        // Ctrl+-
-      } else if (code === 'Digit0' || code === 'Numpad0') {
-        event.preventDefault();
-        this.resetZoom();                   // Ctrl+0: сбросить к 100%
-      // ⚠️ Ctrl+F / Ctrl+E / Ctrl+D / Ctrl+R / Ctrl+H здесь БОЛЬШЕ НЕ ПЕРЕХВАТЫВАЮТСЯ, и это не
-      // пропуск. `before-input-event` срабатывает раньше страницы, а в Google Таблицах Ctrl+D —
-      // «заполнить вниз», Ctrl+R — «заполнить вправо», Ctrl+E — выравнивание, Ctrl+F и Ctrl+H —
-      // их собственные поиск и замена. Перехват означал бы, что редактор своих клавиш не видит
-      // вообще. Эти пять приходят СНИЗУ, из preload страницы (IPC.PAGE_HOTKEY), и только когда
-      // страница ими не воспользовалась — см. разбор там же.
-      // ⚠️ У СЛОЯ ХРОМА страницы нет, и снизу ничего не придёт: на хабе, в настройках и в
-      // библиотеке preload-content.ts не работает вовсе. Поэтому для него те же пять клавиш
-      // разбираются здесь, как раньше, — гвард по source и есть вся разница.
-      // ⚠️ Спорная клавиша, застрявшая в чужом встроенном кадре (см. disputedKeyStuckInFrame).
-      // Стоит ПЕРЕД ветками слоя хрома и после всех бесспорных: у страницы приоритет остаётся
-      // везде, где путь снизу вообще работает.
-      } else if (source === 'tab' && !shift && disputedPageAction(code) !== undefined
-        && disputedKeyStuckInFrame(wc)) {
-        event.preventDefault();
-        this.runPageHotkey(disputedPageAction(code)!);
-      } else if (source === 'chrome' && code === 'KeyF' && !shift) {
-        event.preventDefault();
-        this.findBarOpen = true;
-        this.onFindOpenCb();                // Ctrl+F: открыть / сфокусировать FindBar
-      } else if (source === 'chrome' && code === 'KeyE' && !shift) {
-        event.preventDefault();
-        this.onQuickSearchCb?.();           // Ctrl+E: поповер быстрого поиска
-      } else if (source === 'chrome' && code === 'KeyR' && !shift) {
-        event.preventDefault();
-        this.reload(this.activeId);         // Ctrl+R: обновить страницу
-      } else if (source === 'chrome' && code === 'KeyH' && !shift) {
-        event.preventDefault();
-        this.onHistoryOpenCb?.();           // Ctrl+H: открыть библиотеку
-      } else if (source === 'chrome' && code === 'KeyD' && !shift) {
-        event.preventDefault();
-        this.onBookmarkPageCb?.();          // Ctrl+D: сохранить страницу в закладки
-      } else if ((code === 'KeyR' && shift) || code === 'F5') {
-        event.preventDefault();
-        this.reloadHard(this.activeId);     // Ctrl+Shift+R / Ctrl+F5: обновить мимо кэша
-      } else if (code === 'KeyL' && !shift) {
-        event.preventDefault();
-        this.onOmniboxFocusCb();            // Ctrl+L: фокус в омнибокс
-      } else if (code === 'KeyS' && shift) {
-        event.preventDefault();
-        this.onScreenshotCb?.();            // Ctrl+Shift+S: снять активную вкладку
-      } else if (code === 'KeyS' && !shift && this.screenshotOpen) {
-        // Ctrl+S — только пока висит карточка снимка. Без неё клавиша остаётся странице:
-        // перехватывать «сохранить» вообще у нас нет права, сохранения страниц в браузере нет.
-        event.preventDefault();
-        this.onScreenshotSaveCb?.();
-      } else if (code === 'KeyO' && shift) {
-        event.preventDefault();
-        this.onBookmarksOpenCb?.();         // Ctrl+Shift+O: открыть раздел закладок
-      } else if (code === 'KeyB' && shift) {
-        // Буфер скопированного. ⚠️ Ctrl+Shift+B в Chrome переключает полосу закладок, но у нас её
-        // нет намеренно (см. CLAUDE.md про закладки в сайдбаре), так что чужой привычки мы не ломаем.
-        event.preventDefault();
-        this.onClipboardToggleCb?.();
-      } else if (code === 'KeyI' && shift) {
-        event.preventDefault();
-        this.toggleActiveDevTools();        // Ctrl+Shift+I: DevTools (альтернатива F12)
-      } else if (code.startsWith('Digit') && !shift) {
-        const n = parseInt(code[5]!, 10);   // 'Digit1'→1 … 'Digit9'→9
-        if (n >= 1 && n <= 9) {
-          event.preventDefault();
-          this.selectByIndex(n);            // Ctrl+1..8: вкладка по номеру; Ctrl+9: последняя
-        }
-      }
+    wireTabHotkeys(wc, source, {
+      ownsWebContents: (id) => this.ownsWebContents(id),
+      screenshotOpen: () => this.screenshotOpen,
+      closeScreenshot: () => { this.screenshotOpen = false; this.onScreenshotCloseCb?.(); },
+      findBarOpen: () => this.findBarOpen,
+      closeFind: () => { this.findBarOpen = false; this.onFindCloseCb(); },
+      omniboxEditing: () => this.omniboxEditing,
+      activeWebContents: () => this.getActiveWebContents(),
+      openTaskManager: () => this.onTaskManagerCb?.(),
+      reload: () => this.reload(this.activeId),
+      toggleDevTools: () => this.toggleActiveDevTools(),
+      goBack: () => this.goBack(this.activeId),
+      goForward: () => this.goForward(this.activeId),
+      openHub: () => this.activate(HUB_ID),
+      reopenLastClosedTab: () => this.reopenLastClosedTab(),
+      openNewWindow: () => this.onNewWindowCb?.(),
+      newIncognitoTab: () => { this.createTab(undefined, false, false, true); },
+      returnActiveTab: () => this.onReturnTabCb?.(this.activeId),
+      closeActiveTab: () => this.closeTab(this.activeId),
+      selectNext: () => this.selectNext(),
+      selectPrev: () => this.selectPrev(),
+      zoomIn: () => this.adjustZoom(ZOOM_STEP),
+      zoomOut: () => this.adjustZoom(-ZOOM_STEP),
+      resetZoom: () => this.resetZoom(),
+      runPageHotkey: (action) => this.runPageHotkey(action),
+      openFind: () => { this.findBarOpen = true; this.onFindOpenCb(); },
+      quickSearch: () => this.onQuickSearchCb?.(),
+      openHistory: () => this.onHistoryOpenCb?.(),
+      bookmarkPage: () => this.onBookmarkPageCb?.(),
+      reloadHard: () => this.reloadHard(this.activeId),
+      focusOmnibox: () => this.onOmniboxFocusCb(),
+      captureScreenshot: () => this.onScreenshotCb?.(),
+      saveScreenshot: () => this.onScreenshotSaveCb?.(),
+      openBookmarks: () => this.onBookmarksOpenCb?.(),
+      toggleClipboard: () => this.onClipboardToggleCb?.(),
+      selectByIndex: (index) => this.selectByIndex(index),
     });
   }
 
