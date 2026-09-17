@@ -32,6 +32,7 @@ import { PIP_ENTER_SCRIPT, PIP_EXIT_SCRIPT } from './videoPip';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
+import { resolveOmniboxInput } from '../shared/omniboxResolve';
 import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_PANE_RADIUS, splitPaneBounds, clampSplitRatio } from '../shared/layout';
 import { prepareSleepUnload } from './tabSleepIndex';
@@ -377,31 +378,13 @@ export class TabManager {
     return tab ? hostOfUrl(this.#tabUrl(tab)) : '';
   }
 
-  // ── Парсинг omnibox: это URL или поисковый запрос ──
-  // Явные правила из спеки (3.7). Edge-кейсы лучше прописать заранее.
+  // Разбор омнибокса — в shared/omniboxResolve.ts (порядок бэнг → схема → файл → хост → поиск).
   private resolveInput(input: string): string {
-    const s = input.trim();
-    if (!s) return 'about:blank';
-    // Бэнги («!yt котики», «котики !yt») — ДО проверки на схему и хост: строка с бэнгом никогда
-    // не является ни URL, ни именем хоста, а вот обратное неверно, и порядок тут единственно
-    // возможный. Неизвестный ключ бэнгом не считается и уходит дальше как обычный запрос —
-    // поэтому текст, случайно начатый с «!», не превращается в навигацию в никуда.
-    const bangUrl = this.resolveBang(s);
-    if (bangUrl) return bangUrl;
-    // Уже есть схема
-    if (/^(https?|file|about):/i.test(s)) return s;
-    // ⚠️ Путь к файлу — ДО эвристики «похоже на хост», иначе она его и съедала: строка
-    // `C:\...\page.html` кончается на `.html`, попадала под «есть точка и нет пробела» и уезжала
-    // на `https://C:/...`. Несуществующий путь сюда не проходит и честно уходит в поиск.
-    const fileUrl = localPathToFileUrl(s);
-    if (fileUrl) return fileUrl;
-    // localhost / IP / есть точка и нет пробела -> трактуем как хост
-    const looksLikeHost =
-      /^localhost(:\d+)?(\/.*)?$/i.test(s) ||
-      /^(\d{1,3}\.){3}\d{1,3}(:\d+)?(\/.*)?$/.test(s) ||
-      (!/\s/.test(s) && /\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(s));
-    if (looksLikeHost) return `https://${s}`;
-    return getSearchEngine(this.searchEngineId).buildUrl(s);
+    return resolveOmniboxInput(input, {
+      resolveBang: (s) => this.resolveBang(s),
+      fileUrl: localPathToFileUrl,
+      buildSearchUrl: (q) => getSearchEngine(this.searchEngineId).buildUrl(q),
+    });
   }
 
   // Разбор бэнга. null — «это не бэнг», строка уходит в обычную ветку resolveInput.

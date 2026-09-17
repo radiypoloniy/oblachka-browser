@@ -5,8 +5,8 @@
 // (см. electron/BangStore.ts::importDuckDuckGoBangs).
 //
 // Модуль общий для main и renderer, как shared/searchEngines.ts: main разрешает бэнг при
-// навигации (TabManager.resolveInput), renderer показывает и редактирует список в настройках —
-// формат один, дублировать нечего.
+// навигации (`shared/omniboxResolve.ts` из TabManager), renderer показывает и редактирует список
+// в настройках — формат один, дублировать нечего.
 
 export interface BangDef {
   // Ключ без «!», всегда в нижнем регистре (сравнение регистронезависимое).
