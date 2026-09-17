@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { X, MemoryStick } from 'lucide-react';
 import { Favicon, InlineHint } from './kit';
 import { RADIUS } from '../../styles/system';
+import { useLanguage } from '../../i18n';
 
 // Сайты, которым запрещено выгружаться из памяти (ПКМ по вкладке → «Не выгружать из памяти»).
 //
@@ -14,6 +15,7 @@ import { RADIUS } from '../../styles/system';
 // перезапуск браузера, и лежит в settings.json, а не в session.json (чью поломку человек
 // оплачивает потерянными вкладками).
 export default function NeverSleepBlock() {
+  const { t } = useLanguage();
   const [hosts, setHosts] = useState<string[] | null>(null);
 
   const load = useCallback(() => {
@@ -27,12 +29,12 @@ export default function NeverSleepBlock() {
   // подписки он показывал бы устаревший список до перезахода в настройки.
   useEffect(() => window.oblako.onNeverSleepChanged(load), [load]);
 
-  if (hosts === null) return <InlineHint>Загрузка…</InlineHint>;
+  if (hosts === null) return <InlineHint>{t('Загрузка…')}</InlineHint>;
 
   if (hosts.length === 0) {
     return (
       <InlineHint>
-        Пока таких сайтов нет. Правый клик по вкладке → «Не выгружать из памяти».
+        {t('Пока таких сайтов нет. Правый клик по вкладке → «Не выгружать из памяти».')}
       </InlineHint>
     );
   }
@@ -53,11 +55,11 @@ export default function NeverSleepBlock() {
             display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
             fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
           }}>
-            <MemoryStick size={12} /> всегда в памяти
+            <MemoryStick size={12} /> {t('всегда в памяти')}
           </span>
           <button
             onClick={() => { void window.oblako.removeNeverSleepSite(host).then(load); }}
-            title="Разрешить выгружать этот сайт"
+            title={t('Разрешить выгружать этот сайт')}
             style={{
               border: 'none', background: 'none', cursor: 'default', padding: '4px 8px',
               borderRadius: RADIUS.control, color: 'var(--text-muted)', flexShrink: 0,

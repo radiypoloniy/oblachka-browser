@@ -39,15 +39,17 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
       </Subsection>
 
       <Subsection
-        title="Поиск по умолчанию"
-        description="Куда уходит запрос из адресной строки, если это не адрес сайта."
+        blockId="Поиск по умолчанию"
+        title={t('Поиск по умолчанию')}
+        description={t('Куда уходит запрос из адресной строки, если это не адрес сайта.')}
       >
         <DefaultSearchBlock />
       </Subsection>
 
       <Subsection
-        title="Браузер по умолчанию"
-        description="Кто открывает ссылки из других программ — почты, мессенджеров, документов."
+        blockId="Браузер по умолчанию"
+        title={t('Браузер по умолчанию')}
+        description={t('Кто открывает ссылки из других программ — почты, мессенджеров, документов.')}
       >
         <DefaultBrowserBlock />
       </Subsection>
@@ -56,50 +58,56 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
           человек, только поставивший браузер, идёт в настройки прежде всего за своими закладками
           и паролями. Ниже — то, что настраивают позже и реже. */}
       <Subsection
-        title="Импорт данных"
-        description="Перенос закладок, истории и сохранённых паролей из другого браузера на этом компьютере."
+        blockId="Импорт данных"
+        title={t('Импорт данных')}
+        description={t('Перенос закладок, истории и сохранённых паролей из другого браузера на этом компьютере.')}
       >
         <StatusCard
           icon={<Download size={20} style={{ color: 'var(--text-muted)' }} />}
-          title="Импорт из другого браузера"
-          subtitle="Chrome, Edge, Brave, Яндекс.Браузер, Opera, Vivaldi"
+          title={t('Импорт из другого браузера')}
+          subtitle={t('Chrome, Edge, Brave, Яндекс.Браузер, Opera, Vivaldi')}
           actions={
-            <button style={btnPrimary} onClick={onOpenImport}>Импортировать…</button>
+            <button style={btnPrimary} onClick={onOpenImport}>{t('Импортировать…')}</button>
           }
         />
       </Subsection>
 
       <Subsection
-        title="Загрузки"
-        description="Куда попадают скачанные файлы и о чём браузер спрашивает заранее."
+        blockId="Загрузки"
+        title={t('Загрузки')}
+        description={t('Куда попадают скачанные файлы и о чём браузер спрашивает заранее.')}
       >
         <DownloadsBlock />
       </Subsection>
 
       <Subsection
-        title="Выгрузка вкладок из памяти"
-        description="Вкладки, которые давно не открывали, освобождают память и загружаются заново при возврате. Играющее видео, заполненные формы и закреплённые вкладки не трогаются. Сайты ниже не выгружаются никогда."
+        blockId="Выгрузка вкладок из памяти"
+        title={t('Выгрузка вкладок из памяти')}
+        description={t('Вкладки, которые давно не открывали, освобождают память и загружаются заново при возврате. Играющее видео, заполненные формы и закреплённые вкладки не трогаются. Сайты ниже не выгружаются никогда.')}
       >
         <NeverSleepBlock />
       </Subsection>
 
       <Subsection
-        title="Обновления"
-        description="Браузер сам проверяет новую версию и спрашивает карточкой. Загрузка и установка — только по вашей команде."
+        blockId="Обновления"
+        title={t('Обновления')}
+        description={t('Браузер сам проверяет новую версию и спрашивает карточкой. Загрузка и установка — только по вашей команде.')}
       >
         <UpdatesBlock />
       </Subsection>
 
       <Subsection
-        title="Бэнги адресной строки"
-        description="Быстрый переход к поиску по конкретному сайту прямо из адресной строки."
+        blockId="Бэнги адресной строки"
+        title={t('Бэнги адресной строки')}
+        description={t('Быстрый переход к поиску по конкретному сайту прямо из адресной строки.')}
       >
         <BangsBlock />
       </Subsection>
 
       <Subsection
-        title="Цели быстрого поиска"
-        description="Поповер Ctrl+E: куда уходит Enter по умолчанию и чем наполнять полосу целей рядом."
+        blockId="Цели быстрого поиска"
+        title={t('Цели быстрого поиска')}
+        description={t('Поповер Ctrl+E: куда уходит Enter по умолчанию и чем наполнять полосу целей рядом.')}
       >
         <SearchChipsBlock />
       </Subsection>
@@ -108,6 +116,7 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
 }
 
 function BrowserOverview() {
+  const { language, t } = useLanguage();
   const [engineId, setEngineId] = useState<SearchEngineId>(DEFAULT_SEARCH_ENGINE_ID);
   const [isDefault, setIsDefault] = useState<boolean | null>(null);
   const [bangCount, setBangCount] = useState<{ user: number; builtin: number; imported: number } | null>(null);
@@ -137,20 +146,22 @@ function BrowserOverview() {
 
   return (
     <FactGrid>
-      <Fact label="Поиск" hint="Из адресной строки, если это не адрес" value={engineName} active />
+      <Fact label={t('Поиск')} hint={t('Из адресной строки, если это не адрес')} value={engineName} active />
       <Fact
-        label="Браузер по умолчанию"
-        hint="Ссылки из других программ"
-        value={isDefault === null ? '—' : isDefault ? 'Oblako' : 'Другой'}
+        label={t('Браузер по умолчанию')}
+        hint={t('Ссылки из других программ')}
+        value={isDefault === null ? '—' : isDefault ? 'Oblako' : t('Другой')}
         active={isDefault === true}
       />
       <Fact
-        label="Бэнги"
-        hint={bangCount && bangCount.imported > 0 ? `и набор DuckDuckGo: ${bangCount.imported}` : 'свои, встроенные, «!yt котики»'}
+        label={t('Бэнги')}
+        hint={bangCount && bangCount.imported > 0
+          ? (language === 'en' ? `plus ${bangCount.imported} DuckDuckGo bangs` : `и набор DuckDuckGo: ${bangCount.imported}`)
+          : t('свои, встроенные, «!yt котики»')}
         value={bangsValue}
         active
       />
-      <Fact label="Ctrl+E" hint="Поповер быстрого поиска" value="Цели" />
+      <Fact label="Ctrl+E" hint={t('Поповер быстрого поиска')} value={t('Цели')} />
     </FactGrid>
   );
 }

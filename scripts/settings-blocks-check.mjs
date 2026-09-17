@@ -32,7 +32,9 @@ const tsxFiles = [];
 
 const titles = new Set();
 for (const f of tsxFiles) {
-  for (const m of readFileSync(f, 'utf8').matchAll(/<Subsection[^>]*?title="([^"]+)"/gs)) titles.add(m[1]);
+  const source = readFileSync(f, 'utf8');
+  for (const m of source.matchAll(/<Subsection[^>]*?title="([^"]+)"/gs)) titles.add(m[1]);
+  for (const m of source.matchAll(/<Subsection[^>]*?blockId="([^"]+)"/gs)) titles.add(m[1]);
 }
 
 const index = readFileSync(join(ROOT, 'shared', 'settingsIndex.ts'), 'utf8');

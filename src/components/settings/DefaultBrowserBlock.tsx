@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, ExternalLink, Globe } from 'lucide-react';
 import { StatusCard, btnPrimary } from './kit';
+import { useLanguage } from '../../i18n';
 
 // Блок «Браузер по умолчанию» в разделе «Браузер».
 //
@@ -9,6 +10,7 @@ import { StatusCard, btnPrimary } from './kit';
 // названием обманывала бы — человек нажал бы её и не понял, почему ничего не изменилось.
 
 export default function DefaultBrowserBlock() {
+  const { t } = useLanguage();
   const [isDefault, setIsDefault] = useState<boolean | null>(null);
   const [hint, setHint] = useState<string | null>(null);
 
@@ -36,10 +38,10 @@ export default function DefaultBrowserBlock() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <StatusCard
         icon={<Globe size={20} style={{ color: isDefault ? 'var(--success-500)' : 'var(--text-faint)' }} />}
-        title={isDefault === null ? 'Проверяем…' : isDefault ? 'Oblako — браузер по умолчанию' : 'Ссылки открывает другой браузер'}
+        title={isDefault === null ? t('Проверяем…') : isDefault ? t('Oblako — браузер по умолчанию') : t('Ссылки открывает другой браузер')}
         subtitle={isDefault
-          ? 'Ссылки из почты, мессенджеров и документов открываются здесь.'
-          : 'Windows не разрешает программам назначать себя самим — выбрать нас нужно в системном окне.'}
+          ? t('Ссылки из почты, мессенджеров и документов открываются здесь.')
+          : t('Windows не разрешает программам назначать себя самим — выбрать нас нужно в системном окне.')}
       />
       {!isDefault && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -47,18 +49,18 @@ export default function DefaultBrowserBlock() {
             style={{ ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: 8 }}
             onClick={() => void handleRequest()}
           >
-            <ExternalLink size={15} /> Открыть настройки Windows
+            <ExternalLink size={15} /> {t('Открыть настройки Windows')}
           </button>
           {hint && (
             <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', flex: '1 1 240px' }}>
-              {hint}
+              {t(hint)}
             </span>
           )}
         </div>
       )}
       {isDefault && hint === null && (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          <Check size={13} style={{ color: 'var(--success-500)' }} /> Ничего делать не нужно.
+          <Check size={13} style={{ color: 'var(--success-500)' }} /> {t('Ничего делать не нужно.')}
         </span>
       )}
     </div>

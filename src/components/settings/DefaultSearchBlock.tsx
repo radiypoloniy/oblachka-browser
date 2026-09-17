@@ -3,6 +3,7 @@ import { OptionList, OptionRow, InlineHint } from './kit';
 import { SEARCH_ENGINES, DEFAULT_SEARCH_ENGINE_ID } from '../../../shared/searchEngines';
 import type { SearchEngineId } from '../../../shared/searchEngines';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../../searchEngineSetting';
+import { useLanguage } from '../../i18n';
 
 // Блок «Поиск по умолчанию» раздела «Браузер». До него выбор жил ТОЛЬКО в капсуле омнибокса, и
 // та видна лишь на новой вкладке — с обычной страницы сменить поисковик было негде.
@@ -17,6 +18,7 @@ const ENGINE_NOTE: Record<SearchEngineId, string> = {
 };
 
 export default function DefaultSearchBlock() {
+  const { t } = useLanguage();
   const [engineId, setEngineId] = useState<SearchEngineId>(DEFAULT_SEARCH_ENGINE_ID);
 
   useEffect(() => {
@@ -41,16 +43,12 @@ export default function DefaultSearchBlock() {
             active={engine.id === engineId}
             onClick={() => pick(engine.id)}
             title={engine.name}
-            subtitle={ENGINE_NOTE[engine.id]}
+            subtitle={t(ENGINE_NOTE[engine.id])}
           />
         ))}
       </OptionList>
 
-      <InlineHint>
-        Сюда уходит всё, что не похоже на адрес: ввод в адресной строке, «Искать…» из
-        контекстного меню и чип поисковика в поповере Ctrl+E. Отдельный сайт по-прежнему
-        доступен без смены этой настройки — бэнгом «!ключ» в строке.
-      </InlineHint>
+      <InlineHint>{t('Сюда уходит всё, что не похоже на адрес: ввод в адресной строке, «Искать…» из контекстного меню и чип поисковика в поповере Ctrl+E. Отдельный сайт по-прежнему доступен без смены этой настройки — бэнгом «!ключ» в строке.')}</InlineHint>
     </div>
   );
 }

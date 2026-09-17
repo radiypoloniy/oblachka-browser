@@ -290,15 +290,15 @@ export function SectionHeader({ title, tone, hero, heroLabel, band, children }: 
 // место во всём интерфейсе, и человек это сразу заметил («красный шрифт, которого нет больше
 // нигде»). Красный абзац к тому же противоречит закону цвета: статус говорит значком и словом, а
 // не окраской текста. Кому нужно предупреждение — ставит строку с треугольником внутри блока.
-export function Subsection({ title, description, children }: {
-  title: string; description?: React.ReactNode; children: React.ReactNode;
+export function Subsection({ title, blockId, description, children }: {
+  title: string; blockId?: string; description?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
     // ⚠️ data-setting-block — якорь для поиска по настройкам (см. shared/settingsIndex.ts): по
     // нему находка прокручивает к блоку и подсвечивает его. Атрибут стоит ЗДЕСЬ, а не в каждой
     // секции: так его получают все блоки разом и новый блок не нужно не забыть пометить.
     // Расхождение имени с реестром ничего не ломает — раздел откроется, просто без подсветки.
-    <div data-setting-block={title} style={{
+    <div data-setting-block={blockId ?? title} style={{
       display: 'flex', flexDirection: 'column', gap: sp(3),
       paddingTop: sp(6), marginTop: sp(1),
       // ⚠️ Разделитель — ТОНОМ РАЗДЕЛА и в два пикселя, а не общая серая линия в один.

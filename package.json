@@ -34,6 +34,7 @@
     "dist": "npm run build && npm run build-installer-ui && electron-builder --win --publish never",
     "release": "npm run build && npm run build-installer-ui && electron-builder --win --publish always",
     "release:downloads": "node scripts/release-downloads.mjs",
+    "i18n:audit": "node scripts/i18n-audit.mjs",
     "download-fonts": "node scripts/download-fonts.mjs",
     "download-flags": "node scripts/download-flags.mjs",
     "download-browser-logos": "node scripts/download-browser-logos.mjs",
