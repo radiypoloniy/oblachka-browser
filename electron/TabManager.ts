@@ -2687,8 +2687,9 @@ export class TabManager {
   // (полный флоу с фокусом/вьюхами) от припаркованной (чисто структурный разбор, см. ветку ниже
   // — тот же паттерн, что уже в togglePin/closeTab).
   exitSplit(tabId: string, keepId?: string): void {
-    const pair = this.#pairContaining(tabId);
-    if (!pair) return;
+    const exit = this.splitPairs.planExit(tabId, this.activeId, keepId);
+    if (!exit) return;
+    const { pair, leftId, rightId, stayId, hideId } = exit;
     // Пары, о которой шёл жест перетаскивания, больше нет — значит и раскладка жеста ни при чём:
     // дальше видимость и bounds расставляет сам exitSplit. Проверяем именно ЭТУ пару, иначе
     // распад чужой пары (при мультисплите) обрывал бы чужой жест на полпути.
@@ -2696,25 +2697,14 @@ export class TabManager {
       this.panelDrag = null;
     }
     this.clearOrganizeSnapshot();
-    const { leftId, rightId, activePanel } = pair;
-
-    if (pair !== this.#activePair()) {
-      // Припаркованная (не показываемая) пара: разбираем канонически (→ два SingleNode),
-      // текущий показ не трогаем — её вьюхи уже скрыты с момента парковки, activeId в этой
-      // паре не участвует (иначе она была бы #activePair()).
-      this.#dissolveSplitPair(leftId, rightId);
-      this.splitPairs.remove(pair);
+    // Для обеих пар сначала разворачиваем узел, затем удаляем runtime-запись. У припаркованной
+    // пары визуальное состояние не трогаем: её вью уже скрыты с момента парковки.
+    this.#dissolveSplitPair(leftId, rightId);
+    this.splitPairs.remove(pair);
+    if (!exit.shown) {
       this.onChange();
       return;
     }
-
-    // Показываемая пара — прежняя логика без изменений (фокус/видимость/bounds).
-    // Всегда разворачиваем SplitPairNode → два SingleNode (до удаления пары из коллекции).
-    this.#dissolveSplitPair(leftId, rightId);
-    this.splitPairs.remove(pair);
-
-    const stayId = keepId ?? (activePanel === 'left' ? leftId : rightId);
-    const hideId = stayId === leftId ? rightId : leftId;
 
     // isLiveHttpView (не isHttpView) — hideId часто ИМЕННО та вкладка, что сейчас закрывается
     // через closeTab → exitSplit(otherId, otherId) (см. closeTab ниже): её webContents уже может быть

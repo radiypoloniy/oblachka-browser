@@ -85,6 +85,24 @@ console.log('\n— runtime-операции пары —');
   check('чужой объект остался неизменным', foreign, pair('left', 'right'));
 }
 
+console.log('\n— план выхода из split —');
+{
+  const registry = new SplitPairRegistry();
+  const parked = pair('park-left', 'park-right', 'right', 0.4);
+  const shown = pair('show-left', 'show-right', 'left', 0.6);
+  registry.add(parked);
+  registry.add(shown);
+  const plan = registry.planExit('park-right', 'show-left');
+  check('клик по припаркованной паре выбирает её, а не показываемую', plan?.pair === parked, true);
+  check('припаркованная пара не запускает визуальный выход', plan?.shown, false);
+  check('по умолчанию остаётся активная сторона своей пары', [plan?.stayId, plan?.hideId], ['park-right', 'park-left']);
+  check('план не удаляет пару до разворачивания дерева', registry.containing('park-left') === parked, true);
+  const explicit = registry.planExit('show-right', 'show-left', 'show-right');
+  check('показываемая пара распознана по activeId', explicit?.shown, true);
+  check('keepId переопределяет активную сторону', [explicit?.stayId, explicit?.hideId], ['show-right', 'show-left']);
+  check('неизвестная вкладка не даёт плана', registry.planExit('missing', 'show-left'), null);
+}
+
 console.log('\n— диагностическая сериализация —');
 {
   const registry = new SplitPairRegistry();

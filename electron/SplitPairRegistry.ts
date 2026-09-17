@@ -8,6 +8,15 @@ export interface SplitPair {
   splitRatio: number;
 }
 
+export interface SplitExitPlan {
+  pair: SplitPair;
+  shown: boolean;
+  leftId: string;
+  rightId: string;
+  stayId: string;
+  hideId: string;
+}
+
 export class SplitPairRegistry implements Iterable<SplitPair> {
   #pairs: SplitPair[] = [];
 
@@ -17,6 +26,24 @@ export class SplitPairRegistry implements Iterable<SplitPair> {
 
   active(activeId: string): SplitPair | undefined {
     return this.containing(activeId);
+  }
+
+  // План выхода не мутирует реестр: владелец сначала разворачивает узел дерева, затем удаляет
+  // пару и только потом меняет видимость WebContentsView. Для припаркованной пары stay/hide
+  // вычисляются так же, но визуальных действий вызывающий не делает.
+  planExit(tabId: string, activeId: string, keepId?: string): SplitExitPlan | null {
+    const pair = this.containing(tabId);
+    if (!pair) return null;
+    const { leftId, rightId, activePanel } = pair;
+    const stayId = keepId ?? (activePanel === 'left' ? leftId : rightId);
+    return {
+      pair,
+      shown: pair === this.active(activeId),
+      leftId,
+      rightId,
+      stayId,
+      hideId: stayId === leftId ? rightId : leftId,
+    };
   }
 
   sideOf(tabId: string): 'left' | 'right' | null {
