@@ -10,6 +10,7 @@ import { isBackgroundWebContents } from './BackgroundWebContents';
 import { markDownloadedFile, isRiskyDownload } from './DownloadSafety';
 import { profileDataPath } from './ProfilePaths';
 import { getActiveProfile } from './ProfileStore';
+import { sameDownloadFile, sameDownloadUrl } from '../shared/downloadMatch';
 
 // Минимальный интервал отправки обновлений прогресса в renderer.
 // Каждый байт не шлём — слишком шумно.
@@ -40,20 +41,6 @@ interface StoredDownload {
 // же именем молча затирал бы первый — Electron перезаписывает по заданному savePath без вопросов.
 // Экспортируется ради снимков вкладки (ScreenshotManager.ts): они ложатся в ту же папку тем же
 // правилом — два снимка в одну секунду не должны затирать друг друга.
-/**
- * Адрес без запроса и якоря — «тот же файл» для подписанных ссылок (см. #findDownloaded).
- *
- * ⚠️ Пустую строку возвращаем для всего, что не http(s): у `blob:` и `data:` идентификатор
- * уникален для каждого создания, и совпадение по «пути» означало бы там ровно ничего.
- */
-function stripQuery(u: string): string {
-  try {
-    const p = new URL(u);
-    if (p.protocol !== 'http:' && p.protocol !== 'https:') return '';
-    return p.origin + p.pathname;
-  } catch { return ''; }
-}
-
 export function uniquePath(dir: string, filename: string): string {
   const ext = path.extname(filename);
   const base = path.basename(filename, ext);
@@ -172,20 +159,15 @@ export class DownloadManager {
    * заметной снаружи.
    */
   #findDownloaded(url: string, filename: string, totalBytes: number, profileId: string): DownloadEntry | null {
-    const wantedPath = stripQuery(url);
     for (const e of this.#entries.values()) {
       if (this.#incognitoIds.has(e.id)) continue;
       // ⚠️ Только СВОЙ профиль. Предупреждение «ты это уже качал» о файле из другого профиля
       // рассказало бы про чужую загрузку ровно то, что мы только что перестали показывать.
       if (this.#profileOf.get(e.id) !== profileId) continue;
       if (e.state !== 'completed' || !e.savePath) continue;
-      // ⚠️ Адрес сравниваем И БЕЗ ЗАПРОСА тоже. Ссылки на файлы у крупных сервисов ПОДПИСАНЫ:
-      // хост и путь постоянны (в пути лежит идентификатор файла), а подпись и срок годности живут
-      // в query и меняются при каждом нажатии. Из-за точного сравнения такая повторная загрузка
-      // выглядела совершенно новой, и предупреждение молчало — живой случай с картинками ChatGPT,
-      // где на других сайтах всё отрабатывало штатно.
-      const sameUrl = !!url && (e.url === url || (!!wantedPath && stripQuery(e.url) === wantedPath));
-      const sameFile = e.filename === filename && totalBytes > 0 && e.totalBytes === totalBytes;
+      // ⚠️ Query режем не целиком: у CDN там билет, у трекера — номер раздачи (см. downloadMatch).
+      const sameUrl = sameDownloadUrl(url, e.url);
+      const sameFile = sameDownloadFile(filename, totalBytes, e.filename, e.totalBytes);
       if (!sameUrl && !sameFile) continue;
       try { if (!fs.existsSync(e.savePath)) continue; } catch { continue; }
       return e;
