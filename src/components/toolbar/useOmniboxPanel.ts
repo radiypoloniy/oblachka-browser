@@ -65,6 +65,45 @@ export interface OmniboxPanelDeps {
   setSelectedIdx: (i: number) => void;
 }
 
+function toRelatedItems(hits: SemanticSearchResult[]): SuggestItem[] {
+  return hits.slice(0, PANEL_RELATED_MAX).map((h) => ({
+    kind: 'history' as SuggestKind, label: h.url, sub: h.title || h.url, url: h.url,
+  }));
+}
+
+// FTS при идущем реранке на экран не кладём: мелькание «почти тех» заголовков хуже секунды
+// ожидания. Пока модель переставляет — скелет той же длины, в плоский выбор он не входит.
+async function fillRelatedRow(p: {
+  seq: number;
+  seqRef: React.MutableRefObject<number>;
+  pageUrl: string;
+  resume: SuggestItem[];
+  relatedRef: React.MutableRefObject<Map<string, SuggestItem[]>>;
+  wait: { n: number };
+  extra: () => Partial<OmniboxPanel>;
+  pack: (extra?: Partial<OmniboxPanel>) => OmniboxPanel;
+  setSuggestions: (items: SuggestItem[]) => void;
+}): Promise<void> {
+  const paint = (items: SuggestItem[]) => {
+    p.wait.n = 0;
+    if (items.length) p.relatedRef.current.set(p.pageUrl, items);
+    void window.oblako.setSuggestDropdownPanel(p.pack(p.extra()));
+    if (items.length) p.setSuggestions([...p.resume, ...items]);
+  };
+  const cached = p.relatedRef.current.get(p.pageUrl);
+  if (cached) { paint(cached); return; }
+  const first = await window.oblako.getRelatedPages().catch(() => ({ results: [], pending: false }));
+  if (p.seq !== p.seqRef.current) return;
+  if (!first.pending) { paint(toRelatedItems(first.results)); return; }
+  if (first.results.length) {
+    p.wait.n = Math.min(first.results.length, PANEL_RELATED_MAX);
+    void window.oblako.setSuggestDropdownPanel(p.pack(p.extra()));
+  }
+  const ranked = await window.oblako.getRelatedPages().catch(() => ({ results: [], pending: false }));
+  if (p.seq !== p.seqRef.current) return;
+  paint(toRelatedItems(ranked.results));
+}
+
 export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Promise<void> } {
   // ⚠️ Не оптимизация ради оптимизации: getPageChanges достаёт текст живой страницы и сравнивает
   // со снимком в истории, а панель открывается на каждый щелчок по адресной строке. Без кэша один
@@ -191,7 +230,18 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
     };
     void window.oblako.setSuggestDropdownPanel(pack({ site, siteUrl: pageUrl }));
 
-    // ── Дорисовка: «изменилось с прошлого раза» ───────────────────────────────────────────────
+    const relatedWait = { n: 0 };
+    const panelExtra = (): Partial<OmniboxPanel> => {
+      const extra: Partial<OmniboxPanel> = { site, siteUrl: pageUrl };
+      const rel = relatedRef.current.get(pageUrl);
+      if (rel) extra.related = rel;
+      if (relatedWait.n) extra.relatedPending = relatedWait.n;
+      return extra;
+    };
+    const relatedP = fillRelatedRow({
+      seq, seqRef, pageUrl, resume, relatedRef, wait: relatedWait, extra: panelExtra, pack, setSuggestions,
+    });
+
     // ⚠️ РАЗ НА АДРЕС. Вызов достаёт текст живой страницы и сравнивает со снимком в истории —
     // это не то, что можно звать на каждый щелчок по адресной строке (а щёлкают по ней постоянно).
     // Ответ «нет изменений» кэшируем пустой строкой, чтобы не спрашивать повторно.
@@ -202,31 +252,11 @@ export function useOmniboxPanel(d: OmniboxPanelDeps): { showTopSites: () => Prom
       pageChangesRef.current.set(pageUrl, phrase);
       if (phrase) {
         site.changed = phrase;
-        void window.oblako.setSuggestDropdownPanel(pack({ site, siteUrl: pageUrl }));
+        // related / скелет могли уже дорисоваться параллельно — не затирать ряд шапкой «изменилось».
+        void window.oblako.setSuggestDropdownPanel(pack(panelExtra()));
       }
     }
-
-    // ── Дорисовка: «вы это уже читали» ────────────────────────────────────────────────────────
-    // Тот же источник, что в поповере замочка (RelatedHistory.ts). Пустой ответ — блока просто
-    // нет: подсказка появляется, только когда ей есть что сказать.
-    let related = relatedRef.current.get(pageUrl);
-    if (!related) {
-      const hits = await window.oblako.getRelatedPages().catch(() => [] as SemanticSearchResult[]);
-      if (seq !== seqRef.current) return;
-      related = hits.slice(0, PANEL_RELATED_MAX).map((h) => ({
-        kind: 'history' as SuggestKind, label: h.url, sub: h.title || h.url, url: h.url,
-      }));
-      // ⚠️ Пустой ответ НЕ кэшируем — в отличие от «изменилось с прошлого раза». Связанное ищется
-      // только на тёплой модели (RelatedHistory.ts), то есть пусто здесь часто означает «модель ещё
-      // не прогрелась», а не «связанного нет». Запомнить такое пусто значило бы молчать про эту
-      // страницу до конца сеанса. Повторный запрос на холодной модели почти бесплатен — он
-      // отсекается тем же гейтом до всякой работы.
-      if (related.length) relatedRef.current.set(pageUrl, related);
-    }
-    if (!related.length) return;
-    void window.oblako.setSuggestDropdownPanel(pack({ site, siteUrl: pageUrl, related }));
-    // Плоский порядок выбора: «Продолжить», следом карточки. Плитки в массив не входят — только мышь.
-    setSuggestions([...resume, ...related]);
+    await relatedP;
   }, [tabUrl, isHub, seqRef, openDropdown, closeDropdown, setSuggestions, setSelectedIdx]);
 
   // Правка набора карандашом (вью → main → сюда). Владелец содержимого панели один, поэтому

@@ -11,7 +11,7 @@
 import type { HistoryManager } from './HistoryManager';
 import { collectHistoryCandidates, searchHistorySmart } from './HistorySearch';
 import { isModelWarm } from './TranslationService';
-import type { SemanticSearchResult } from '../shared/ipc';
+import type { RelatedPagesResult, SemanticSearchResult } from '../shared/ipc';
 import { normalizeForOmnibox } from '../shared/frecency';
 import { relatedQueryFromTitle } from '../shared/relatedHistory';
 
@@ -32,31 +32,68 @@ function takeRelated(
   return out;
 }
 
+const DONE = (results: SemanticSearchResult[]): RelatedPagesResult => ({ results, pending: false });
+
+// Один поиск на адрес+запрос. Первый вызов при тёплой модели отдаёт FTS с pending:true
+// (на экран это не кладут) и запускает реранк; второй дожидается реранка. Повторный клик
+// присоединяется к тому же промису, а не получает пустой массив.
+//
+// ⚠️ Раньше IPC при занятом запросе отвечал `[]`. Повторный клик по строке убивал первый
+// ответ счётчиком поколений панели и подменял второй пустышкой.
+type RelatedJob = {
+  key: string;
+  fts: SemanticSearchResult[];
+  ranked: Promise<SemanticSearchResult[]> | null;
+};
+
+let inflight: RelatedJob | null = null;
+
+function jobKey(currentKey: string, q: string): string {
+  return `${currentKey}\n${q}`;
+}
+
 /**
  * Связанные страницы из истории. Пустой массив — «нечего показать», и это нормальный ответ:
  * подсказка появляется, только когда ей действительно есть что сказать.
  *
  * ⚠️ Холодная модель больше не гасит фичу: FTS не нуждается в Qwen. Реранк — фоновая полоса,
  * только если модель уже тёплая (человек щёлкнул в строку, 30 с загрузки не заказывал).
+ * ⚠️ FTS при идущем реранке на экран не кладут: мелькание чужих заголовков хуже секунды
+ * ожидания. Renderer рисует скелет той же длины, затем один раз — уже переставленный ряд.
  */
 export async function findRelatedPages(
   history: HistoryManager,
   currentUrl: string,
   currentTitle: string,
   limit = 3,
-): Promise<SemanticSearchResult[]> {
+): Promise<RelatedPagesResult> {
   const q = relatedQueryFromTitle(currentTitle);
-  if (!q) return [];
+  if (!q) return DONE([]);
 
   const currentKey = normalizeForOmnibox(currentUrl);
-  if (!isModelWarm()) {
-    const out = takeRelated(collectHistoryCandidates(history, q), currentKey, limit);
-    console.log(`[related] «${q.slice(0, 40)}» → ${out.length} страниц (без реранка)`);
-    return out;
+  const key = jobKey(currentKey, q);
+  if (inflight?.key === key) {
+    if (inflight.ranked) return DONE(await inflight.ranked);
+    return DONE(inflight.fts);
   }
 
-  const res = await searchHistorySmart(history, q, limit + 4, { background: true, related: true });
-  const out = takeRelated(res.results, currentKey, limit);
-  console.log(`[related] «${q.slice(0, 40)}» → ${out.length} страниц${res.degraded ? ' (без реранка)' : ''}`);
-  return out;
+  const fts = takeRelated(collectHistoryCandidates(history, q), currentKey, limit);
+  console.log(`[related] «${q.slice(0, 40)}» → ${fts.length} страниц (FTS)`);
+
+  const job: RelatedJob = { key, fts, ranked: null };
+  inflight = job;
+  if (!isModelWarm()) return DONE(fts);
+
+  job.ranked = searchHistorySmart(history, q, limit + 4, { background: true, related: true })
+    .then((res) => {
+      const out = takeRelated(res.results, currentKey, limit);
+      const final = out.length ? out : fts;
+      console.log(`[related] «${q.slice(0, 40)}» → ${final.length} страниц${res.degraded ? ' (без реранка)' : ''}`);
+      return final;
+    })
+    .catch((err) => {
+      console.warn('[related] ошибка реранка:', err);
+      return fts;
+    });
+  return { results: fts, pending: true };
 }

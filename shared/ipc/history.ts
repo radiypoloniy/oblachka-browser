@@ -143,6 +143,12 @@ export interface SemanticSearchResult {
   snippet?: string;
 }
 
+/** Ответ «вы это уже читали». `pending` — это FTS, реранк ещё идёт; такие results на экран не кладут. */
+export interface RelatedPagesResult {
+  results: SemanticSearchResult[];
+  pending: boolean;
+}
+
 // Ответ умного поиска (searchHistorySmart) — degraded:true означает, что Qwen-реранк не
 // отработал (упал/недоступна модель) и results — это cosine top-k без участия LLM, не то,
 // что пользователь запросил кнопкой «умный поиск». false — реранк реально отработал (даже

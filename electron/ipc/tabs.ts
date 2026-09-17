@@ -3,7 +3,7 @@
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
 import { IPC, THEME_PALETTE_IDS } from '../../shared/ipc';
-import type { OmniboxResume, PageChangesResult, SemanticSearchResult, SmartTabHit, SpecialTabKind, ThemeMode, ThemePaletteId, ThemePrefs } from '../../shared/ipc';
+import type { OmniboxResume, PageChangesResult, RelatedPagesResult, SmartTabHit, SpecialTabKind, ThemeMode, ThemePaletteId, ThemePrefs } from '../../shared/ipc';
 import { getPageChanges } from '../PageChanges';
 import { findRelatedPages } from '../RelatedHistory';
 import { searchStuff } from '../StuffSearch';
@@ -16,8 +16,6 @@ import type { IpcDeps } from './deps';
 // Идёт ли прямо сейчас смысловой поиск вкладки (см. TABS_SEARCH_SMART) — один за раз на всё
 // приложение, как и сама модель.
 let smartTabSearchBusy = false;
-// То же для подсказки «вы это уже читали»: один запрос за раз на приложение.
-let relatedBusy = false;
 
 export function registerTabsIpc(d: IpcDeps): void {
   const { bookmarks, broadcastChromeTheme, currentThemePrefs, downloads, history, settings, tabsOf } = d;
@@ -138,18 +136,15 @@ export function registerTabsIpc(d: IpcDeps): void {
   // «Вы это уже читали» — связанное из своей истории для АКТИВНОЙ вкладки (см. RelatedHistory.ts).
   // ⚠️ Адрес и заголовок берём из менеджера вкладок окна-отправителя, а не из аргументов: рендерер
   // мог отстать от навигации, и подсказка тогда относилась бы к предыдущей странице.
-  ipcMain.handle(IPC.HISTORY_RELATED, async (e): Promise<SemanticSearchResult[]> => {
+  ipcMain.handle(IPC.HISTORY_RELATED, async (e): Promise<RelatedPagesResult> => {
     const tabs = tabsOf(e);
     const active = tabs?.snapshot().find((t) => t.isActive && !t.isHub);
-    if (!active?.url || relatedBusy) return [];
-    relatedBusy = true;
+    if (!active?.url) return { results: [], pending: false };
     try {
       return await findRelatedPages(history(), active.url, active.title || '');
     } catch (err) {
       console.warn('[related] ошибка:', err);
-      return [];
-    } finally {
-      relatedBusy = false;
+      return { results: [], pending: false };
     }
   });
   // «Что изменилось с прошлого раза» (AI-IDEAS.md №7, см. PageChanges.ts) — для АКТИВНОЙ вкладки.

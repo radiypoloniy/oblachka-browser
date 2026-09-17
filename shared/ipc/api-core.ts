@@ -9,7 +9,7 @@
 // приходится как единое window.oblako, и дробить эту точку входа было бы правдой про файлы, а не
 // про программу.
 import type { ContentBounds, FindResult, SidebarNode, SpecialTabKind, SyncState, TabState } from './core';
-import type { BookmarkEntry, DayDigestState, HistoryClearPeriod, HistoryEntry, SemanticSearchResult, SmartSearchResponse } from './history';
+import type { BookmarkEntry, DayDigestState, HistoryClearPeriod, HistoryEntry, RelatedPagesResult, SmartSearchResponse } from './history';
 import type { AdBlockState, MatchSuggestion, OmniboxResume, PageChangesResult, ParsedAddressPart, ProductState, SmartTabHit, StuffHit, TrackedProduct, TrackingEvent } from './omnibox';
 import type { AiActivityState } from './ai';
 import type { CryptoRatesInfo, CurrencyRatesInfo, DragCard, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, WeatherInfo, WindowRole } from './app';
@@ -72,7 +72,7 @@ export interface CoreApi {
   /** Поиск по настройкам фразой — второй эшелон, отдаёт индексы SETTINGS_INDEX (settingsIndex.ts). */
   searchSettingsSmart(query: string): Promise<number[]>;
   /** Страницы из своей истории, связанные с открытой сейчас. Пусто — нечего показать. */
-  getRelatedPages(): Promise<SemanticSearchResult[]>;
+  getRelatedPages(): Promise<RelatedPagesResult>;
   /**
    * Закрытые вкладки этого окна и открытые в других — сырьё строк «Продолжить».
    * `recommendedCustom` — трогал ли человек набор карандашом; иначе дефолт в панель не кладём.

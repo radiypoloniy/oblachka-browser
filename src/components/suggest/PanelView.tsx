@@ -112,6 +112,19 @@ export const PANEL_CSS = `
 .omni-card:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,0.10); }
 .omni-card[data-active="1"] { background: var(--selected); border-color: var(--divider-strong); }
 
+@keyframes omni-related-wait {
+  from { opacity: 0.4; }
+  to   { opacity: 0.85; }
+}
+.omni-card-wait {
+  pointer-events: none;
+  animation: omni-related-wait 0.9s ease-in-out infinite alternate;
+}
+.omni-card-wait-line {
+  height: 8px; border-radius: 4px;
+  background: var(--divider);
+}
+
 .omni-head { transition: background var(--dur-fast) ease; }
 .omni-head:hover { background: var(--surface-sunken); }
 .omni-head:hover .omni-chev { transform: translateX(2px); }
@@ -365,6 +378,7 @@ export function PanelView({ panel, activeIdx, editing, setEditing, onHover, onLe
 }) {
   const resume = panel.resume ?? [];
   const related = panel.related ?? [];
+  const relatedWait = panel.relatedPending ?? 0;
   const picked = panel.recommended ?? [];
   const rel0 = resume.length;
   const pickedUrls = new Set(picked.map((p) => p.url));
@@ -423,22 +437,30 @@ export function PanelView({ panel, activeIdx, editing, setEditing, onHover, onLe
           </Folder>
         </div>
       )}
-      {related.length > 0 && (
+      {(related.length > 0 || relatedWait > 0) && (
         <>
           <SectionLabel divider icon={<Sparkles size={12} style={{ color: 'var(--dot-local)' }} />}>
             Вы это уже читали
           </SectionLabel>
           <div className="omni-cards" style={{ padding: '0 16px 16px' }}>
-            {related.map((item, i) => (
-              <RelatedCard
-                key={item.url}
-                item={item}
-                idx={rel0 + i}
-                active={activeIdx === rel0 + i}
-                onHover={onHover}
-                onLeave={onLeave}
-              />
-            ))}
+            {related.length > 0
+              ? related.map((item, i) => (
+                <RelatedCard
+                  key={item.url}
+                  item={item}
+                  idx={rel0 + i}
+                  active={activeIdx === rel0 + i}
+                  onHover={onHover}
+                  onLeave={onLeave}
+                />
+              ))
+              : Array.from({ length: relatedWait }, (_, i) => (
+                <div key={i} className="omni-card omni-card-wait" aria-hidden>
+                  <div className="omni-card-wait-line" style={{ width: '36%' }} />
+                  <div className="omni-card-wait-line" style={{ width: '78%' }} />
+                  <div className="omni-card-wait-line" style={{ width: '54%' }} />
+                </div>
+              ))}
           </div>
         </>
       )}
