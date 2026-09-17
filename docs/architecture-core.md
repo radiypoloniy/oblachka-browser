@@ -17,6 +17,9 @@
   - `electron/pageContextMenu.ts` — ПКМ страницы: пункты и вызовы готовых действий.
   - `electron/windowOpenPolicy.ts` — `window.open` / `target=_blank`: вкладка или попап.
   - `electron/SplitPairRegistry.ts` — коллекция runtime split-пар, без Electron API.
+  - `electron/tabSplitMotion.ts` — проезд панели; поколения жеста (`slideGen`) остаются здесь.
+  - `shared/layout.ts` — рамка страницы, острова пары, точка въезда, кадр проезда.
+    `enterSplit` / `exitSplit` и дерево — нет.
   - `electron/tabPageLifecycle.ts`, `tabCrashEvents.ts`, `tabGuestSignals.ts`,
     `tabNavigationGuard.ts` — проводка конкретной вью.
   - `electron/tabHotkeys.ts` + `tabHotkeyPolicy.ts` — `before-input-event`.

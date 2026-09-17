@@ -34,7 +34,8 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
 import { resolveOmniboxInput } from '../shared/omniboxResolve';
 import type { BangStore } from './BangStore';
-import { ISLAND_GAP, SPLIT_PANE_RADIUS, splitPaneBounds, clampSplitRatio } from '../shared/layout';
+import { SPLIT_PANE_RADIUS, splitPaneBounds, splitIslandRects, splitPanelEntryFrom, clampSplitRatio } from '../shared/layout';
+import { PANEL_SLIDE_MS, slideSplitViews, type SplitSlideMove } from './tabSplitMotion';
 import { prepareSleepUnload } from './tabSleepIndex';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
 import { buildOrganizedTree } from '../shared/organizeTree';
@@ -62,11 +63,6 @@ const ZOOM_STEP = 0.1; // 10% за шаг, как в Chrome
 // setBorderRadius — чисто визуальный вырез; хит-тест углов остаётся прямоугольным
 // (штатное поведение Electron View.setBorderRadius, не дефект — см. заход).
 const CONTENT_CORNER_RADIUS = 20;
-// Проезд панели в свой слот (см. slideViews). Вынесено из умолчания параметра, потому что по
-// этой же длительности гаснет выселенная панель при замене — она обязана дожить ровно до конца
-// проезда, и разъедься эти два числа, в слоте мелькнула бы пустота.
-const PANEL_SLIDE_MS = 240;
-
 
 // Кап на размер тела favicon перед base64-кэшированием в сессию (заход C) — без него один
 // «тяжёлый» сайт (нестандартный favicon.ico на сотни КБ) непредсказуемо раздувает session.json.
@@ -2240,19 +2236,9 @@ export class TabManager {
     this.focusActiveView();
   }
 
-  // Откуда панель въезжает в свой слот. Правило одно на оба жеста (вход в сплит и замена
-  // панели): с ближайшего СВОБОДНОГО края слота.
-  //
-  // ⚠️ Свободные края несимметричны, и это не придирка. Справа от области контента — край окна,
-  // оттуда панель приезжает по горизонтали и по дороге ничего не закрывает. Слева стоит сайдбар,
-  // а нативная вью страницы лежит ПОВЕРХ React-слоя — панель, выезжающая из-за левого края,
-  // на всё время проезда накрывает собой список вкладок. Ровно это и читалось как «резко и
-  // дёргано, особенно если менять на вкладку ближе к сайдбару». Поэтому левая панель поднимается
-  // снизу: нижний край окна свободен у обеих сторон.
+  // Откуда панель въезжает в слот. Формула и разбор несимметрии краёв — в splitPanelEntryFrom.
   #panelEntryFrom(side: 'left' | 'right', to: ContentBounds): { fromX: number; fromY: number } {
-    return side === 'right'
-      ? { fromX: this.bounds.x + this.bounds.width, fromY: to.y }
-      : { fromX: to.x, fromY: this.bounds.y + this.bounds.height };
+    return splitPanelEntryFrom(side, to, this.bounds);
   }
 
   // Прямоугольники ОСТРОВОВ показываемой пары, в оконных координатах. Нужны зонам перетаскивания
@@ -2260,24 +2246,12 @@ export class TabManager {
   // фиксированной доле, но как только панели на экране, человек целится в КОНКРЕТНУЮ панель — а
   // она может занимать и треть ширины, и две трети (разделитель таскают).
   //
-  // ⚠️ Остров, а не рамка страницы (#splitPaneBounds): в него входит и полоса заголовка панели,
-  // и кант карточки. Целятся именно в остров целиком, и подсветка обязана совпасть с тем, что
-  // человек видит как «панель».
+  // ⚠️ Остров, а не рамка страницы (#splitPaneBounds): формула в splitIslandRects.
   splitPanelRects(): { leftId: string; rightId: string; left: ContentBounds; right: ContentBounds } | null {
     const pair = this.#activePair();
     if (!pair) return null;
-    const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * pair.splitRatio);
-    return {
-      leftId: pair.leftId,
-      rightId: pair.rightId,
-      left: { x: this.bounds.x, y: this.bounds.y, width: leftWidth, height: this.bounds.height },
-      right: {
-        x: this.bounds.x + leftWidth + ISLAND_GAP,
-        y: this.bounds.y,
-        width: this.bounds.width - leftWidth - ISLAND_GAP,
-        height: this.bounds.height,
-      },
-    };
+    const { left, right } = splitIslandRects(this.bounds, pair.splitRatio);
+    return { leftId: pair.leftId, rightId: pair.rightId, left, right };
   }
 
   // Заменить одну панель показываемой пары вкладкой из списка — жест «принести вкладку на
@@ -3147,48 +3121,18 @@ export class TabManager {
   // обязан отменить прошлый, иначе два таймера тянули бы одну вьюху в разные стороны.
   private slideGen = new Map<string, number>();
 
-  // Проезд вьюх по X к новым слотам. Используется въездом панели сплита (enterSplit) и обменом
-  // половин местами (swapSplitPanels).
+  // Проезд вьюх к новым слотам. Кадры и таймер — tabSplitMotion; поколения остаются здесь,
+  // потому что applySplitBounds не должен сбивать едущую панель.
   //
-  // ⚠️ Двигаем только ПОЛОЖЕНИЕ, размер задан сразу конечный: смена размера заставляет страницу
-  // пересчитывать вёрстку на каждом кадре (два тяжёлых сайта разом — гарантированные рывки), а
-  // сдвиг для страницы бесплатен, она о нём вовсе не знает. Поэтому панель не «разворачивается»,
-  // а именно приезжает. По какой оси — безразлично: дорога только смена размера.
+  // ⚠️ Двигаем только положение, размер сразу конечный — разбор в splitSlidePosition.
   private slideViews(moves: Array<{ tabId: string; to: ContentBounds; fromX: number; fromY?: number }>, durMs = PANEL_SLIDE_MS): void {
-    const live = moves
-      .map((m) => ({ ...m, tab: this.tabMap.get(m.tabId) }))
-      .filter((m) => !!m.tab && this.isHttpView(m.tab.view))
-      .map((m) => ({ ...m, view: m.tab!.view as WebContentsView }));
-    if (!live.length) return;
-
-    const gens = new Map<string, number>();
-    for (const m of live) {
-      const gen = (this.slideGen.get(m.tabId) ?? 0) + 1;
-      this.slideGen.set(m.tabId, gen);
-      gens.set(m.tabId, gen);
-      m.view.setBounds({ x: Math.round(m.fromX), y: Math.round(m.fromY ?? m.to.y), width: Math.round(m.to.width), height: Math.round(m.to.height) });
-      m.view.setBorderRadius(SPLIT_PANE_RADIUS); // едут только панели сплита
+    const live: SplitSlideMove[] = [];
+    for (const m of moves) {
+      const tab = this.tabMap.get(m.tabId);
+      if (!tab || !this.isHttpView(tab.view)) continue;
+      live.push({ tabId: m.tabId, view: tab.view, to: m.to, fromX: m.fromX, fromY: m.fromY });
     }
-
-    const start = Date.now();
-    const step = (): void => {
-      const t = Math.min(1, (Date.now() - start) / durMs);
-      // Та же кривая, что у --ease-out в токенах: быстрый старт, мягкая остановка.
-      const e = 1 - Math.pow(1 - t, 3);
-      let alive = false;
-      for (const m of live) {
-        if (this.slideGen.get(m.tabId) !== gens.get(m.tabId)) continue; // жест перебит новым
-        if (m.view.webContents.isDestroyed()) { this.slideGen.delete(m.tabId); continue; }
-        const x = Math.round(m.fromX + (m.to.x - m.fromX) * e);
-        const fromY = m.fromY ?? m.to.y;
-        const y = Math.round(fromY + (m.to.y - fromY) * e);
-        m.view.setBounds({ x, y, width: Math.round(m.to.width), height: Math.round(m.to.height) });
-        if (t < 1) alive = true;
-        else this.slideGen.delete(m.tabId);
-      }
-      if (alive) setTimeout(step, 16);
-    };
-    setTimeout(step, 16);
+    slideSplitViews(live, this.slideGen, durMs);
   }
 
   setContentBounds(b: ContentBounds) {

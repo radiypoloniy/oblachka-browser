@@ -12,7 +12,9 @@
 //
 // Запуск: npm test -- split-layout
 import {
-  splitPaneBounds, clampSplitRatio, SPLIT_RATIO_MIN, SPLIT_RATIO_MAX,
+  splitPaneBounds, splitIslandRects, splitPanelEntryFrom,
+  splitSlideEase, splitSlidePosition, clampSplitRatio,
+  SPLIT_RATIO_MIN, SPLIT_RATIO_MAX,
   ISLAND_GAP, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS,
 } from '../shared/layout.ts';
 import { SPLIT_RATIO_MIN as SESSION_MIN, SPLIT_RATIO_MAX as SESSION_MAX } from '../shared/sessionTree.ts';
@@ -95,6 +97,52 @@ console.log('\n— эталонная геометрия: конкретные �
   const skew = [splitPaneBounds(CONTENT, 'left', 0.35), splitPaneBounds(CONTENT, 'right', 0.35)];
   check('доля 0.35 — левая панель', skew[0], { x: 106, y: 92, width: 334, height: 752 });
   check('доля 0.35 — правая панель', skew[1], { x: 462, y: 92, width: 632, height: 752 });
+}
+
+console.log('\n— острова пары: цель дропа, не карточка страницы —');
+{
+  // ⚠️ Остров занимает всю высоту области контента, страница — нет (шапка + кант). Если эти
+  // два прямоугольника схлопнуть в одну формулу, подсветка дропа поедет внутрь карточки,
+  // а страница начнёт залезать на шапку. Эталон — литералы, не «остров = content».
+  const half = splitIslandRects(CONTENT, 0.5);
+  check('доля 0.5 — левый остров', half.left, { x: 100, y: 50, width: 495, height: 800 });
+  check('доля 0.5 — правый остров', half.right, { x: 605, y: 50, width: 495, height: 800 });
+  const skew = splitIslandRects(CONTENT, 0.35);
+  check('доля 0.35 — левый остров', skew.left, { x: 100, y: 50, width: 346, height: 800 });
+  check('доля 0.35 — правый остров', skew.right, { x: 456, y: 50, width: 644, height: 800 });
+
+  // Страница — карточка ВНУТРИ острова. Расхождение floor'а между двумя формулами сюда
+  // не спрячется: золотые панели выше уже зафиксировали кант, золотые острова — разделитель.
+  const paneL = splitPaneBounds(CONTENT, 'left', 0.5);
+  check('левая страница сидит в острове по x', paneL.x, half.left.x + SPLIT_PANE_INSET);
+  check('левая страница сидит в острове по ширине', paneL.width, half.left.width - SPLIT_PANE_INSET * 2);
+}
+
+console.log('\n— точка въезда панели —');
+{
+  // Слоты — золотые рамки страницы при доле 0.5 (см. эталон выше).
+  const slotL = { x: 106, y: 92, width: 483, height: 752 };
+  const slotR = { x: 611, y: 92, width: 483, height: 752 };
+  check('правая панель въезжает с края окна',
+    splitPanelEntryFrom('right', slotR, CONTENT), { fromX: 1100, fromY: 92 });
+  check('левая панель поднимается снизу',
+    splitPanelEntryFrom('left', slotL, CONTENT), { fromX: 106, fromY: 850 });
+}
+
+console.log('\n— кадр проезда: размер конечный сразу —');
+{
+  check('ease в нуле', splitSlideEase(0, 240), 0);
+  check('ease в конце', splitSlideEase(240, 240), 1);
+  check('ease в середине — кубическое ease-out', splitSlideEase(120, 240), 0.875);
+  check('ease не вылезает за 1', splitSlideEase(1000, 240), 1);
+
+  const to = { x: 200, y: 80, width: 400, height: 300 };
+  check('кадр 0: положение старта, размер уже конечный',
+    splitSlidePosition(0, 100, to, 0), { x: 0, y: 100, width: 400, height: 300 });
+  check('кадр 1: на месте',
+    splitSlidePosition(0, 100, to, 1), { x: 200, y: 80, width: 400, height: 300 });
+  check('кадр 0.5: x посередине, высота не плывёт',
+    splitSlidePosition(0, 100, to, 0.5), { x: 100, y: 90, width: 400, height: 300 });
 }
 
 console.log('\n— зажим доли —');

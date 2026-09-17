@@ -48,6 +48,21 @@ export interface Rect {
 }
 
 /**
+ * Деление области контента на два острова. Floor — один: и карточка страницы (splitPaneBounds),
+ * и цель дропа (splitIslandRects) обязаны видеть одну и ту же вертикаль разделителя.
+ */
+function splitHalves(content: Rect, splitRatio: number): { leftX: number; leftW: number; rightX: number; rightW: number } {
+  const leftW = Math.floor((content.width - ISLAND_GAP) * splitRatio);
+  const rightW = content.width - leftW - ISLAND_GAP;
+  return {
+    leftX: content.x,
+    leftW,
+    rightX: content.x + leftW + ISLAND_GAP,
+    rightW,
+  };
+}
+
+/**
  * Прямоугольник СТРАНИЦЫ одной панели сплита: половина области контента минус полоса заголовка
  * сверху и минус кант карточки со всех сторон (разбор канта — у SPLIT_PANE_INSET выше).
  *
@@ -59,14 +74,70 @@ export interface Rect {
  * уходит в минус, а отрицательные размеры вьюхи — это не «маленькая панель», а мусор в раскладке.
  */
 export function splitPaneBounds(content: Rect, side: 'left' | 'right', splitRatio: number): Rect {
-  const leftWidth = Math.floor((content.width - ISLAND_GAP) * splitRatio);
-  const panelX = side === 'left' ? content.x : content.x + leftWidth + ISLAND_GAP;
-  const panelW = side === 'left' ? leftWidth : content.width - leftWidth - ISLAND_GAP;
+  const h = splitHalves(content, splitRatio);
+  const panelX = side === 'left' ? h.leftX : h.rightX;
+  const panelW = side === 'left' ? h.leftW : h.rightW;
   return {
     x: panelX + SPLIT_PANE_INSET,
     y: content.y + SPLIT_HEADER_HEIGHT + SPLIT_PANE_INSET,
     width: Math.max(0, panelW - SPLIT_PANE_INSET * 2),
     height: Math.max(0, content.height - SPLIT_HEADER_HEIGHT - SPLIT_PANE_INSET * 2),
+  };
+}
+
+/**
+ * Прямоугольники ОСТРОВОВ пары в оконных координатах. В них входит шапка и кант.
+ *
+ * ⚠️ Это не рамка страницы (splitPaneBounds). Зоны дропа целятся в остров целиком: человек видит
+ * «панель», а не карточку внутри неё. Подсветка обязана совпасть с тем, что на экране.
+ */
+export function splitIslandRects(content: Rect, splitRatio: number): { left: Rect; right: Rect } {
+  const h = splitHalves(content, splitRatio);
+  return {
+    left:  { x: h.leftX,  y: content.y, width: h.leftW,  height: content.height },
+    right: { x: h.rightX, y: content.y, width: h.rightW, height: content.height },
+  };
+}
+
+/**
+ * Откуда панель въезжает в свой слот. Правило одно на вход в сплит и на замену панели.
+ *
+ * ⚠️ Свободные края несимметричны. Справа — край окна, по горизонтали ничего не закрывает.
+ * Слева сайдбар, а нативная вью лежит ПОВЕРХ React: выезд слева накрыл бы список вкладок.
+ * Поэтому левая панель поднимается снизу — нижний край окна свободен у обеих сторон.
+ */
+export function splitPanelEntryFrom(
+  side: 'left' | 'right',
+  slot: Rect,
+  content: Rect,
+): { fromX: number; fromY: number } {
+  return side === 'right'
+    ? { fromX: content.x + content.width, fromY: slot.y }
+    : { fromX: slot.x, fromY: content.y + content.height };
+}
+
+/**
+ * Кубическое ease-out проезда панели — та же кривая, что `--ease-out` в токенах.
+ * Зажим [0, 1]: кадр после конца жеста не должен уехать за слот.
+ */
+export function splitSlideEase(elapsedMs: number, durMs: number): number {
+  const t = Math.min(1, Math.max(0, elapsedMs / durMs));
+  return 1 - Math.pow(1 - t, 3);
+}
+
+/**
+ * Кадр проезда: положение интерполируется, размер сразу конечный.
+ *
+ * ⚠️ Смена размера заставляет страницу пересчитывать вёрстку на каждом кадре (два тяжёлых
+ * сайта разом — рывки). Сдвиг для страницы бесплатен. Поэтому панель не «разворачивается»,
+ * а приезжает уже своего размера.
+ */
+export function splitSlidePosition(fromX: number, fromY: number, to: Rect, ease: number): Rect {
+  return {
+    x: Math.round(fromX + (to.x - fromX) * ease),
+    y: Math.round(fromY + (to.y - fromY) * ease),
+    width: Math.round(to.width),
+    height: Math.round(to.height),
   };
 }
 
