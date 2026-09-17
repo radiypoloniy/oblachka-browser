@@ -15,6 +15,7 @@ import { startPageFind, findQuoteInWebContents } from './tabFind';
 import { disputedPageAction, disputedKeyStuckInFrame } from './tabHotkeyPolicy';
 import { wireTabNavigationGuard } from './tabNavigationGuard';
 import { wireTabGuestSignals } from './tabGuestSignals';
+import { wireTabPageLifecycle } from './tabPageLifecycle';
 import type { SplitPair } from './SplitPairRegistry';
 import type { PageContextMenuHost } from './pageContextMenu';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
@@ -34,7 +35,6 @@ import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_PANE_RADIUS, splitPaneBounds, clampSplitRatio } from '../shared/layout';
 import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTimer, pressureCandidates, SLEEP_CHECK_INTERVAL, PRESSURE_SLEEP_PER_CHECK, MEDIA_GRACE } from '../shared/sleepPolicy';
 import { prepareSleepUnload } from './tabSleepIndex';
-import { rememberSpaNavigation, handleSpaInPageNavigate } from './tabSpaNavigate';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
 import { buildOrganizedTree } from '../shared/organizeTree';
 import { collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, pruneEmptyGroups, insertSplitPairAt, replaceSplitPairPanelNode, setSplitPairNodeRatio, swapSplitPairNode, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
@@ -1428,156 +1428,52 @@ export class TabManager {
       mapFields: (origin, fields) => this.#autofillMapper?.(origin, fields),
       onAutofillSubmit: (kind, fields, url) => this.onAutofillSubmitCb?.(id, kind, fields, url),
     });
-    this.#wirePageLifecycle(id, view, mine, notify);
+    wireTabPageLifecycle(id, wc, {
+      win: this.win,
+      mine,
+      notify,
+      focusedSplitSide: () => {
+        const pair = this.#pairContaining(id);
+        return pair && pair === this.#activePair() && this.activeId !== id
+          ? (id === pair.leftId ? 'left' : 'right') : null;
+      },
+      focusSplitPanel: (side) => this.focusSplitPanel(side),
+      onContentFocus: () => this.onContentFocusCb?.(),
+      firstTabLoaded: () => this.firstTabLoaded,
+      markFirstTabLoaded: () => { this.firstTabLoaded = true; this.onFirstTabLoadCb?.(); },
+      clearError: () => { this.errors.delete(id); },
+      clearAiTitle: () => {
+        const tab = this.tabMap.get(id) ?? this.pinnedTabs.find((t) => t.id === id);
+        if (tab?.aiTitle) tab.aiTitle = undefined;
+      },
+      isActive: () => this.activeId === id,
+      splitState: () => {
+        const pair = this.#pairContaining(id);
+        return { inSplit: !!pair, shownPartner: !!pair && pair === this.#activePair() };
+      },
+      clearFind: () => { wc.stopFindInPage('clearSelection'); this.lastQuery = ''; this.onFindCloseCb(); },
+      touch: () => { const tab = this.tabMap.get(id); if (tab) tab.lastActiveAt = Date.now(); },
+      reveal: () => this.revealView(id),
+      incognito: () => !!this.tabMap.get(id)?.incognito,
+      onNavigate: (url, title, page) => this.onNavigateCb?.(url, title, page),
+      onRuleNavigate: (url) => {
+        this.#ruleHook?.({ tabId: id, url, fromHost: this.#navFrom.get(id) ?? '', incognito: !!this.tabMap.get(id)?.incognito });
+        this.#navFrom.set(id, hostOfUrl(url));
+      },
+      getFullscreenTabId: () => this.fullscreenTabId,
+      setFullscreenTabId: (tabId) => { this.fullscreenTabId = tabId; },
+      repositionViews: () => this.repositionViews(),
+      onTitleUpdate: (url, title, page) => this.onTitleUpdateCb?.(url, title, page),
+      cacheFavicon: (page, url) => this.#cacheFaviconData(page, url),
+      markAudio: () => { const tab = this.tabMap.get(id); if (tab) tab.lastMediaAt = Date.now(); },
+      onFindResult: (result) => this.onFindResultCb(result),
+    });
     wireWindowOpenPolicy(this.#windowOpenHost, id, view);
     this.#wireCrashAndZoom(id, view, mine, notify);
     this.#wireContextMenu(id, view);
 
 
     this.registerHotkeyHandler(wc);
-  }
-
-  // Жизненный цикл страницы: фокус, загрузка, навигация, полный экран, заголовок, значок, звук, поиск.
-  #wirePageLifecycle(id: string, view: WebContentsView, mine: () => boolean, notify: () => void): void {
-    const wc = view.webContents;
-
-    // Когда WebContentsView получает OS-фокус от клика мышью — проверяем, не нужно ли
-    // активировать панель split. DOM-дивы в renderer не получают клик, перекрытый вьюхой.
-    wc.on('focus', () => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      // Пара, которую переключаем, должна быть ПОКАЗЫВАЕМОЙ (== #activePair()) — иначе это
-      // скрытая вьюха припаркованной пары, которая в норме и так не должна получать OS-фокус,
-      // но проверка не полагается на это молча.
-      const pair = this.#pairContaining(id);
-      if (pair && pair === this.#activePair() && this.activeId !== id) {
-        const side = id === pair.leftId ? 'left' : 'right';
-        this.focusSplitPanel(side);
-      }
-      // Реальный клик в контент — не связан с addChildView chrome-оверлеев (дропдаун/поповер/
-      // FindBar), это OS-фокус ДРУГОГО webContents. Надёжный сигнал закрытия дропдауна омнибокса
-      // без blur (см. onContentFocusCb выше).
-      this.onContentFocusCb?.();
-    });
-
-    // Таймер первой контентной вкладки: вызывается ровно один раз.
-    if (!this.firstTabLoaded) {
-      wc.once('did-finish-load', () => {
-        if (this.firstTabLoaded) return;
-        this.firstTabLoaded = true;
-        this.onFirstTabLoadCb?.();
-      });
-    }
-
-    // Новая попытка загрузки — очищаем предыдущую ошибку сразу.
-    wc.on('did-start-loading', () => { if (!mine()) return; this.errors.delete(id); notify(); });
-    wc.on('did-stop-loading', notify);
-    // Успешный коммит навигации — показываем вьюху + сбрасываем поиск.
-    // Не на did-start-loading: вьюха не должна мигать при retry, который снова упадёт.
-    wc.on('did-navigate', () => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      // ⚠️ Умное имя описывало ПРЕЖНЮЮ страницу — на новой оно было бы прямой ложью в списке
-      // вкладок. Снимаем на did-navigate (полная навигация), а не на did-navigate-in-page:
-      // якорь и history.pushState страницу не меняют.
-      const tab = this.tabMap.get(id) ?? this.pinnedTabs.find((t) => t.id === id);
-      if (tab?.aiTitle) tab.aiTitle = undefined;
-      const isActivePanel = this.activeId === id;
-      const pair = this.#pairContaining(id);
-      const isInSplit = !!pair;
-      // Партнёр показывается прямо сейчас, только если это ПОКАЗЫВАЕМАЯ пара (не
-      // припаркована) — навигация в скрытой паре не должна поднимать её вьюху поверх экрана.
-      const isShownSplitPartner = isInSplit && pair === this.#activePair();
-      if (isActivePanel) {
-        wc.stopFindInPage('clearSelection');
-        this.lastQuery = '';
-        this.onFindCloseCb();
-      }
-      // Навигация = активность; обновляем lastActiveAt для активных/split-вкладок (в т.ч.
-      // припаркованных — это просто учёт активности, не показ).
-      if (isActivePanel || isInSplit) {
-        const tab = this.tabMap.get(id);
-        if (tab) tab.lastActiveAt = Date.now();
-      }
-      // Показываем вьюху как для активной вкладки, так и для показываемого split-партнёра.
-      if (isActivePanel || isShownSplitPartner) this.revealView(id);
-      // Записываем визит: один URL = один UPSERT с инкрементом счётчика. Инкогнито НЕ пишем в
-      // историю — приватная вкладка не оставляет следа (onNavigate у нас только про историю/индекс).
-      if (!this.tabMap.get(id)?.incognito) this.onNavigateCb?.(wc.getURL(), wc.getTitle(), wc);
-      rememberSpaNavigation(wc);
-      // Правила-автоматизации. Порядок важен: сначала отдаём наверх «откуда пришли», и только
-      // потом запоминаем текущий адрес как источник для СЛЕДУЮЩЕЙ навигации этой вкладки.
-      const currentUrl = wc.getURL();
-      this.#ruleHook?.({
-        tabId: id,
-        url: currentUrl,
-        fromHost: this.#navFrom.get(id) ?? '',
-        incognito: !!this.tabMap.get(id)?.incognito,
-      });
-      this.#navFrom.set(id, hostOfUrl(currentUrl));
-      notify();
-    });
-    wc.on('did-navigate-in-page', (_e, url, isMainFrame) => handleSpaInPageNavigate(wc, url, isMainFrame, !!this.tabMap.get(id)?.incognito, notify, this.onNavigateCb));
-
-    // Полноэкранное видео. Без этого «на весь экран» означало лишь «на всю дырку под
-    // контент»: Chromium растягивает видео по своей WebContentsView, а она у нас занимает
-    // только область страницы — сайдбар, тулбар и поля оставались на виду.
-    //
-    // Разворачиваем И вью на всё окно, И само окно: полноэкранный ролик не должен упираться
-    // в заголовок окна и панель задач. Вью вкладки лежит выше хрома по порядку addChildView,
-    // так что интерфейс она закрывает собой — прятать его отдельно не требуется.
-    //
-    // ⚠️ Вью перекладываем ПОСЛЕ того, как окно закончило собственный переход, а не сразу.
-    // setFullScreen асинхронен: система разворачивает окно со своей анимацией, и если тут же
-    // задать вью новые границы, она полсекунды живёт не по размеру окна — кадр прыгает, а по
-    // краям мелькает пустота. Отсюда подписка на события окна, а не немедленный вызов.
-    wc.on('enter-html-full-screen', () => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      this.fullscreenTabId = id;
-      if (this.win.isDestroyed()) return;
-      if (this.win.isFullScreen()) { this.repositionViews(); return; }
-      this.win.once('enter-full-screen', () => this.repositionViews());
-      this.win.setFullScreen(true);
-    });
-    wc.on('leave-html-full-screen', () => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      if (this.fullscreenTabId !== id) return;
-      this.fullscreenTabId = null;
-      if (this.win.isDestroyed()) return;
-      if (!this.win.isFullScreen()) { this.repositionViews(); return; }
-      this.win.once('leave-full-screen', () => this.repositionViews());
-      this.win.setFullScreen(false);
-    });
-    wc.on('page-title-updated', (_e, title) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      // Обновляем только заголовок — без инкремента счётчика посещений.
-      this.onTitleUpdateCb?.(wc.getURL(), title, wc);
-      notify();
-    });
-
-    wc.on('page-favicon-updated', (_e, favicons) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      const url = favicons?.[0];
-      if (!url) return; // [] у SPA не значит «иконки нет» — не затираем живую
-      if (/^(data:|https?:)/i.test(url)) { (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon = url; notify(); }
-      this.#cacheFaviconData(wc, url);
-    });
-
-    // Вкладка начала или перестала звучать. Отдельное событие нужно потому, что звук не связан
-    // ни с навигацией, ни с загрузкой: музыка включается через минуту после того, как страница
-    // догрузилась, и без этого сигнала сайдбар узнал бы о ней только при следующей перерисовке
-    // по какому-нибудь чужому поводу.
-    wc.on('audio-state-changed', (e) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      // Отметка «здесь только что играло» — бесплатный сигнал, приходит сам. Опрос кадров
-      // (#isPlayingMedia) остаётся для беззвучного воспроизведения, которое сюда не долетает.
-      if (e.audible) { const t = this.tabMap.get(id); if (t) t.lastMediaAt = Date.now(); }
-      notify();
-    });
-
-    // Результат findInPage — пробрасываем в renderer для обновления счётчика.
-    wc.on('found-in-page', (_e, result) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      this.onFindResultCb({ activeMatch: result.activeMatchOrdinal, count: result.matches });
-    });
   }
 
   // Зум по Ctrl+колесу, ошибки загрузки, смерть вью и падение процесса рендеринга.
