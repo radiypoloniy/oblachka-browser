@@ -50,6 +50,12 @@ export interface TabContext {
   title: string
   favicon?: string | null
   messages: ChatMessage[]
+  /** Генерация этой вкладки ещё идёт — даже если панель успели переключить и вернуть. */
+  sending?: boolean
+  factChecking?: boolean
+  webSearching?: boolean
+  error?: string | null
+  errorCode?: ModelErrorCode | null
 }
 
 declare global {
@@ -71,8 +77,8 @@ declare global {
       // Иконка приложения на рабочем столе новой вкладки открывает панель сразу на нём.
       onOpenApp: (cb: (appId: string) => void) => () => void
       // webGrounding — тоггл-глобус: true → main отвечает через SearXNG-ветку (см. AiPanelManager.ts).
-      sendChat: (text: string, webGrounding: boolean) => void
-      quickTranslate: () => void
+      sendChat: (text: string, webGrounding: boolean, tabId: string) => void
+      quickTranslate: (tabId: string) => void
       // Очистить беседу текущей вкладки — main ответит обычным onContext с пустой лентой.
       clearChat: () => void
       onChatChunk: (cb: (text: string) => void) => () => void
@@ -83,7 +89,7 @@ declare global {
       onContext: (cb: (ctx: TabContext) => void) => () => void
       // Заход D — кнопка фактчека: показывается только когда ключ Gemini подключён.
       onKeyStatus: (cb: (connected: boolean) => void) => () => void
-      factCheck: () => void
+      factCheck: (tabId: string) => void
       // Коммит 1 (реестр скиллов) — prompt-кнопки панели (Объяснить/Саммари, позже пользовательские)
       // приходят из main (SkillsStore.ts), а не хардкожены здесь.
       onSkillsList: (cb: (skills: SkillItem[]) => void) => () => void

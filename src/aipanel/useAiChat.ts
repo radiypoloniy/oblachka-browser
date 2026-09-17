@@ -49,10 +49,9 @@ export function useAiChat() {
 
   useEffect(() => {
     // Переключение вкладки / смена её URL / (пере)открытие панели / очистка беседы — main
-    // присылает АВТОРИТЕТНУЮ ленту этой вкладки целиком. Любая незавершённая генерация
-    // «протухшей» вкладки визуально гасится (sending/streamedText/error сбрасываются) — она
-    // никуда не делась в main, просто эта страница её больше не показывает, пока пользователь не
-    // вернётся на ту вкладку.
+    // присылает АВТОРИТЕТНУЮ ленту этой вкладки целиком, плюс sending, если генерация ещё идёт.
+    // Раньше sending всегда гасился, и ответ саммари/фактчека пропадал: он уже лежал в main,
+    // но панель решала, что ничего не происходит, и чанки/результат отфильтровывались.
     const unsubContext = window.aiPanel.onContext((ctx) => {
       setTabId(ctx.tabId)
       setPageTitle(ctx.title)
@@ -60,11 +59,11 @@ export function useAiChat() {
       setPageFavicon(ctx.favicon ?? null)
       setMessages(ctx.messages)
       setStreamedText('')
-      setSending(false)
-      setFactChecking(false)
-      setWebSearching(false)
-      setError(null)
-      setErrorCode(null)
+      setSending(!!ctx.sending)
+      setFactChecking(!!ctx.factChecking)
+      setWebSearching(!!ctx.webSearching)
+      setError(ctx.error ?? null)
+      setErrorCode(ctx.errorCode ?? null)
       // Модель могла подняться в память между показами панели — push-события на это в проекте
       // нет (см. ai-panel:model-state), поэтому перечитываем на каждый новый контекст.
       void window.aiPanel.modelState().then(setModelState)
@@ -111,7 +110,7 @@ export function useAiChat() {
     setError(null)
     setSending(true)
     setWebSearching(webGrounding)
-    window.aiPanel.sendChat(text, webGrounding)
+    window.aiPanel.sendChat(text, webGrounding, tabId)
   }
 
   // «Перевести» — не sendText: промпт (с определённым src/tgt) собирается в main, после извлечения
@@ -122,7 +121,7 @@ export function useAiChat() {
     setStreamedText('')
     setError(null)
     setSending(true)
-    window.aiPanel.quickTranslate()
+    window.aiPanel.quickTranslate(tabId)
   }
 
   // Заход D — фактчек уходит в облако (Google Gemini), а не к локальной модели. Плашка
@@ -135,7 +134,7 @@ export function useAiChat() {
     setError(null)
     setSending(true)
     setFactChecking(true)
-    window.aiPanel.factCheck()
+    window.aiPanel.factCheck(tabId)
   }
 
   return {

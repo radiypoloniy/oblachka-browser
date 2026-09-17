@@ -11,20 +11,17 @@ import TurndownService from 'turndown'
 import { composeFactsCard, factsAreUseful, type PageFacts } from './pageFacts'
 import { PAGE_TEXT_MAX_CHARS, buildExtractionScript } from './pageTextScript'
 import { TRANSCRIPT_SCRIPT, composeTranscript, isVideoPage } from './videoTranscript'
-import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
-import { runFactCheck } from './GeminiFactCheck'
-import { searxngSearch, buildGroundingPrompt, appendSearxngSources } from './SearxngSearch'
 import { setPanelViews, sendPanelStatuses } from './aipanel/panelStatus'
 import {
-  anyPanelOpen, chatPanel, chromeOf, existingPanel, panelAlive, panelBySender, panelFor,
+  anyPanelOpen, chromeOf, existingPanel, panelBySender, panelFor,
   panelViews, tabsOf, type PanelInstance,
 } from './aipanel/instances'
 import { registerWebAppChannels } from './aipanel/webAppBridge'
+import { sendCurrentContext, syncTabChat, registerTabChatIpc, wireTabChat } from './aipanel/tabChat'
 import { getCurrencyRates } from './CurrencyRates'
 import { getWeather } from './WeatherService'
 import * as webApps from './WebAppManager'
 import { IPC, type TabState } from '../shared/ipc'
-import type { AiFileMeta } from '../shared/aiAttachments'
 import type { TabManager } from './TabManager'
 import { contextFromSender } from './WindowRegistry'
 import type { SettingsManager } from './SettingsManager'
@@ -72,13 +69,14 @@ export function setSettingsManager(sm: SettingsManager): void {
   panelWidth = clampPanelWidth(sm.getAiPanelWidth())
 }
 
-// Единственный способ достать WebContents активной вкладки без нового кода в TabManager.ts —
-// готовый (ранее private, теперь public) TabManager.getActiveWebContents(), см. main.ts::setTabManager.
-// Используется ТОЛЬКО для чтения (executeJavaScript извлечения текста, Заход 4) — управление
-// вкладками (closeTab/activate/OAuth-окна) этот модуль не трогает и трогать не должен.
-let tabManagerRef: TabManager | null = null
+// Используется ТОЛЬКО для чтения (executeJavaScript извлечения текста) — управление
+// вкладками этот модуль не трогает.
 export function setTabManager(tm: TabManager): void {
-  tabManagerRef = tm
+  wireTabChat({
+    extractPageText,
+    buildFirstTurnPrompt,
+    pageWcOf: (tabId) => tm.getActiveWebContents(tabId),
+  })
   // Фокус ушёл в сайт веб-слота — сообщаем панели, какой слот стал активным. Панель сама этого не
   // видит: сайт лежит поверх неё отдельной вью и её событий не порождает (см. WebAppManager).
   webApps.setOnWebAppFocus((win, appId) => {
@@ -144,59 +142,8 @@ export function setOnPanelFocus(cb: () => void): void {
   onPanelFocusCb = cb
 }
 
-// ── Контекст чата по вкладке (Заход 3) ───────────────────────────────────────────────────────
-// Один движок (см. runChatMessage/ensureLoaded в TranslationService.ts), много контекстов: тут
-// только РАЗДЕЛЕНИЕ истории по вкладкам, а не отдельная модель на вкладку. Эфемерно, только в
-// памяти процесса main — без персистентности на диск (как и просили), обнуляется при рестарте
-// браузера вместе со всем модулем.
-interface ChatMessage { role: 'user' | 'assistant'; text: string; files?: AiFileMeta[] }
-interface TabChatContext {
-  messages: ChatMessage[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  history: any[]  // ChatHistoryItem[] для Qwen (session.setChatHistory в runChatMessage)
-  url: string     // последний известный URL вкладки — детектор «сменилась страница»
-  // Заход 4: null = ещё не извлекали (извлечём лениво на первое сообщение); '' = извлекли, но
-  // пусто/не удалось — тоже НЕ извлекаем повторно, отличать от null через строгую проверку.
-  pageText: string | null
-  // Markdown-версия ТОГО ЖЕ извлечения (этот заход) — используется только чатом
-  // (buildFirstTurnPrompt), quick-translate её не читает. null = либо ещё не извлекали
-  // (см. pageText), либо Readability не удалась/html не было — тогда чат берёт pageText как есть.
-  pageMarkdown: string | null
-}
-
-const tabContexts = new Map<string, TabChatContext>()
-
-// Начать беседу этой вкладки с чистого листа. Сбрасываются ЧЕТЫРЕ поля, и все четыре нужны:
-// лента для человека, история для Qwen и извлечённый текст страницы — чтобы следующий вопрос
-// перечитал её заново и снова получил контекст страницы первым ходом (см. needsExtraction в
-// ai-panel:chat-send: текст подмешивается ровно когда pageText === null).
+// ── Извлечение текста страницы ───────────────────────────────────────────────
 //
-// ⚠️ Одна функция на два входа: смена URL вкладки (страница другая — разговор другой) и кнопка
-// «очистить» в панели. Раньше это были те же четыре строки прямо в обработчике смены URL, и
-// кнопка неизбежно завела бы им копию — а разойтись копиям здесь означало бы «после очистки
-// модель отвечает без страницы».
-function resetChat(ctx: TabChatContext, url: string): void {
-  ctx.url = url
-  ctx.messages = []
-  ctx.history = []
-  ctx.pageText = null
-  ctx.pageMarkdown = null
-}
-let activeTabId: string | null = null
-let activeTabUrl = ''
-let activeTabTitle = ''
-let activeTabFavicon: string | null = null
-
-function getOrCreateContext(id: string, url: string): TabChatContext {
-  let ctx = tabContexts.get(id)
-  if (!ctx) {
-    ctx = { messages: [], history: [], url, pageText: null, pageMarkdown: null }
-    tabContexts.set(id, ctx)
-  }
-  return ctx
-}
-
-
 // Обязательный порог для фолбэка — АБСОЛЮТНЫЙ (не хватает символов) — не менялся с прошлого захода.
 const READABILITY_MIN_CHARS = 200
 // ОТНОСИТЕЛЬНЫЙ порог (этот заход): форумы вроде Reddit — Readability формально находит «статью»
@@ -316,16 +263,7 @@ function buildFirstTurnPrompt(pageText: string, pageTitle: string, userText: str
     `Using that page content as context where relevant, answer the user's message below.\n\n${userText}`
 }
 
-// Пушит панели (если открыта и загружена) беседу текущей активной вкладки — чипс страницы +
-// накопленные сообщения. Вызывается и при переключении вкладки, и при (пере)открытии панели.
-function sendCurrentContext(): void {
-  const view = chatPanel()?.view
-  if (!view || view.webContents.isDestroyed() || !activeTabId) return
-  const ctx = getOrCreateContext(activeTabId, activeTabUrl)
-  view.webContents.send('ai-panel:context', {
-    tabId: activeTabId, url: activeTabUrl, title: activeTabTitle, favicon: activeTabFavicon, messages: ctx.messages,
-  })
-}
+// Пушит панели беседу активной вкладки — реализация в aipanel/tabChat.ts.
 
 // Статусы приложения (ключ фактчека, веб-поиск, скиллы, подключения) панели получают из
 // aipanel/panelStatus.ts — там же лежат и подписки на их изменение. Адресаты — ВСЕ живые панели:
@@ -337,36 +275,7 @@ setPanelViews(panelViews)
 // так стреляет на переключение вкладки, навигацию и закрытие — этого достаточно, чтобы вывести
 // все три события чисто из снапшота, без новых hook'ов в TabManager.
 export function onTabsSynced(tabsSnapshot: TabState[]): void {
-  // Закрытые вкладки — их нет в свежем снапшоте: удаляем контекст вместе с ними.
-  const liveIds = new Set(tabsSnapshot.map((t) => t.id))
-  for (const id of tabContexts.keys()) {
-    if (!liveIds.has(id)) tabContexts.delete(id)
-  }
-
-  const active = tabsSnapshot.find((t) => t.isActive)
-  if (!active) return
-
-  const ctx = getOrCreateContext(active.id, active.url)
-
-  // Смена URL ВНУТРИ уже известной вкладки (не первое появление — при создании контекста url уже
-  // совпадает, см. getOrCreateContext) → другая страница, другой разговор. Сброс истории для Qwen
-  // И ленты сообщений. Флаг — потому что ниже activeTabUrl тоже перезатирается на active.url, и
-  // сравнивать с ним после этой строчки было бы уже не с чем (оба всегда совпадут).
-  let urlChanged = false
-  if (ctx.url !== active.url) {
-    resetChat(ctx, active.url) // другая страница — другой разговор, текст извлечём заново
-    urlChanged = true
-  }
-
-  const switched = active.id !== activeTabId
-  activeTabId = active.id
-  activeTabUrl = active.url
-  activeTabTitle = active.title
-  activeTabFavicon = active.faviconUrl ?? null
-
-  // Переключение активной вкладки (или смена её URL) — если панель открыта, показываем актуальную
-  // беседу немедленно, а не ждём следующего действия пользователя внутри панели.
-  if (switched || urlChanged) sendCurrentContext()
+  syncTabChat(tabsSnapshot)
 }
 
 // Заход 3: док пристыкован (flush) к правому краю окна — ширина ровно равна тому, что chrome
@@ -460,205 +369,10 @@ function ensureIpcRegistered(): void {
     if (win) resizeAiPanel(win, widthPx)
   })
 
-  // Чат — та же труба, что у поповера: runChatMessage стримит чанки по мере генерации, затем
-  // финальный исход. Привязка к вкладке: history/messages читаются и пишутся в контекст ТОЙ
-  // вкладки, что была активна в момент отправки (tabId зафиксирован здесь, до await) — если
-  // пользователь успеет переключиться на другую вкладку, пока Qwen ещё генерирует, ответ всё
-  // равно уйдёт в правильный (фоновый) контекст, а в панель — только если она всё ещё показывает
-  // именно эту вкладку к моменту прихода чанка/результата (иначе получился бы чужой текст поверх
-  // чужого разговора).
-  ipcMain.on('ai-panel:chat-send', (event: IpcMainEvent, text: string, webGrounding: boolean) => {
-    const wc = event.sender
-    const tabId = activeTabId
-    if (!tabId) return
-    const title = activeTabTitle
-    const ctx = getOrCreateContext(tabId, activeTabUrl)
-    ctx.messages.push({ role: 'user', text })
+  // Чат / перевод / фактчек — aipanel/tabChat.ts: ответ пишется во вкладку, с которой спросили.
+  registerTabChatIpc()
 
-    // Web-grounding (SearXNG, заход 3 задела) — ОТДЕЛЬНАЯ ветка перед обычным путём Qwen ниже,
-    // целиком независимая: не трогает needsExtraction/pageText/buildFirstTurnPrompt — риск
-    // сломать обычный чат роутингом сводится к этому одному if с ранним return, сам обычный путь
-    // не модифицирован ни строкой. Промпт строится ТОЛЬКО из результатов поиска + вопрос —
-    // контекст страницы сюда не подмешивается, это отдельный режим ответа, не расширение обычного.
-    // ctx.history ОБНОВЛЯЕТСЯ (в отличие от фактчека) — это реальная генерация локального Qwen,
-    // не сторонняя модель, последующие сообщения в этом же разговоре видят её как обычный ход.
-    if (webGrounding) {
-      void (async () => {
-        const search = await searxngSearch(text)
-        if (!search.ok) {
-          if (panelAlive(wc) && activeTabId === tabId) {
-            wc.send('ai-panel:chat-result', { ok: false, error: search.error })
-          }
-          return
-        }
-        const promptText = buildGroundingPrompt(text, search.results)
-        const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
-          if (panelAlive(wc) && activeTabId === tabId) {
-            wc.send('ai-panel:chat-chunk', chunkText)
-          }
-        })
-        if (outcome.ok) {
-          const withSources = appendSearxngSources(outcome.out, search.results)
-          ctx.messages.push({ role: 'assistant', text: withSources, files: outcome.files })
-          ctx.history = outcome.history
-          if (panelAlive(wc) && activeTabId === tabId) {
-            wc.send('ai-panel:chat-result', { ...outcome, out: withSources })
-          }
-        } else if (panelAlive(wc) && activeTabId === tabId) {
-          wc.send('ai-panel:chat-result', outcome)
-        }
-      })()
-      return
-    }
-
-    // Извлечение по требованию (Заход 4) — только на первое сообщение ЭТОЙ страницы (pageText
-    // ещё null). WebContents страницы захватываем СЕЙЧАС, синхронно, до await: activeTabId точно
-    // ещё равен tabId в этот момент, а после await пользователь мог уже переключиться на другую
-    // вкладку — getActiveWebContents() тогда вернул бы чужую страницу.
-    const needsExtraction = ctx.pageText === null
-    const pageWc = needsExtraction ? (tabManagerRef?.getActiveWebContents() ?? null) : null
-
-    void (async () => {
-      let promptText = text
-      if (needsExtraction) {
-        const extracted = await extractPageText(pageWc)
-        // ⚠️ Запоминаем ТОЛЬКО удавшееся извлечение (см. ExtractedPage.ok): после неудачи
-        // pageText остаётся null, и следующий вопрос попробует снова. Иначе одна осечка
-        // выключала контекст страницы до конца её жизни.
-        if (extracted.ok) {
-          ctx.pageText = extracted.text
-          ctx.pageMarkdown = extracted.markdown
-        }
-        // Чат получает markdown, когда Readability реально удалась и html был; иначе — тот же
-        // plain text, что и раньше (fallback/форумы — markdown не форсируем).
-        promptText = buildFirstTurnPrompt(extracted.markdown ?? extracted.text, title, text)
-        console.log(`[ai-panel] текст страницы извлечён: ${extracted.text.length} симв. (лимит ${PAGE_TEXT_MAX_CHARS})`)
-      }
-
-      const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
-        if (panelAlive(wc) && activeTabId === tabId) {
-          wc.send('ai-panel:chat-chunk', chunkText)
-        }
-      })
-
-      if (outcome.ok) {
-        ctx.messages.push({ role: 'assistant', text: outcome.out, files: outcome.files })
-        ctx.history = outcome.history
-      }
-      if (panelAlive(wc) && activeTabId === tabId) {
-        wc.send('ai-panel:chat-result', outcome)
-      }
-    })()
-  })
-
-  // Кнопка «очистить беседу» в шапке панели. То же, что происходит само при уходе на другую
-  // страницу, только по просьбе человека и не сходя с места: лента пустеет, Qwen забывает
-  // разговор, а текст страницы будет извлечён заново на следующий вопрос — то есть остаётся
-  // ровно тот контекст, что есть на странице, и ничего сверх него.
-  ipcMain.on('ai-panel:clear-chat', () => {
-    if (!activeTabId) return
-    const ctx = tabContexts.get(activeTabId)
-    if (!ctx) return
-    resetChat(ctx, activeTabUrl)
-    sendCurrentContext()
-  })
-
-  // Кнопка-подсказка «Перевести» — двунаправленный перевод СТРАНИЦЫ тем же определением
-  // языка/направления и тем же шаблоном промпта, что и перевод выделения (resolveDirection/
-  // buildPrompt из TranslationService.ts — не новая логика, см. задачу). Отдельный канал (не
-  // ai-panel:chat-send с заготовленным текстом): направление известно только ПОСЛЕ извлечения
-  // текста и детекции языка, точный src/tgt-промпт строится здесь же, в main — в отличие от
-  // Объяснить/Саммари, где текст кнопки одновременно и видимое сообщение, и весь промпт.
-  ipcMain.on('ai-panel:quick-translate', (event: IpcMainEvent) => {
-    const wc = event.sender
-    const tabId = activeTabId
-    if (!tabId) return
-    const ctx = getOrCreateContext(tabId, activeTabUrl)
-    ctx.messages.push({ role: 'user', text: 'Перевести' })
-
-    const needsExtraction = ctx.pageText === null
-    const pageWc = needsExtraction ? (tabManagerRef?.getActiveWebContents() ?? null) : null
-
-    void (async () => {
-      if (needsExtraction) {
-        const extracted = await extractPageText(pageWc)
-        if (extracted.ok) {          // см. разбор у ExtractedPage.ok
-          ctx.pageText = extracted.text
-          ctx.pageMarkdown = extracted.markdown
-        }
-        console.log(`[ai-panel] текст страницы извлечён: ${extracted.text.length} симв. (лимит ${PAGE_TEXT_MAX_CHARS})`)
-      }
-      // Перевод остаётся на plain text — markdown (ctx.pageMarkdown) сюда намеренно не идёт.
-      const pageText = ctx.pageText ?? ''
-      // Пустая страница (хаб / извлечение не удалось) — buildPrompt тут неуместен (нечего
-      // переводить), просто просим модель ответить без текста-заглушки.
-      let promptText = 'Переведи содержимое этой страницы.'
-      if (pageText) {
-        const { src, tgt } = await resolveDirection('auto', pageText)
-        promptText = buildPrompt(src, tgt, pageText)
-      }
-
-      const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
-        if (panelAlive(wc) && activeTabId === tabId) {
-          wc.send('ai-panel:chat-chunk', chunkText)
-        }
-      })
-
-      if (outcome.ok) {
-        ctx.messages.push({ role: 'assistant', text: outcome.out, files: outcome.files })
-        ctx.history = outcome.history
-      }
-      if (panelAlive(wc) && activeTabId === tabId) {
-        wc.send('ai-panel:chat-result', outcome)
-      }
-    })()
-  })
-
-  // Кнопка «Фактчек» (заход D) — Gemini API с Search Grounding (см. GeminiFactCheck.ts), не
-  // локальный Qwen. Плашка приватности уже показана и подтверждена на стороне renderer
-  // (aipanel.tsx::showFactCheckConfirm) ДО отправки этого сигнала — здесь только сам вызов.
-  ipcMain.on('ai-panel:fact-check', (event: IpcMainEvent) => {
-    const wc = event.sender
-    const tabId = activeTabId
-    if (!tabId) return
-    const title = activeTabTitle
-    const url = activeTabUrl
-    const ctx = getOrCreateContext(tabId, url)
-    ctx.messages.push({ role: 'user', text: 'Фактчек' })
-
-    const needsExtraction = ctx.pageText === null
-    const pageWc = needsExtraction ? (tabManagerRef?.getActiveWebContents() ?? null) : null
-
-    void (async () => {
-      if (needsExtraction) {
-        const extracted = await extractPageText(pageWc)
-        if (extracted.ok) {          // см. разбор у ExtractedPage.ok
-          ctx.pageText = extracted.text
-          ctx.pageMarkdown = extracted.markdown
-        }
-        console.log(`[ai-panel] текст страницы извлечён: ${extracted.text.length} симв. (для фактчека)`)
-      }
-      const outcome = await runFactCheck(ctx.pageText ?? '', title, url)
-
-      // Ответ Gemini НЕ идёт в ctx.history (та — контекст ЛОКАЛЬНОГО Qwen для продолжения
-      // беседы, см. runChatMessage/LlamaChatSession) — фактчек не часть того же диалога/модели,
-      // только видимая лента ctx.messages.
-      if (outcome.ok) {
-        ctx.messages.push({ role: 'assistant', text: outcome.out })
-      }
-      if (panelAlive(wc) && activeTabId === tabId) {
-        wc.send('ai-panel:chat-result', outcome)
-      }
-    })()
-  })
-
-  // Задел под web-grounding (SearXNG) — клик по глобусу, когда SearXNG не настроен, ведёт сюда:
-  // открываем вкладку настроек в чроме (тот же путь, что кнопка «Настройки» в сайдбаре —
-  // TabManager.createSpecialTab), а не молча включаем пустой режим. Сама AI-панель не закрывается —
-  // это отдельный, независимый от неё контент вкладки.
-  // section (опционально) — начальный раздел Settings, см. TabManager.createSpecialTab. Кнопка "+"
-  // в ряду действий панели зовёт этот же канал с 'ai'; вызов без аргумента (глобус выше) остаётся
-  // как раньше — открывает Settings на дефолтном разделе.
+  // Клик по глобусу, когда SearXNG не настроен — вкладка настроек, панель не закрывается.
   ipcMain.on('ai-panel:open-settings', (event: IpcMainEvent, section?: string) => {
     const st = panelBySender(event.sender)
     if (st) tabsOf(st.win)?.createSpecialTab('settings', section)

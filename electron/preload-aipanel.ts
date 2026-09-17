@@ -57,10 +57,10 @@ contextBridge.exposeInMainWorld('aiPanel', {
 
   // webGrounding — тоггл-глобус (заход 2 задела): main решает по нему, идти ли через
   // SearXNG-ветку или обычный путь Qwen, см. AiPanelManager.ts::ai-panel:chat-send.
-  sendChat: (text: string, webGrounding: boolean) => ipcRenderer.send('ai-panel:chat-send', text, webGrounding),
+  sendChat: (text: string, webGrounding: boolean, tabId: string) => ipcRenderer.send('ai-panel:chat-send', text, webGrounding, tabId),
   // Кнопка-подсказка «Перевести» — без текста: направление (src/tgt) решает main после извлечения
   // и детекции языка страницы, см. AiPanelManager.ts.
-  quickTranslate: () => ipcRenderer.send('ai-panel:quick-translate'),
+  quickTranslate: (tabId: string) => ipcRenderer.send('ai-panel:quick-translate', tabId),
   // Очистить беседу текущей вкладки. Ответом придёт обычный ai-panel:context с пустой лентой —
   // отдельного канала «очищено» нет намеренно: панель и так умеет показывать присланную ленту.
   clearChat: () => ipcRenderer.send('ai-panel:clear-chat'),
@@ -92,7 +92,7 @@ contextBridge.exposeInMainWorld('aiPanel', {
     ipcRenderer.on('ai-panel:key-status', handler);
     return () => ipcRenderer.removeListener('ai-panel:key-status', handler);
   },
-  factCheck: () => ipcRenderer.send('ai-panel:fact-check'),
+  factCheck: (tabId: string) => ipcRenderer.send('ai-panel:fact-check', tabId),
 
   // Коммит 1 (реестр скиллов) — prompt-кнопки панели (Объяснить/Саммари, позже пользовательские)
   // теперь пушатся из main (SkillsStore.ts), а не хардкожены в aipanel.tsx. Тот же приём, что

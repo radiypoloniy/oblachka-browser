@@ -2612,11 +2612,10 @@ export class TabManager {
   }
 
   // ── Поиск по странице ────────────────────────────────────────────────────
-  // Публичный (не private) — единственная точка, где AiPanelManager.ts достаёт WebContents
-  // активной вкладки для извлечения текста страницы в контекст чата (Заход 4). Само поведение
-  // метода не менялось ни на строку — только видимость.
-  getActiveWebContents() {
-    const tab = this.tabMap.get(this.activeId);
+  // Публичный — AiPanelManager достаёт WebContents вкладки, с которой спросили чат, а не
+  // обязательно активной: IPC может доехать уже после переключения. Без аргумента — активная.
+  getActiveWebContents(tabId: string = this.activeId) {
+    const tab = this.tabMap.get(tabId);
     return tab && this.isHttpView(tab.view) ? tab.view.webContents : null;
   }
 
