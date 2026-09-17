@@ -13,6 +13,7 @@ import { wireWindowOpenPolicy } from './windowOpenPolicy';
 import type { WindowOpenHost } from './windowOpenPolicy';
 import { SplitPairRegistry } from './SplitPairRegistry';
 import { startPageFind, findQuoteInWebContents } from './tabFind';
+import { disputedPageAction, disputedKeyStuckInFrame } from './tabHotkeyPolicy';
 import type { SplitPair } from './SplitPairRegistry';
 import type { PageContextMenuHost } from './pageContextMenu';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
@@ -3428,15 +3429,6 @@ export class TabManager {
   }
 
   /**
-   * Код клавиши → спорное действие. ⚠️ Обязан совпадать с DISPUTED в preload-content.ts: это две
-   * половины одного правила, и разъехавшись, они дадут клавишу, которая работает в одном кадре и
-   * не работает в другом.
-   */
-  private static readonly DISPUTED_BY_CODE: Record<string, string> = {
-    KeyF: 'find', KeyE: 'quick', KeyD: 'bookmark', KeyR: 'reload', KeyH: 'history',
-  };
-
-  /**
    * Застряла ли спорная клавиша в ЧУЖОМ КАДРЕ.
    *
    * ⚠️ Разбор живой жалобы «Ctrl+F срабатывает не каждый раз». Спорные клавиши приходят снизу, из
@@ -3453,17 +3445,6 @@ export class TabManager {
    * вмешиваемся только в ЧУЖОЙ кадр: встроенный чужой контент своего поиска почти никогда не
    * имеет, а наш ему в самый раз.
    */
-  private disputedKeyStuckInFrame(wc: WebContents): boolean {
-    try {
-      const focused = wc.focusedFrame;
-      if (!focused || !focused.parent) return false;   // фокус в главном кадре — путь снизу цел
-      return focused.origin !== wc.mainFrame.origin;
-    } catch {
-      // Кадр мог умереть между нажатием и проверкой — тогда это не наш случай.
-      return false;
-    }
-  }
-
   // source — откуда пришёл ввод. Слой хрома принадлежит окну навсегда и никуда не переезжает;
   // вкладка — может (см. detachTabForMove), и это решает всё, см. гвард ниже.
   registerHotkeyHandler(wc: WebContents, source: 'chrome' | 'tab' = 'tab'): void {
@@ -3583,10 +3564,10 @@ export class TabManager {
       // ⚠️ Спорная клавиша, застрявшая в чужом встроенном кадре (см. disputedKeyStuckInFrame).
       // Стоит ПЕРЕД ветками слоя хрома и после всех бесспорных: у страницы приоритет остаётся
       // везде, где путь снизу вообще работает.
-      } else if (source === 'tab' && !shift && TabManager.DISPUTED_BY_CODE[code] !== undefined
-        && this.disputedKeyStuckInFrame(wc)) {
+      } else if (source === 'tab' && !shift && disputedPageAction(code) !== undefined
+        && disputedKeyStuckInFrame(wc)) {
         event.preventDefault();
-        this.runPageHotkey(TabManager.DISPUTED_BY_CODE[code]!);
+        this.runPageHotkey(disputedPageAction(code)!);
       } else if (source === 'chrome' && code === 'KeyF' && !shift) {
         event.preventDefault();
         this.findBarOpen = true;
