@@ -6,7 +6,7 @@ import {
   Favicon, SectionHeader, Subsection, SegTrack, segBtnStyle,
   FactGrid, Fact, SpotCard, SpotLine, btnGhost, Read,
 } from './kit';
-import { TEXT, sp } from '../../styles/system';
+import { TEXT, sp } from '../../styles/system'; import { useLanguage } from '../../i18n';
 
 // Раздел «Разрешения сайтов» — что каким сайтам разрешено и как это поменять.
 //
@@ -56,7 +56,7 @@ function stainOf(host: string): string {
 }
 
 export default function PermissionsSection() {
-  const [records, setRecords] = useState<PermissionRecord[]>([]);
+  const { t } = useLanguage(); const [records, setRecords] = useState<PermissionRecord[]>([]);
   const [certTrust, setCertTrust] = useState<Array<{ domain: string; addedAt: number }>>([]);
 
   const load = async (): Promise<void> => setRecords(await window.oblako.listPermissions());
@@ -128,14 +128,14 @@ export default function PermissionsSection() {
                   stain={stainOf(host)}
                   icon={<Favicon host={host} size={28} />}
                   title={host}
-                  subtitle={`${list.length} ${list.length === 1 ? 'решение' : 'решения'}`}
+                  subtitle={list.length === 1 ? t('1 решение') : t('{n} решений', { n: list.length })}
                   actions={(
                     <button
                       onClick={() => void forget(origin)}
                       title="Забыть все решения по этому сайту"
                       style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(1) }}
                     >
-                      <RotateCcw size={14} strokeWidth={2} /> Сбросить всё
+                      <RotateCcw size={14} strokeWidth={2} /> {t('Сбросить всё')}
                     </button>
                   )}
                 >
@@ -147,7 +147,7 @@ export default function PermissionsSection() {
                         title={(
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(2) }}>
                             <Icon size={14} strokeWidth={2} style={{ color: 'var(--text-faint)' }} />
-                            {LABEL[r.permission] ?? r.permission}
+                            {LABEL[r.permission] ? t(LABEL[r.permission]) : r.permission}
                           </span>
                         )}
                         control={(
@@ -155,15 +155,15 @@ export default function PermissionsSection() {
                             <button
                               onClick={() => void setDecision(r.origin, r.permission, 'granted')}
                               style={segBtnStyle(r.decision === 'granted')}
-                            >Разрешено</button>
+                            >{t('Разрешено')}</button>
                             <button
                               onClick={() => void setDecision(r.origin, r.permission, 'denied')}
                               style={segBtnStyle(r.decision === 'denied', r.decision === 'denied' ? 'var(--danger-500)' : undefined)}
-                            >Запрещено</button>
+                            >{t('Запрещено')}</button>
                             <button
                               onClick={() => void forget(r.origin, r.permission)}
                               style={segBtnStyle(false)}
-                            >Спрашивать</button>
+                            >{t('Спрашивать')}</button>
                           </SegTrack>
                         )}
                       />

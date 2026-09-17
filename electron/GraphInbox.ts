@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { MenuItemConstructorOptions } from 'electron';
 import type { GraphStructureNode } from '../shared/graph';
 import type { GraphStore } from './GraphStore';
+import { t as tr } from './uiText';
 
 // «Добавить в граф» из контекстных меню браузера: ссылка, вкладка, папка вкладок.
 //
@@ -89,7 +90,7 @@ export function buildAddToGraphMenuItem(
 
   const graphs = store.list().slice(0, 8);
   const submenu: MenuItemConstructorOptions[] = graphs.map((g) => ({
-    label: g.title || 'Без названия',
+    label: g.title || tr('Без названия'),
     click: () => {
       const id = addItemsToGraph(store, g.id, items, stickerText);
       if (id !== null) onAdded(id);
@@ -97,12 +98,12 @@ export function buildAddToGraphMenuItem(
   }));
   if (submenu.length > 0) submenu.push({ type: 'separator' });
   submenu.push({
-    label: 'В новый граф…',
+    label: tr('В новый граф…'),
     click: () => {
       const id = addItemsToGraph(store, null, items, stickerText);
       if (id !== null) onAdded(id);
     },
   });
 
-  return { label: 'Добавить в граф', submenu };
+  return { label: tr('Добавить в граф'), submenu };
 }

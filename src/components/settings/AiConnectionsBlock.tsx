@@ -10,6 +10,7 @@ import { formatCost, formatTokens, totalTokens, type AiUsage } from '../../../sh
 import { PROVIDER_PRESETS, defaultSchemaMode, isLoopbackUrl, type ProviderKind } from '../../../shared/aiProviders';
 import type { AiConnection, AiConnectionsState, AiRunnerFound } from '../../../shared/ipc';
 import { ModelField } from './ModelField';
+import { useLanguage } from '../../i18n';
 
 /**
  * Подключения к моделям по API.
@@ -57,7 +58,7 @@ export function AiConnectionsBlock({ state, usage, summary }: {
    *  читалась продолжением формы — то есть отвечала не на тот вопрос, под которым стояла. */
   summary?: React.ReactNode;
 }) {
-  const [form, setForm] = useState<Draft>(draft);
+  const [form, setForm] = useState<Draft>(draft); const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [finds, setFinds] = useState<AiRunnerFound[]>([]);
@@ -151,12 +152,12 @@ export function AiConnectionsBlock({ state, usage, summary }: {
         <StatusCard
           key={f.presetId}
           icon={<Zap size={20} style={{ color: f.models.length === 0 ? 'var(--text-faint)' : 'var(--dot-local)', flex: 'none' }} />}
-          title={`Нашли ${f.label} на этой машине`}
-          subtitle={f.models.length === 0 ? emptyRunnerHint(f.presetId) : `${f.models.length} ${plural(f.models.length, 'модель', 'модели', 'моделей')} — ответы не уходят с компьютера.`}
+          title={t('Нашли {label} на этой машине', { label: f.label })}
+          subtitle={f.models.length === 0 ? emptyRunnerHint(f.presetId) : t(f.models.length === 1 ? '{n} модель — ответы не уходят с компьютера.' : f.models.length < 5 ? '{n} модели — ответы не уходят с компьютера.' : '{n} моделей — ответы не уходят с компьютера.', { n: f.models.length })}
           // ⚠️ У пустого раннера кнопки НЕТ, и это не забывчивость: подключать нечего, пока не
           // скачана модель. Кнопка, которая заведёт подключение с пустым именем модели, приведёт
           // ровно туда же — к отказу, но на два шага позже и без объяснения.
-          {...(f.models.length === 0 ? {} : { actions: <button onClick={() => take(f)} style={btnTone}>Подключить</button> })}
+          {...(f.models.length === 0 ? {} : { actions: <button onClick={() => take(f)} style={btnTone}>{t('Подключить')}</button> })}
         />
       ))}
 
@@ -190,14 +191,14 @@ export function AiConnectionsBlock({ state, usage, summary }: {
           />
           <button onClick={() => void save()} disabled={busy || !ready}
             style={{ ...btnTone, alignSelf: 'flex-start', opacity: busy || !ready ? 0.6 : 1 }}>
-            {busy ? 'Проверяю…' : 'Проверить и сохранить'}
+            {busy ? t('Проверяю…') : t('Проверить и сохранить')}
           </button>
         </InputRow>
         {/* ⚠️ Про http говорим ЗАРАНЕЕ, а не отказом после нажатия: по открытому http ключ уходит
             читаемым, и запрет тут не придирка. Для localhost это безразлично — трафик не покидает
             машину, а Ollama и LM Studio по https и не умеют. */}
         <InlineHint>
-          Адрес обязан быть https — по открытому http ключ уходит читаемым. Исключение — localhost.
+          {t('Адрес обязан быть https — по открытому http ключ уходит читаемым. Исключение — localhost.')}
         </InlineHint>
       </Panel>
     </div>
@@ -227,7 +228,7 @@ export function AiConnectionsBlock({ state, usage, summary }: {
 function ConnectionCard({ conn, ready, usage }: {
   conn: AiConnection; ready: boolean; usage: AiUsage | undefined;
 }) {
-  const [probe, setProbe] = useState<'idle' | 'busy' | 'ok' | string>('idle');
+  const [probe, setProbe] = useState<'idle' | 'busy' | 'ok' | string>('idle'); const { t } = useLanguage();
   const local = isLoopbackUrl(conn.baseUrl);
 
   async function test(): Promise<void> {
@@ -252,15 +253,15 @@ function ConnectionCard({ conn, ready, usage }: {
       )}
       fields={[
         { label: 'Модель', value: conn.model, mono: true },
-        { label: local ? 'Адрес' : 'Одновременно', value: local ? conn.baseUrl : `до ${conn.concurrency} запросов`, mono: local },
-        { label: 'Израсходовано', value: spent(usage) },
+        { label: local ? 'Адрес' : 'Одновременно', value: local ? conn.baseUrl : t('до {n} запросов', { n: conn.concurrency }), mono: local },
+        { label: 'Израсходовано', value: spent(usage, t) },
       ]}
       actions={(
         <div style={{ display: 'flex', gap: sp(2) }}>
-          <button onClick={() => void test()} disabled={probe === 'busy'} style={btnGhost}>Проверить</button>
+          <button onClick={() => void test()} disabled={probe === 'busy'} style={btnGhost}>{t('Проверить')}</button>
           <button onClick={() => void window.oblako.deleteAiConnection(conn.id)}
             style={{ ...btnGhost, display: 'flex', gap: sp(2), alignItems: 'center' }}>
-            <Trash2 size={14} /> Удалить
+            <Trash2 size={14} /> {t('Удалить')}
           </button>
         </div>
       )}
@@ -270,9 +271,9 @@ function ConnectionCard({ conn, ready, usage }: {
 
 /** ⚠️ Прочерк, а не «0 токенов»: на этом подключении ещё не было ни одного ответа, и ноль
  *  означал бы «считали и вышло ноль». Разницу между этими случаями держит shared/aiUsage.ts. */
-function spent(u: AiUsage | undefined): string {
+function spent(u: AiUsage | undefined, t: (s: string, vars?: Record<string, string | number>) => string): string {
   if (u === undefined || u.requests === 0) return '—';
-  const tokens = `${formatTokens(totalTokens(u))} токенов`;
+  const tokens = t('{n} токенов', { n: formatTokens(totalTokens(u)) });
   return u.costKnown ? `${tokens} · ${formatCost(u.cost)}` : tokens;
 }
 
@@ -286,6 +287,7 @@ function spent(u: AiUsage | undefined): string {
 function StatusBadge({ local, ready, probe }: {
   local: boolean; ready: boolean; probe: 'idle' | 'busy' | 'ok' | string;
 }) {
+  const { t } = useLanguage();
   const [text, color] =
     probe === 'busy' ? ['Проверяю…', 'var(--text-muted)']
       : probe === 'ok' ? ['Отвечает', 'var(--success-500)']
@@ -298,7 +300,7 @@ function StatusBadge({ local, ready, probe }: {
       ...CAPS, color, letterSpacing: '0.08em', whiteSpace: 'nowrap',
       background: `color-mix(in srgb, ${color} 14%, transparent)`,
       padding: `2px ${sp(2)}px`, borderRadius: RADIUS.pill,
-    }}>{text}</span>
+    }}>{t(text)}</span>
   );
 }
 
@@ -320,16 +322,6 @@ function Dot({ local, ready }: { local: boolean; ready: boolean }) {
 function hostOf(url: string): string {
   const m = /^[a-z]+:\/\/([^/?#:]+)/i.exec(url.trim());
   return m ? (m[1] ?? url) : url;
-}
-
-/** ⚠️ Своя копия, как в остальных разделах настроек: общего хелпера в проекте нет, а тянуть его из
- *  чужого компонента ради одной строки — связь, которой здесь быть не должно. */
-function plural(n: number, one: string, few: string, many: string): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
 }
 
 /**

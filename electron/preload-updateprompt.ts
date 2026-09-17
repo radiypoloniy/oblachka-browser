@@ -3,6 +3,7 @@
 // ⚠️ Свои маленькие каналы (update-prompt:*), а не контракт основного хрома — как у поповера
 // разрешений и findbar: эта вью не часть интерфейса окна, она задаёт один вопрос и исчезает.
 import { contextBridge, ipcRenderer } from 'electron'
+import { exposeUiLanguage } from './preload/uiLanguage'
 import type { UpdateStatus } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('updatePrompt', {
@@ -14,3 +15,4 @@ contextBridge.exposeInMainWorld('updatePrompt', {
     return () => ipcRenderer.removeListener('update-prompt:state', handler)
   },
 })
+exposeUiLanguage()

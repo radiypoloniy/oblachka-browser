@@ -11,3 +11,7 @@ export function initialUiLanguage(saved: unknown, hasExistingProfile: boolean): 
   if (isUiLanguage(saved)) return saved;
   return hasExistingProfile ? 'ru' : 'en';
 }
+
+export function dateLocale(language: UiLanguage): string {
+  return language === 'en' ? 'en-US' : 'ru-RU';
+}

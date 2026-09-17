@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { exposeUiLanguage } from './preload/uiLanguage';
 
 // Мост карточки снимка (см. ScreenshotManager.ts). Каналы здесь свои, не из shared/ipc.ts:
 // разговор идёт только между main и этой вью, боевого window.oblako он не касается — тот же
@@ -31,3 +32,4 @@ contextBridge.exposeInMainWorld('screenshotOverlay', {
     raw: string; frac: { x: number; y: number; w: number; h: number };
   } | null>,
 });
+exposeUiLanguage();

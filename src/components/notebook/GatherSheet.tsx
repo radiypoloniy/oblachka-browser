@@ -3,6 +3,7 @@ import { Loader2, X } from 'lucide-react';
 import { sp, pad, RADIUS, TEXT, DISPLAY, MEASURE } from '../../styles/system';
 import { btnTone, btnGhost, CapsLabel } from '../settings/kit';
 import { islandPlate } from '../../styles/island';
+import { useLanguage } from '../../i18n';
 
 export interface GatherHit { title: string; url: string; snippet: string }
 
@@ -33,7 +34,7 @@ export function GatherSheet({
   onAdd: (urls: string[]) => void;
   onClose: () => void;
 }) {
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [picked, setPicked] = useState<Set<string>>(new Set()); const { t } = useLanguage();
   const toggle = (url: string) => {
     const next = new Set(picked);
     if (next.has(url)) next.delete(url); else next.add(url);
@@ -56,16 +57,16 @@ export function GatherSheet({
           borderBottom: '1px solid var(--divider)', flex: 'none',
         }}>
           <span style={{ flex: 1, ...DISPLAY, fontSize: 19, fontWeight: 700, color: 'var(--text-strong)' }}>
-            {step === 'topic' ? 'Собрать материал' : step === 'queries' ? 'Что искать' : 'Что добавить'}
+            {step === 'topic' ? t('Собрать материал') : step === 'queries' ? t('Что искать') : t('Что добавить')}
           </span>
-          <button onClick={onClose} title="Закрыть" style={closeBtn}><X size={16} /></button>
+          <button onClick={onClose} title={t('Закрыть')} style={closeBtn}><X size={16} /></button>
         </div>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: pad(4, 6), display: 'flex', flexDirection: 'column', gap: sp(2) }}>
           {busy && (
             <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), ...TEXT.body, color: 'var(--text-muted)' }}>
               <Loader2 size={16} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-              {step === 'queries' ? 'Подбираю запросы…' : 'Ищу…'}
+              {step === 'queries' ? t('Подбираю запросы…') : t('Ищу…')}
             </div>
           )}
 
@@ -75,10 +76,10 @@ export function GatherSheet({
 
           {!busy && step === 'topic' && (
             <>
-              <CapsLabel>Тема</CapsLabel>
+              <CapsLabel>{t('Тема сбора')}</CapsLabel>
               <input
                 value={topic} onChange={(e) => onTopicChange(e.target.value)} autoFocus
-                placeholder="О чём собрать материал…"
+                placeholder={t('О чём собрать материал…')}
                 onKeyDown={(e) => { if (e.key === 'Enter' && topic.trim()) onSuggest(); }}
                 style={{
                   background: 'var(--surface-sunken)', border: 'none', outline: 'none',
@@ -87,15 +88,14 @@ export function GatherSheet({
                 }}
               />
               <p style={{ ...TEXT.caption, margin: `${sp(1)}px 0 0`, maxWidth: MEASURE }}>
-                Сначала модель предложит поисковые запросы. В сеть ничего не уйдёт, пока вы их
-                не подтвердите.
+                {t('Сначала модель предложит поисковые запросы. В сеть ничего не уйдёт, пока вы их не подтвердите.')}
               </p>
             </>
           )}
 
           {!busy && !error && step === 'queries' && (
             <>
-              <CapsLabel>Запросы · правьте свободно</CapsLabel>
+              <CapsLabel>{t('Запросы · правьте свободно')}</CapsLabel>
               {queries.map((q, i) => (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'center', gap: sp(2),
@@ -110,24 +110,24 @@ export function GatherSheet({
                     }}
                   />
                   <button onClick={() => onQueriesChange(queries.filter((_, k) => k !== i))}
-                    title="Убрать запрос" style={closeBtn}><X size={14} /></button>
+                    title={t('Убрать запрос')} style={closeBtn}><X size={14} /></button>
                 </div>
               ))}
               <button onClick={() => onQueriesChange([...queries, ''])} style={{ ...btnGhost, alignSelf: 'flex-start' }}>
-                + Свой запрос
+                {t('+ Свой запрос')}
               </button>
               <p style={{ ...TEXT.caption, margin: `${sp(1)}px 0 0`, maxWidth: MEASURE }}>
-                Запросы уйдут на ваш SearXNG — ровно те, что здесь написаны.
+                {t('Запросы уйдут на ваш SearXNG — ровно те, что здесь написаны.')}
               </p>
             </>
           )}
 
           {!busy && !error && step === 'hits' && (
             hits.length === 0
-              ? <div style={{ ...TEXT.body, color: 'var(--text-faint)' }}>Ничего не нашлось. Попробуйте другие запросы.</div>
+              ? <div style={{ ...TEXT.body, color: 'var(--text-faint)' }}>{t('Ничего не нашлось. Попробуйте другие запросы.')}</div>
               : (
                 <>
-                  <CapsLabel>Найдено · отметьте нужное</CapsLabel>
+                  <CapsLabel>{t('Найдено · отметьте нужное')}</CapsLabel>
                   {hits.map((h) => (
                     <label key={h.url} style={{
                       display: 'flex', gap: sp(2), alignItems: 'flex-start', cursor: 'default',
@@ -153,13 +153,13 @@ export function GatherSheet({
           borderTop: '1px solid var(--divider)', flex: 'none',
         }}>
           <span style={{ flex: 1 }} />
-          <button onClick={onClose} style={btnGhost}>Отмена</button>
+          <button onClick={onClose} style={btnGhost}>{t('Отмена')}</button>
           {step === 'topic'
-            ? <button onClick={onSuggest} disabled={busy || !topic.trim()} style={btnTone}>Подобрать запросы</button>
+            ? <button onClick={onSuggest} disabled={busy || !topic.trim()} style={btnTone}>{t('Подобрать запросы')}</button>
             : step === 'queries'
-              ? <button onClick={onSearch} disabled={busy || queries.length === 0} style={btnTone}>Искать</button>
+              ? <button onClick={onSearch} disabled={busy || queries.length === 0} style={btnTone}>{t('Искать')}</button>
               : <button onClick={() => onAdd([...picked])} disabled={picked.size === 0} style={btnTone}>
-                  Добавить{picked.size > 0 ? ` (${picked.size})` : ''}
+                  {picked.size > 0 ? t('Добавить ({n})', { n: picked.size }) : t('Добавить')}
                 </button>}
         </div>
       </div>

@@ -3,7 +3,7 @@ import { Trash2, AlertTriangle } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
 import { CapsLabel, Subsection, OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox, InkSwitch,
 } from './settings/kit';
-import { RADIUS, sp } from '../styles/system';
+import { RADIUS, sp } from '../styles/system'; import { useLanguage } from '../i18n';
 
 function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1);
@@ -26,16 +26,6 @@ function deleteErrorText(reason: string): string {
 function roleTitle(entry: CatalogEntry): string {
   return entry.role === 'recommended' ? 'Рекомендуем' : 'Помощнее';
 }
-
-// Строка требований: сколько качать и сколько нужно видеопамяти. Про контекст в токенах человеку
-// знать незачем — это внутренняя единица, из которой ничего не следует для его решения.
-// ⚠️ Требование берём готовым из каталога (minVramBytes), а не считаем здесь: в него входят
-// резерв под систему и запас движка, которые живут в ModelCatalog.ts. Без них выходит заниженное
-// число, и человек с картой впритык скачивает то, что у него не заработает.
-function requirementsLine(entry: CatalogEntry): string {
-  return `${gb(entry.model.sizeBytes)} ГБ загрузки · нужно ${Math.ceil(entry.minVramBytes / 1024 ** 3)} ГБ видеопамяти`;
-}
-
 
 // ⚠️ «Видеокарты НЕТ» и «видеокарта слабая» — РАЗНЫЕ состояния, и раньше они были склеены в
 // один приговор «локальный AI на этом устройстве не потянет». gpuBackend==='false' означает, что
@@ -71,7 +61,7 @@ interface RecheckProps {
 // ресурсы»: модель живёт в оперативной памяти (3–6 ГБ на процессе инференса), и каждый прогон
 // занимает все ядра. Раньше об этом не говорилось нигде, и снаружи это выглядело как «браузер
 // вдруг начал грузить процессор на 70%». Молчать нельзя: цена скрыта, а платит за неё человек.
-function CpuFallbackWarning({ detected, rechecking, onRecheck }: RecheckProps) {
+function CpuFallbackWarning({ detected, rechecking, onRecheck }: RecheckProps) { const { t } = useLanguage();
   return (
     <div style={{
       ...settingsBox,
@@ -80,8 +70,7 @@ function CpuFallbackWarning({ detected, rechecking, onRecheck }: RecheckProps) {
     }}>
       <AlertTriangle size={15} style={{ color: 'var(--warning-500)', flex: 'none' }} />
       <span style={{ flex: 1 }}>
-        Видеокарта не обнаружена — модель считается на процессоре: ответы в разы медленнее, а в
-        оперативной памяти она занимает столько же, сколько заняла бы в видеопамяти.
+        {t('Видеокарта не обнаружена — модель считается на процессоре: ответы в разы медленнее, а в оперативной памяти она занимает столько же, сколько заняла бы в видеопамяти.')}
         {detected ? ` ${detected}.` : ''}
       </span>
       <RecheckButton rechecking={rechecking} onRecheck={onRecheck} style={{ flex: 'none' }} />
@@ -89,30 +78,30 @@ function CpuFallbackWarning({ detected, rechecking, onRecheck }: RecheckProps) {
   );
 }
 
-function RecheckButton({ rechecking, onRecheck, style }: Omit<RecheckProps, 'detected'> & { style?: React.CSSProperties }) {
+function RecheckButton({ rechecking, onRecheck, style }: Omit<RecheckProps, 'detected'> & { style?: React.CSSProperties }) { const { t } = useLanguage();
   return (
     <button
       onClick={onRecheck}
       disabled={rechecking}
       style={{ ...btnGhost, opacity: rechecking ? 0.6 : 1, ...style }}
     >
-      {rechecking ? 'Проверяю…' : 'Проверить снова'}
+      {rechecking ? t('Проверяю…') : t('Проверить снова')}
     </button>
   );
 }
 
 // Каталог пуст и ставить нечего. Два разных текста — см. isGpuMissing выше.
-function NoModelsNotice({ gpuMissing, detected, rechecking, onRecheck }: RecheckProps & { gpuMissing: boolean }) {
+function NoModelsNotice({ gpuMissing, detected, rechecking, onRecheck }: RecheckProps & { gpuMissing: boolean }) { const { t } = useLanguage();
   return (
     <div style={{ ...settingsBox, padding: '16px' }}>
       <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-        {gpuMissing ? 'Видеокарта не обнаружена' : 'Локальный AI на этом устройстве не потянет'}
+        {gpuMissing ? t('Видеокарта не обнаружена') : t('Локальный AI на этом устройстве не потянет')}
       </div>
       <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4, lineHeight: 1.45 }}>
         {gpuMissing
-          ? 'Локальные модели считаются на видеокарте, а браузер её сейчас не видит — поэтому список моделей пуст. Обычно помогает обновление драйвера видеокарты и перезапуск браузера.'
-          : 'Нужна видеокарта минимум с 4 ГБ памяти.'}
-        {' '}Всё остальное — вкладки, блокировка рекламы, VPN, пароли — работает как обычно.
+          ? t('Локальные модели считаются на видеокарте, а браузер её сейчас не видит — поэтому список моделей пуст. Обычно помогает обновление драйвера видеокарты и перезапуск браузера.')
+          : t('Нужна видеокарта минимум с 4 ГБ памяти.')}
+        {' '}{t('Всё остальное — вкладки, блокировка рекламы, VPN, пароли — работает как обычно.')}
       </div>
       {detected && (
         <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 8, opacity: 0.8 }}>
@@ -175,7 +164,7 @@ function LoadModeChooser() {
 // не работает, поэтому она наверху (см. AiSection). electron/ здесь не трогается — вся логика уже
 // проброшена через window.oblako.* (заход «проброс model-IPC наружу»), этот файл только рисует.
 export default function ModelsSection() {
-  const [installed, setInstalled] = useState<InstalledModel[] | null>(null);
+  const { t } = useLanguage(); const [installed, setInstalled] = useState<InstalledModel[] | null>(null);
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
   const [loadedModelId, setLoadedModelId] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
@@ -348,7 +337,7 @@ export default function ModelsSection() {
               disabled={unloading}
               style={{ ...btnGhost, opacity: unloading ? 0.6 : 1, flex: 'none' }}
             >
-              {unloading ? 'Выгружаю…' : 'Выгрузить сейчас'}
+              {unloading ? t('Выгружаю…') : t('Выгрузить сейчас')}
             </button>
           </div>
         )}
@@ -371,7 +360,7 @@ export default function ModelsSection() {
               model={m}
               isDefault={m.id === defaultModelId}
               isLoaded={m.id === loadedModelId}
-              memoryNote={m.id === loadedModelId && vramUsedText ? `видеопамять: ${vramUsedText}` : null}
+              memoryNote={m.id === loadedModelId && vramUsedText ? t('видеопамять: {n}', { n: vramUsedText }) : null}
               unloading={unloading}
               onUnload={() => void handleUnloadNow()}
               canDelete={m.source !== 'legacy' && installed.length > 1}
@@ -467,6 +456,7 @@ function InstalledModelRow({
   model, isDefault, isLoaded, memoryNote, unloading, onUnload,
   canDelete, deleteDisabledReason, onSetDefault, onChanged,
 }: InstalledModelRowProps) {
+  const { t } = useLanguage();
   // Подтверждение — тот же локальный булев паттерн, что SkillForm (Settings.tsx) — модалок в
   // проекте нет. deleting — отдельный флаг, чтобы двойной клик на «Да» не дал гонку в deleteModel().
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -479,14 +469,14 @@ function InstalledModelRow({
     const res: DeleteModelResult = await window.oblako.deleteModel(model.id);
     setDeleting(false);
     setConfirmDelete(false);
-    if (!res.ok) setDeleteError(deleteErrorText(res.reason));
+    if (!res.ok) setDeleteError(t(deleteErrorText(res.reason)));
     onChanged(); // перечитать списки в любом случае, даже при отказе — реестр мог измениться
   }
 
   // Подпись собирается из того, что человек спросит по порядку: сколько весит, где лежит (если
   // не у нас), сколько ест видеопамяти прямо сейчас.
-  const parts = [`${gb(model.sizeBytes)} ГБ`];
-  if (model.source === 'legacy') parts.push('вне папки приложения');
+  const parts = [t('{n} ГБ', { n: gb(model.sizeBytes) })];
+  if (model.source === 'legacy') parts.push(t('вне папки приложения'));
   if (memoryNote) parts.push(memoryNote);
 
   return (
@@ -511,15 +501,15 @@ function InstalledModelRow({
               disabled={unloading}
               style={{ ...btnGhost, opacity: unloading ? 0.6 : 1 }}
             >
-              {unloading ? 'Выгружаю…' : 'Выгрузить'}
+              {unloading ? t('Выгружаю…') : t('Выгрузить')}
             </button>
           )}
           {confirmDelete ? (
             <>
               <button onClick={() => void handleDelete()} disabled={deleting} style={{ ...btnGhost, color: 'var(--danger-500)', opacity: deleting ? 0.6 : 1 }}>
-                {deleting ? 'Удаляю…' : 'Да'}
+                {deleting ? t('Удаляю…') : t('Да')}
               </button>
-              <button onClick={() => setConfirmDelete(false)} disabled={deleting} style={btnGhost}>Нет</button>
+              <button onClick={() => setConfirmDelete(false)} disabled={deleting} style={btnGhost}>{t('Нет')}</button>
             </>
           ) : (
             <button
@@ -549,17 +539,17 @@ function InstalledModelRow({
 // самое мелкое: «Qwen3.5 4B» не помогает выбрать, оно нужно только чтобы узнать её потом в списке
 // установленных.
 function CatalogRow({ entry, downloadDisabled, onDownload }: { entry: CatalogEntry; downloadDisabled: boolean; onDownload: (m: CatalogModel) => void }) {
-  const primary = entry.role === 'recommended';
+  const { t } = useLanguage(); const primary = entry.role === 'recommended';
   return (
     <OptionRow
       selectable={false}
-      title={`${roleTitle(entry)} · ${entry.model.label}`}
+      title={`${t(roleTitle(entry))} · ${entry.model.label}`}
       // ⚠️ Требования — ОТДЕЛЬНОЙ строкой, а не хвостом описания: это ответ на другой вопрос
       // («во что мне это встанет»), и слитый в одну строку он тонул в конце абзаца.
       subtitle={
         <>
-          {entry.summary}
-          <div style={{ marginTop: 4 }}>{requirementsLine(entry)}</div>
+          {t(entry.summary)}
+          <div style={{ marginTop: 4 }}>{t('{size} ГБ загрузки · нужно {n} ГБ видеопамяти', { size: gb(entry.model.sizeBytes), n: Math.ceil(entry.minVramBytes / 1024 ** 3) })}</div>
         </>
       }
       // ⚠️ Бейджа «рекомендуем» здесь НЕТ намеренно: роль уже стоит первым словом заголовка
@@ -573,7 +563,7 @@ function CatalogRow({ entry, downloadDisabled, onDownload }: { entry: CatalogEnt
             opacity: downloadDisabled ? 0.5 : 1,
           }}
         >
-          Скачать
+          {t('Скачать')}
         </button>
       }
     />

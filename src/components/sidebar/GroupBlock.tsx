@@ -10,6 +10,7 @@ import { useTabDragOverPage } from './useTabDragOverPage';
 import { useGroupChildOrder, type ChildDragZone } from './useGroupChildOrder';
 import { TabRow, SortableTabRow, PairTile, SortablePairBlock } from './rows';
 import { DragGhostPlate } from './DragGhostPlate';
+import { useLanguage } from '../../i18n';
 
 export interface GroupBlockProps {
   group: GroupNode;
@@ -35,7 +36,7 @@ export function SortableGroupBlock({
     effectiveChildIds, effectiveChildren, dragChild,
     handleChildDragStart, handleChildDragCancel, handleChildDragEnd,
   } = useGroupChildOrder(group, zone);
-  const [renameValue, setRenameValue] = useState(group.label);
+  const { t } = useLanguage(); const [renameValue, setRenameValue] = useState(group.label);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const isRenaming = renameGroupId === group.id;
 
@@ -134,7 +135,7 @@ export function SortableGroupBlock({
             flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: 600,
             color: 'var(--text-body)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>{group.label}</span>
+          }}>{t(group.label)}</span>
         )}
 
         {/* Свернуть / развернуть */}

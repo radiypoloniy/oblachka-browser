@@ -8,7 +8,7 @@ import { btnGhost } from './settings/kit';
 import SiteFavicon from './SiteFavicon';
 import { EmptyState } from './EmptyState';
 import { ClockGlyph, SearchGlyph } from './glyphs';
-import { sectionCache } from './library/sectionCache';
+import { sectionCache } from './library/sectionCache'; import { useLanguage } from '../i18n';
 
 interface HistoryProps {
   /** Строка поиска — общая на всю библиотеку, живёт в оболочке (LibraryShell). */
@@ -36,11 +36,11 @@ function dayLabel(ms: number): string {
   const diff = diffDaysFromToday(ms);
   if (diff === 0) return 'Сегодня';
   if (diff === 1) return 'Вчера';
-  return new Date(ms).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
+  return new Date(ms).toLocaleDateString(document.documentElement.lang === 'en' ? 'en-US' : 'ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
 }
 
 function timeOf(ms: number): string {
-  return new Date(ms).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return new Date(ms).toLocaleTimeString(document.documentElement.lang === 'en' ? 'en-US' : 'ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
 function monthKey(ms: number): string {
@@ -49,7 +49,7 @@ function monthKey(ms: number): string {
 }
 
 function monthLabel(ms: number): string {
-  const label = new Date(ms).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  const label = new Date(ms).toLocaleDateString(document.documentElement.lang === 'en' ? 'en-US' : 'ru-RU', { month: 'long', year: 'numeric' });
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
@@ -119,7 +119,7 @@ const CLEAR_OPTIONS: { label: string; value: HistoryClearPeriod }[] = [
 
 export default function History({ query, onSummary }: HistoryProps) {
   // Первый кадр — то, что показывали в прошлый раз; свежий список приезжает следом.
-  const [entries, setEntries] = useState<HistoryEntry[]>(cachedEntries.get);
+  const [entries, setEntries] = useState<HistoryEntry[]>(cachedEntries.get); const { t } = useLanguage();
   const [clearOpen, setClearOpen] = useState(false);
   const [clearError, setClearError] = useState(false);
   // Умный поиск (Qwen-реранк) — своё поле, отдельное от омнибокса (см. диагностику: это два
@@ -216,8 +216,8 @@ export default function History({ query, onSummary }: HistoryProps) {
     onSummary({
       hero: entries.length === 0 ? '—' : String(todayCount),
       heroLabel: entries.length === 0
-        ? 'страниц за сегодня пока нет'
-        : `${plural(todayCount, 'страница', 'страницы', 'страниц')} за сегодня`,
+        ? t('страниц за сегодня пока нет')
+        : t('{n} страниц за сегодня', { n: todayCount }),
       facts: [
         { label: 'За сегодня', hint: 'открытых страниц', value: String(todayCount), active: todayCount > 0 },
         { label: 'Сайтов', hint: 'разных доменов в списке', value: String(siteCount), active: siteCount > 0 },
@@ -225,7 +225,7 @@ export default function History({ query, onSummary }: HistoryProps) {
         { label: 'Поиск по смыслу', hint: 'Qwen переранжирует находки', value: smartOn ? 'Включён' : 'Выключен', active: smartOn },
       ],
     });
-  }, [onSummary, entries.length, todayCount, siteCount, smartOn]);
+  }, [onSummary, entries.length, todayCount, siteCount, smartOn, t]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
@@ -244,14 +244,14 @@ export default function History({ query, onSummary }: HistoryProps) {
             {smartLoading
               ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
               : <Wand2 size={14} />}
-            {smartLoading ? 'Qwen переранжирует…' : 'Найти по смыслу'}
+            {smartLoading ? t('Qwen переранжирует…') : t('Найти по смыслу')}
           </button>
         )}
         <span style={{ flex: 1 }} />
         <button
           onClick={() => setClearOpen((v) => !v)}
           style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
-        ><Trash2 size={14} /> Очистить</button>
+        ><Trash2 size={14} /> {t('Очистить')}</button>
         {clearOpen && (
           <div style={{
             position: 'absolute', top: 40, right: 0, zIndex: 200, minWidth: 190,
@@ -269,7 +269,7 @@ export default function History({ query, onSummary }: HistoryProps) {
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-              >{opt.label}</button>
+              >{t(opt.label)}</button>
             ))}
           </div>
         )}
@@ -282,7 +282,7 @@ export default function History({ query, onSummary }: HistoryProps) {
           background: 'color-mix(in srgb, var(--danger-500) 12%, transparent)',
           color: 'var(--danger-500)',
         }}>
-          Не удалось очистить историю. Попробуйте ещё раз.
+          {t('Не удалось очистить историю. Попробуйте ещё раз.')}
           <button onClick={() => setClearError(false)} style={{
             marginLeft: 'auto', background: 'none', border: 'none', cursor: 'default',
             color: 'inherit', display: 'flex', padding: 2,
@@ -294,7 +294,7 @@ export default function History({ query, onSummary }: HistoryProps) {
           cosine top-k, а не решение Qwen (SmartSearchResponse.degraded). */}
       {smartResultsShown && smartDegraded && (
         <span style={{ ...TEXT.caption, color: 'var(--warning-500)' }}>
-          Показан быстрый результат — AI не ответил, порядок по сходству, не по смыслу.
+          {t('Показан быстрый результат — AI не ответил, порядок по сходству, не по смыслу.')}
         </span>
       )}
 
@@ -310,7 +310,7 @@ export default function History({ query, onSummary }: HistoryProps) {
         // Умный поиск — плоский список в порядке релевантности: группировка по дню разрушила бы
         // этот порядок, раскидав находки по датам.
         <Rows>
-          <GroupCap title="По смыслу" note={`${entries.length} ${plural(entries.length, 'находка', 'находки', 'находок')}`} />
+          <GroupCap title="По смыслу" note={t('{n} находок', { n: entries.length })} />
           {entries.map((entry) => (
             <HistoryRow key={entry.id} entry={entry} onDelete={handleDelete} />
           ))}
@@ -350,7 +350,7 @@ export default function History({ query, onSummary }: HistoryProps) {
               >
                 <GroupCap
                   title={group.label}
-                  note={`${group.entries.length} ${plural(group.entries.length, 'страница', 'страницы', 'страниц')}`}
+                  note={t('{n} страниц', { n: group.entries.length })}
                 />
                 {group.entries.map((entry) => (
                   <HistoryRow key={entry.id} entry={entry} onDelete={handleDelete} />
@@ -364,23 +364,13 @@ export default function History({ query, onSummary }: HistoryProps) {
   );
 }
 
-/** Русское склонение: 1 страница, 2 страницы, 5 страниц. */
-function plural(n: number, one: string, few: string, many: string): string {
-  const mod100 = n % 100;
-  if (mod100 >= 11 && mod100 <= 14) return many;
-  const mod10 = n % 10;
-  if (mod10 === 1) return one;
-  if (mod10 >= 2 && mod10 <= 4) return few;
-  return many;
-}
-
 // Строка истории — общий рецепт библиотеки: слева время моноширинным (это данные, они обязаны
 // стоять столбцом), значок сайта, имя дисплейной, адрес под ним.
 //
 // ⚠️ Адрес переехал ПОД заголовок. Раньше домен стоял справа от него в одной строке и отъедал
 // ширину: длинные заголовки обрезались вдвое раньше, чем нужно, при том что сайт и так виден
 // по значку.
-function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: string }; onDelete: (id: number) => void }) {
+function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: string }; onDelete: (id: number) => void }) { const { t } = useLanguage();
   return (
     <Row
       lead={timeOf(entry.lastVisit)}
@@ -392,7 +382,7 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: str
       actions={(
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
-          title="Удалить из истории"
+          title={t('Удалить из истории')}
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             width: 26, height: 26, border: 'none', borderRadius: RADIUS.control,

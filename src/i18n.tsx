@@ -1,265 +1,37 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { UiLanguage } from '../shared/uiLanguage';
 import { isUiLanguage } from '../shared/uiLanguage';
+import { fill, translate } from '../shared/uiStrings';
+
+export { translate } from '../shared/uiStrings';
+
+/** Переводит строку каталога; узел или пустое оставляет как есть. */
+export function tx(t: (source: string) => string, source: ReactNode | undefined): ReactNode | undefined {
+  return typeof source === 'string' ? t(source) : source;
+}
 
 const CACHE_KEY = 'oblako-ui-language';
 
-// Ключ — уже существующий русский текст. Такой каталог позволяет переносить экраны по одному,
-// не меняя русский интерфейс и не вводя фиктивные идентификаторы для каждой подписи.
-const EN: Record<string, string> = {
-  'Браузер': 'Browser',
-  'Основное': 'Basics',
-  'Приватность': 'Privacy',
-  'Прочее': 'More',
-  'Интерфейс': 'Appearance',
-  'Блокировка': 'Blocking',
-  'Пароли': 'Passwords',
-  'Автозаполнение': 'Autofill',
-  'Разрешения': 'Permissions',
-  'Профили': 'Profiles',
-  'Правила': 'Rules',
-  'Справка': 'Help',
-  'Поиск по настройкам': 'Search settings',
-  'Ищу по смыслу…': 'Searching by meaning…',
-  'Найдено по смыслу': 'Found by meaning',
-  'Ничего не нашлось': 'Nothing found',
-  'скоро': 'soon',
-  'Щит': 'Protection',
-  'ИИ': 'AI',
-  'Приложения': 'Apps',
-  'Настройки': 'Settings',
-  'VPN и блокировщик': 'VPN and ad blocker',
-  'Спросить о странице': 'Ask about a page',
-  'Плитки и виджеты стола': 'Desktop tiles and widgets',
-  'Тема, палитра, обои': 'Theme, colors, wallpaper',
-  'Перенесём ваши данные?': 'Bring your data over?',
-  'Закладки, история и пароли переедут из привычного браузера. В нём ничего не изменится — данные только копируются.': 'Copy bookmarks, history and passwords from your old browser. Nothing will be changed there.',
-  'Скачать локальную модель?': 'Download a local model?',
-  'Про локальную модель': 'About the local model',
-  'Перевод, пересказ и поиск по смыслу работают прямо на вашем компьютере — для этого нужен один файл модели. Качается в фоне, пользоваться браузером можно сразу.': 'Translation, summaries and semantic search run on your computer. They need a model file, which downloads in the background while you use the browser.',
-  'На этом устройстве локальная модель не пойдёт — видеопамяти не хватит даже самой лёгкой. Всё остальное работает как обычно, без неё.': 'This device does not have enough video memory for even the smallest local model. Everything else still works.',
-  'Пока скачивается модель': 'While the model downloads',
-  'Напоследок — четыре места': 'Four places to know',
-  'Загрузка идёт в фоне и переживёт этот экран — браузером можно пользоваться прямо сейчас. А пока покажем, где что лежит.': 'The download will continue after you close this screen. You can use the browser now; here is where to find things.',
-  'Ничего настраивать не нужно, но эти четыре вещи стоит знать заранее — потом найдёте их глазами.': 'There is nothing you need to set up. These four places are worth knowing about.',
-  'Подготовить историю к поиску?': 'Prepare your history for search?',
-  'Как ему выглядеть?': 'Make it yours',
-  'Тему и палитру можно поменять когда угодно — раздел «Интерфейс» в настройках.': 'You can change the theme and colors any time in Settings → Appearance.',
-  'Пропустить': 'Skip',
-  'Шаг': 'Step',
-  'из': 'of',
-  'Модель качается —': 'Downloading model —',
-  'Можно закрывать этот экран: загрузка продолжится в фоне.': 'You can close this screen; the download will continue.',
-  'Назад': 'Back',
-  'Не сейчас': 'Not now',
-  'Переносим…': 'Importing…',
-  'Перенести': 'Import',
-  'Скачать модель': 'Download model',
-  'Проиндексировать': 'Index history',
-  'Начать пользоваться': 'Start browsing',
-  'Дальше': 'Next',
-  'Уголь': 'Charcoal',
-  'Графит': 'Graphite',
-  'Сланец': 'Slate',
-  'Бумага': 'Paper',
-  'Мята': 'Mint',
-  'Небо': 'Sky',
-  'Светлая': 'Light',
-  'Тёмная': 'Dark',
-  'Как в системе': 'System',
-  'Тема': 'Theme',
-  'Палитра': 'Color palette',
-  'Что скачаем': 'What you will download',
-  'Размер': 'Size',
-  'Нужно видеопамяти': 'Video memory needed',
-  'Загрузка не удалась:': 'Download failed:',
-  'Можно повторить позже в «Настройки → ИИ».': 'You can try again later in Settings → AI.',
-  'Качаем —': 'Downloading —',
-  'Качаем…': 'Downloading…',
-  'Можно идти дальше: загрузка продолжится в фоне.': 'You can continue; the download will run in the background.',
-  'Модель скачана — локальный ИИ готов.': 'Model downloaded — local AI is ready.',
-  'Читаем страницы —': 'Reading pages —',
-  'Можно идти дальше: это продолжится в фоне.': 'You can continue; this will run in the background.',
-  'Запустили — дальше браузер сделает это сам.': 'Started — the browser will take it from here.',
-  'Что произойдёт': 'What will happen',
-  'Без этого шага умный поиск не увидит перенесённые страницы, пока вы сами их не откроете. Сейчас браузер по одной откроет их в фоне и прочитает текст.': 'Without this step, semantic search will not see imported pages until you open them. The browser will open them one by one in the background and read their text.',
-  'Это займёт время и потребует сети.': 'This will take time and use your connection.',
-  'Всё остальное в это время работает как обычно.': 'You can keep using the browser.',
-  'Прочитанное остаётся на вашем компьютере.': 'The content stays on your computer.',
-  'Закладки': 'Bookmarks',
-  'История': 'History',
-  'Ищем браузеры на компьютере…': 'Looking for browsers on this computer…',
-  'Других браузеров с данными не нашлось — переносить нечего.': 'No other browser data found to import.',
-  'Нашли на этом компьютере': 'Found on this computer',
-  'Что перенести': 'What to import',
-  'Выбрать CSV-файл': 'Choose CSV file',
-  'В файле не нашлось паролей — это точно CSV-экспорт паролей?': 'No passwords found in the file. Is this a password-export CSV?',
-  'Не удалось прочитать файл.': 'Could not read the file.',
-  'Хранилище паролей недоступно.': 'Password vault is unavailable.',
-  'Развернуть панель': 'Expand sidebar',
-  'Свернуть панель': 'Collapse sidebar',
-  'Новая вкладка (ПКМ — инкогнито / восстановить)': 'New tab (right-click for private tab or restore)',
-  'Новая вкладка': 'New tab',
-  'История и закладки': 'History and bookmarks',
-  'Потяните, чтобы изменить ширину (двойной щелчок — вернуть)': 'Drag to resize (double-click to reset)',
-  'Закреплённые': 'Pinned',
-  'Открыто': 'Open',
-  'Пока пусто. Введите адрес в строке сверху.': 'Nothing here yet. Enter an address above.',
-  'Предложение:': 'Suggestion:',
-  'и ещё': 'and',
-  'Применить': 'Apply',
-  'Отмена': 'Cancel',
-  'Модель загружается в память, это займёт около минуты, потерпите': 'Loading the model. This may take about a minute…',
-  'Читаю вкладки…': 'Reading tabs…',
-  'Повторить': 'Try again',
-  'Навести порядок': 'Organize tabs',
-  'Придумываю названия…': 'Naming tabs…',
-  'Порядок наведён': 'Tabs organized',
-  'Вкладки сгруппированы': 'Tabs grouped',
-  'Вкладки переименованы': 'Tabs renamed',
-  'Скрыть': 'Dismiss',
-  'названия': 'names',
-  'группы': 'groups',
-  'Вкладки': 'Tabs',
-  'всё': 'all',
-  'Вперёд': 'Forward',
-  'Обновить': 'Reload',
-  'Введите запрос или адрес': 'Search or enter address',
-  'Перевожу страницу…': 'Translating page…',
-  'симв.': 'chars',
-  'Страница переведена — ещё действия': 'Page translated — more actions',
-  'Ещё действия со страницей': 'More page actions',
-  'Копировать адрес': 'Copy address',
-  'Удалить из закладок': 'Remove bookmark',
-  'Добавить в закладки': 'Add bookmark',
-  'Внешний агент': 'External agent',
-  'AI-панель': 'AI panel',
-  'Скопированное со страниц — пока пусто': 'Nothing copied from pages yet',
-  'Скопированное со страниц (Ctrl+Shift+B)': 'Copied from pages (Ctrl+Shift+B)',
-  'Загрузки': 'Downloads',
-  'Сайт ждёт ответа на запрос доступа': 'Site is waiting for a permission decision',
-  'Сайту отказано по прежнему решению — нажмите, чтобы изменить': 'Site permission was previously denied — click to change',
-  'Свернуть': 'Minimize',
-  'Вернуть размер': 'Restore window',
-  'Развернуть': 'Maximize',
-  'Закрыть': 'Close',
-  'нет модели': 'no model',
-  'пусто': 'empty',
-  'не нашлось': 'not found',
-  'ищу…': 'searching…',
-  'нет': 'none',
-  'Где на странице про…': 'Where does this page discuss…',
-  'Найти на странице…': 'Find on page…',
-  'Предыдущий фрагмент (Shift+Enter)': 'Previous passage (Shift+Enter)',
-  'Предыдущее (Shift+Enter)': 'Previous (Shift+Enter)',
-  'Следующий фрагмент (Enter)': 'Next passage (Enter)',
-  'Следующее (Enter)': 'Next (Enter)',
-  'Закрыть (Esc)': 'Close (Esc)',
-  'Режим поиска': 'Search mode',
-  'Текст': 'Text',
-  'Смысл': 'Meaning',
-  'Что найти?': 'What are you looking for?',
-  'новая вкладка': 'new tab',
-  'цель задана бэнгом': 'bang-selected target',
-  'куда искать': 'where to search',
-  'Enter ищет здесь': 'Enter searches here',
-  'после': 'after',
-  'допишите запрос, иначе откроется сам сайт': 'enter a query, or the site itself will open',
-  'Свернуть список целей': 'Collapse search targets',
-  'Показать все цели': 'Show all search targets',
-  'свернуть': 'collapse',
-  'ещё': 'more',
-  'у вас уже есть': 'already in your browser',
-  'вкладка': 'tab',
-  'история': 'history',
-  'закладка': 'bookmark',
-  'Больше не спрашивать об этом действии': 'Do not ask again for this action',
-  'Подключить': 'Connect',
-  'Разрешить': 'Allow',
-  'Отказать': 'Deny',
-  'Поиск из адресной строки, бэнги, загрузки и то, как браузер ведёт себя на этом компьютере.': 'Address-bar search, bangs, downloads, and how the browser behaves on this computer.',
-  'Язык интерфейса': 'Interface language',
-  'Меняет язык браузера, но не язык сайтов и не язык ответов AI.': 'Changes the browser interface, not website languages or AI replies.',
-  'Английский': 'English',
-  'Русский': 'Russian',
-  'Язык сайтов': 'Website language',
-  'Как в приложении': 'Same as app',
-  'Браузер закроется ненадолго и откроется сам. Вкладки на месте.': 'The browser will close briefly and reopen. Your tabs will still be there.',
-  'Не спрашивать об этой версии': 'Do not ask about this version again',
-  'Перезапустить': 'Restart',
-  'Позже': 'Later',
-  'Поиск по умолчанию': 'Default search engine',
-  'Куда уходит запрос из адресной строки, если это не адрес сайта.': 'Where address-bar searches go when you have not entered a website address.',
-  'Браузер по умолчанию': 'Default browser',
-  'Кто открывает ссылки из других программ — почты, мессенджеров, документов.': 'Which browser opens links from mail, messages and documents.',
-  'Импорт данных': 'Import data',
-  'Перенос закладок, истории и сохранённых паролей из другого браузера на этом компьютере.': 'Bring bookmarks, history and saved passwords from another browser on this computer.',
-  'Импорт из другого браузера': 'Import from another browser',
-  'Chrome, Edge, Brave, Яндекс.Браузер, Opera, Vivaldi': 'Chrome, Edge, Brave, Yandex Browser, Opera, Vivaldi',
-  'Импортировать…': 'Import…',
-  'Куда попадают скачанные файлы и о чём браузер спрашивает заранее.': 'Choose where downloaded files go and what the browser asks before downloading.',
-  'Выгрузка вкладок из памяти': 'Sleeping tabs',
-  'Вкладки, которые давно не открывали, освобождают память и загружаются заново при возврате. Играющее видео, заполненные формы и закреплённые вкладки не трогаются. Сайты ниже не выгружаются никогда.': 'Tabs you have not visited in a while free up memory and reload when you return. Playing video, filled forms and pinned tabs are left alone. Sites listed below never sleep.',
-  'Обновления': 'Updates',
-  'Браузер сам проверяет новую версию и спрашивает карточкой. Загрузка и установка — только по вашей команде.': 'The browser checks for updates and asks before proceeding. Downloading and installing only happen when you choose.',
-  'Бэнги адресной строки': 'Address-bar bangs',
-  'Быстрый переход к поиску по конкретному сайту прямо из адресной строки.': 'Search a specific site directly from the address bar.',
-  'Цели быстрого поиска': 'Quick-search targets',
-  'Поповер Ctrl+E: куда уходит Enter по умолчанию и чем наполнять полосу целей рядом.': 'Set where Enter goes in the Ctrl+E search panel and which targets appear beside it.',
-  'Поиск': 'Search',
-  'Из адресной строки, если это не адрес': 'From the address bar when the input is not a URL',
-  'Ссылки из других программ': 'Links from other apps',
-  'Другой': 'Another browser',
-  'Бэнги': 'Bangs',
-  'свои, встроенные, «!yt котики»': 'Custom and built-in, such as “!yt cats”',
-  'Поповер быстрого поиска': 'Quick-search panel',
-  'Цели': 'Targets',
-  'Не профилирует и не хранит историю запросов. Разумный выбор по умолчанию.': 'Does not build a profile of you or keep your search history. A sensible default.',
-  'Самая полная выдача. Запросы и подсказки уходят в Google.': 'Broad search results. Queries and suggestions go to Google.',
-  'Сильнее в русскоязычной выдаче и местных сервисах. Запросы уходят в Яндекс.': 'Strong for Russian-language results and local services. Queries go to Yandex.',
-  'Сюда уходит всё, что не похоже на адрес: ввод в адресной строке, «Искать…» из контекстного меню и чип поисковика в поповере Ctrl+E. Отдельный сайт по-прежнему доступен без смены этой настройки — бэнгом «!ключ» в строке.': 'Anything that is not a website address goes here: address-bar queries, “Search…” from the context menu, and the search chip in Ctrl+E. To search a specific site without changing this setting, use a bang such as “!key”.',
-  'Спрашивать, куда сохранять каждый файл': 'Ask where to save each file',
-  'Выключено — файлы сразу попадают в папку «Загрузки», а прогресс виден в панели загрузок.': 'When off, files go straight to Downloads. You can follow progress in the downloads panel.',
-  'Скачанные файлы помечаются как пришедшие из интернета': 'Downloaded files are marked as coming from the internet',
-  'Windows проверяет такие файлы при запуске, а документы Office открывает в защищённом просмотре. Программы и скрипты браузер спрашивает отдельно — даже когда выбор папки выключен.': 'Windows checks these files on launch and opens Office documents in Protected View. The browser still asks about apps and scripts even when folder selection is off.',
-  'Загрузка…': 'Loading…',
-  'Пока таких сайтов нет. Правый клик по вкладке → «Не выгружать из памяти».': 'No sites here yet. Right-click a tab and choose “Keep in memory”.',
-  'всегда в памяти': 'always in memory',
-  'Разрешить выгружать этот сайт': 'Allow this site to sleep',
-  'В режиме разработки Windows не покажет Oblako в списке — проверяйте на установленной сборке.': 'Windows will not list Oblako in development mode. Check this in an installed build.',
-  'Открылись «Приложения по умолчанию». Найдите там пункт «Браузер» и выберите Oblako.': 'Windows Default apps is open. Find the browser setting and choose Oblako.',
-  'Проверяем…': 'Checking…',
-  'Oblako — браузер по умолчанию': 'Oblako is your default browser',
-  'Ссылки открывает другой браузер': 'Another browser opens your links',
-  'Ссылки из почты, мессенджеров и документов открываются здесь.': 'Links from mail, messages and documents open here.',
-  'Windows не разрешает программам назначать себя самим — выбрать нас нужно в системном окне.': 'Windows does not let apps set themselves as the default browser. You need to choose Oblako in Windows Settings.',
-  'Открыть настройки Windows': 'Open Windows Settings',
-  'Ничего делать не нужно.': 'Nothing to do.',
-  'Обновления работают только в установленной версии браузера.': 'Updates are available only in an installed build.',
-  'Проверяем обновления…': 'Checking for updates…',
-  'Скачать': 'Download',
-  'Браузер закроется, установит обновление и запустится снова.': 'The browser will close, install the update and reopen.',
-  'Не удалось проверить обновления': 'Could not check for updates',
-  'Установлена последняя версия': 'You are up to date',
-  'Проверка обновлений ещё не выполнялась.': 'Updates have not been checked yet.',
-  'Проверить': 'Check now',
-  'Запущена сборка для разработки — обновляться нечему.': 'This is a development build, so updates are unavailable.',
-};
-
-export function translate(language: UiLanguage, source: string): string {
-  return language === 'en' ? (EN[source] ?? source) : source;
-}
-
 interface LanguageContextValue {
   language: UiLanguage;
-  t(source: string): string;
+  t(source: string, vars?: Record<string, string | number>): string;
   setLanguage(language: UiLanguage): Promise<void>;
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
+function makeT(language: UiLanguage) {
+  return (source: string, vars?: Record<string, string | number>): string => {
+    const out = translate(language, source);
+    return vars ? fill(out, vars) : out;
+  };
+}
+
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<UiLanguage | null>(null);
+  // Кэш — чтобы хром не ждал IPC до первого кадра. Без него после i18n окно всходило
+  // на один раунд позже: main уже готов, а renderer ещё null. Источник истины всё равно
+  // settings.json; расхождение на кадр правится ответом getUiLanguage.
+  const [language, setLanguageState] = useState<UiLanguage | null>(cachedLanguageSafe);
 
   useEffect(() => {
     let live = true;
@@ -290,7 +62,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<LanguageContextValue | null>(() => language ? {
     language,
-    t: (source) => translate(language, source),
+    t: makeT(language),
     setLanguage: (next) => window.oblako.setUiLanguage(next),
   } : null, [language]);
 
@@ -304,20 +76,37 @@ export function useLanguage(): LanguageContextValue {
   return value;
 }
 
-function cachedLanguage(): UiLanguage {
+function cachedLanguageSafe(): UiLanguage | null {
   try {
     const value = localStorage.getItem(CACHE_KEY);
     if (isUiLanguage(value)) return value;
   } catch { /* storage может быть выключен */ }
-  return 'ru';
+  return null;
+}
+
+declare global {
+  interface Window {
+    uiLanguage?: {
+      get(): Promise<UiLanguage>;
+      onChanged(cb: (language: UiLanguage) => void): () => void;
+    };
+  }
 }
 
 /** Для изолированных chrome-вью: язык приходит из зеркала, без доступа к боевому preload. */
 export function StandaloneLanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<UiLanguage>(cachedLanguage);
+  const [language, setLanguage] = useState<UiLanguage>(cachedLanguageSafe() ?? 'en');
   useEffect(() => {
     document.documentElement.lang = language;
   }, [language]);
+  useEffect(() => {
+    const api = window.uiLanguage;
+    if (!api) return;
+    let live = true;
+    void api.get().then((value) => { if (live) setLanguage(value); });
+    const unsub = api.onChanged((value) => { if (live) setLanguage(value); });
+    return () => { live = false; unsub(); };
+  }, []);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (event.key === CACHE_KEY && isUiLanguage(event.newValue)) setLanguage(event.newValue);
@@ -327,7 +116,7 @@ export function StandaloneLanguageProvider({ children }: { children: ReactNode }
   }, []);
   const value = useMemo<LanguageContextValue>(() => ({
     language,
-    t: (source) => translate(language, source),
+    t: makeT(language),
     setLanguage: async () => { throw new Error('Менять язык можно только из настроек браузера'); },
   }), [language]);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

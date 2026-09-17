@@ -14,7 +14,7 @@ import {
   btnPrimary, btnGhost, OptionList, OptionRow, SectionHeader, Subsection, CapsLabel, FactGrid, Fact,
   StatusCard, StatusCardSkeleton, TextField, InputRow, fieldFlex,
 } from './kit';
-import { TEXT, RADIUS, sp } from '../../styles/system';
+import { TEXT, RADIUS, sp } from '../../styles/system'; import { useLanguage } from '../../i18n';
 
 // ── Секция «AI» ───────────────────────────────────────────────────────────────
 //
@@ -104,7 +104,7 @@ function AiConnectionsSection() {
 }
 
 function AiOverview() {
-  const [gemini, setGemini] = useState<boolean | null>(null);
+  const { t } = useLanguage(); const [gemini, setGemini] = useState<boolean | null>(null);
   const [searx, setSearx] = useState<boolean | null>(null);
   const [installed, setInstalled] = useState<InstalledModel[] | null>(null);
   const [defaultId, setDefaultId] = useState<string | null>(null);
@@ -134,7 +134,6 @@ function AiOverview() {
 
   const active = installed?.find((m) => m.id === defaultId) ?? null;
   const loaded = loadedId !== null && loadedId === defaultId;
-  const hero = installed === null ? '…' : active ? active.label : 'Нет модели';
   const heroLabel = installed === null
     ? 'смотрю, что установлено'
     : !active
@@ -145,7 +144,7 @@ function AiOverview() {
 
   return (
     <>
-      <SectionHeader title="AI" hero={hero} heroLabel={heroLabel}>
+      <SectionHeader title="AI" hero={installed === null ? '…' : active ? active.label : t('Нет модели')} heroLabel={heroLabel}>
         Локальная модель работает на этом устройстве и ничего не отправляет. Облачные сервисы
         ниже подключаются по отдельности и только вашим ключом.
       </SectionHeader>
@@ -156,7 +155,7 @@ function AiOverview() {
       <FactGrid>
         <Fact
           label="Модель"
-          hint={active ? `${(active.sizeBytes / 1024 ** 3).toFixed(1)} ГБ на диске` : 'ни одна не установлена'}
+          hint={active ? t('{n} ГБ на диске', { n: (active.sizeBytes / 1024 ** 3).toFixed(1) }) : t('ни одна не установлена')}
           value={installed === null ? '—' : !active ? 'Нет' : loaded ? 'В памяти' : 'Готова'}
           active={active !== null}
         />
@@ -187,7 +186,7 @@ function AiOverview() {
 // Стоит в конце раздела намеренно (см. разбор порядка у AiSection): нужен чужой API-ключ, то есть
 // блок касается меньшинства, а встречал он раньше всех.
 function GeminiSection() {
-  const [connected, setConnected] = useState<boolean | null>(null); // null = ещё грузим статус
+  const [connected, setConnected] = useState<boolean | null>(null); const { t } = useLanguage(); // null = ещё грузим статус
   const [keyInput, setKeyInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -231,7 +230,7 @@ function GeminiSection() {
           : 'Добавьте ключ, чтобы включить фактчек в AI-панели.'}
         actions={connected && (
           <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Trash2 size={14} /> Удалить
+            <Trash2 size={14} /> {t('Удалить')}
           </button>
         )}
       />}
@@ -258,7 +257,7 @@ function GeminiSection() {
               disabled={saving || !keyInput.trim()}
               style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: saving || !keyInput.trim() ? 0.6 : 1 }}
             >
-              {saving ? 'Сохранение…' : 'Сохранить'}
+              {saving ? t('Сохранение…') : t('Сохранить')}
             </button>
           </InputRow>
         </div>
@@ -271,7 +270,7 @@ function GeminiSection() {
 // два поля вместо одного (endpoint + токен, оба через один saveSearxngConfig). Токен опционален —
 // не у каждого self-hosted SearXNG есть auth (см. SearxngKeyStore.ts::saveConfig).
 function SearxngSection() {
-  const [configured, setConfigured] = useState<boolean | null>(null); // null = ещё грузим статус
+  const [configured, setConfigured] = useState<boolean | null>(null); const { t } = useLanguage(); // null = ещё грузим статус
   const [endpointInput, setEndpointInput] = useState('');
   const [tokenInput, setTokenInput] = useState('');
   const [saving, setSaving] = useState(false);
@@ -319,7 +318,7 @@ function SearxngSection() {
           : 'Добавьте адрес сервера, чтобы включить веб-поиск в AI-панели.'}
         actions={configured && (
           <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Trash2 size={14} /> Удалить
+            <Trash2 size={14} /> {t('Удалить')}
           </button>
         )}
       />}
@@ -354,7 +353,7 @@ function SearxngSection() {
                 disabled={saving || !endpointInput.trim()}
                 style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: saving || !endpointInput.trim() ? 0.6 : 1 }}
               >
-                {saving ? 'Сохранение…' : 'Сохранить'}
+                {saving ? t('Сохранение…') : t('Сохранить')}
               </button>
             </InputRow>
           </div>
@@ -441,7 +440,7 @@ function TranslationEngineSection() {
 // Индексация текста идёт сама при обычном просмотре — здесь честный счётчик охвата
 // (текст / шум / дыра умного поиска) и кнопка полной докачки импорта.
 function HistoryBackfillSection() {
-  const [coverage, setCoverage] = useState<HistoryContentCoverage | null>(null);
+  const [coverage, setCoverage] = useState<HistoryContentCoverage | null>(null); const { t } = useLanguage();
 
   const loadCoverage = () => { void window.oblako.getHistoryContentCoverage().then(setCoverage); };
 
@@ -456,7 +455,7 @@ function HistoryBackfillSection() {
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: sp(2) }}>
         <span style={{ ...TEXT.caption, color: 'var(--text-body)' }}>
-          {coverage ? formatHistoryCoverageLine(coverage) : 'Полный текст: считаю…'}
+          {coverage ? formatHistoryCoverageLine(coverage, t) : t('Полный текст: считаю…')}
         </span>
         <button
           onClick={loadCoverage}
@@ -483,7 +482,7 @@ function HistoryBackfillSection() {
 // стоимости и риску процесс (реальные загрузки страниц, не только текстовый embed-вызов).
 // onDone — обновить счётчик охвата в родительской секции после завершения/остановки.
 function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
-  const [progress, setProgress] = useState<BackfillProgress | null>(null);
+  const [progress, setProgress] = useState<BackfillProgress | null>(null); const { t } = useLanguage();
 
   useEffect(() => {
     let mounted = true;
@@ -513,14 +512,13 @@ function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, ...TEXT.caption }}>
         <AlertTriangle size={14} style={{ color: 'var(--warning-500)', flex: 'none', marginTop: 4 }} />
         <span>
-          Идут настоящие сетевые запросы к этим сайтам: часть страниц может показать капчу,
-          разлогинить или уже не существовать — такие просто пропускаются.
+          {t('Идут настоящие сетевые запросы к этим сайтам: часть страниц может показать капчу, разлогинить или уже не существовать — такие просто пропускаются.')}
         </span>
       </div>
       {running ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
-            Обработано {processed} из {total}…
+            {t('Обработано {n} из {m}…', { n: processed, m: total })}
           </div>
           <div style={{ height: 6, borderRadius: RADIUS.tight, background: 'var(--surface-hover)', overflow: 'hidden' }}>
             <div style={{
@@ -532,17 +530,17 @@ function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
             onClick={() => window.oblako.cancelHistoryContentBackfill()}
             style={{ ...btnGhost, alignSelf: 'flex-start' }}
           >
-            Остановить
+            {t('Остановить')}
           </button>
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button onClick={() => window.oblako.startHistoryContentBackfill()} style={btnGhost}>
-            Проиндексировать полный текст
+            {t('Проиндексировать полный текст')}
           </button>
           {progress && total > 0 && !running && (
             <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-              {progress.cancelled ? `Остановлено: ${processed} из ${total}` : `Готово: ${processed} из ${total}`}
+              {progress.cancelled ? t('Остановлено: {n} из {m}', { n: processed, m: total }) : t('Готово: {n} из {m}', { n: processed, m: total })}
             </span>
           )}
         </div>

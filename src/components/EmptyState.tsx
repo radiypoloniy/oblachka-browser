@@ -1,5 +1,6 @@
 import type React from 'react';
 import { TEXT, RADIUS, sp } from '../styles/system';
+import { useLanguage } from '../i18n';
 
 // ── Пустое состояние ──────────────────────────────────────────────────────────────────────────
 //
@@ -29,7 +30,7 @@ export function EmptyState({ icon, title, hint, action, compact }: {
    * не «чистым», а раздутым. Правило: пустое состояние не крупнее того, что оно замещает.
    */
   compact?: boolean;
-}) {
+}) { const { t } = useLanguage();
   return (
     <div style={{
       ...(compact ? {} : { flex: 1, paddingTop: 72 }),
@@ -44,12 +45,12 @@ export function EmptyState({ icon, title, hint, action, compact }: {
       }}>
         {icon}
       </div>
-      <div style={{ ...TEXT.section }}>{title}</div>
+      <div style={{ ...TEXT.section }}>{t(title)}</div>
       {hint && (
         <div style={{
           ...TEXT.body, color: 'var(--text-muted)', maxWidth: '34ch', marginTop: -4,
         }}>
-          {hint}
+          {t(hint)}
         </div>
       )}
       {action && <div style={{ marginTop: sp(1) }}>{action}</div>}

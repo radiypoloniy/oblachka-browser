@@ -4,6 +4,7 @@ import { altitude, ALTITUDE, CAPS, DISPLAY, grain } from '../../styles/system'
 import { WeatherIcon, wmoText, weatherSkin } from '../desktop/weather'
 import { cachedCurrencyRates, ensureCurrencyRates, type CurrencyRatesData } from './currencyRates'
 import type { WeatherResult } from './types'
+import { useLanguage } from '../../i18n'
 
 // ── Виджеты домашнего экрана ─────────────────────────────────────────────────────────────────
 // ⚠️ Высота 1 («туман»): карточки панели ВСЕГДА лежат поверх обоев хаба, а сплошная заливка
@@ -54,6 +55,7 @@ const fmtTemp = (t: number): string => `${t > 0 ? '+' : ''}${Math.round(t)}°`
 
 export function WeatherWidget({ city }: { city: string }) {
   const [data, setData] = useState<WeatherResult | null>(null)
+  const { t } = useLanguage()
   // Инкремент — ручной повтор после ошибки (перезапускает effect с тем же городом).
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -78,7 +80,7 @@ export function WeatherWidget({ city }: { city: string }) {
           fontSize: 'var(--fs-sm)', color: 'var(--text-faint)',
         }}>
           <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-          Погода…
+          {t('Погода…')}
         </span>
       </div>
     )
@@ -88,7 +90,7 @@ export function WeatherWidget({ city }: { city: string }) {
     return (
       <div style={{ ...widgetCardStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          Погода недоступна: {data.error}
+          {t('Погода недоступна: {error}', { error: data.error ?? '' })}
         </span>
         <button
           onClick={() => setReloadKey((k) => k + 1)}
@@ -98,7 +100,7 @@ export function WeatherWidget({ city }: { city: string }) {
             fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer', flexShrink: 0,
           }}
         >
-          Повторить
+          {t('Повторить')}
         </button>
       </div>
     )
@@ -119,8 +121,8 @@ export function WeatherWidget({ city }: { city: string }) {
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
             <PanelValue size={30}>{data.tempC !== undefined ? fmtTemp(data.tempC) : '—'}</PanelValue>
             <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.85, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {wmoText(code)}
-              {data.windKmh !== undefined ? ` · ветер ${Math.round(data.windKmh)} км/ч` : ''}
+              {t(wmoText(code))}
+              {data.windKmh !== undefined ? t(' · ветер {n} км/ч', { n: Math.round(data.windKmh) }) : ''}
             </span>
           </div>
         </div>

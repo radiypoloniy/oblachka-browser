@@ -57,7 +57,7 @@ import { PasswordManager } from './PasswordManager';
 import { AutofillManager } from './AutofillManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
-import { SettingsManager } from './SettingsManager';
+import { SettingsManager } from './SettingsManager'; import { bindUiLanguage, t, tf } from './uiText';
 import * as ModelRegistry from './ModelRegistry';
 import * as ModelDownloader from './ModelDownloader';
 import { HubChatManager } from './HubChatManager';
@@ -404,12 +404,12 @@ function productMenuTemplate(win: BrowserWindow): MenuItemConstructorOptions[] |
   const price = `${state.price.toLocaleString('ru-RU')} ${state.currency === 'RUB' ? '₽' : state.currency}`;
   const template: MenuItemConstructorOptions[] = [
     { label: state.title.slice(0, 60), enabled: false },
-    { label: `Сейчас ${price}`, enabled: false },
+    { label: tf('Сейчас {price}', { price }), enabled: false },
     { type: 'separator' },
   ];
   if (state.tracked) {
     template.push({
-      label: 'Не отслеживать',
+      label: t('Не отслеживать'),
       click: () => {
         const id = tracking().idForUrl(active.url);
         if (id !== null) tracking().untrack(id);
@@ -419,7 +419,7 @@ function productMenuTemplate(win: BrowserWindow): MenuItemConstructorOptions[] |
     });
   } else {
     template.push({
-      label: 'Отслеживать цену',
+      label: t('Отслеживать цену'),
       click: () => {
         const newId = tracking().track({
           url: active.url,
@@ -449,7 +449,7 @@ function productMenuTemplate(win: BrowserWindow): MenuItemConstructorOptions[] |
   // ⚠️ Открываем СУЩЕСТВУЮЩИЙ вид вкладки с секцией, а не заводим новый: `kind` попадает в
   // session.json, и ради одного экрана менять формат сессии с реальными вкладками человека
   // несоразмерно риску (см. «Безопасность данных» в CLAUDE.md). Секция там уже поддержана.
-  template.push({ label: 'Что я отслеживаю', click: () => { ctx?.tabs.createSpecialTab('history', 'tracking'); } });
+  template.push({ label: t('Что я отслеживаю'), click: () => { ctx?.tabs.createSpecialTab('history', 'tracking'); } });
   return template;
 }
 
@@ -518,7 +518,7 @@ const permissions = new PermissionManager();
 // и не показывает НИЧЕГО — «действие не проходит, а почему, непонятно» (живая жалоба).
 // Карточку при этом не показываем намеренно: всё, что она сообщила бы, уже есть в поповере щита.
 permissions.onHintChanged(() => broadcastToChrome(IPC.PERMISSION_HINT_CHANGED));
-const settings    = new SettingsManager();
+const settings    = new SettingsManager(); bindUiLanguage(() => settings.getUiLanguage());
 const hubChat     = new HubChatManager();
 const translationCache = new TranslationCacheManager();
 
@@ -1089,7 +1089,7 @@ function moveTabToExistingWindow(from: TabManager, tabId: string, targetWindowId
 async function renameTabSmart(tabs: TabManager, tabId: string): Promise<void> {
   const before = tabs.snapshot().find((t) => t.id === tabId);
   if (!before) return;
-  tabs.setAiTitle(tabId, 'Придумываю название…');
+  tabs.setAiTitle(tabId, t('Придумываю название…'));
 
   const res = await suggestTabTitle(tabs.getWebContentsForTab(tabId), before.title, before.url);
 
@@ -1111,16 +1111,16 @@ function buildMoveToWindowItems(
   const others = allContexts().filter((c) => c.win.id !== win.id && !c.win.isDestroyed());
   if (others.length === 0) return [];
   const nameOf = (c: { role: WindowRole; win: BrowserWindow }, i: number): string =>
-    c.role === 'main' ? 'главное окно' : `окно ${i + 1}`;
+    c.role === 'main' ? t('главное окно') : tf('окно {n}', { n: i + 1 });
   if (others.length === 1) {
     return [{
-      label: `Вернуть в ${nameOf(others[0], 0)}`,
+      label: tf('Вернуть в {name}', { name: nameOf(others[0], 0) }),
       enabled,
       click: () => { moveTabToExistingWindow(from, tabId, others[0].win.id); },
     }];
   }
   return [{
-    label: 'Перенести в окно',
+    label: t('Перенести в окно'),
     enabled,
     submenu: others.map((c, i) => ({
       label: nameOf(c, i),

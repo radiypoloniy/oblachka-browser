@@ -7,6 +7,7 @@ import { WIDGET_SIZES, type DesktopItem, type DesktopLayout, hasItem } from '../
 import { WIDGET_RENDERERS, Tile, TileCaption, TileValue } from './widgets';
 import { btnPrimary } from '../settings/kit';
 import { CELL_REF } from '../../../shared/tileBudget';
+import { useLanguage } from '../../i18n';
 import {
   ALTITUDE, CAPS, DISPLAY, RADIUS, ROW_TITLE, TEXT, altitude, cardGlass, motion, pad, sp,
 } from '../../styles/system';
@@ -77,6 +78,7 @@ interface Props {
 }
 
 export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
+  const { t } = useLanguage();
   const [siteUrl, setSiteUrl] = useState('');
   const [siteName, setSiteName] = useState('');
   const [query, setQuery] = useState('');
@@ -84,8 +86,9 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
   const q = query.trim().toLowerCase();
   const widgets = useMemo(
     () => WIDGET_CHOICES.filter((w) => !hasItem(layout, 'widget', w.key))
-      .filter((w) => !q || w.label.toLowerCase().includes(q) || w.hint.toLowerCase().includes(q)),
-    [layout, q],
+      .filter((w) => !q || w.label.toLowerCase().includes(q) || w.hint.toLowerCase().includes(q)
+        || t(w.label).toLowerCase().includes(q) || t(w.hint).toLowerCase().includes(q)),
+    [layout, q, t],
   );
   const apps = useMemo(
     () => APPS.filter((a) => !hasItem(layout, 'app', a.id))
@@ -130,9 +133,9 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: sp(3) }}>
           <span style={{ flex: 1, ...DISPLAY, fontSize: 28, color: 'var(--text-strong)' }}>
-            Что поставим?
+            {t('Что поставим?')}
           </span>
-          <button onClick={onClose} title="Закрыть" style={iconBtn}><X size={16} /></button>
+          <button onClick={onClose} title={t('Закрыть')} style={iconBtn}><X size={16} /></button>
         </div>
 
         {/* Поиск. ⚠️ Ищет и по подписи, а не только по названию: человек чаще помнит, ЧТО виджет
@@ -147,7 +150,7 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск в виджетах"
+            placeholder={t('Поиск в виджетах')}
             style={{
               flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
               color: 'var(--text-body)', ...TEXT.body, fontFamily: 'inherit',
@@ -156,7 +159,7 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
         </label>
 
         {widgets.length > 0 && (
-          <Group title="Виджеты">
+          <Group title={t('Виджеты')}>
             {/* ⚠️ Колонки ФИКСИРОВАННОЙ ширины, а не резиновые: от неё считается уменьшение
                 предпросмотра, и резиновая колонка означала бы замер на каждый кадр. Остаток
                 ширины уходит в зазор — сетка остаётся выровненной по левому краю. */}
@@ -179,7 +182,7 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
         )}
 
         {apps.length > 0 && (
-          <Group title="Приложения">
+          <Group title={t('Приложения')}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
               {apps.map((a) => (
                 <button
@@ -196,7 +199,7 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
                   }}
                 >
                   <AppIconBadge app={a} size={24} iconSize={14} />
-                  <span style={{ ...TEXT.body }}>{a.label}</span>
+                  <span style={{ ...TEXT.body }}>{t(a.label)}</span>
                 </button>
               ))}
             </div>
@@ -205,24 +208,24 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
 
         {widgets.length === 0 && apps.length === 0 && (
           <span style={{ ...TEXT.body, color: 'var(--text-faint)' }}>
-            {q ? 'Ничего не нашлось — попробуйте другое слово.' : 'Всё уже на экране.'}
+            {q ? t('Ничего не нашлось — попробуйте другое слово.') : t('Всё уже на экране.')}
           </span>
         )}
 
-        <Group title="Сайт">
+        <Group title={t('Сайт')}>
           <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
             <input
               value={siteUrl}
               onChange={(e) => setSiteUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') addSite(); }}
-              placeholder="Адрес, например github.com"
+              placeholder={t('Адрес, например github.com')}
               style={{ ...field, flex: '2 1 240px' }}
             />
             <input
               value={siteName}
               onChange={(e) => setSiteName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') addSite(); }}
-              placeholder="Название (необязательно)"
+              placeholder={t('Название (необязательно)')}
               style={{ ...field, flex: '1 1 160px' }}
             />
             {/* ⚠️ Общий рецепт кнопки из дизайн-системы (btnPrimary), а не своя пилюля. Каждая
@@ -231,7 +234,7 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
             <button
               onClick={addSite}
               style={{ ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
-            ><Globe size={15} /> Добавить</button>
+            ><Globe size={15} /> {t('Добавить')}</button>
           </div>
         </Group>
       </div>
@@ -246,6 +249,7 @@ function WidgetCard({ choice, tiles, service, onAdd }: {
   service?: string;
   onAdd: () => void;
 }) {
+  const { t } = useLanguage();
   const cells = WIDGET_SIZES[choice.size];
   const w = cells.w * CELL + (cells.w - 1) * GAP;
   const h = cells.h * CELL + (cells.h - 1) * GAP;
@@ -294,14 +298,14 @@ function WidgetCard({ choice, tiles, service, onAdd }: {
         </div>
       </div>
       <span style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
-        <span style={{ ...ROW_TITLE }}>{choice.label}</span>
+        <span style={{ ...ROW_TITLE }}>{t(choice.label)}</span>
         <span style={{
           ...TEXT.caption,
           // ⚠️ Про сеть сказано ЗДЕСЬ и с ИМЕНЕМ сервиса, в момент выбора: человек решает,
           // ставить ли виджет, и ровно в этот момент узнаёт цену.
           color: service ? 'var(--warning-500)' : 'var(--text-faint)',
         }}>
-          {service ? `${choice.hint} · данные у ${service}` : choice.hint}
+          {service ? t('{hint} · данные у {service}', { hint: t(choice.hint), service: t(service) }) : t(choice.hint)}
         </span>
       </span>
     </div>
@@ -352,15 +356,16 @@ class PreviewBoundary extends Component<{ children: ReactNode }, { failed: boole
 function PosterTile({ choice, service, tileH }: {
   choice: typeof WIDGET_CHOICES[number]; service: string; tileH: number;
 }) {
+  const { t } = useLanguage();
   return (
     <Tile surface toned>
-      <TileCaption>{choice.label}</TileCaption>
+      <TileCaption>{t(choice.label)}</TileCaption>
       <div style={{
         flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <TileValue size={Math.round(tileH * 0.38)}>{choice.glyph}</TileValue>
       </div>
-      <span style={{ ...TEXT.caption, color: 'inherit', opacity: 0.7 }}>{service}</span>
+      <span style={{ ...TEXT.caption, color: 'inherit', opacity: 0.7 }}>{t(service)}</span>
     </Tile>
   );
 }

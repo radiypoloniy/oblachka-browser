@@ -8,6 +8,7 @@ import StuffSearchView from './StuffSearchView';
 import Tracking from './Tracking';
 import Agents from './Agents';
 import LibraryShell from './library/LibraryShell';
+import { useLanguage } from '../i18n';
 import type { LibrarySummary, LibraryTone } from './library/kit';
 import type { DownloadEntry } from '../../shared/ipc';
 
@@ -77,7 +78,7 @@ const RAIL: { id: Exclude<Section, 'search'>; label: string; icon: JSX.Element }
 ];
 
 export default function HistoryBookmarks({ defaultSection, downloads, onClose }: Props) {
-  const [section, setSection] = useState<Section>(defaultSection === 'search' ? 'history' : defaultSection);
+  const { t } = useLanguage(); const [section, setSection] = useState<Section>(defaultSection === 'search' ? 'history' : defaultSection);
   const [everywhere, setEverywhere] = useState(defaultSection === 'search');
   const [query, setQuery] = useState('');
   // Поиск «Везде» ходит к модели и работает по Enter — токен и есть сигнал «ищи сейчас».
@@ -109,7 +110,7 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
               color: on ? 'var(--text-strong)' : 'var(--text-muted)',
               transition: motion.state('background', 'color'),
             }}
-          >{item.icon}{item.label}</button>
+          >{item.icon}{t(item.label)}</button>
         );
       })}
     </div>

@@ -29,7 +29,7 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
 
       <Subsection
         title={t('Язык интерфейса')}
-        description={t('Меняет язык браузера, но не язык сайтов и не язык ответов AI.')}
+        description={t('Меняет язык браузера и ответы AI. Язык сайтов не трогает.')}
       >
         <Segmented
           value={language}

@@ -5,7 +5,7 @@ import {
   FactGrid, GroupCap, Row, Rows, SideNav, SplitView, type LibrarySummary,
 } from './library/kit';
 import { RADIUS, TEXT, motion, pad, sp } from '../styles/system';
-import { clientKey } from '../../shared/mcpPolicy';
+import { clientKey } from '../../shared/mcpPolicy'; import { useLanguage } from '../i18n';
 
 // Раздел «Агенты» — что внешние программы делали с браузером и что им позволено.
 //
@@ -166,6 +166,7 @@ function ClientRights({ state, clientKey, onChange }: {
   clientKey: string;
   onChange: (s: McpServerState) => void;
 }) {
+  const { t } = useLanguage();
   const client = state?.clients.find((c) => c.key === clientKey);
   if (!state || !client) return null;
 
@@ -181,21 +182,21 @@ function ClientRights({ state, clientKey, onChange }: {
         // должен видеть, какому именно профилю он открыл дверь. В другом браузер этой программе не
         // ответит вовсе.
         note={client.profileName
-          ? `профиль «${client.profileName}» · назвалась так сама, проверить это мы не можем`
-          : 'назвалась так сама · проверить это мы не можем'}
+          ? t('профиль «{name}» · назвалась так сама, проверить это мы не можем', { name: client.profileName })
+          : t('назвалась так сама · проверить это мы не можем')}
       />
       <div style={{ display: 'flex', flexDirection: 'column', gap: sp(1), padding: pad(2, 4) }}>
-        {state.tools.map((t) => {
-          const value = client.stances[t.name] ?? (t.mode === 'read' && !isSensitive(t.name) ? 'allow' : 'ask');
-          const options: ('ask' | 'allow' | 'deny')[] = t.mode === 'write' || isSensitive(t.name)
+        {state.tools.map((tool) => {
+          const value = client.stances[tool.name] ?? (tool.mode === 'read' && !isSensitive(tool.name) ? 'allow' : 'ask');
+          const options: ('ask' | 'allow' | 'deny')[] = tool.mode === 'write' || isSensitive(tool.name)
             ? ['ask', 'allow', 'deny']
             : ['allow', 'deny'];
           return (
-            <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: sp(3), minHeight: 34 }}>
+            <div key={tool.name} style={{ display: 'flex', alignItems: 'center', gap: sp(3), minHeight: 34 }}>
               <span style={{
                 flex: 1, minWidth: 0, ...TEXT.body,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{t.title}</span>
+              }}>{tool.title}</span>
               <div style={{
                 display: 'inline-flex', padding: 2, gap: 2, flex: 'none',
                 background: 'var(--surface-sunken)', borderRadius: RADIUS.pill,
@@ -203,7 +204,7 @@ function ClientRights({ state, clientKey, onChange }: {
                 {options.map((o) => (
                   <button
                     key={o}
-                    onClick={() => set(t.name, o)}
+                    onClick={() => set(tool.name, o)}
                     style={{
                       padding: `${sp(1)}px ${sp(3)}px`, border: 'none', cursor: 'default',
                       borderRadius: RADIUS.pill,
@@ -214,7 +215,7 @@ function ClientRights({ state, clientKey, onChange }: {
                       ...TEXT.caption,
                       transition: motion.hover('background', 'color'),
                     }}
-                  >{STANCE_LABEL[o]}</button>
+                  >{t(STANCE_LABEL[o] ?? o)}</button>
                 ))}
               </div>
             </div>
@@ -244,7 +245,7 @@ function AllowedSites({ client, onChange }: {
   client: McpServerState['clients'][number];
   onChange: (s: McpServerState) => void;
 }) {
-  const saved = (client.domains ?? []).join('\n');
+  const { t } = useLanguage(); const saved = (client.domains ?? []).join('\n');
   const [text, setText] = useState(saved);
   const [busy, setBusy] = useState(false);
   // Программу переключили слева — показываем её список, а не остатки прошлой.
@@ -287,7 +288,7 @@ function AllowedSites({ client, onChange }: {
             border: '1px solid var(--divider-strong)', background: 'transparent',
             opacity: !dirty || busy ? 0.5 : 1, transition: motion.hover('background'),
           }}
-        >{busy ? 'Применяю…' : 'Применить'}</button>
+        >{busy ? t('Применяю…') : t('Применить')}</button>
         {/* ⚠️ Про поддомены и про звёздочку сказано здесь, а не в документации: человек пишет
             правила прямо тут, и узнать про них он может только отсюда. */}
         <span style={{ ...TEXT.caption, color: 'var(--text-faint)' }}>

@@ -11,7 +11,7 @@ import { loadNewTabSettings } from '../../newtab/settings';
 // резали содержимое краем плитки.
 import { densityOf, padOf, weatherFit, musicFit, tileGridCell } from '../../../shared/tileBudget';
 import CryptoIcon from '../CryptoIcon';
-import { siteTint } from './siteTint';
+import { siteTint } from './siteTint'; import { useLanguage, tx } from '../../i18n'; import { dateLocale } from '../../../shared/uiLanguage';
 import { AnalogFace, WideClusterClock, WideTypeClock } from './clockFaces';
 import { displayEm, DIGIT_EM, WIDE_EM } from './displayMetrics';
 // Общие со «Приложениями» AI-панели — см. шапку weatherIcon.tsx.
@@ -235,8 +235,8 @@ export function Tile({ children, tint, tintInk, padding = 16, surface, fill, ton
 // ⚠️ Подпись плитки — МОНОШИРИННАЯ капса, тот же приём, что в настройках (CAPS). Это половина
 // «нового шрифта»: пока подписи были обычным гротеском, плитки визуально жили в старой системе,
 // сколько бы материал ни меняли (живая жалоба: «прозрачность сделал, а типографику не тронул»).
-export function TileCaption({ children }: { children: React.ReactNode }) {
-  return <div style={{ ...CAPS, color: 'inherit', opacity: 'var(--tile-caption-op, 0.62)', flex: 'none' }}>{children}</div>;
+export function TileCaption({ children }: { children: React.ReactNode }) { const { t } = useLanguage();
+  return <div style={{ ...CAPS, color: 'inherit', opacity: 'var(--tile-caption-op, 0.62)', flex: 'none' }}>{tx(t, children)}</div>;
 }
 
 /**
@@ -296,7 +296,7 @@ const DEFAULT_SUNRISE = 6 * 60;
 const DEFAULT_SUNSET = 21 * 60;
 
 export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date()); const { language } = useLanguage();
   const opts = loadNewTabSettings().clock;
   const analog = opts.face !== 'digital';
 
@@ -322,15 +322,15 @@ export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
     return (
       <Tile surface toned overImage={overImage} hero={hero} fill={fill} padding={0}>
         {analog
-          ? <WideClusterClock now={now} seconds={opts.seconds} />
-          : <WideTypeClock now={now} sunrise={sun?.rise ?? DEFAULT_SUNRISE} sunset={sun?.set ?? DEFAULT_SUNSET} />}
+          ? <WideClusterClock now={now} seconds={opts.seconds} locale={dateLocale(language)} />
+          : <WideTypeClock now={now} sunrise={sun?.rise ?? DEFAULT_SUNRISE} sunset={sun?.set ?? DEFAULT_SUNSET} locale={dateLocale(language)} />}
       </Tile>
     );
   }
 
-  const time = fmtTime(now, opts);
-  const weekday = now.toLocaleDateString('ru-RU', { weekday: 'long' });
-  const dayMonth = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  const time = fmtTime(now, opts, dateLocale(language));
+  const weekday = now.toLocaleDateString(dateLocale(language), { weekday: 'long' });
+  const dayMonth = now.toLocaleDateString(dateLocale(language), { day: 'numeric', month: 'long' });
   // Кегль считаем от ДЛИНЫ строки, а не от одной ширины плитки: «18:50» и «18:50:07» занимают
   // разное место, и общий коэффициент неизбежно ошибается на одном из них — в маленьком виджете
   // время упиралось в край. 0.56 — доля ширины цифры от кегля у моноширинных цифр (tabular-nums)
@@ -424,8 +424,8 @@ export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
 
 // Формат времени по настройкам часов — общий для цифрового вида и дуги дня, чтобы «14:30» и
 // выбор 24/12ч не разъезжались между двумя рисовками.
-function fmtTime(now: Date, opts: { seconds?: boolean; hour24?: boolean }): string {
-  return now.toLocaleTimeString('ru-RU', {
+function fmtTime(now: Date, opts: { seconds?: boolean; hour24?: boolean }, locale: string): string {
+  return now.toLocaleTimeString(locale, {
     hour: '2-digit', minute: '2-digit',
     ...(opts.seconds ? { second: '2-digit' } : {}),
     hour12: !opts.hour24,
@@ -481,7 +481,7 @@ interface WeatherState {
 }
 
 export function WeatherWidget({ size, box, cell, city, hero }: WidgetProps) {
-  const [data, setData] = useState<WeatherState | null>(null);
+  const [data, setData] = useState<WeatherState | null>(null); const { t } = useLanguage();
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -508,7 +508,7 @@ export function WeatherWidget({ size, box, cell, city, hero }: WidgetProps) {
       <Tile tint="var(--surface-sunken)" tintInk="var(--text-body)" hero={hero}>
         <TileCaption>Погода</TileCaption>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.9, lineHeight: 1.4 }}>
-          {city ? 'Не удалось загрузить' : 'Укажите город в настройках интерфейса'}
+          {city ? t('Не удалось загрузить') : t('Укажите город в настройках интерфейса')}
         </div>
       </Tile>
     );
@@ -548,8 +548,8 @@ export function WeatherWidget({ size, box, cell, city, hero }: WidgetProps) {
       </div>
 
       <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.9, marginTop: 2, flex: 'none' }}>
-        {wmoText(data?.code ?? 0)}
-        {data?.feels !== undefined && `, ощущается ${data.feels}°`}
+        {t(wmoText(data?.code ?? 0))}
+        {data?.feels !== undefined && t(', ощущается {n}°', { n: data.feels })}
       </div>
 
       {/* Воздух и солнце — ВНУТРИ погоды, а не отдельными плитками. Данные приходят от того же
@@ -562,7 +562,7 @@ export function WeatherWidget({ size, box, cell, city, hero }: WidgetProps) {
           display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap',
           fontSize: 'var(--fs-xs)', opacity: 0.85,
         }}>
-          {data?.aqi !== undefined && <span>Воздух: {data.aqi} · {aqiLabel(data.aqi)}</span>}
+          {data?.aqi !== undefined && <span>{t('Воздух: {n} · {label}', { n: data.aqi, label: t(aqiLabel(data.aqi)) })}</span>}
           {data?.sunrise && data.sunset && <span>↑ {data.sunrise} ↓ {data.sunset}</span>}
         </div>
       )}
@@ -1019,7 +1019,7 @@ function saveTasks(list: Task[]): void {
  * а не переписывал хранилище.
  */
 export function TasksWidget({ box, fill, overImage, hero }: WidgetProps) {
-  const [tasks, setTasks] = useState<Task[]>(loadTasks);
+  const [tasks, setTasks] = useState<Task[]>(loadTasks); const { t: tr } = useLanguage();
   const [draft, setDraft] = useState('');
 
   const update = (next: Task[]): void => { setTasks(next); saveTasks(next); };
@@ -1040,7 +1040,7 @@ export function TasksWidget({ box, fill, overImage, hero }: WidgetProps) {
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         <TileCaption>Дела</TileCaption>
         <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
-          {tasks.length === 0 ? '' : left ? `осталось ${left}` : 'всё сделано'}
+          {tasks.length === 0 ? '' : left ? tr('осталось {n}', { n: left }) : tr('всё сделано')}
         </span>
       </div>
 
@@ -1049,7 +1049,7 @@ export function TasksWidget({ box, fill, overImage, hero }: WidgetProps) {
           <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               onClick={() => toggle(t.id)}
-              title={t.done ? 'Вернуть в дела' : 'Сделано'}
+              title={t.done ? tr('Вернуть в дела') : tr('Сделано')}
               style={{
                 width: 18, height: 18, flex: 'none', borderRadius: RADIUS.control, cursor: 'default',
                 border: t.done ? 'none' : `1.5px solid ${TASKS_ACCENT}`,
@@ -1129,7 +1129,7 @@ const MUSIC_SERVICES: { label: string; url: string }[] = [
 const MUSIC_LAST_KEY = 'oblako-music-last';
 
 export function MusicWidget({ box, cell, fill, overImage, hero: isHero, onOpen }: WidgetProps) {
-  const [state, setState] = useState<MediaNowPlaying | null>(null);
+  const [state, setState] = useState<MediaNowPlaying | null>(null); const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -1167,7 +1167,7 @@ export function MusicWidget({ box, cell, fill, overImage, hero: isHero, onOpen }
             началу и обрезки не даёт вовсе. */}
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'safe center', gap: 8 }}>
           <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--nt-text-muted, var(--text-muted))' }}>
-            Ничего не играет
+            {t('Ничего не играет')}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {/* ⚠️ Кнопки открывают сервис ОБЫЧНОЙ ВКЛАДКОЙ, а не встроенным плеером: свой плеер
@@ -1187,7 +1187,7 @@ export function MusicWidget({ box, cell, fill, overImage, hero: isHero, onOpen }
           </div>
           {fit.hint && (
             <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--nt-text-muted, var(--text-muted))' }}>
-              Подхватит любой сервис — виджет читает то, что играет во вкладке.
+              {t('Подхватит любой сервис — виджет читает то, что играет во вкладке.')}
             </div>
           )}
         </div>
@@ -1199,7 +1199,7 @@ export function MusicWidget({ box, cell, fill, overImage, hero: isHero, onOpen }
   const btn = (icon: React.ReactNode, action: MediaCommand, primary = false, enabled = true) => (
     <button
       onClick={() => { if (enabled && !busy) void cmd(action); }}
-      title={action === 'play' ? 'Играть' : action === 'pause' ? 'Пауза' : action === 'nexttrack' ? 'Следующий' : 'Предыдущий'}
+      title={action === 'play' ? t('Играть') : action === 'pause' ? t('Пауза') : action === 'nexttrack' ? t('Следующий') : t('Предыдущий')}
       style={{
         width: primary ? fit.primary : fit.secondary, height: primary ? fit.primary : fit.secondary, flex: 'none',
         borderRadius: '50%', border: 'none', cursor: 'default',

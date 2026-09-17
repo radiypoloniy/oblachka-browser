@@ -26,7 +26,7 @@ const GRAIN_LAYER: React.CSSProperties = {
 const FLAT_GRAIN_LAYER: React.CSSProperties = { ...grain, zIndex: 1 };
 import { useDesktopGrid } from './useDesktopGrid';
 import { DesktopGrid } from './DesktopGrid';
-import { CAPS, RADIUS, grain, motion } from '../../styles/system';
+import { CAPS, RADIUS, grain, motion } from '../../styles/system'; import { useLanguage } from '../../i18n';
 
 // Рабочий стол новой вкладки — springboard в духе iPad: сетка иконок и виджетов поверх обоев.
 // Раскладку считает src/newtab/desktop.ts (там же объяснено, почему элементы хранят порядок, а
@@ -530,6 +530,7 @@ function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoU
 // Приветствие над поиском. Текст зависит от времени суток — это единственное, что делает его
 // живым; без него это была бы просто строка с именем.
 function Greeting({ name }: { name: string }) {
+  const { t } = useLanguage();
   const h = new Date().getHours();
   const part = h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер';
   return (
@@ -559,7 +560,7 @@ function Greeting({ name }: { name: string }) {
       color: 'var(--nt-text-display)',
       textShadow: 'var(--nt-shadow-display)',
     }}>
-      {name.trim() ? `${part}, ${name.trim()}` : part}
+      {name.trim() ? `${t(part)}, ${name.trim()}` : t(part)}
     </div>
   );
 }

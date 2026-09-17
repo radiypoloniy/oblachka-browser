@@ -1,6 +1,7 @@
 import type React from 'react';
 import { Trash2 } from 'lucide-react';
 import { CAPS, DISPLAY_CARD, DISPLAY_ROW, RADIUS, TEXT, motion, pad, sp } from '../../styles/system';
+import { useLanguage, tx } from '../../i18n';
 
 // ── Набор библиотеки ─────────────────────────────────────────────────────────
 //
@@ -58,7 +59,7 @@ export interface LibraryFact {
  * цветные заливки под цветной шапкой дают ту самую пестроту, от которой уходили. Тон остаётся
  * у шапки — одна цветная плоскость на экран.
  */
-export function Fact({ label, hint, value, active }: LibraryFact) {
+export function Fact({ label, hint, value, active }: LibraryFact) { const { t } = useLanguage();
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: sp(1), minWidth: 0, overflow: 'hidden',
@@ -70,15 +71,15 @@ export function Fact({ label, hint, value, active }: LibraryFact) {
       <span style={{
         ...TEXT.body, fontWeight: 600, color: 'inherit',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{label}</span>
+      }}>{t(label)}</span>
       <span style={{
         ...TEXT.caption, color: 'inherit', opacity: 0.62, lineHeight: 1.25,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{hint}</span>
+      }}>{t(hint)}</span>
       <span style={{
         ...DISPLAY_CARD, marginTop: 'auto', color: 'inherit',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{value}</span>
+      }}>{t(value)}</span>
     </div>
   );
 }
@@ -98,14 +99,14 @@ export function FactGrid({ facts }: { facts: LibraryFact[] }) {
 }
 
 /** Подпись группы: моноширинный капс слева, число справа. Тот же приём, что в загрузках. */
-export function GroupCap({ title, note }: { title: React.ReactNode; note?: React.ReactNode }) {
+export function GroupCap({ title, note }: { title: React.ReactNode; note?: React.ReactNode }) { const { t } = useLanguage();
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: sp(2), padding: `${sp(3)}px ${sp(4)}px ${sp(1)}px`,
     }}>
-      <span style={{ ...CAPS }}>{title}</span>
+      <span style={{ ...CAPS }}>{tx(t, title)}</span>
       {note !== undefined && (
-        <span style={{ ...TEXT.caption, color: 'var(--text-faint)', marginLeft: 'auto' }}>{note}</span>
+        <span style={{ ...TEXT.caption, color: 'var(--text-faint)', marginLeft: 'auto' }}>{tx(t, note)}</span>
       )}
     </div>
   );
@@ -215,10 +216,10 @@ export function SideNav({ caption, items, activeKey, onPick, onRemove }: {
   onPick: (key: string) => void;
   /** Удаление пункта — у папок закладок. Кнопка видна только у помеченных removable. */
   onRemove?: (key: string) => void;
-}) {
+}) { const { t } = useLanguage();
   return (
     <nav style={{ width: 172, flex: 'none', display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <span style={{ ...CAPS, padding: `${sp(1)}px ${sp(3)}px ${sp(2)}px` }}>{caption}</span>
+      <span style={{ ...CAPS, padding: `${sp(1)}px ${sp(3)}px ${sp(2)}px` }}>{t(caption)}</span>
       {items.map((item) => {
         const on = item.key === activeKey;
         return (
@@ -239,7 +240,7 @@ export function SideNav({ caption, items, activeKey, onPick, onRemove }: {
           >
             <span style={{
               flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{item.label}</span>
+            }}>{t(item.label)}</span>
             {item.note !== undefined && (
               <span style={{ ...TEXT.caption, color: 'var(--text-faint)', flex: 'none' }}>{item.note}</span>
             )}

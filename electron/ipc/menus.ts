@@ -24,6 +24,7 @@ import { broadcastToChrome, contextFromSender } from '../WindowRegistry';
 import { Menu, clipboard, ipcMain } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import type { IpcDeps } from './deps';
+import { t as tr } from '../uiText';
 
 export function registerMenusIpc(d: IpcDeps): void {
   const { buildMoveToWindowItems, chromeOf, collectGroups, escapeHtml, escapeHtmlAttr, graphs, moveTabToNewWindow, notifyGraphChanged, productMenuTemplate, renameTabSmart, sendTo, settings, tabsOf, winOf } = d;
@@ -109,9 +110,9 @@ export function registerMenusIpc(d: IpcDeps): void {
     if (!w) return;
     const state = getPageTranslateActiveState();
     const items: MenuItemConstructorOptions[] = [{
-      label: state === 'translating' ? 'Перевожу страницу…'
-        : state === 'translated' ? 'Показать оригинал'
-        : 'Перевести страницу',
+      label: state === 'translating' ? tr('Перевожу страницу…')
+        : state === 'translated' ? tr('Показать оригинал')
+        : tr('Перевести страницу'),
       // Пока идёт перевод, жать нечего — но пункт ВИДЕН: пустое меню ровно в тот момент, когда
       // человек пришёл проверить, что происходит, читалось бы как поломка.
       enabled: state !== 'translating',
@@ -122,7 +123,7 @@ export function registerMenusIpc(d: IpcDeps): void {
     const product = productMenuTemplate(w);
     if (product) {
       items.push({ type: 'separator' });
-      items.push({ label: 'Отслеживание цены', submenu: product });
+      items.push({ label: tr('Отслеживание цены'), submenu: product });
     }
     Menu.buildFromTemplate(items).popup({ window: w });
   });
@@ -148,14 +149,14 @@ export function registerMenusIpc(d: IpcDeps): void {
 
     const items: MenuItemConstructorOptions[] = [
       {
-        label: isPinned ? 'Открепить вкладку' : 'Закрепить вкладку',
+        label: isPinned ? tr('Открепить вкладку') : tr('Закрепить вкладку'),
         click: () => t.togglePin(id),
       },
       // Копия вкладки рядом с исходной, с её историей и приватностью (см. TabManager.duplicateTab).
       // Тот же признак «есть сайт», что и у пункта «Не выгружать из памяти» ниже: у хаба и
       // псевдо-вкладок (История/Настройки) host пуст, дублировать там нечего.
       {
-        label: 'Дублировать вкладку',
+        label: tr('Дублировать вкладку'),
         enabled: host !== '',
         click: () => { t.duplicateTab(id); },
       },
@@ -165,14 +166,14 @@ export function registerMenusIpc(d: IpcDeps): void {
       // ⚠️ Это единственная дверь к звуку при СВЁРНУТОЙ панели вкладок: там у ячейки нет места
       // ни на что, кроме значка сайта, — живая жалоба «в свёрнутом сайдбаре звук не выключить».
       ...(state && (state.audible || state.muted) ? [{
-        label: state.muted ? 'Включить звук' : 'Выключить звук',
+        label: state.muted ? tr('Включить звук') : tr('Выключить звук'),
         click: () => t.setTabMuted(id, !state.muted),
       } as MenuItemConstructorOptions] : []),
       // Перезагрузка мимо кэша. ⚠️ Для СПЯЩЕЙ вкладки пункт неактивен намеренно: живого
       // WebContents у неё нет, сбрасывать нечего, а пробуждение и так грузит страницу заново
       // (см. TabManager.reloadHard). Молча ничего не делающий пункт читался бы как поломка.
       {
-        label: 'Обновить без кэша',
+        label: tr('Обновить без кэша'),
         accelerator: 'Ctrl+F5',
         enabled: host !== '' && t.getWebContentsForTab(id) !== null,
         click: () => t.reloadHard(id),
@@ -181,7 +182,7 @@ export function registerMenusIpc(d: IpcDeps): void {
       // спящая — своим описанием. Неактивен только для участника split: тот увёл бы за собой
       // половину пары (см. TabManager.detachTabForMove).
       {
-        label: 'Открыть в новом окне',
+        label: tr('Открыть в новом окне'),
         enabled: state !== undefined && state.splitSide === null,
         click: () => { void moveTabToNewWindow(t, id); },
       },
@@ -191,12 +192,12 @@ export function registerMenusIpc(d: IpcDeps): void {
       ...buildMoveToWindowItems(w, t, id, state !== undefined && state.splitSide === null),
       // Умное имя. Живой странице есть что читать; у спящей и псевдо-вкладок содержимого нет.
       {
-        label: t.getAiTitle(id) ? 'Придумать название заново' : 'Придумать название по смыслу',
+        label: t.getAiTitle(id) ? tr('Придумать название заново') : tr('Придумать название по смыслу'),
         enabled: t.getWebContentsForTab(id) !== null,
         click: () => { void renameTabSmart(t, id); },
       },
       ...(t.getAiTitle(id) ? [{
-        label: 'Вернуть заголовок страницы',
+        label: tr('Вернуть заголовок страницы'),
         click: () => t.setAiTitle(id, null),
       }] : []),
       ...(toGraph ? [toGraph] : []),
@@ -205,7 +206,7 @@ export function registerMenusIpc(d: IpcDeps): void {
       // пунктом или в настройках («Браузер» → «Выгрузка вкладок из памяти»). Пункта нет у
       // псевдо-вкладок и хаба: у них нет сайта, которому это правило можно приписать.
       ...(host ? [{
-        label: 'Не выгружать из памяти',
+        label: tr('Не выгружать из памяти'),
         type: 'checkbox' as const,
         checked: settings.isNeverSleepHost(host),
         click: () => {
@@ -220,12 +221,12 @@ export function registerMenusIpc(d: IpcDeps): void {
     if (!isPinned) {
       if (groupId) {
         items.push({
-          label: 'Убрать из группы',
+          label: tr('Убрать из группы'),
           click: () => t.removeTabFromGroup(groupId, id),
         });
       } else {
         items.push({
-          label: 'Создать группу',
+          label: tr('Создать группу'),
           click: () => createGroupSuggesting(t, chromeOf(e), id),
         });
       }
@@ -235,9 +236,9 @@ export function registerMenusIpc(d: IpcDeps): void {
       const otherGroups = allGroups.filter((g) => g.id !== groupId);
       if (otherGroups.length > 0) {
         items.push({
-          label: 'Добавить в группу',
+          label: tr('Добавить в группу'),
           submenu: otherGroups.map((g) => ({
-            label: g.label || 'Группа',
+            label: tr(g.label || 'Группа'),
             click: () => addToGroupSuggesting(t, chromeOf(e), g.id, id),
           })),
         });
@@ -247,7 +248,7 @@ export function registerMenusIpc(d: IpcDeps): void {
     }
 
     items.push({
-      label: 'Закрыть вкладку',
+      label: tr('Закрыть вкладку'),
       enabled: !isPinned,
       click: () => t.closeTab(id),
     });
@@ -260,12 +261,12 @@ export function registerMenusIpc(d: IpcDeps): void {
     const t = tabsOf(e);
     if (!t || !w) return;
     Menu.buildFromTemplate([
-      { label: 'Новая вкладка', accelerator: 'Ctrl+T', click: () => t.activate(HUB_ID) },
-      { label: 'Новая вкладка инкогнито', accelerator: 'Ctrl+Shift+N', click: () => t.createTab(undefined, false, false, true) },
+      { label: tr('Новая вкладка'), accelerator: 'Ctrl+T', click: () => t.activate(HUB_ID) },
+      { label: tr('Новая вкладка инкогнито'), accelerator: 'Ctrl+Shift+N', click: () => t.createTab(undefined, false, false, true) },
       { type: 'separator' },
       // Список закрытых — у каждого окна свой: вернуть в этом окне вкладку, закрытую в соседнем,
       // человек не просил.
-      { label: 'Открыть закрытую вкладку', accelerator: 'Ctrl+Shift+T', enabled: t.hasClosedTabs(), click: () => t.reopenLastClosedTab() },
+      { label: tr('Открыть закрытую вкладку'), accelerator: 'Ctrl+Shift+T', enabled: t.hasClosedTabs(), click: () => t.reopenLastClosedTab() },
     ]).popup({ window: w });
   });
 
@@ -289,24 +290,24 @@ export function registerMenusIpc(d: IpcDeps): void {
     );
     const items: MenuItemConstructorOptions[] = [
       {
-        label: 'Переименовать',
+        label: tr('Переименовать'),
         click: () => sendTo(chromeOf(e), IPC.GROUP_RENAME_PROMPT, groupId),
       },
       {
-        label: 'Цвет',
+        label: tr('Цвет'),
         submenu: GROUP_COLORS.map(({ label, value }) => ({
-          label,
+          label: tr(label),
           click: () => t.setGroupColor(groupId, value || null),
         })),
       },
       ...(groupToGraph ? [groupToGraph] : []),
       { type: 'separator' },
       {
-        label: 'Свернуть / развернуть',
+        label: tr('Свернуть / развернуть'),
         click: () => t.toggleGroupCollapse(groupId),
       },
       {
-        label: 'Скопировать содержимое',
+        label: tr('Скопировать содержимое'),
         click: () => {
           const contents = t.getGroupContents(groupId);
           if (contents.length === 0) return;
@@ -327,11 +328,11 @@ export function registerMenusIpc(d: IpcDeps): void {
       },
       { type: 'separator' },
       {
-        label: 'Расформировать группу',
+        label: tr('Расформировать группу'),
         click: () => t.disbandGroup(groupId),
       },
       {
-        label: 'Закрыть группу и вкладки',
+        label: tr('Закрыть группу и вкладки'),
         click: () => t.closeGroupAndTabs(groupId),
       },
     ];

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
+import { exposeUiLanguage } from './preload/uiLanguage';
 import type { DownloadEntry, DownloadFileIcon, DuplicateDownloadPrompt, DuplicateDownloadDecision, DownloadNameSuggestion, DownloadRenameResult } from '../shared/ipc';
 
 // Мост поповера загрузок. Действия — те же ipcMain.handle, что у боевого window.oblako
@@ -43,3 +44,4 @@ contextBridge.exposeInMainWorld('downloadsPopover', {
     return () => ipcRenderer.removeListener(IPC.DOWNLOADS_POPOVER_SHOW, handler);
   },
 });
+exposeUiLanguage();

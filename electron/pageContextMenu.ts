@@ -6,6 +6,7 @@ import { hostOfUrl } from '../shared/rules';
 import { TRANSLATE_TARGETS } from '../shared/translateLangs';
 import type { AiAction } from '../shared/ipc';
 import type { SelectionRect } from './TabManager';
+import { t as tr, tf } from './uiText';
 
 // ── Нативное контекстное меню страницы (ПКМ) ─────────────────────────────────
 //
@@ -133,7 +134,7 @@ function toWindowRect(view: WebContentsView, local: PageRect): SelectionRect {
 function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: ContextMenuParams, priv: boolean): MenuItemConstructorOptions[] {
   const out: MenuItemConstructorOptions[] = [
     {
-      label: 'Открыть ссылку в новой вкладке',
+      label: tr('Открыть ссылку в новой вкладке'),
       // Источник новой вкладки — страница, где щёлкнули ссылку (тот же учёт, что в
       // setWindowOpenHandler): иначе правило «ссылки с хабра — в группу» не сработало бы
       // на самом частом способе открыть ссылку.
@@ -145,10 +146,10 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
     },
     // Окно создаёт main — TabManager про окна не знает (тот же приём, что у пункта
     // «Добавить в граф»: сюда приходит готовый колбэк).
-    { label: 'Открыть ссылку в новом окне', click: () => host.openInNewWindow(p.linkURL) },
+    { label: tr('Открыть ссылку в новом окне'), click: () => host.openInNewWindow(p.linkURL) },
     // ⚠️ Инкогнито Referer НЕ теряет: приватность здесь про хранилище (куки, история), а не про
     // то, чтобы притвориться переходом ниоткуда — Chrome в приватном окне шлёт его так же.
-    { label: 'Открыть ссылку в инкогнито', click: () => host.openTab(p.linkURL, true, true, p.referrerPolicy) },
+    { label: tr('Открыть ссылку в инкогнито'), click: () => host.openTab(p.linkURL, true, true, p.referrerPolicy) },
   ];
   // Пункт только когда текущая вкладка ещё НЕ в показываемой паре — модель split строго
   // бинарная (пара = 2 панели), добавить третью панель к уже сплитнутой вкладке некуда.
@@ -159,14 +160,14 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
   // см. enterSplit). Известное ограничение, не фикс здесь — для вкладок вне групп путь рабочий.
   if (!host.splitShown()) {
     out.push({
-      label: 'Открыть ссылку в split',
+      label: tr('Открыть ссылку в split'),
       click: () => {
         const newId = host.openTab(p.linkURL, true, priv, p.referrerPolicy); // background — не перебивать фокус до enterSplit
         if (newId) host.enterSplit(newId); // активная → левая, новая → правая
       },
     });
   }
-  out.push({ label: 'Копировать адрес ссылки', click: () => clipboard.writeText(p.linkURL) });
+  out.push({ label: tr('Копировать адрес ссылки'), click: () => clipboard.writeText(p.linkURL) });
   // «Добавить в граф» строит main: TabManager не должен знать про хранилище графов,
   // ему отдают готовый пункт меню (тот же приём, что с tabManagerRef у менеджеров вью).
   const toGraph = host.graphMenuItem([{ url: p.linkURL, title: p.linkText || p.linkURL }]);
@@ -177,18 +178,18 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
 function imageSection(host: PageContextMenuHost, wc: WebContents, p: ContextMenuParams, priv: boolean, hasPrev: boolean): MenuItemConstructorOptions[] {
   const out: MenuItemConstructorOptions[] = hasPrev ? [{ type: 'separator' }] : [];
   out.push(
-    { label: 'Копировать картинку', click: () => wc.copyImageAt(p.x, p.y) },
+    { label: tr('Копировать картинку'), click: () => wc.copyImageAt(p.x, p.y) },
     // ⚠️ Пунктов ДВА, и это прямое следствие того, что диалог «куда сохранить» у нас выключен
     // по умолчанию (см. DownloadManager: раньше система спрашивала про КАЖДЫЙ файл, включая
     // картинку с фотостока, и это выпилили). «Сохранить» кладёт в Загрузки молча — то, чего
     // хотят почти всегда; «как…» обязано спросить, иначе слово «как» в пункте — обман, и
     // выбрать место было нельзя вообще ничем (живая жалоба).
-    { label: 'Сохранить картинку', click: () => wc.downloadURL(p.srcURL) },
+    { label: tr('Сохранить картинку'), click: () => wc.downloadURL(p.srcURL) },
     {
-      label: 'Сохранить картинку как…',
+      label: tr('Сохранить картинку как…'),
       click: () => { host.saveAs(p.srcURL); wc.downloadURL(p.srcURL); },
     },
-    { label: 'Открыть картинку в новой вкладке', click: () => host.openTab(p.srcURL, true, priv) },
+    { label: tr('Открыть картинку в новой вкладке'), click: () => host.openTab(p.srcURL, true, priv) },
   );
   return out;
 }
@@ -209,7 +210,7 @@ function editableSection(host: PageContextMenuHost, wc: WebContents, view: WebCo
   out.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' });
   if (p.selectionText.trim()) {
     out.push({ type: 'separator' }, {
-      label: `Поиск «${truncate(p.selectionText)}» в ${engine.name}`,
+      label: tf('Поиск «{q}» в {engine}', { q: truncate(p.selectionText), engine: engine.name }),
       click: () => host.openTab(engine.buildUrl(p.selectionText), false, priv),
     });
   }
@@ -234,17 +235,17 @@ function editableSection(host: PageContextMenuHost, wc: WebContents, view: WebCo
     })();
   };
   out.push({ type: 'separator' }, {
-    label: 'Править текст',
+    label: tr('Править текст'),
     submenu: [
-      { label: 'Исправить ошибки', click: () => dispatchEdit('fix') },
-      { label: 'Сделать короче',   click: () => dispatchEdit('shorten') },
-      { label: 'Смягчить тон',     click: () => dispatchEdit('polite') },
+      { label: tr('Исправить ошибки'), click: () => dispatchEdit('fix') },
+      { label: tr('Сделать короче'),   click: () => dispatchEdit('shorten') },
+      { label: tr('Смягчить тон'),     click: () => dispatchEdit('polite') },
       { type: 'separator' },
       // «Перевести на …» — свой черновик на чужой язык (пишу по-русски, отправлю по-английски).
       // Именно подменю с языками, а не свой всплывающий экран: нативное меню — это уже
       // «всплывающее окошко», и городить ради выбора языка отдельную WebContentsView незачем.
       {
-        label: 'Перевести на',
+        label: tr('Перевести на'),
         submenu: TRANSLATE_TARGETS.map((l) => ({
           label: l.label,
           click: () => dispatchEdit('translate', l.code),
@@ -261,7 +262,7 @@ function selectionSection(host: PageContextMenuHost, wc: WebContents, view: WebC
   out.push(
     { role: 'copy' },
     {
-      label: `Поиск «${truncate(p.selectionText)}» в ${engine.name}`,
+      label: tf('Поиск «{q}» в {engine}', { q: truncate(p.selectionText), engine: engine.name }),
       click: () => host.openTab(engine.buildUrl(p.selectionText), false, priv),
     },
   );
@@ -292,12 +293,12 @@ function selectionSection(host: PageContextMenuHost, wc: WebContents, view: WebC
     })();
   };
 
-  out.push({ label: 'Перевести', click: () => dispatchAiAction('translate') });
-  out.push({ label: 'Пересказать проще', click: () => dispatchAiAction('simplify') });
-  out.push({ label: 'Объяснить', click: () => dispatchAiAction('explain') });
+  out.push({ label: tr('Перевести'), click: () => dispatchAiAction('translate') });
+  out.push({ label: tr('Пересказать проще'), click: () => dispatchAiAction('simplify') });
+  out.push({ label: tr('Объяснить'), click: () => dispatchAiAction('explain') });
   // «Краткая выжимка» — только для достаточно длинного выделения (см. SUMMARIZE_MIN_CHARS).
   if (p.selectionText.trim().length >= SUMMARIZE_MIN_CHARS) {
-    out.push({ label: 'Краткая выжимка', click: () => dispatchAiAction('summarize') });
+    out.push({ label: tr('Краткая выжимка'), click: () => dispatchAiAction('summarize') });
   }
   return out;
 }
@@ -305,12 +306,12 @@ function selectionSection(host: PageContextMenuHost, wc: WebContents, view: WebC
 /** Просто страница: ни ссылки, ни картинки, ни выделения. */
 function pageSection(wc: WebContents): MenuItemConstructorOptions[] {
   return [
-    { label: 'Назад',    enabled: wc.canGoBack(),    click: () => wc.goBack() },
-    { label: 'Вперёд',   enabled: wc.canGoForward(), click: () => wc.goForward() },
-    { label: 'Обновить',                             click: () => wc.reload() },
+    { label: tr('Назад'),    enabled: wc.canGoBack(),    click: () => wc.goBack() },
+    { label: tr('Вперёд'),   enabled: wc.canGoForward(), click: () => wc.goForward() },
+    { label: tr('Обновить'),                             click: () => wc.reload() },
     // Пара к «Обновить»: тот же жест, но мимо кэша — когда сайт отдал протухшие стили
     // или скрипт и обычное обновление ничего не меняет.
-    { label: 'Обновить без кэша', accelerator: 'Ctrl+F5', click: () => wc.reloadIgnoringCache() },
+    { label: tr('Обновить без кэша'), accelerator: 'Ctrl+F5', click: () => wc.reloadIgnoringCache() },
   ];
 }
 
@@ -341,7 +342,7 @@ export function wirePageContextMenu(host: PageContextMenuHost, id: string, view:
 
     // Инспектор — всегда в конце; inspectElement подсвечивает элемент под курсором.
     items.push({ type: 'separator' }, {
-      label: 'Просмотреть код',
+      label: tr('Просмотреть код'),
       click: () => {
         if (!wc.isDevToolsOpened()) wc.openDevTools({ mode: 'detach' });
         wc.inspectElement(p.x, p.y);

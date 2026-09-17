@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
+import { exposeUiLanguage } from './preload/uiLanguage';
 import type { ClipboardEntry, ClipboardRevealResult } from '../shared/ipc';
 
 // Мост поповера буфера. Как и у остальных оверлеев — свой preload, боевой window.oblako сюда не
@@ -29,3 +30,4 @@ contextBridge.exposeInMainWorld('clipboardPopover', {
     return () => ipcRenderer.removeListener('clipboard-popover:show', handler);
   },
 });
+exposeUiLanguage();

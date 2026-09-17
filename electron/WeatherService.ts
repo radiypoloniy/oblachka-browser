@@ -3,6 +3,7 @@
 // Fetch в main по той же причине, что и CurrencyRates.ts: у oblako-chrome:// нет гарантий
 // CORS, а fetchInProfile идёт через сетевой стек Chromium (прокси/будущий VPN — как у вкладок).
 import { fetchInProfile } from './ProfileSession';
+import { t, tf, uiLanguage } from './uiText';
 
 export interface WeatherResult {
   /** Ощущается как — Apple показывает её первой строкой под температурой. */
@@ -34,14 +35,14 @@ const cache = new Map<string, { at: number; result: WeatherResult }>()
 
 export async function getWeather(cityQuery: string): Promise<WeatherResult> {
   const query = cityQuery.trim()
-  if (!query) return { ok: false, error: 'город не задан' }
-  const key = query.toLowerCase()
+  if (!query) return { ok: false, error: t('город не задан') }
+  const key = `${query.toLowerCase()}:${uiLanguage()}`
   const hit = cache.get(key)
   if (hit && hit.result.ok && Date.now() - hit.at < CACHE_TTL_MS) return hit.result
 
   try {
     const geoRes = await fetchInProfile(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=ru&format=json`,
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=${uiLanguage()}&format=json`,
     )
     if (!geoRes.ok) throw new Error(`геокодинг: HTTP ${geoRes.status}`)
     const geo = (await geoRes.json()) as {
@@ -49,7 +50,7 @@ export async function getWeather(cityQuery: string): Promise<WeatherResult> {
     }
     const place = geo.results?.[0]
     if (!place || typeof place.latitude !== 'number' || typeof place.longitude !== 'number') {
-      return { ok: false, error: `город «${query}» не найден` }
+      return { ok: false, error: tf('город «{query}» не найден', { query }) }
     }
 
     // ⚠️ Кроме текущей погоды просим почасовой ряд и суточные крайности: виджету на рабочем

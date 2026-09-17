@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { DISPLAY, RADIUS } from '../../styles/system';
 import { Tile, TileCaption, Sparkline, TONE_GREEN, TONE_WARM, FILL_GREEN, FILL_WARM, type WidgetProps } from './widgets';
 import { displayEm } from './displayMetrics';
-import { CalendarFace, TimerLayout } from './clockFaces';
+import { CalendarFace, TimerLayout } from './clockFaces'; import { useLanguage } from '../../i18n'; import { dateLocale } from '../../../shared/uiLanguage';
 export { CardsWidget } from './cardsWidget';
 import { TIMER_PRESETS, timerLeftMs, timerResume, timerRunning } from '../../newtab/timerStore';
 import type { TimerState } from '../../../shared/ipc';
@@ -34,7 +34,7 @@ function moonAge(now: Date): number {
 }
 
 export function MoonWidget({ box, fill, overImage, hero: isHero }: WidgetProps) {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date()); const { t } = useLanguage();
   // Раз в час: фаза за минуту не меняется, а таймер на секундах жёг бы кадры впустую.
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 3_600_000);
@@ -53,9 +53,9 @@ export function MoonWidget({ box, fill, overImage, hero: isHero }: WidgetProps) 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <MoonDisc frac={frac} size={disc} />
       </div>
-      <div style={{ flex: 'none', fontSize: 'var(--fs-sm)', fontWeight: 600 }}>{phase}</div>
+      <div style={{ flex: 'none', fontSize: 'var(--fs-sm)', fontWeight: 600 }}>{t(phase)}</div>
       <div style={{ flex: 'none', fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
-        Освещена на {lit}% · {Math.round(age)}-й день
+        {t('Освещена на {n}% · {day}-й день', { n: lit, day: Math.round(age) })}
       </div>
     </Tile>
   );
@@ -93,7 +93,7 @@ function MoonDisc({ frac, size }: { frac: number; size: number }) {
 // объединены в поповер «Защита» (см. Toolbar.tsx): разводить их на столе значило бы спорить с
 // решением, принятым в самом браузере.
 export function ShieldWidget({ box, fill, overImage, hero: isHero }: WidgetProps) {
-  const [ad, setAd] = useState<{ enabled: boolean; blocked: number } | null>(null);
+  const [ad, setAd] = useState<{ enabled: boolean; blocked: number } | null>(null); const { t } = useLanguage();
   const [vpnOn, setVpnOn] = useState(false);
 
   useEffect(() => {
@@ -131,7 +131,7 @@ export function ShieldWidget({ box, fill, overImage, hero: isHero }: WidgetProps
             display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0,
             fontSize: 'var(--fs-xs)', overflow: 'hidden',
           }}>
-            <StatusDot on={ad?.enabled ?? false} label="Адблок" />
+            <StatusDot on={ad?.enabled ?? false} label={t('Адблок')} />
             <StatusDot on={vpnOn} label="VPN" />
           </div>
         </div>
@@ -148,10 +148,10 @@ export function ShieldWidget({ box, fill, overImage, hero: isHero }: WidgetProps
         </div>
         {/* «за сеанс» — не мелочь: счётчик обнуляется при перезапуске (см. AdBlockState), и без
             подписи человек читал бы его как «за всё время» и удивлялся, куда всё делось. */}
-        <div style={{ fontSize: 'var(--fs-xs)', opacity: 0.7, marginTop: 2 }}>заблокировано за сеанс</div>
+        <div style={{ fontSize: 'var(--fs-xs)', opacity: 0.7, marginTop: 2 }}>{t('заблокировано за сеанс')}</div>
       </div>
       <div style={{ flex: 'none', display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 'var(--fs-xs)' }}>
-        <StatusDot on={ad?.enabled ?? false} label="Адблок" />
+        <StatusDot on={ad?.enabled ?? false} label={t('Адблок')} />
         <StatusDot on={vpnOn} label="VPN" />
       </div>
     </Tile>
@@ -188,7 +188,7 @@ function StatusDot({ on, label }: { on: boolean; label: string }) {
 // день, а не чтобы выставить историю на всеобщее обозрение поверх обоев: экран новой вкладки
 // видят и через плечо, и на демонстрации экрана.
 export function DigestWidget({ box, fill, overImage, hero: isHero }: WidgetProps) {
-  const [state, setState] = useState<DayDigestState | null>(null);
+  const [state, setState] = useState<DayDigestState | null>(null); const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -232,7 +232,7 @@ export function DigestWidget({ box, fill, overImage, hero: isHero }: WidgetProps
             {lines.length}
           </span>
           <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
-            {lines.length === 1 ? 'тема за день' : lines.length < 5 ? 'темы за день' : 'тем за день'}
+            {lines.length === 1 ? t('тема за день') : lines.length < 5 ? t('темы за день') : t('тем за день')}
           </span>
         </div>
       )}
@@ -248,10 +248,10 @@ export function DigestWidget({ box, fill, overImage, hero: isHero }: WidgetProps
 
         {lines.length === 0 && (
           <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>
-            {busy ? 'Читаю историю за сегодня…'
+            {busy ? t('Читаю историю за сегодня…')
               : state?.state === 'empty' && state.reason === 'no-history'
-                ? 'Сегодня ещё нечего обобщать'
-                : 'Соберу итог дня по вашей истории — локально, без сети'}
+                ? t('Сегодня ещё нечего обобщать')
+                : t('Соберу итог дня по вашей истории — локально, без сети')}
           </span>
         )}
       </div>
@@ -268,7 +268,7 @@ export function DigestWidget({ box, fill, overImage, hero: isHero }: WidgetProps
             fontSize: 'var(--fs-sm)', fontWeight: 500, fontFamily: 'inherit',
           }}
         >
-          {busy ? 'Собираю…' : 'Собрать'}
+          {busy ? t('Собираю…') : t('Собрать')}
         </button>
       )}
     </Tile>
@@ -458,7 +458,7 @@ export function TrackingWidget({ box, fill, onActivate, overImage, hero: isHero 
 // ни адресов, ни чего-либо о человеке. Кэш в main держит год целиком, поэтому за сеанс запрос
 // уходит максимум один раз.
 export function HolidayWidget({ box, fill, overImage, hero: isHero }: WidgetProps) {
-  const [data, setData] = useState<{ name: string; days: number } | null>(null);
+  const [data, setData] = useState<{ name: string; days: number } | null>(null); const { t } = useLanguage();
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -478,15 +478,15 @@ export function HolidayWidget({ box, fill, overImage, hero: isHero }: WidgetProp
       <TileCaption>Ближайший праздник</TileCaption>
       {failed || !data ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.6 }}>
-          {failed ? 'Не удалось узнать' : '…'}
+          {failed ? t('Не удалось узнать') : '…'}
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ ...DISPLAY, fontSize: Math.round(big * (isHero ? 1.28 : 1)), fontWeight: isHero ? 700 : 600, lineHeight: 1.05 }}>
-            {data.days === 0 ? 'Сегодня' : data.days}
+            {data.days === 0 ? t('Сегодня') : data.days}
           </div>
           {data.days > 0 && (
-            <div style={{ fontSize: 'var(--fs-xs)', opacity: 0.7, marginTop: 2 }}>{dayWord(data.days)}</div>
+            <div style={{ fontSize: 'var(--fs-xs)', opacity: 0.7, marginTop: 2 }}>{dayWord(data.days, t)}</div>
           )}
         </div>
       )}
@@ -502,13 +502,13 @@ export function HolidayWidget({ box, fill, overImage, hero: isHero }: WidgetProp
 
 // «1 день», «2 дня», «5 дней» — без этого плитка писала бы «5 день». Правило русского счёта:
 // 11-14 всегда «дней», дальше по последней цифре.
-function dayWord(n: number): string {
+function dayWord(n: number, t: (s: string) => string): string {
   const last2 = n % 100;
   const last = n % 10;
-  if (last2 >= 11 && last2 <= 14) return 'дней';
-  if (last === 1) return 'день';
-  if (last >= 2 && last <= 4) return 'дня';
-  return 'дней';
+  if (last2 >= 11 && last2 <= 14) return t('дней');
+  if (last === 1) return t('день');
+  if (last >= 2 && last <= 4) return t('дня');
+  return t('дней');
 }
 
 // ── Календарь месяца ──────────────────────────────────────────────────────────
@@ -520,7 +520,7 @@ function dayWord(n: number): string {
 // ⚠️ Плитка СТЕКЛЯННАЯ (см. Tile.glass): внутри крупная типографика и тонкая сетка, и на плотной
 // заливке лист читается как наклейка поверх стола, а не как его часть.
 export function CalendarWidget({ fill, overImage, hero }: WidgetProps) {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date()); const { language } = useLanguage();
   // Раз в минуту: календарю секунды не нужны вовсе, но полночь он обязан пережить сам — иначе
   // «сегодня» останется на вчерашнем числе до перезагрузки вкладки.
   useEffect(() => {
@@ -529,7 +529,7 @@ export function CalendarWidget({ fill, overImage, hero }: WidgetProps) {
   }, []);
   return (
     <Tile surface glass overImage={overImage} hero={hero} fill={fill} padding={0}>
-      <CalendarFace now={now} />
+      <CalendarFace now={now} locale={dateLocale(language)} />
     </Tile>
   );
 }

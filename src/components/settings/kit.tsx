@@ -1,6 +1,6 @@
 import { Children, Fragment, useEffect, useRef, useState } from 'react';
 import { sp, pad, RADIUS, TEXT, CAPS, MEASURE, DISPLAY, DISPLAY_CARD, DISPLAY_ROW, grain, motion, well } from '../../styles/system';
-import { Check } from 'lucide-react';
+import { Check } from 'lucide-react'; import { useLanguage, tx } from '../../i18n';
 
 // ── Набор презентационных примитивов раздела настроек ─────────────────────────
 // Здесь ТОЛЬКО рендер и стили — никакого состояния, IPC и бизнес-логики. Каждый примитив
@@ -124,10 +124,10 @@ export function Favicon({ host, size = 20 }: { host: string; size?: number }) {
 
 export function IconBtn({ title, active, onClick, children }: {
   title: string; active?: boolean; onClick: () => void; children: React.ReactNode;
-}) {
+}) { const { t } = useLanguage();
   return (
     <button
-      title={title}
+      title={t(title)}
       onClick={onClick}
       style={{
         border: 'none', background: 'transparent', cursor: 'default', padding: 4,
@@ -239,7 +239,7 @@ export function SectionHeader({ title, tone, hero, heroLabel, band, children }: 
 }) {
   // Тон берётся из переменной контейнера (см. toneVars); проп — запасной путь для экранов вне
   // настроек. Fallback в var() держит вид, если раздел тон не объявил.
-  const bg = tone ? `var(--poster-${tone})` : 'var(--section-tone, var(--surface-sunken))';
+  const { t } = useLanguage(); const bg = tone ? `var(--poster-${tone})` : 'var(--section-tone, var(--surface-sunken))';
   const ink = tone ? POSTER_INK[tone] : 'var(--section-ink, var(--text-strong))';
   return (
     <div style={{
@@ -263,7 +263,7 @@ export function SectionHeader({ title, tone, hero, heroLabel, band, children }: 
         margin: 0, ...DISPLAY,
         fontSize: hero ? 22 : 30, fontWeight: 700, letterSpacing: '-0.02em',
         color: 'inherit', position: 'relative',
-      }}>{title}</h2>
+      }}>{t(title)}</h2>
       {hero !== undefined && (
         <div style={{
           ...DISPLAY, fontSize: 54, fontWeight: 800, lineHeight: 1.02,
@@ -271,13 +271,13 @@ export function SectionHeader({ title, tone, hero, heroLabel, band, children }: 
         }}>{hero}</div>
       )}
       {heroLabel && (
-        <div style={{ ...TEXT.body, opacity: 0.72, color: 'inherit', position: 'relative' }}>{heroLabel}</div>
+        <div style={{ ...TEXT.body, opacity: 0.72, color: 'inherit', position: 'relative' }}>{tx(t, heroLabel)}</div>
       )}
       {children && (
         <p style={{
           margin: `${sp(2)}px 0 0`, ...TEXT.body, opacity: 0.78,
           color: 'inherit', maxWidth: MEASURE, position: 'relative',
-        }}>{children}</p>
+        }}>{tx(t, children)}</p>
       )}
       {band && <div style={{ position: 'relative', marginTop: sp(3) }}>{band}</div>}
     </div>
@@ -292,7 +292,7 @@ export function SectionHeader({ title, tone, hero, heroLabel, band, children }: 
 // не окраской текста. Кому нужно предупреждение — ставит строку с треугольником внутри блока.
 export function Subsection({ title, blockId, description, children }: {
   title: string; blockId?: string; description?: React.ReactNode; children: React.ReactNode;
-}) {
+}) { const { t } = useLanguage();
   return (
     // ⚠️ data-setting-block — якорь для поиска по настройкам (см. shared/settingsIndex.ts): по
     // нему находка прокручивает к блоку и подсвечивает его. Атрибут стоит ЗДЕСЬ, а не в каждой
@@ -314,10 +314,10 @@ export function Subsection({ title, blockId, description, children }: {
           // читается как уровень, а не как «то же самое чуть жирнее».
           ...DISPLAY, fontSize: 19, fontWeight: 700, letterSpacing: '-0.01em',
           color: 'var(--text-strong)',
-        }}>{title}</h3>
+        }}>{t(title)}</h3>
         {description && (
           <p style={{ margin: `${sp(1)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)', maxWidth: MEASURE }}>
-            {description}
+            {tx(t, description)}
           </p>
         )}
       </div>
@@ -344,7 +344,7 @@ export function MasterSwitch({ on, title, description, control }: {
   description?: React.ReactNode;
   /** Сам тумблер — приходит снаружи, kit про его логику ничего не знает. */
   control: React.ReactNode;
-}) {
+}) { const { t } = useLanguage();
   return (
     <div style={{
       display: 'grid', gridTemplateColumns: '1fr auto', gap: sp(4), alignItems: 'center',
@@ -357,10 +357,10 @@ export function MasterSwitch({ on, title, description, control }: {
         <div style={{
           ...DISPLAY, fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em',
           lineHeight: 1.05, color: 'var(--text-strong)',
-        }}>{title}</div>
+        }}>{t(title)}</div>
         {description && (
           <div style={{ ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1), maxWidth: MEASURE }}>
-            {description}
+            {tx(t, description)}
           </div>
         )}
       </div>
@@ -406,7 +406,7 @@ export function Fact({ label, hint, value, active, foot }: {
   active?: boolean;
   /** Полоса-мера или лента под значением. ⚠️ ПОД ним, а не вместо: значение и есть ответ. */
   foot?: React.ReactNode;
-}) {
+}) { const { t } = useLanguage();
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: sp(2),
@@ -415,14 +415,14 @@ export function Fact({ label, hint, value, active, foot }: {
       color: active ? 'var(--app-bg)' : 'var(--text-body)',
       transition: motion.state('background', 'color'),
     }}>
-      <span style={{ ...TEXT.body, fontWeight: 600, color: 'inherit' }}>{label}</span>
+      <span style={{ ...TEXT.body, fontWeight: 600, color: 'inherit' }}>{tx(t, label)}</span>
       {hint && (
-        <span style={{ ...TEXT.caption, color: 'inherit', opacity: 0.62 }}>{hint}</span>
+        <span style={{ ...TEXT.caption, color: 'inherit', opacity: 0.62 }}>{tx(t, hint)}</span>
       )}
       <span style={{
         ...DISPLAY, fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em',
         marginTop: 'auto', color: 'inherit',
-      }}>{value}</span>
+      }}>{tx(t, value)}</span>
       {foot}
     </div>
   );
@@ -492,7 +492,7 @@ export function SpotCard({
   /** Значок НАД именем, а не рядом: карточка-кнопка, где глиф — лицо, а не иконка строки. */
   stack?: boolean;
 }) {
-  const ink = filled ? 'var(--app-bg)' : 'var(--text-strong)';
+  const { t } = useLanguage(); const ink = filled ? 'var(--app-bg)' : 'var(--text-strong)';
   const muted = filled ? 'color-mix(in srgb, var(--app-bg) 62%, transparent)' : 'var(--text-muted)';
   // ⚠️ Пятно масштабируется ЯРУСОМ. Пока размер был один на все карточки, кружок 180×140 на
   // полоске в 72 пикселя занимал её целиком — и «вспомогательное» кричало ровно так же громко,
@@ -532,17 +532,17 @@ export function SpotCard({
               ...DISPLAY, fontSize: lead ? 30 : compact ? 20 : 26,
               fontWeight: 800, letterSpacing: '-0.03em', color: ink,
             }}>
-              {title}
+              {tx(t, title)}
             </div>
-            {subtitle && <div style={{ ...TEXT.body, color: muted, marginTop: sp(1) }}>{subtitle}</div>}
+            {subtitle && <div style={{ ...TEXT.body, color: muted, marginTop: sp(1) }}>{tx(t, subtitle)}</div>}
           </div>
         </div>
         {fields && fields.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: `${sp(2)}px ${sp(4)}px`, marginTop: 'auto' }}>
             {fields.map((f) => (
               <div key={f.label}>
-                <div style={{ ...CAPS, marginBottom: sp(1), color: muted }}>{f.label}</div>
-                <div style={{ ...TEXT.body, ...(f.mono ? { fontFamily: 'var(--font-mono)', fontSize: TEXT.caption.fontSize } : null), color: ink }}>{f.value}</div>
+                <div style={{ ...CAPS, marginBottom: sp(1), color: muted }}>{t(f.label)}</div>
+                <div style={{ ...TEXT.body, ...(f.mono ? { fontFamily: 'var(--font-mono)', fontSize: TEXT.caption.fontSize } : null), color: ink }}>{tx(t, f.value)}</div>
               </div>
             ))}
           </div>
@@ -570,7 +570,7 @@ export function SpotCard({
             borderRadius: RADIUS.pill,
             background: 'var(--section-tone, var(--surface-sunken))',
             color: 'var(--section-ink, var(--text-strong))',
-          }}>{eyebrow}</span>
+          }}>{tx(t, eyebrow)}</span>
         </div>
       )}
       {header}
@@ -693,7 +693,7 @@ export function InkFrame({ title, hint, children }: {
   title?: React.ReactNode;
   hint?: React.ReactNode;
   children: React.ReactNode;
-}) {
+}) { const { t } = useLanguage();
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: sp(4),
@@ -702,10 +702,10 @@ export function InkFrame({ title, hint, children }: {
     }}>
       {title && (
         <div style={{ ...DISPLAY, fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-strong)' }}>
-          {title}
+          {tx(t, title)}
         </div>
       )}
-      {hint && <Read><span style={{ ...TEXT.body, color: 'var(--text-muted)' }}>{hint}</span></Read>}
+      {hint && <Read><span style={{ ...TEXT.body, color: 'var(--text-muted)' }}>{tx(t, hint)}</span></Read>}
       {children}
     </div>
   );
@@ -735,7 +735,7 @@ export function Read({ children, style }: { children: React.ReactNode; style?: R
 
 // Капс-лейбл группы («ССЫЛКА ПОДПИСКИ», «ИСКЛЮЧЕНИЯ»…). style — для точечных отклонений
 // (напр. flex:1 + ellipsis в шапке списка паролей).
-export function CapsLabel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+export function CapsLabel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) { const { t } = useLanguage();
   return (
     // ⚠️ Метка группы получает ТОЧКУ тона слева. Мелочь на 6 пикселей, но именно такие мелочи
     // отличают «страницу продукта» от «списка настроек»: цвет появляется там же, где начинается
@@ -745,13 +745,13 @@ export function CapsLabel({ children, style }: { children: React.ReactNode; styl
         width: 6, height: 6, borderRadius: RADIUS.pill, flex: 'none',
         background: 'var(--section-tone, var(--text-faint))',
       }} />
-      {children}
+      {tx(t, children)}
     </div>
   );
 }
 
-export function LoadingNote() {
-  return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+export function LoadingNote() { const { t } = useLanguage();
+  return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>{t('Загрузка…')}</div>;
 }
 
 export function InlineError({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
@@ -800,7 +800,7 @@ export function StatusCardSkeleton() {
 // тумблерами на том же экране, хотя ничего функционального этот фон не означал.
 export function StatusCard({ icon, title, subtitle, actions }: {
   icon: React.ReactNode; title: React.ReactNode; subtitle?: React.ReactNode; actions?: React.ReactNode;
-}) {
+}) { const { t } = useLanguage();
   return (
     <div style={{
       ...settingsBox,
@@ -810,8 +810,8 @@ export function StatusCard({ icon, title, subtitle, actions }: {
       <div style={{ flex: '1 1 180px', minWidth: 0 }}>
         {/* ⚠️ Заголовок карточки — дисплейной гарнитурой, как у MasterSwitch и Fact. Пока он был
             обычным ROW_TITLE, карточка выглядела элементом другой системы, чем шапка над ней. */}
-        <div style={DISPLAY_CARD}>{title}</div>
-        {subtitle && <div style={{ ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) }}>{subtitle}</div>}
+        <div style={DISPLAY_CARD}>{tx(t, title)}</div>
+        {subtitle && <div style={{ ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) }}>{tx(t, subtitle)}</div>}
       </div>
       {actions}
     </div>
@@ -853,14 +853,14 @@ interface TextFieldProps {
 export function TextField({
   value, onChange, placeholder, type = 'text', mono, error, info, onEnter, maxLength,
   inputRef, style, inputStyle,
-}: TextFieldProps) {
+}: TextFieldProps) { const { t } = useLanguage();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, ...style }}>
       <input
         ref={inputRef}
         type={type}
         value={value}
-        placeholder={placeholder}
+        placeholder={placeholder ? t(placeholder) : undefined}
         maxLength={maxLength}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onEnter ? (e) => { if (e.key === 'Enter') onEnter(); } : undefined}
@@ -875,8 +875,8 @@ export function TextField({
           ...inputStyle,
         }}
       />
-      {error && <InlineError>{error}</InlineError>}
-      {!error && info && <InlineHint>{info}</InlineHint>}
+      {error && <InlineError>{t(error)}</InlineError>}
+      {!error && info && <InlineHint>{t(info)}</InlineHint>}
     </div>
   );
 }
@@ -884,11 +884,11 @@ export function TextField({
 export function TextArea({ value, onChange, placeholder, rows, style }: {
   value: string; onChange: (v: string) => void; placeholder?: string; rows?: number;
   style?: React.CSSProperties;
-}) {
+}) { const { t } = useLanguage();
   return (
     <textarea
       value={value}
-      placeholder={placeholder}
+      placeholder={placeholder ? t(placeholder) : undefined}
       rows={rows}
       onChange={(e) => onChange(e.target.value)}
       onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
@@ -1023,7 +1023,7 @@ export function OptionRow({
   // цвет повторялся чаще, чем свой.
   icon, markerColor = 'var(--section-tone, var(--accent))',
 }: OptionRowProps) {
-  const canSelect = selectable ?? onClick !== undefined;
+  const { t } = useLanguage(); const canSelect = selectable ?? onClick !== undefined;
   // ⚠️ Заливка ТОЛЬКО у выбранного и ТОЛЬКО акцентная (готовый токен, посчитанный от акцента
   // палитры): у выбора ровно одно значение — «вот этот», и читаться он обязан одинаково во всех
   // палитрах и обеих темах.
@@ -1047,8 +1047,8 @@ export function OptionRow({
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Заголовок строки — дисплейной гарнитурой: та же роль, что у Fact и MasterSwitch, и
             список перестаёт быть «серой массой из строк кегля 14». */}
-        <div style={DISPLAY_ROW}>{title}</div>
-        {subtitle && <div style={{ ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) - 3 }}>{subtitle}</div>}
+        <div style={DISPLAY_ROW}>{t(title)}</div>
+        {subtitle && <div style={{ ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) - 3 }}>{tx(t, subtitle)}</div>}
       </div>
       {(badge || badge2) && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: sp(1), flex: 'none' }}>
@@ -1061,7 +1061,7 @@ export function OptionRow({
               background: `color-mix(in srgb, ${b.color} 14%, transparent)`,
               padding: `2px ${sp(2)}px`, borderRadius: RADIUS.pill, whiteSpace: 'nowrap',
             }}>
-              {b.text}
+              {t(b.text)}
             </span>
           ))}
         </div>
@@ -1150,19 +1150,19 @@ export function Segmented<T extends string>({ value, options, onChange }: {
   options: { id: T; label: string; hint?: string }[];
   onChange: (id: T) => void;
 }) {
-  const current = options.find((o) => o.id === value);
+  const { t } = useLanguage(); const current = options.find((o) => o.id === value);
   return (
     <div>
       <SegTrack>
         {options.map((o) => (
           <button key={o.id} onClick={() => onChange(o.id)} style={segBtnStyle(o.id === value)}>
-            {o.label}
+            {t(o.label)}
           </button>
         ))}
       </SegTrack>
       {current?.hint && (
         <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 8 }}>
-          {current.hint}
+          {t(current.hint)}
         </div>
       )}
     </div>

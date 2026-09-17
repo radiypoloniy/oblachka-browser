@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { exposeUiLanguage } from './preload/uiLanguage';
 import type { AutofillPopoverState } from './AutofillPopoverManager';
 
 contextBridge.exposeInMainWorld('autofillPopover', {
@@ -14,3 +15,4 @@ contextBridge.exposeInMainWorld('autofillPopover', {
     return () => ipcRenderer.removeListener('autofill-popover:show', handler);
   },
 });
+exposeUiLanguage();

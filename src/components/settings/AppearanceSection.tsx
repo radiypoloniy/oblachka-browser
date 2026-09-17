@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2, RotateCcw, Plus, Shuffle } from 'lucide-react';
+import { useLanguage } from '../../i18n';
 import { SectionHeader, Subsection, InlineError, InlineHint, TextField, btnGhost, segBtnStyle, SegTrack,
   FactGrid, Fact, SpotGrid, SpotCard, MasterSwitch, OptionList, OptionRow, SliderRow,
 } from './kit';
@@ -74,7 +75,7 @@ const PALETTES: { id: ThemePaletteId; label: string; hint: string; light: Swatch
 ];
 
 export default function AppearanceSection() {
-  const [s, setS] = useState<NewTabSettings>(() => loadNewTabSettings());
+  const { t } = useLanguage(); const [s, setS] = useState<NewTabSettings>(() => loadNewTabSettings());
   // Тема живёт в main; здесь только копия для отрисовки. Подписка нужна не для своих же кликов, а
   // для чужих: то же самое окно настроек может стоять открытым, пока тему меняют в другом окне или
   // пока система сама переключает светлую/тёмную.
@@ -189,17 +190,17 @@ export default function AppearanceSection() {
   // Нынешний облик словами — для шапки и плиток. ⚠️ Берётся из тех же таблиц, что рисуют выбор
   // ниже (THEME_MODES, PALETTES, BG_WORD): вторая копия подписей разошлась бы с первой в тот
   // день, когда добавят седьмую палитру.
-  const themeWord = THEME_MODES.find(([m]) => m === theme.mode)?.[1] ?? 'Светлая';
+  const themeWord = t(THEME_MODES.find(([m]) => m === theme.mode)?.[1] ?? 'Светлая');
   const palette = PALETTES.find((p) => p.id === theme.palette);
-  const paletteLabel = palette?.label ?? 'Уголь';
-  const paletteHint = palette?.hint ?? 'оттенок нейтрали';
+  const paletteLabel = t(palette?.label ?? 'Уголь');
+  const paletteHint = t(palette?.hint ?? 'оттенок нейтрали');
   const groundWord = !s.sidebar.tinted
-    ? 'Ровный'
-    : s.sidebar.source === 'mesh' ? 'Свой градиент'
+    ? t('Ровный')
+    : s.sidebar.source === 'mesh' ? t('Свой градиент')
     : s.sidebar.source === 'poster'
-      ? (POSTER_TONES.find((t) => t.id === s.sidebar.tone)?.label ?? 'Краска')
-      : 'Тон палитры';
-  const bgWord = BG_WORD[s.background.kind];
+      ? t(POSTER_TONES.find((tone) => tone.id === s.sidebar.tone)?.label ?? 'Краска')
+      : t('Тон палитры');
+  const bgWord = t(BG_WORD[s.background.kind]);
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(8), alignItems: 'flex-start' }}>
@@ -211,23 +212,23 @@ export default function AppearanceSection() {
           единственным крупным разделом без ответа в шапке: чтобы понять, какая тема и палитра
           стоят, приходилось искать подсвеченный образец среди шести квадратиков. */}
       <SectionHeader
-        title="Интерфейс"
+        title={t('Интерфейс')}
         hero={`${themeWord} · ${paletteLabel}`}
-        heroLabel="облик всего браузера — окно, поповеры и новая вкладка"
+        heroLabel={t('облик всего браузера — окно, поповеры и новая вкладка')}
       >
-        Тема и палитра браузера, оформление новой вкладки — фон, часы, приветствие и быстрые ссылки.
+        {t('Тема и палитра браузера, оформление новой вкладки — фон, часы, приветствие и быстрые ссылки.')}
       </SectionHeader>
 
       <FactGrid>
-        <Fact label="Тема" hint="светлая, тёмная или вслед за системой" value={themeWord} active />
-        <Fact label="Палитра" hint={paletteHint} value={paletteLabel} active />
+        <Fact label={t('Тема')} hint={t('светлая, тёмная или вслед за системой')} value={themeWord} active />
+        <Fact label={t('Палитра')} hint={paletteHint} value={paletteLabel} active />
         <Fact
-          label="Фон окна"
-          hint={s.sidebar.tinted ? 'мягкий градиент и текстура' : 'ровная заливка палитры'}
+          label={t('Фон окна')}
+          hint={s.sidebar.tinted ? t('мягкий градиент и текстура') : t('ровная заливка палитры')}
           value={groundWord}
           active={s.sidebar.tinted}
         />
-        <Fact label="Новая вкладка" hint="что стоит фоном" value={bgWord} active />
+        <Fact label={t('Новая вкладка')} hint={t('что стоит фоном')} value={bgWord} active />
       </FactGrid>
 
       {/* ── Тема ──
@@ -235,7 +236,7 @@ export default function AppearanceSection() {
           браузер будет выглядеть; выбирать её по подписи «Светлая» значит выбирать вслепую.
           Образец рисуется теми же цветами, что и палитра ниже, поэтому пара «тема + палитра»
           видна целиком до применения. */}
-      <Subsection title="Тема" description="Светлая, тёмная или вслед за системой. Образец показывает выбранную палитру.">
+      <Subsection blockId="Тема" title={t('Тема')} description={t('Светлая, тёмная или вслед за системой. Образец показывает выбранную палитру.')}>
         <SpotGrid dense>
           {THEME_MODES.map(([mode, label]) => (
             <SpotCard
@@ -245,19 +246,19 @@ export default function AppearanceSection() {
               selected={theme.mode === mode}
               onClick={() => applyTheme(mode, theme.palette)}
               icon={<ThemeSample mode={mode} palette={palette} systemDark={theme.systemDark} />}
-              title={label}
-              subtitle={THEME_HINT[mode]}
+              title={t(label)}
+              subtitle={t(THEME_HINT[mode])}
             />
           ))}
         </SpotGrid>
         {/* Приватные вкладки всегда тёмные и всегда одного вида — иначе режим перестаёт читаться
             как режим. Сказать об этом здесь дешевле, чем оставить человека гадать, почему выбор
             не подействовал на окно инкогнито. */}
-        <InlineHint>Приватные вкладки остаются тёмными при любой теме.</InlineHint>
+        <InlineHint>{t('Приватные вкладки остаются тёмными при любой теме.')}</InlineHint>
       </Subsection>
 
       {/* ── Палитра ── */}
-      <Subsection title="Палитра" description="Оттенок нейтрали: фон, поверхности и текст. Акцентный цвет не меняется.">
+      <Subsection blockId="Палитра" title={t('Палитра')} description={t('Оттенок нейтрали: фон, поверхности и текст. Акцентный цвет не меняется.')}>
         <SpotGrid dense>
           {PALETTES.map((p) => (
             <SpotCard
@@ -267,8 +268,8 @@ export default function AppearanceSection() {
               selected={theme.palette === p.id}
               onClick={() => applyTheme(theme.mode, p.id)}
               icon={<Sample swatch={themeIsDark ? p.dark : p.light} />}
-              title={p.label}
-              subtitle={p.hint}
+              title={t(p.label)}
+              subtitle={t(p.hint)}
             />
           ))}
         </SpotGrid>
@@ -281,23 +282,23 @@ export default function AppearanceSection() {
           ⚠️ Назывался «цветной сайдбар» и красил только его — из-за чего сайдбар и выглядел
           боковой плашкой на сером окне. Подкраска это свойство ОКНА; ключ в хранилище оставлен
           прежним (`sidebar.tinted`), чтобы не терять уже сделанный человеком выбор. */}
-      <Subsection title="Фон интерфейса" description="Мягкий градиент и лёгкая текстура на всём окне вместо ровной заливки. Можно взять тон палитры или свой градиент из общего каталога.">
+      <Subsection blockId="Фон интерфейса" title={t('Фон интерфейса')} description={t('Мягкий градиент и лёгкая текстура на всём окне вместо ровной заливки. Можно взять тон палитры или свой градиент из общего каталога.')}>
         {/* ⚠️ ГЛАВНЫЙ ПЕРЕКЛЮЧАТЕЛЬ блока, а не голая строка с тумблером: всё остальное здесь
             (градиенты, насыщенность) существует только когда он включён. Тот же рецепт, что у
             блокировки рекламы и подтверждения Windows у паролей. */}
         <MasterSwitch
           on={s.sidebar.tinted}
-          title={s.sidebar.tinted ? 'Цветной фон' : 'Ровная заливка'}
+          title={s.sidebar.tinted ? t('Цветной фон') : t('Ровная заливка')}
           description={s.sidebar.tinted
-            ? 'Мягкий градиент и лёгкая текстура на всём окне'
-            : 'Окно залито ровным фоном палитры'}
+            ? t('Мягкий градиент и лёгкая текстура на всём окне')
+            : t('Окно залито ровным фоном палитры')}
           control={<Toggle checked={s.sidebar.tinted} onChange={() => apply({ ...s, sidebar: { ...s.sidebar, tinted: !s.sidebar.tinted } })} />}
         />
         {s.sidebar.tinted && (
           <>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(3) }}>
               <button
-                title="Палитра"
+                title={t('Палитра')}
                 onClick={() => patchSidebar({ source: 'palette' })}
                 style={{
                   width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box, cursor: 'default', border: 'none',
@@ -310,15 +311,15 @@ export default function AppearanceSection() {
                   долей «Насыщенности» с прежним потолком 30%, выше которого острова перестают
                   отделяться от фона. Поэтому образец показан так же, как у палитры, — растяжкой
                   в землю, а не квадратом краски в полную силу: иначе он обещал бы не то. */}
-              {POSTER_TONES.map((t) => (
+              {POSTER_TONES.map((tone) => (
                 <button
-                  key={t.id}
-                  title={t.label}
-                  onClick={() => patchSidebar({ source: 'poster', tone: t.id })}
+                  key={tone.id}
+                  title={t(tone.label)}
+                  onClick={() => patchSidebar({ source: 'poster', tone: tone.id })}
                   style={{
                     width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box, cursor: 'default', border: 'none',
-                    background: `linear-gradient(180deg, color-mix(in srgb, ${t.css} 45%, var(--app-bg)), var(--app-bg))`,
-                    outline: s.sidebar.source === 'poster' && s.sidebar.tone === t.id
+                    background: `linear-gradient(180deg, color-mix(in srgb, ${tone.css} 45%, var(--app-bg)), var(--app-bg))`,
+                    outline: s.sidebar.source === 'poster' && s.sidebar.tone === tone.id
                       ? '2px solid var(--accent)' : '2px solid transparent',
                     outlineOffset: 2,
                   }}
@@ -341,19 +342,19 @@ export default function AppearanceSection() {
               onClick={() => openDraft('chrome')}
               style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
             >
-              <Plus size={14} /> Создать градиент
+              <Plus size={14} /> {t('Создать градиент')}
             </button>
             <button
               onClick={() => applyRandom('chrome')}
               style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
             >
-              <Shuffle size={14} /> Случайный
+              <Shuffle size={14} /> {t('Случайный')}
             </button>
             </div>
             {s.sidebar.source !== 'mesh' && (
               <OptionList>
                 <SliderRow
-                  label="Насыщенность"
+                  label={t('Насыщенность')}
                   value={s.sidebar.amount}
                   min={TINT_AMOUNT_MIN} max={TINT_AMOUNT_MAX} step={1}
                   onChange={(v) => patchSidebar({ amount: v })}
@@ -366,14 +367,14 @@ export default function AppearanceSection() {
       </Subsection>
 
       {/* ── Фон ── */}
-      <Subsection title="Фон" description="Градиент, свой цвет или изображение. Свои градиенты те же, что у фона интерфейса.">
+      <Subsection blockId="Фон" title={t('Фон')} description={t('Градиент, свой цвет или изображение. Свои градиенты те же, что у фона интерфейса.')}>
         <SegTrack>
           {([['preset', 'Градиент'], ['color', 'Цвет'], ['custom', 'Своё фото'], ['photo', 'Фото дня']] as [BackgroundKind, string][]).map(([kind, label]) => {
             const gradientOn = s.background.kind === 'preset' || s.background.kind === 'mesh';
             const active = kind === 'preset' ? gradientOn : s.background.kind === kind;
             return (
             <SegBtn key={kind} active={active}
-              onClick={() => patchBg({ kind: kind === 'preset' && s.background.meshId ? 'mesh' : kind })}>{label}</SegBtn>
+              onClick={() => patchBg({ kind: kind === 'preset' && s.background.meshId ? 'mesh' : kind })}>{t(label)}</SegBtn>
             );
           })}
         </SegTrack>
@@ -382,8 +383,7 @@ export default function AppearanceSection() {
           <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), flexWrap: 'wrap' }}>
             <span style={{ flex: 1, minWidth: '24ch' }}>
               <InlineHint>
-                Картинка дня Wikimedia — отбирают редакторы Commons. Загружается через ваше
-                соединение или VPN и кэшируется на день.
+                {t('Картинка дня Wikimedia — отбирают редакторы Commons. Загружается через ваше соединение или VPN и кэшируется на день.')}
               </InlineHint>
             </span>
             {/* ⚠️ «Другое фото» — шаг НАЗАД ПО КАЛЕНДАРЮ, а не случайный снимок: у Wikimedia на
@@ -396,7 +396,7 @@ export default function AppearanceSection() {
                 ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(1),
               }}
             >
-              <RotateCcw size={14} /> Другое фото
+              <RotateCcw size={14} /> {t('Другое фото')}
             </button>
           </div>
         )}
@@ -405,7 +405,7 @@ export default function AppearanceSection() {
           <>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(3) }}>
             {WALLPAPER_PRESETS.map((p) => (
-              <button key={p.id} title={p.label} onClick={() => patchBg({ kind: 'preset', preset: p.id })}
+              <button key={p.id} title={t(p.label)} onClick={() => patchBg({ kind: 'preset', preset: p.id })}
                 style={{
                   width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box, cursor: 'default',
                   background: p.css, border: 'none',
@@ -433,13 +433,13 @@ export default function AppearanceSection() {
             onClick={() => openDraft('newtab')}
             style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
           >
-            <Plus size={14} /> Создать градиент
+            <Plus size={14} /> {t('Создать градиент')}
           </button>
           <button
             onClick={() => applyRandom('newtab')}
             style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
           >
-            <Shuffle size={14} /> Случайный
+            <Shuffle size={14} /> {t('Случайный')}
           </button>
           </div>
           </>
@@ -460,26 +460,26 @@ export default function AppearanceSection() {
               onChange={(e) => onPickFile(e.target.files?.[0])} />
             <div style={{ display: 'flex', gap: sp(2) }}>
               <button style={{ ...btnGhost, display: 'flex', gap: sp(2), alignItems: 'center' }} onClick={() => fileRef.current?.click()}>
-                <Upload size={14} /> {hasCustom ? 'Заменить фото' : 'Выбрать фото'}
+                <Upload size={14} /> {hasCustom ? t('Заменить фото') : t('Выбрать фото')}
               </button>
               {hasCustom && (
                 <button style={{ ...btnGhost, display: 'flex', gap: sp(2), alignItems: 'center' }} onClick={removeCustom}>
-                  <Trash2 size={14} /> Убрать
+                  <Trash2 size={14} /> {t('Убрать')}
                 </button>
               )}
             </div>
-            {imgError && <InlineError>{imgError}</InlineError>}
-            {!hasCustom && !imgError && <InlineHint>Изображение хранится локально на этом устройстве.</InlineHint>}
+            {imgError && <InlineError>{t(imgError)}</InlineError>}
+            {!hasCustom && !imgError && <InlineHint>{t('Изображение хранится локально на этом устройстве.')}</InlineHint>}
           </div>
         )}
 
         <OptionList>
-        <SliderRow label="Затемнение" value={s.background.dim} min={0} max={0.8} step={0.02}
+        <SliderRow label={t('Затемнение')} value={s.background.dim} min={0} max={0.8} step={0.02}
           onChange={(v) => patchBg({ dim: v })} format={(v) => `${Math.round(v * 100)}%`} />
         {/* ⚠️ Потолок снижен с 40: размытие держали ради читаемости виджетов, а эту работу теперь
             делает материал — карточка размывает фон ПОД СОБОЙ, обои остаются резкими. Сорок
             пикселей превращали фотографию в цветное пятно; шестнадцати хватает как эффекту. */}
-        <SliderRow label="Размытие" value={s.background.blur} min={0} max={16} step={1}
+        <SliderRow label={t('Размытие')} value={s.background.blur} min={0} max={16} step={1}
           onChange={(v) => patchBg({ blur: v })} format={(v) => `${v}px`} />
         </OptionList>
       </Subsection>
@@ -489,39 +489,39 @@ export default function AppearanceSection() {
           экрана определяется тем, какие виджеты на нём стоят (см. src/newtab/desktop.ts), а
           два разных способа убрать одно и то же неизбежно разошлись бы. Здесь остались только
           настройки САМИХ виджетов — формат времени, город, валюты. */}
-      <Subsection title="Часы" description="Вид и формат виджета часов на новой вкладке.">
+      <Subsection blockId="Часы" title={t('Часы')} description={t('Вид и формат виджета часов на новой вкладке.')}>
         <SegTrack>
-          <SegBtn active={s.clock.face !== 'digital'} onClick={() => patchClock({ face: 'analog' })}>Циферблат</SegBtn>
-          <SegBtn active={s.clock.face === 'digital'} onClick={() => patchClock({ face: 'digital' })}>Цифры</SegBtn>
+          <SegBtn active={s.clock.face !== 'digital'} onClick={() => patchClock({ face: 'analog' })}>{t('Циферблат')}</SegBtn>
+          <SegBtn active={s.clock.face === 'digital'} onClick={() => patchClock({ face: 'digital' })}>{t('Цифры')}</SegBtn>
         </SegTrack>
         {/* 24-часовой формат у циферблата смысла не имеет — прячем, а не показываем неработающий
             тумблер. «Секунды» осмысленны у обоих: у стрелок это секундная стрелка. */}
         <OptionList>
           {s.clock.face === 'digital' && (
-            <SwitchRow title="24-часовой формат" subtitle="Иначе 12 часов с AM и PM"
+            <SwitchRow title={t('24-часовой формат')} subtitle={t('Иначе 12 часов с AM и PM')}
               checked={s.clock.hour24} onChange={(v) => patchClock({ hour24: v })} />
           )}
           <SwitchRow
-            title={s.clock.face === 'digital' ? 'Секунды' : 'Секундная стрелка'}
-            subtitle="Обновление раз в секунду вместо раза в минуту"
+            title={s.clock.face === 'digital' ? t('Секунды') : t('Секундная стрелка')}
+            subtitle={t('Обновление раз в секунду вместо раза в минуту')}
             checked={s.clock.seconds} onChange={(v) => patchClock({ seconds: v })} />
-          <SwitchRow title="Дата и день недели" subtitle="Строка под временем"
+          <SwitchRow title={t('Дата и день недели')} subtitle={t('Строка под временем')}
             checked={s.clock.date} onChange={(v) => patchClock({ date: v })} />
         </OptionList>
       </Subsection>
 
       {/* ── Поиск ── */}
-      <Subsection title="Поиск" description="Строка поиска на самой новой вкладке — адресная строка работает независимо от неё.">
+      <Subsection blockId="Поиск" title={t('Поиск')} description={t('Строка поиска на самой новой вкладке — адресная строка работает независимо от неё.')}>
         <OptionList>
-          <SwitchRow title="Строка поиска" subtitle="Поле по центру новой вкладки"
+          <SwitchRow title={t('Строка поиска')} subtitle={t('Поле по центру новой вкладки')}
             checked={s.search.show} onChange={(v) => apply({ ...s, search: { show: v } })} />
         </OptionList>
       </Subsection>
 
       {/* ── Погода ── */}
-      <Subsection title="Погода" description="Город для виджета погоды на новой вкладке.">
+      <Subsection blockId="Погода" title={t('Погода')} description={t('Город для виджета погоды на новой вкладке.')}>
         <>
-          <TextField value={s.weather.city} placeholder="Город (например, Москва)"
+          <TextField value={s.weather.city} placeholder={t('Город (например, Москва)')}
             onChange={(v) => patchWeather({ city: v })} />
           <SegTrack>
             <SegBtn active={s.weather.units === 'c'} onClick={() => patchWeather({ units: 'c' })}>°C</SegBtn>
@@ -531,18 +531,18 @@ export default function AppearanceSection() {
       </Subsection>
 
       {/* ── Курс валют ── */}
-      <Subsection title="Курс валют" description="Какие валюты показывает виджет курса (данные ЦБ РФ).">
+      <Subsection blockId="Курс валют" title={t('Курс валют')} description={t('Какие валюты показывает виджет курса (данные ЦБ РФ).')}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
           {RATE_CHOICES.map((c) => (
             <SegBtn key={c.code} active={s.rates.codes.includes(c.code)} onClick={() => toggleRateCode(c.code)}>
-              {c.symbol} {c.label}
+              {c.symbol} {t(c.label)}
             </SegBtn>
           ))}
         </div>
       </Subsection>
 
       {/* ── Крипта ── */}
-      <Subsection title="Крипта" description="Какие активы показывает виджет «Крипта» (цены в рублях, источник — CoinGecko).">
+      <Subsection blockId="Крипта" title={t('Крипта')} description={t('Какие активы показывает виджет «Крипта» (цены в рублях, источник — CoinGecko).')}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
           {CRYPTO_CHOICES.map((c) => (
             <SegBtn key={c.code} active={s.crypto.codes.includes(c.code)} onClick={() => toggleCryptoCode(c.code)}>
@@ -564,7 +564,7 @@ export default function AppearanceSection() {
             onChange={setDraft}
             onSave={saveDraft}
             onCancel={() => setDraft(null)}
-            heading={draftTarget === 'chrome' ? 'Градиент фона интерфейса' : 'Градиент новой вкладки'}
+            heading={draftTarget === 'chrome' ? t('Градиент фона интерфейса') : t('Градиент новой вкладки')}
           />
         </div>
       )}
@@ -616,7 +616,7 @@ function ThemeSample({ mode, palette, systemDark }: {
   palette: { light: Swatch; dark: Swatch } | undefined;
   systemDark: boolean;
 }) {
-  const light = palette?.light ?? PALETTES[0]!.light;
+  const { t } = useLanguage(); const light = palette?.light ?? PALETTES[0]!.light;
   const dark = palette?.dark ?? PALETTES[0]!.dark;
   const frame: React.CSSProperties = {
     position: 'relative', width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box,
@@ -625,7 +625,7 @@ function ThemeSample({ mode, palette, systemDark }: {
   };
   if (mode === 'system') {
     return (
-      <span style={frame} title={systemDark ? 'Сейчас в Windows тёмная' : 'Сейчас в Windows светлая'}>
+      <span style={frame} title={systemDark ? t('Сейчас в Windows тёмная') : t('Сейчас в Windows светлая')}>
         <Sample swatch={light} clip="left" />
         <Sample swatch={dark} clip="right" />
       </span>
@@ -637,6 +637,7 @@ function ThemeSample({ mode, palette, systemDark }: {
 function MeshThumb({ mesh, dark, selected, onSelect, onEdit, onDelete }: {
   mesh: MeshGradient; dark: boolean; selected: boolean; onSelect: () => void; onEdit: () => void; onDelete?: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
       <button
@@ -652,7 +653,7 @@ function MeshThumb({ mesh, dark, selected, onSelect, onEdit, onDelete }: {
       />
       {onDelete && (
         <button
-          title="Удалить"
+          title={t('Удалить')}
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
           style={{
             position: 'absolute', top: -6, right: -6, width: 16, height: 16, padding: 0,

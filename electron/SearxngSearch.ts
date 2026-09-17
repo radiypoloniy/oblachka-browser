@@ -3,7 +3,7 @@
 // идущий через VPN, если он включён, см. main.ts::applyVpnProxy). В отличие от фактчека, эта
 // функция — ТОЛЬКО добыча и разбор результатов; генерация ответа уходит в обычный стрим-путь
 // Qwen (runChatMessage), не в собственный blocking-вызов модели, см. AiPanelManager.ts.
-import { getConfig } from './SearxngKeyStore'
+import { t, uiLanguage } from './uiText'; import { getConfig } from './SearxngKeyStore'
 import { fetchInProfile } from './ProfileSession';
 
 export interface SearxngResult {
@@ -104,7 +104,7 @@ export function buildGroundingPrompt(query: string, results: SearxngResult[]): s
     .slice(0, GROUNDING_SNIPPETS_MAX_CHARS)
 
   return 'You are a helpful assistant with access to web search results. Using ONLY the numbered ' +
-    'sources below, answer the user\'s question in the same language the question is written in. ' +
+    'sources below, answer the user\'s question in ' + (uiLanguage() === 'en' ? 'English' : 'Russian') + '. ' +
     'Cite sources inline as [N], where N is the source number. If the sources do not contain enough ' +
     'information to answer, say so honestly instead of making something up.\n\n' +
     `Sources:\n${snippets}\n\nQuestion: ${query}`
@@ -116,5 +116,5 @@ export function buildGroundingPrompt(query: string, results: SearxngResult[]): s
 export function appendSearxngSources(text: string, results: SearxngResult[]): string {
   if (results.length === 0) return text
   const list = results.map((r, i) => `${i + 1}. [${r.title}](${r.url})`).join('\n')
-  return `${text}\n\n**Источники:**\n${list}`
+  return `${text}\n\n**${t('Источники:')}**\n${list}`
 }

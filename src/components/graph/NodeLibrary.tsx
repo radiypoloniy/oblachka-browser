@@ -2,6 +2,7 @@ import { ChevronLeft, Plus } from 'lucide-react';
 import { NODE_KINDS, type GraphNodeKind } from '../../../shared/graph';
 import { NODE_GROUPS, NodeIcon, toneColor } from './nodeVisual';
 import { RADIUS, sp } from '../../styles/system';
+import { useLanguage } from '../../i18n';
 
 // Библиотека узлов: что можно положить на холст.
 //
@@ -16,11 +17,12 @@ import { RADIUS, sp } from '../../styles/system';
 
 /** Кнопка раскрытия свёрнутой библиотеки. */
 export function LibraryHandle({ onOpen }: { onOpen: () => void }) {
+  const { t } = useLanguage();
   return (
     <button
       type="button"
       onClick={onOpen}
-      title="Библиотека узлов"
+      title={t('Библиотека узлов')}
       style={{
         position: 'absolute', left: sp(3), top: sp(3), zIndex: 4,
         display: 'inline-flex', alignItems: 'center', gap: 7,
@@ -33,7 +35,7 @@ export function LibraryHandle({ onOpen }: { onOpen: () => void }) {
       }}
     >
       <Plus size={15} />
-      Добавить узел
+      {t('Добавить узел')}
     </button>
   );
 }
@@ -42,6 +44,7 @@ export default function NodeLibrary({ onAdd, onClose }: {
   onAdd: (kind: GraphNodeKind) => void;
   onClose: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <aside
       style={{
@@ -92,14 +95,14 @@ export default function NodeLibrary({ onAdd, onClose }: {
                 borderRadius: RADIUS.tight, background: toneColor(group.tone),
               }}
             />
-            {group.title}
+            {t(group.title)}
           </div>
           {group.kinds.map((kind) => (
             <button
               key={kind}
               type="button"
               onClick={() => onAdd(kind)}
-              title={NODE_KINDS[kind].hint}
+              title={t(NODE_KINDS[kind].hint)}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 8,
                 boxSizing: 'border-box', textAlign: 'left',
@@ -116,7 +119,7 @@ export default function NodeLibrary({ onAdd, onClose }: {
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
                 }}
               >
-                {NODE_KINDS[kind].label}
+                {t(NODE_KINDS[kind].label)}
               </span>
             </button>
           ))}

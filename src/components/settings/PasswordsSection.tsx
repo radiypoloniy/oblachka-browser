@@ -7,7 +7,7 @@ import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote, MasterSwitch,
   FactGrid, Fact, Subsection, StatusCard, Panel, Read,
   InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex, Favicon, settingsBox, SliderRow,
-} from './kit';
+} from './kit'; import { useLanguage } from '../../i18n';
 
 // Геометрия списка. LIST_VIEWPORT держит потолок высоты (см. комментарий у самого списка),
 // ROW_OVERSCAN — сколько строк рисуем сверх видимых, чтобы при быстрой прокрутке не мелькала
@@ -24,7 +24,7 @@ const ROW_PITCH_GUESS = 60;
 // подраздела под них. Пароль пересекает IPC только по явному действию (reveal/copy/generate) —
 // listPasswords секретов не возвращает (см. shared/ipc.ts::OblakoApi).
 export default function PasswordsSection() {
-  const [entries, setEntries] = useState<PasswordMeta[] | null>(null);
+  const { t } = useLanguage(); const [entries, setEntries] = useState<PasswordMeta[] | null>(null);
   const [revealed, setRevealed] = useState<Record<number, string>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -296,7 +296,7 @@ export default function PasswordsSection() {
       >
         <StatusCard
           icon={<Lock size={20} style={{ color: 'var(--text-muted)' }} />}
-          title={count === null ? 'Читаю сейф…' : count === 0 ? 'Записей пока нет' : `${count} ${plural(count, 'запись', 'записи', 'записей')}`}
+          title={count === null ? t('Читаю сейф…') : count === 0 ? t('Записей пока нет') : t(`{n} ${plural(count, 'запись', 'записи', 'записей')}`, { n: count })}
           subtitle={listOpen ? 'Значки сайтов загружены' : 'Значки сайтов не загружаются, пока список свёрнут'}
           actions={(
             <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
@@ -307,12 +307,12 @@ export default function PasswordsSection() {
                   transform: listOpen ? 'rotate(90deg)' : 'none',
                   transition: motion.state('transform'),
                 }} />
-                {listOpen ? 'Свернуть' : 'Показать'}
+                {listOpen ? t('Свернуть') : t('Показать')}
               </button>
               {!formOpen && (
                 <button onClick={openAddForm} style={{
                   ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: sp(2),
-                }}><Plus size={14} /> Добавить</button>
+                }}><Plus size={14} /> {t('Добавить')}</button>
               )}
             </div>
           )}
@@ -413,7 +413,7 @@ export default function PasswordsSection() {
               {csvBusy
                 ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
                 : <FileUp size={14} />}
-              Выбрать файл
+              {t('Выбрать файл')}
             </button>
           )}
         />

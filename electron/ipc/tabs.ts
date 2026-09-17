@@ -9,6 +9,7 @@ import { findRelatedPages } from '../RelatedHistory';
 import { searchStuff } from '../StuffSearch';
 import { searchTabsByMeaning } from '../TabSearch';
 import { isModelWarm } from '../TranslationService';
+import { applyUiLanguage as applySkillsLanguage } from '../SkillsStore';
 import { allContexts, broadcastToChrome, contextFromSender } from '../WindowRegistry';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
@@ -53,6 +54,7 @@ export function registerTabsIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.UI_LANGUAGE_SET, (_e, language: unknown) => {
     if (!isUiLanguage(language)) return;
     settings.setUiLanguage(language);
+    applySkillsLanguage();
     broadcastToChrome(IPC.UI_LANGUAGE_CHANGED, language);
   });
   ipcMain.handle(IPC.THEME_SET, (_e, mode: ThemeMode, palette: ThemePaletteId) => {

@@ -1,5 +1,6 @@
 import { sp, pad, RADIUS, TEXT, DISPLAY, MEASURE } from '../../styles/system';
 import { btnTone, btnGhost } from '../settings/kit';
+import { useLanguage } from '../../i18n';
 
 /**
  * Пустой блокнот: первый экран, который видит человек.
@@ -18,6 +19,7 @@ export function NotebookEmpty({ onAddUrl, onAddText, onAddFiles, extra }: {
   /** Третья дверь — «Собрать материал». Появляется только у тех, кто подключил поиск. */
   extra?: React.ReactNode;
 }) {
+  const { t } = useLanguage();
   return (
     <div style={{
       flex: 1, minHeight: 0, display: 'grid', placeItems: 'center',
@@ -31,18 +33,17 @@ export function NotebookEmpty({ onAddUrl, onAddText, onAddFiles, extra }: {
           ...DISPLAY, fontSize: 26, fontWeight: 700, letterSpacing: '-0.03em',
           margin: 0, color: 'var(--text-strong)',
         }}>
-          Соберите материал — блокнот ответит по нему
+          {t('Соберите материал — блокнот ответит по нему')}
         </h2>
         <p style={{ ...TEXT.body, color: 'var(--text-faint)', margin: 0 }}>
-          Добавьте ссылки, документы с диска или вставьте текст. Чат будет отвечать только по
-          ним, а «Студия» соберёт из них пересказ, карту, тест или документ.
+          {t('Добавьте ссылки, документы с диска или вставьте текст. Чат будет отвечать только по ним, а «Студия» соберёт из них пересказ, карту, тест или документ.')}
         </p>
         <div style={{
           display: 'flex', gap: sp(2), flexWrap: 'wrap', justifyContent: 'center', marginTop: sp(1),
         }}>
-          <button onClick={onAddUrl} style={btnTone}>Добавить ссылку</button>
-          <button onClick={onAddFiles} style={btnGhost}>Выбрать документы</button>
-          <button onClick={onAddText} style={btnGhost}>Вставить текст</button>
+          <button onClick={onAddUrl} style={btnTone}>{t('Добавить ссылку')}</button>
+          <button onClick={onAddFiles} style={btnGhost}>{t('Выбрать документы')}</button>
+          <button onClick={onAddText} style={btnGhost}>{t('Вставить текст')}</button>
           {extra}
         </div>
       </div>
@@ -52,12 +53,13 @@ export function NotebookEmpty({ onAddUrl, onAddText, onAddFiles, extra }: {
 
 /** Заглушка колонки источников, пока в ней ничего нет. */
 export function SourcesEmpty() {
+  const { t } = useLanguage();
   return (
     <div style={{
       display: 'grid', placeItems: 'center', padding: pad(6, 3), textAlign: 'center',
       borderRadius: RADIUS.box,
     }}>
-      <span style={{ ...TEXT.caption, color: 'var(--text-faint)' }}>Ничего не добавлено</span>
+      <span style={{ ...TEXT.caption, color: 'var(--text-faint)' }}>{t('Ничего не добавлено')}</span>
     </div>
   );
 }

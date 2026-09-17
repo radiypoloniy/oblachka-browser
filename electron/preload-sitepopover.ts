@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
+import { exposeUiLanguage } from './preload/uiLanguage';
 import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
 import type { ProfilesState } from '../shared/profiles';
 import type { AutomationRule } from '../shared/rules';
@@ -70,3 +71,4 @@ contextBridge.exposeInMainWorld('sitePopover', {
     return () => ipcRenderer.removeListener('site-popover:show', handler);
   },
 });
+exposeUiLanguage();

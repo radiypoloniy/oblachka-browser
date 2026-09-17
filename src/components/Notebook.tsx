@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useLanguage } from '../i18n';
 import {
   FileText, Plus, X, ArrowLeft, Sparkles, Network, BarChart3, ListChecks, Link2, AlignLeft,
   Loader2, RotateCw, Paperclip, ExternalLink, Newspaper,
@@ -55,7 +56,7 @@ const STUDIO: { kind: StudioKind; label: string; Icon: typeof FileText; hint: st
 ];
 
 export default function Notebook({ children, onBack }: NotebookProps) {
-  const [sources, setSources] = useState<NotebookSource[]>(() => loadSources());
+  const [sources, setSources] = useState<NotebookSource[]>(() => loadSources()); const { t } = useLanguage();
   // Готовые страницы этого блокнота. Перечитываются той же подпиской, что и источники.
   const [pages, setPages] = useState<SavedPage[]>(() => loadPages());
   // По умолчанию выбраны все (как в NotebookLM): loadSelectedIds()===null → берём все текущие id.
@@ -213,7 +214,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
               onAddUrl={() => setAdding('url')} onAddText={() => setAdding('text')}
               onAddFiles={() => void addFiles()}
               extra={gather.available
-                ? <button onClick={gather.start} style={btnGhost}>Собрать материал</button>
+                ? <button onClick={gather.start} style={btnGhost}>{t('Собрать материал')}</button>
                 : undefined}
             />
           : children}
@@ -278,6 +279,7 @@ function StudioResultModal({ state, chars, onClose, onStop }: {
   onClose: () => void;
   onStop: () => void;
 }) {
+  const { t, language } = useLanguage();
   const isMindmap = state.kind === 'mindmap';
   const isInfographic = state.kind === 'infographic';
   const isPage = state.kind === 'page';
@@ -298,7 +300,7 @@ function StudioResultModal({ state, chars, onClose, onStop }: {
           <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>{state.label}</span>
           {/* ⚠️ «Остановить» — СЛОВОМ, а не значком: это единственное действие, которым человек
               возвращает себе машину, и угадывать его по пиктограмме он не должен. */}
-          {state.busy && <button onClick={onStop} style={btnGhost}>Остановить</button>}
+          {state.busy && <button onClick={onStop} style={btnGhost}>{t('Остановить')}</button>}
           <button onClick={onClose} style={xBtn}><X size={16} /></button>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: wide ? 0 : '16px 20px' }}>
@@ -310,8 +312,8 @@ function StudioResultModal({ state, chars, onClose, onStop }: {
                   честно показывает, что работа идёт. Документ на 5–6 тысяч знаков собирается
                   минутами, и без этого признака жизни окно закрывают раньше времени. */}
               {isPage
-                ? <span>Пишу страницу… {chars > 0 && <b style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{chars.toLocaleString('ru-RU')} знаков</b>}</span>
-                : <span>Генерирую по источникам…</span>}
+                ? <span>{t('Пишу страницу…')} {chars > 0 && <b style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{t('{n} знаков', { n: chars.toLocaleString(language === 'en' ? 'en-US' : 'ru-RU') })}</b>}</span>
+                : <span>{t('Генерирую по источникам…')}</span>}
             </div>
           ) : state.error ? (
             <div style={{ color: 'var(--danger-500)', fontSize: 'var(--fs-sm)', padding: wide ? '16px 20px' : 0 }}>{state.error}</div>
@@ -345,7 +347,7 @@ function SourcesPanel({ sources, selected, adding, onAddingChange, onAdd, onAddF
   onRemove: (id: string) => void; onToggle: (id: string) => void;
   onRetry: (id: string) => void; onBack: () => void;
 }) {
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(''); const { t } = useLanguage();
   const submit = () => { if (value.trim()) { onAdd(value); setValue(''); onAddingChange(null); } };
 
   return (
@@ -359,7 +361,7 @@ function SourcesPanel({ sources, selected, adding, onAddingChange, onAdd, onAddF
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
           <textarea
             value={value} onChange={(e) => setValue(e.target.value)} autoFocus rows={3}
-            placeholder={adding === 'text' ? 'Вставьте текст…' : 'Вставьте адрес сайта или текст…'}
+            placeholder={adding === 'text' ? t('Вставьте текст…') : t('Вставьте адрес сайта или текст…')}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}
             style={{
               width: '100%', boxSizing: 'border-box', resize: 'vertical', minHeight: 60,
@@ -413,8 +415,8 @@ function SourcesPanel({ sources, selected, adding, onAddingChange, onAdd, onAddF
                   ) : (
                     <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
                   )}
-                  {loading && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>извлекается…</div>}
-                  {failed && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger-500)' }}>не удалось извлечь</div>}
+                  {loading && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{t('извлекается…')}</div>}
+                  {failed && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger-500)' }}>{t('не удалось извлечь')}</div>}
                 </div>
                 {failed && <button onClick={() => onRetry(s.id)} title="Повторить" style={xBtn}><RotateCw size={13} /></button>}
                 <button onClick={() => onRemove(s.id)} title="Удалить" style={xBtn}><X size={13} /></button>
@@ -435,12 +437,13 @@ function StudioPanel({ selectedCount, note, busyKind, pages, onGenerate, onOpenP
   onOpenPage: (p: SavedPage) => void;
   onDeletePage: (id: string) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <Panel title="Студия">
-      <CapsLabel>Материалы · {selectedCount} источн.</CapsLabel>
+      <CapsLabel>{t('Материалы · {n} источн.', { n: selectedCount })}</CapsLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {STUDIO.map(({ kind, label, Icon, hint }) => (
-          <button key={kind} onClick={() => onGenerate(kind)} title={hint}
+          <button key={kind} onClick={() => onGenerate(kind)} title={t(hint)}
             style={{
               display: 'flex', alignItems: 'center', gap: sp(3), textAlign: 'left', width: '100%',
               padding: pad(2, 3), borderRadius: RADIUS.box, border: 'none',
@@ -461,8 +464,8 @@ function StudioPanel({ selectedCount, note, busyKind, pages, onGenerate, onOpenP
                 : <Icon size={16} />}
             </span>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>{label}</div>
-              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{hint}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>{t(label)}</div>
+              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{t(hint)}</div>
             </div>
           </button>
         ))}
@@ -525,7 +528,7 @@ function Panel({ title, titleNode, action, onBack, children }: {
   /** Заголовок компонентом — у колонки источников там переключатель блокнотов. */
   titleNode?: ReactNode;
   action?: ReactNode; onBack?: () => void; children: ReactNode;
-}) {
+}) { const { t } = useLanguage();
   return (
     <div style={{
       ...islandPlate, borderRadius: 'var(--radius-island)', background: 'var(--surface-solid)',
@@ -535,9 +538,9 @@ function Panel({ title, titleNode, action, onBack, children }: {
         display: 'flex', alignItems: 'center', gap: sp(2), padding: pad(3, 4),
         borderBottom: '1px solid var(--divider)', flex: 'none',
       }}>
-        {onBack && <button onClick={onBack} title="Назад" style={xBtn}><ArrowLeft size={16} /></button>}
+        {onBack && <button onClick={onBack} title={t('Назад')} style={xBtn}><ArrowLeft size={16} /></button>}
         {titleNode ?? (
-          <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--text-strong)' }}>{title}</span>
+          <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--text-strong)' }}>{title ? t(title) : title}</span>
         )}
         {action}
       </div>
@@ -547,8 +550,9 @@ function Panel({ title, titleNode, action, onBack, children }: {
 }
 
 function IconButton({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
+  const { t } = useLanguage();
   return (
-    <button onClick={onClick} title={title} style={xBtn}
+    <button onClick={onClick} title={t(title)} style={xBtn}
       onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>{children}</button>
   );

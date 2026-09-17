@@ -258,7 +258,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
         borderBottom: '1px solid var(--divider-strong)', flex: 'none',
       }}>
         <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text-strong)', flex: 'none' }}>
-          Настройки
+          {t('Настройки')}
         </span>
 
         {/* Поиск по настройкам. Разделов девять, блоков внутри — десятки, и найти нужный

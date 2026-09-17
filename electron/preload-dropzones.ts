@@ -1,6 +1,7 @@
 // Минимальный preload оверлея зон дропа (src/dropzones.tsx). Вью только рисует подсветку по
 // присланному — своих решений не принимает и наружу ничего не шлёт.
 import { contextBridge, ipcRenderer } from 'electron'
+import { exposeUiLanguage } from './preload/uiLanguage'
 import type { ContentBounds, DragCard, SplitSwapHint } from '../shared/ipc'
 
 // Что подсвечивать (см. ZoneVisual в DropZoneManager.ts) — картинка, а не действие.
@@ -48,3 +49,4 @@ contextBridge.exposeInMainWorld('dropzones', {
     return () => ipcRenderer.removeListener('dropzones:tab', handler)
   },
 })
+exposeUiLanguage()

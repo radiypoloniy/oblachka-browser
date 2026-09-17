@@ -4,14 +4,14 @@ import {
   btnPrimary, btnGhost, TextField, InputRow, fieldFlex, InlineError, InlineHint, CapsLabel,
   SpotCard, InkFrame, MonoChip, FactGrid, Fact,
 } from './kit';
-import { sp } from '../../styles/system';
+import { sp } from '../../styles/system'; import { useLanguage } from '../../i18n';
 import type { BangsSnapshot, BangDefWire, DerivedBangCandidate } from '../../../shared/ipc';
 
 // Блок «Бэнги» раздела «Браузер». Только рисует то, что прислал main: разбор строки и
 // хранилище живут в electron/BangStore.ts + shared/bangs.ts.
 
 export default function BangsBlock() {
-  const [snap, setSnap] = useState<BangsSnapshot | null>(null);
+  const { t } = useLanguage(); const [snap, setSnap] = useState<BangsSnapshot | null>(null);
   const [key, setKey] = useState('');
   const [name, setName] = useState('');
   const [template, setTemplate] = useState('');
@@ -45,7 +45,7 @@ export default function BangsBlock() {
     setImportNote(null);
     const res = await window.oblako.importDuckDuckGoBangs();
     setImporting(false);
-    setImportNote(res.ok ? `Импортировано ${res.imported}` : (res.error ?? 'Не удалось импортировать'));
+    setImportNote(res.ok ? t('Импортировано {n}', { n: res.imported }) : t(res.error ?? 'Не удалось импортировать'));
     reload();
   }
 
@@ -65,7 +65,7 @@ export default function BangsBlock() {
       <FactGrid>
         <Fact
           label="Свои"
-          hint={snap.user.length > 0 ? `ключ !${snap.user[0]!.key} → ${snap.user[0]!.name}` : 'своих пока нет'}
+          hint={snap.user.length > 0 ? `!${snap.user[0]!.key} → ${snap.user[0]!.name}` : t('своих пока нет')}
           value={snap.user.length > 0 ? String(snap.user.length) : '—'}
           active={snap.user.length > 0}
         />
@@ -113,7 +113,7 @@ export default function BangsBlock() {
             icon={<Wand2 size={18} />}
             title="Распознать поиск на открытых сайтах"
             subtitle="Откройте сайт, найдите на нём что-нибудь — шаблон соберётся по адресу результатов."
-            actions={<button style={btnPrimary} onClick={() => void detect()}>Распознать</button>}
+            actions={<button style={btnPrimary} onClick={() => void detect()}>{t('Распознать')}</button>}
           />
         ) : found.length === 0 ? (
           <InlineHint>
@@ -134,7 +134,7 @@ export default function BangsBlock() {
                 <button style={btnPrimary} onClick={() => {
                   setKey(c.key); setName(c.name); setTemplate(c.template); setError(null); setFound(null);
                 }}>
-                  Заполнить
+                  {t('Заполнить')}
                 </button>
               }
             />
@@ -158,7 +158,7 @@ export default function BangsBlock() {
             />
             <button style={btnPrimary} onClick={() => void add()} disabled={!key || !template}>
               <Plus size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
-              Добавить
+              {t('Добавить')}
             </button>
           </InputRow>
           {error && <InlineError>{error}</InlineError>}
@@ -186,7 +186,7 @@ export default function BangsBlock() {
                 <button style={btnGhost} onClick={() => void clearImported()}>Удалить</button>
               )}
               <button style={btnPrimary} onClick={() => void importDdg()} disabled={importing}>
-                {importing ? 'Загрузка…' : snap.importedCount > 0 ? 'Обновить' : 'Скачать'}
+                {importing ? t('Загрузка…') : snap.importedCount > 0 ? t('Обновить') : t('Скачать')}
               </button>
             </div>
           }

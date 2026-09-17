@@ -15,6 +15,7 @@ import { buildGroundingPrompt, searxngSearch } from '../SearxngSearch';
 import * as skillsStore from '../SkillsStore';
 import type { ChatOutcome } from '../TranslationService';
 import { broadcastToChrome } from '../WindowRegistry';
+import { uiLanguage } from '../uiText';
 import { dialog, ipcMain } from 'electron';
 import fsp from 'node:fs/promises';
 import * as FileStore from '../ai/FileStore';
@@ -68,9 +69,10 @@ export function registerAiHubIpc(d: IpcDeps): void {
       // Грунтинг блокнота: подмешиваем текст выбранных источников в промпт (модель отвечает по ним),
       // но в истории/показе остаётся сырой вопрос пользователя. sources пуст → ссылки не дописываются.
       if (sourcesContext && sourcesContext.trim()) {
-        const promptText =
-          'Отвечай, опираясь на приведённые источники. Если ответа в них нет — так и скажи, не выдумывай.\n\n'
-          + sourcesContext + '\n\nВопрос: ' + text;
+        const promptText = (uiLanguage() === 'en'
+          ? 'Answer from the sources below. If they do not contain the answer, say so — do not invent.\n\n'
+          : 'Отвечай, опираясь на приведённые источники. Если ответа в них нет — так и скажи, не выдумывай.\n\n')
+          + sourcesContext + '\n\n' + (uiLanguage() === 'en' ? 'Question: ' : 'Вопрос: ') + text;
         const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, { promptText, sources: [] }, role);
         sendResult(sessionId, outcome);
         return;

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { CAPS, COL, RADIUS, TEXT, motion, pad, sp, well } from '../../styles/system';
+import { useLanguage, tx } from '../../i18n';
 
 // ── Строка списка и полоса-мера ───────────────────────────────────────────────
 //
@@ -62,7 +63,7 @@ export function SpotLine({ title, hint, control, cols, colWidths }: {
   cols?: ReactNode[];
   /** По умолчанию все колонки COL.num. Порядок тот же, что у cols. */
   colWidths?: number[];
-}) {
+}) { const { t } = useLanguage();
   const widths = (cols ?? []).map((_, i) => colWidths?.[i] ?? COL.num);
   // ⚠️ Колонка действия ФИКСИРОВАННАЯ, когда есть числовые колонки: при `auto` строка с
   // кнопкой и строка без неё дают разную ширину, и числа в первых уезжают влево — таблица
@@ -76,20 +77,20 @@ export function SpotLine({ title, hint, control, cols, colWidths }: {
     }}>
       <div style={{ minWidth: 0, overflow: 'hidden' }}>
         <div
-          title={typeof title === 'string' ? title : undefined}
+          title={typeof title === 'string' ? t(title) : undefined}
           style={{
             ...TEXT.body, fontWeight: 650, color: 'var(--text-strong)',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}
-        >{title}</div>
+        >{tx(t, title)}</div>
         {hint && (
           <div
-            title={typeof hint === 'string' ? hint : undefined}
+            title={typeof hint === 'string' ? t(hint) : undefined}
             style={{
               ...TEXT.caption, color: 'var(--text-muted)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}
-          >{hint}</div>
+          >{tx(t, hint)}</div>
         )}
       </div>
       {(cols ?? []).map((c, i) => (

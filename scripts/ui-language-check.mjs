@@ -1,4 +1,4 @@
-import { initialUiLanguage, isUiLanguage } from '../shared/uiLanguage.ts';
+import { dateLocale, initialUiLanguage, isUiLanguage } from '../shared/uiLanguage.ts';
 
 let passed = 0;
 let failed = 0;
@@ -14,6 +14,8 @@ check('явный русский выбор нового профиля', initia
 check('явный английский выбор старого профиля', initialUiLanguage('en', true), 'en');
 check('битая настройка в старом профиле', initialUiLanguage('xx', true), 'ru');
 check('строгая проверка допустимых языков', isUiLanguage('EN'), false);
+check('английский locale дат', dateLocale('en'), 'en-US');
+check('русский locale дат', dateLocale('ru'), 'ru-RU');
 
 console.log(`Итого: ${passed} прошло, ${failed} не прошло`);
 if (failed) process.exitCode = 1;

@@ -9,7 +9,7 @@
 // целиком при каждом onContext (переключили вкладку → другая лента, не дописывание к старой).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { StandaloneLanguageProvider } from './i18n';
+import { StandaloneLanguageProvider, useLanguage } from './i18n';
 import { Sparkles, LayoutGrid, Plus } from 'lucide-react';
 import './styles/global.css';
 import { AiActivityPill } from './aipanel/AiActivityPill';
@@ -46,13 +46,13 @@ import './aipanel/contract';
 
 
 function AiPanel() {
-  // Беседа целиком — подписки на main, лента, признаки занятости и три способа отправки.
-  const {
+  const { t } = useLanguage(); const {
     tabId, pageTitle, pageUrl, pageFavicon, modelState,
     messages, streamedText, sending, error, errorCode,
     skills, factCheckAvailable, factChecking, searxngConfigured, webSearching,
     sendText, sendQuickTranslate, sendFactCheck,
   } = useAiChat()
+  // Беседа целиком — подписки на main, лента, признаки занятости и три способа отправки.
 
   const [input, setInput] = useState('')
   // Ошибка загрузки favicon — чисто про <img> в шапке, к беседе отношения не имеет.
@@ -161,7 +161,7 @@ function AiPanel() {
   const settingsChip = (
     <button
       onClick={() => window.aiPanel.openSettings('ai')}
-      title="Настроить AI"
+      title={t('Настроить AI')}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         flexShrink: 0,
@@ -410,7 +410,7 @@ function ModeToggle({ mode, onChange }: { mode: 'chat' | 'apps'; onChange: (m: '
 function ModeButton({ active, onClick, icon, label, refCb }: {
   active: boolean; onClick: () => void;
   icon: JSX.Element; label: string; refCb: (el: HTMLButtonElement | null) => void;
-}) {
+}) { const { t } = useLanguage();
   return (
     <button
       ref={refCb}
@@ -426,7 +426,7 @@ function ModeButton({ active, onClick, icon, label, refCb }: {
         touchAction: 'none',
       }}
     >
-      {icon}{label}
+      {icon}{t(label)}
     </button>
   );
 }

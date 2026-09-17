@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
+import { exposeUiLanguage } from './preload/uiLanguage';
 import type { PasswordIndicatorState } from '../shared/ipc';
 
 contextBridge.exposeInMainWorld('passwordPopover', {
@@ -16,3 +17,4 @@ contextBridge.exposeInMainWorld('passwordPopover', {
     return () => ipcRenderer.removeListener(IPC.PASSWORD_POPOVER_SHOW, handler);
   },
 });
+exposeUiLanguage();

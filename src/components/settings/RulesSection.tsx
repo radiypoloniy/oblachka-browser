@@ -3,7 +3,7 @@ import { sp, pad } from '../../styles/system';
 import { Wand2, Trash2, Info } from 'lucide-react';
 import Toggle from '../Toggle';
 import {
-  describeRule, actionSpec, triggerSpec, normalizeRuleDomain, hostOfUrl,
+  actionSpec, normalizeRuleDomain, hostOfUrl,
   TRIGGERS, ACTIONS, RULES_MAX, GROUP_NAME_MAX,
   ZOOM_PERCENT_MIN, ZOOM_PERCENT_MAX, ZOOM_PERCENT_DEFAULT,
 } from '../../../shared/rules';
@@ -13,7 +13,7 @@ import {
   btnPrimary, btnGhost, InlineError, InlineHint, Favicon, OptionList, OptionRow,
   Panel, IconBtn, settingsBox, SliderRow,
 } from './kit';
-import { EmptyState } from '../EmptyState';
+import { EmptyState } from '../EmptyState'; import { useLanguage } from '../../i18n';
 
 // Раздел «Правила» — правила-автоматизации (см. shared/rules.ts, RuleEngine.ts, RuleParser.ts).
 //
@@ -67,6 +67,21 @@ function GroupField({ value, onChange, onEnter }: {
  * ⚠️ Отдельным компонентом, а не разметкой внутри формы: RulesSection стоит в базе храповика
  * структуры, и место под новое поле освобождается выносом.
  */
+function describeRuleUi(rule: AutomationRule, t: (s: string, vars?: Record<string, string | number>) => string): string {
+  const head = rule.trigger.kind === 'site'
+    ? t('когда открываю страницу на {d}', { d: rule.trigger.domain })
+    : t('когда перехожу по ссылке с {d}', { d: rule.trigger.domain });
+  const cap = head.charAt(0).toUpperCase() + head.slice(1);
+  const action = rule.action.kind === 'group' ? t('класть вкладку в группу «{name}»', { name: rule.action.groupName ?? '' })
+    : rule.action.kind === 'pin' ? t('закреплять вкладку')
+    : rule.action.kind === 'translate' ? t('переводить страницу')
+    : rule.action.kind === 'zoom' ? t('открывать с масштабом {n}%', { n: rule.action.zoomPercent ?? ZOOM_PERCENT_DEFAULT })
+    : rule.action.kind === 'mute' ? t('открывать без звука')
+    : rule.action.kind === 'adblock-off' ? t('не блокировать рекламу на этом сайте')
+    : t('включать VPN и перезагружать страницу');
+  return `${cap} — ${action}`;
+}
+
 function ZoomField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <div style={{ marginTop: sp(3) }}>
@@ -96,7 +111,7 @@ function RulesEmpty() {
 }
 
 export default function RulesSection() {
-  const [rules, setRules] = useState<AutomationRule[] | null>(null);
+  const { t } = useLanguage(); const [rules, setRules] = useState<AutomationRule[] | null>(null);
   const [error, setError] = useState('');
 
   // ── Форма ──
@@ -297,11 +312,11 @@ export default function RulesSection() {
               fontSize: 'var(--fs-sm)',
               color: preview ? 'var(--text-strong)' : 'var(--text-faint)',
             }}>
-              {preview ? describeRule(preview) : `${triggerSpec(trigger)?.describe('…')} — …`}
+              {preview ? describeRuleUi(preview, t) : `${t(trigger === 'site' ? 'когда открываю страницу на {d}' : 'когда перехожу по ссылке с {d}', { d: '…' })} — …`}
             </span>
             <button onClick={() => void createFromForm()} disabled={!formValid}
               style={{ ...btnPrimary, opacity: formValid ? 1 : 0.5, flex: 'none' }}>
-              Создать правило
+              {t('Создать правило')}
             </button>
           </div>
         </Panel>
@@ -323,7 +338,7 @@ export default function RulesSection() {
           />
           <button onClick={() => void parse()} disabled={busy || !phrase.trim()}
             style={{ ...btnGhost, opacity: busy || !phrase.trim() ? 0.5 : 1 }}>
-            {busy ? 'Разбираю…' : 'Разобрать'}
+            {busy ? t('Разбираю…') : t('Разобрать')}
           </button>
         </InputRow>
 
@@ -336,11 +351,11 @@ export default function RulesSection() {
             <div style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
               <Wand2 size={16} style={{ color: 'var(--accent)', flex: 'none' }} />
               <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-                Так понял браузер
+                {t('Так понял браузер')}
               </span>
             </div>
             <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
-              {describeRule(draftPreview)}
+              {describeRuleUi(draftPreview, t)}
             </div>
             {draft.action.kind === 'group' && (
               <TextField
@@ -359,7 +374,7 @@ export default function RulesSection() {
             )}
             <div style={{ display: 'flex', gap: sp(2) }}>
               <button onClick={() => void confirmDraft()} style={btnPrimary}>Создать правило</button>
-              <button onClick={() => setDraft(null)} style={btnGhost}>Отмена</button>
+              <button onClick={() => setDraft(null)} style={btnGhost}>{t('Отмена')}</button>
             </div>
           </div>
         )}
@@ -385,7 +400,7 @@ export default function RulesSection() {
                 <Favicon host={rule.trigger.domain} size={20} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
-                    {describeRule(rule)}
+                    {describeRuleUi(rule, t)}
                   </div>
                   {/* Исходная фраза есть только у правил, созданных словами, — она объясняет замысел. */}
                   {rule.phrase && (

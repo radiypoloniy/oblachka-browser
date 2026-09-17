@@ -1,3 +1,4 @@
+import { useLanguage } from '../../i18n';
 import { OptionList, OptionRow, Segmented, Subsection } from './kit';
 import { TEXT, sp } from '../../styles/system';
 import { AI_ROLES, ROLE_INFO, cloudAllowed, cloudFitNote, hasChoice, LOCAL_ID } from '../../../shared/aiRouting';
@@ -21,6 +22,7 @@ import type { AiConnectionsState } from '../../../shared/ipc';
  * десять говорят «на этой машине», не сообщает ничего.
  */
 export function AiRolesBlock({ state }: { state: AiConnectionsState | null }) {
+  const { t } = useLanguage();
   if (state === null || !hasChoice({ connections: state.connections })) return null;
 
   // ⚠️ «Здесь», а не «На этой машине»: подпись живёт в сегменте рядом с именами подключений, и
@@ -45,7 +47,7 @@ export function AiRolesBlock({ state }: { state: AiConnectionsState | null }) {
             <OptionRow
               key={role}
               title={info.label}
-              subtitle={open ? `Наружу уходит: ${info.leaves}` : cloudFitNote(role) ?? ''}
+              subtitle={open ? t('Наружу уходит: {what}', { what: t(info.leaves) }) : t(cloudFitNote(role) ?? '')}
               actions={open ? (
                 <Segmented
                   value={state.routing[role] ?? LOCAL_ID}

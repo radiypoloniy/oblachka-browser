@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
+import { exposeUiLanguage } from './preload/uiLanguage';
 import type { ResourceSnapshot, ThemePrefs } from '../shared/ipc';
 
 // Мост окна диспетчера задач (Shift+Esc).
@@ -25,3 +26,4 @@ contextBridge.exposeInMainWorld('taskManager', {
 
   getTheme: () => ipcRenderer.invoke(IPC.THEME_GET) as Promise<ThemePrefs>,
 });
+exposeUiLanguage();

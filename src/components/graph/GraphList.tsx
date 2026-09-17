@@ -1,6 +1,7 @@
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { GraphMeta } from '../../../shared/graph';
+import { useLanguage } from '../../i18n';
 
 /**
  * Левая панель холста: список воркспейсов, переименование по месту, удаление и возврат из графа.
@@ -24,6 +25,7 @@ export default function GraphList({
   commitRename: () => void;
   deleteWorkspace: (graphId: number) => void;
 }) {
+  const { t } = useLanguage();
   return (
   <aside
     style={{
@@ -37,7 +39,7 @@ export default function GraphList({
       <button
         type="button"
         onClick={onBack}
-        title="Выйти из графов — к новой вкладке"
+        title={t('Выйти из графов — к новой вкладке')}
         style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           width: 26, height: 26, flex: 'none',
@@ -58,7 +60,7 @@ export default function GraphList({
       <button
         type="button"
         onClick={() => onNewGraph()}
-        title="Новый воркспейс"
+        title={t('Новый воркспейс')}
         style={{
           marginLeft: 'auto', display: 'inline-flex', background: 'none', border: 0,
           padding: 4, borderRadius: '50%', color: 'var(--text-body)', cursor: 'pointer',
@@ -118,7 +120,7 @@ export default function GraphList({
           {renamingId !== meta.id && (
             <button
               type="button"
-              title="Переименовать"
+              title={t('Переименовать')}
               onClick={(e) => {
                 e.stopPropagation();
                 setRenameDraft(meta.title);
@@ -136,7 +138,7 @@ export default function GraphList({
           )}
           <button
             type="button"
-            title="Удалить воркспейс"
+            title={t('Удалить воркспейс')}
             onClick={(e) => { e.stopPropagation(); void deleteWorkspace(meta.id); }}
             // Цель клика 26×26, а не по размеру иконки: с прежними 17 пикселями в
             // корзину приходилось целиться, и промах читался как «кнопка не работает».

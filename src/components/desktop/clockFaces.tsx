@@ -1,7 +1,13 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { Pause, Play } from 'lucide-react';
 import { dayPhase, skyStops, type DayPhase } from '../../../shared/dayPhase';
+import { dateLocale, isUiLanguage } from '../../../shared/uiLanguage';
 import { CAPS, RADIUS, TEXT, cardGlass, motion, pad, sp } from '../../styles/system';
+
+function uiDateLocale(): string {
+  const lang = typeof document === 'undefined' ? 'ru' : document.documentElement.lang;
+  return dateLocale(isUiLanguage(lang) ? lang : 'ru');
+}
 
 // Лица часов: аналог для стола и три широких варианта для стенда.
 // Дугу дня сюда не тащим — владелец назвал её посредственной; широкие часы держатся набором.
@@ -88,20 +94,26 @@ function BluntHand({ angle, length, width }: { angle: number; length: number; wi
   );
 }
 
-export function hhmm(now: Date): string {
-  return now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', hour12: false });
+export function hhmm(now: Date, locale = uiDateLocale()): string {
+  return now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function weekdayLong(now: Date): string {
-  return now.toLocaleDateString('ru-RU', { weekday: 'long' });
+function weekdayLong(now: Date, locale = uiDateLocale()): string {
+  return now.toLocaleDateString(locale, { weekday: 'long' });
 }
 
-function weekdayShort(now: Date): string {
-  return now.toLocaleDateString('ru-RU', { weekday: 'short' }).replace('.', '');
+function weekdayShort(now: Date, locale = uiDateLocale()): string {
+  return now.toLocaleDateString(locale, { weekday: 'short' }).replace('.', '');
 }
 
-function monthLong(now: Date): string {
-  return now.toLocaleDateString('ru-RU', { month: 'long' });
+function monthLong(now: Date, locale = uiDateLocale()): string {
+  return now.toLocaleDateString(locale, { month: 'long' });
+}
+
+// 1 января 2024 — понедельник; сетка monthCells тоже с понедельника, не с воскресенья en-US.
+function weekLetters(locale: string): string[] {
+  return [1, 2, 3, 4, 5, 6, 7].map((day) =>
+    new Date(2024, 0, day).toLocaleDateString(locale, { weekday: 'narrow' }).replace('.', ''));
 }
 
 const tileShell = (extra?: CSSProperties): CSSProperties => ({
@@ -118,13 +130,13 @@ const tileShell = (extra?: CSSProperties): CSSProperties => ({
 const CLOCK_WIDTH: [number, number] = [62, 125];
 
 /** (1) Время — набор на всю плитку. Небо фазы только подложка, без дуги. */
-export function WideTypeClock({ now, sunrise, sunset }: {
-  now: Date; sunrise: number; sunset: number;
+export function WideTypeClock({ now, sunrise, sunset, locale = uiDateLocale() }: {
+  now: Date; sunrise: number; sunset: number; locale?: string;
 }) {
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const phase: DayPhase = dayPhase(nowMin, sunrise, sunset);
   const [top, mid, low] = skyStops(phase);
-  const time = hhmm(now);
+  const time = hhmm(now, locale);
   return (
     <div style={tileShell({
       padding: pad(4),
@@ -133,7 +145,7 @@ export function WideTypeClock({ now, sunrise, sunset }: {
       color: '#fff',
       transition: motion.enter('background'),
     })}>
-      <div style={{ ...CAPS, color: 'inherit', opacity: 0.78 }}>{weekdayLong(now)}</div>
+      <div style={{ ...CAPS, color: 'inherit', opacity: 0.78 }}>{weekdayLong(now, locale)}</div>
       {/* ⚠️ Время набирается ГАРНИТУРОЙ С ОСЬЮ ШИРИНЫ (--font-clock), а не растянутым дисплейным.
           Растяжение плющило цифры — «шрифт не очень выглядит в растянутой позиции»; ось ширины
           даёт настоящее широкое начертание, и в узкой плитке она же поджимается обратно. */}
@@ -143,7 +155,7 @@ export function WideTypeClock({ now, sunrise, sunset }: {
         </div>
       </div>
       <div style={{ ...TEXT.body, color: 'inherit', opacity: 0.82, fontWeight: 600 }}>
-        {now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+        {now.toLocaleDateString(locale, { day: 'numeric', month: 'long' })}
       </div>
     </div>
   );
@@ -162,8 +174,8 @@ export function WideTypeClock({ now, sunrise, sunset }: {
  * ⚠️ Число даты набирается подгоном (FitLine), а не кеглем: на 4×2 и 4×4 одна и та же цифра
  * иначе выглядит то крупной, то потерянной.
  */
-export function WideClusterClock({ now, seconds }: { now: Date; seconds: boolean }) {
-  const time = hhmm(now);
+export function WideClusterClock({ now, seconds, locale = uiDateLocale() }: { now: Date; seconds: boolean; locale?: string }) {
+  const time = hhmm(now, locale);
   const [top, topBox] = useBoxSize<HTMLDivElement>();
   // Циферблат вписан в высоту ряда: он круглый, и ширина ему нужна ровно такая же.
   const dial = Math.max(0, topBox.h);
@@ -185,7 +197,7 @@ export function WideClusterClock({ now, seconds }: { now: Date; seconds: boolean
           display: 'flex', flexDirection: 'column', gap: sp(1),
         }}>
           <div style={{ ...CAPS, color: 'inherit', opacity: 0.5, flex: 'none' }}>
-            {weekdayShort(now)}
+            {weekdayShort(now, locale)}
           </div>
           {/* Выключка влево, как на рефе: «вс» и число читаются одним столбцом, а не вразнобой. */}
           <div style={{ flex: 1, minHeight: 0 }}>
@@ -365,7 +377,7 @@ function useBoxSize<T extends HTMLElement>(): [RefObject<T>, { w: number; h: num
  * слово месяца короткое («май» иначе оставляет полплитки пустой). Он же делает узнаваемым
  * набор из двенадцати плиток: у каждой свой номер, а не только своё слово.
  */
-export function CalendarFace({ now }: { now: Date }) {
+export function CalendarFace({ now, locale = uiDateLocale() }: { now: Date; locale?: string }) {
   const cells = monthCells(now);
   const today = now.getDate();
   const num = String(now.getMonth() + 1).padStart(2, '0');
@@ -409,7 +421,7 @@ export function CalendarFace({ now }: { now: Date }) {
           Доля ширины у него постоянная — так номер остаётся вторым фокусом на любом размере. */}
       <div style={{ display: 'flex', alignItems: 'stretch', gap: sp(3), flex: 'none', height: tiny ? '22%' : '26%' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <FitLine text={monthLong(now)} upper />
+          <FitLine text={monthLong(now, locale)} upper />
         </div>
         {/* ⚠️ Номер тональный (та же краска, тише), а НЕ акцентный. Акцентом он пропадал
             начисто, когда человек выбирал плитке акцентную заливку: акцент на акценте. Реф
@@ -432,7 +444,7 @@ export function CalendarFace({ now }: { now: Date }) {
           gap: sp(1) - 2, flex: 1, minHeight: 0,
         }}
       >
-        {WEEK_LETTERS.map((d, i) => (
+        {weekLetters(locale).map((d, i) => (
           <div key={`h${i}`} style={{
             ...CAPS, color: 'inherit', opacity: 0.38, textAlign: 'center',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -472,8 +484,6 @@ export function CalendarFace({ now }: { now: Date }) {
     </div>
   );
 }
-
-const WEEK_LETTERS = ['п', 'в', 'с', 'ч', 'п', 'с', 'в'];
 
 // Фон текущей плитки. ⚠️ Переменную объявляет сама плитка (Tile в widgets.tsx) — лицо не может
 // знать, что под ним: тема, выбранная человеком заливка, стекло или акцент героя. Фолбэк на

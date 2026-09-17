@@ -11,7 +11,7 @@ import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/Gr
 import NodeLibrary, { LibraryHandle } from './graph/NodeLibrary';
 import RunBar from './graph/RunBar';
 import { groundGrain } from '../styles/island';
-import { documentIsDark } from '../newtab/gradients';
+import { documentIsDark } from '../newtab/gradients'; import { useLanguage } from '../i18n';
 import { useGraphNodeActions } from './graph/useGraphNodeActions';
 import { useGraphWebApps } from './graph/useGraphWebApps';
 import { useGraphDoc } from './graph/useGraphDoc';
@@ -42,7 +42,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   // Тема нужна только силе зерна. Читаем атрибут корня, а не тянем useChromeAppearance: тот
   // помимо признака темы правит землю окна и полосу системных кнопок — побочные действия,
   // которым на холсте графа делать нечего.
-  const dark = documentIsDark();
+  const dark = documentIsDark(); const { t } = useLanguage();
   // Библиотека открыта по умолчанию: без неё на пустом холсте не видно, с чего начинать.
   const [libraryOpen, setLibraryOpen] = useState(true);
   // Документ: список холстов, открытый холст, его узлы и связи, ход прогона и автосейв
@@ -273,7 +273,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   );
 
   const createWorkspace = async (template: GraphTemplate | null) => {
-    const meta = await window.oblako.createGraph(template ? template.label : 'Новый граф');
+    const meta = await window.oblako.createGraph(template ? template.label : t('Новый граф'));
     if (!meta) return;
     if (template) {
       const idMap = new Map(template.nodes.map((n) => [n.id, crypto.randomUUID()]));

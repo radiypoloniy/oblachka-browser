@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLanguage } from '../../i18n'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core'
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
@@ -23,11 +24,12 @@ function AppIcon({ app, opened, labelTone, dragging, onOpen, onMenu }: {
   onOpen?: () => void
   onMenu?: (x: number, y: number) => void
 }) {
+  const { t } = useLanguage()
   return (
     <button
       onClick={onOpen}
       onContextMenu={(e) => { e.preventDefault(); onMenu?.(e.clientX, e.clientY) }}
-      title={app.label}
+      title={t(app.label)}
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
         width: '100%', minWidth: 0, padding: 0,
@@ -54,7 +56,7 @@ function AppIcon({ app, opened, labelTone, dragging, onOpen, onMenu }: {
           : labelTone === 'dark' ? 'var(--app-label-dark)' : 'var(--text-body)',
         textShadow: labelTone === 'light' ? 'var(--app-label-shadow)' : undefined,
       }}>
-        {app.label}
+        {t(app.label)}
       </span>
     </button>
   )
@@ -107,6 +109,7 @@ export function IconMenu({ app, x, y, opened, onOpen, onClose, onHide, onRemove,
   onRemove: () => void
   onDismiss: () => void
 }) {
+  const { t } = useLanguage()
   // Своё приложение человек добавил сам — его можно удалить насовсем. Встроенное только прячется.
   const isCustom = app.id.startsWith('web:custom-')
   const items: { label: string; act: () => void; danger?: boolean }[] = [
@@ -135,7 +138,7 @@ export function IconMenu({ app, x, y, opened, onOpen, onClose, onHide, onRemove,
           padding: '4px 8px 6px', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
-          {app.label}
+          {t(app.label)}
         </div>
         {items.map((it) => (
           <button
@@ -149,7 +152,7 @@ export function IconMenu({ app, x, y, opened, onOpen, onClose, onHide, onRemove,
               color: it.danger ? 'var(--danger-500)' : 'var(--text-body)',
             }}
           >
-            {it.label}
+            {t(it.label)}
           </button>
         ))}
       </div>

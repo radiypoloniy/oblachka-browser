@@ -11,7 +11,7 @@ import { SectionHeader, Subsection, OptionList, OptionRow, Segmented, TextField,
 } from './kit';
 import ProfileAvatar, { AVATAR_EMOJI } from '../ProfileAvatar';
 import { readFileDataUrl, shrinkAvatarPhoto } from '../profileAvatarPhoto';
-import { RADIUS, TEXT, motion, selected, sp } from '../../styles/system';
+import { RADIUS, TEXT, motion, selected, sp } from '../../styles/system'; import { useLanguage } from '../../i18n';
 
 // Сторона кнопки эмодзи в наборе. Не из шкалы отступов: это площадь НАЖАТИЯ, а не воздух,
 // и мельче 32 в неё не попасть мышью с первого раза (правило Fitts, тот же размер у кнопок
@@ -76,7 +76,7 @@ const VPN_OPTIONS: { id: ProfileVpn; label: string; hint: string }[] = [
 ];
 
 export default function ProfilesSection() {
-  const [state, setState] = useState<ProfilesState | null>(null);
+  const { t } = useLanguage(); const [state, setState] = useState<ProfilesState | null>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -139,11 +139,11 @@ export default function ProfilesSection() {
               eyebrow={`дело · ${fileNo(state.profiles.indexOf(featured))}`}
               icon={<ProfileAvatar profile={featured} size={56} />}
               title={featured.name}
-              subtitle={subtitleFor(featured, pinned === featured.id, state.activeId === featured.id)}
+              subtitle={subtitleFor(featured, pinned === featured.id, state.activeId === featured.id, t)}
               selected
               fields={fieldsFor(featured)}
               mark={state.activeId === featured.id
-                ? <span style={{ ...TEXT.caption, color: 'var(--success-500)', fontWeight: 700 }}>Активен</span>
+                ? <span style={{ ...TEXT.caption, color: 'var(--success-500)', fontWeight: 700 }}>{t('Активен')}</span>
                 : undefined}
             />
           )}
@@ -157,7 +157,7 @@ export default function ProfilesSection() {
                   eyebrow={`дело · ${fileNo(state.profiles.indexOf(p))}`}
                   icon={<ProfileAvatar profile={p} size={40} />}
                   title={p.name}
-                  subtitle={subtitleFor(p, pinned === p.id, state.activeId === p.id)}
+                  subtitle={subtitleFor(p, pinned === p.id, state.activeId === p.id, t)}
                   selected={false}
                   onClick={() => setOpenId(p.id)}
                   actions={p.id !== DEFAULT_PROFILE_ID ? (
@@ -203,7 +203,7 @@ export default function ProfilesSection() {
         />
 
         <InkFrame
-          title={`Настройки «${featured.name}»`}
+          title={t('Настройки «{name}»', { name: featured.name === 'Основной' ? t('Основной') : featured.name })}
           hint="Карточка показывает, кто это. Здесь — что ему можно. Основной профиль нельзя удалить и нельзя просить стирать логины при выходе."
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4) }}>
@@ -333,7 +333,7 @@ export default function ProfilesSection() {
             {state.profiles.map((p) => (
               <OptionRow
                 key={p.id}
-                title={`Всегда «${p.name}»`}
+                title={t('Всегда «{name}»', { name: p.name === 'Основной' ? t('Основной') : p.name })}
                 subtitle="Запускаться с этим профилем и не спрашивать"
                 active={pinned === p.id}
                 onClick={() => { void window.oblako.setStartupProfile(p.id).then(setState); }}
@@ -362,18 +362,18 @@ function langIdOf(p: Profile): string {
   return LANG_OPTIONS.find((o) => o.value === p.settings.lang)?.id ?? 'inherit';
 }
 
-function subtitleFor(p: Profile, isPinned: boolean, isActive: boolean): string {
+function subtitleFor(p: Profile, isPinned: boolean, isActive: boolean, t: (s: string) => string): string {
   const parts: string[] = [];
-  if (isActive) parts.push('Активен');
-  if (isPinned) parts.push('Открывается при запуске');
+  if (isActive) parts.push(t('Активен'));
+  if (isPinned) parts.push(t('Открывается при запуске'));
   const vpn = VPN_OPTIONS.find((o) => o.id === p.settings.vpn);
-  if (p.settings.vpn !== 'inherit' && vpn) parts.push(vpn.label);
   // ⚠️ Про очистку сказано В СПИСКЕ, а не только внутри «Настроить»: это единственная настройка
   // профиля, которая ТЕРЯЕТ данные, и узнавать о ней, раскрыв карточку, поздно.
-  if (p.settings.clearOnExit && p.id !== DEFAULT_PROFILE_ID) parts.push('Стирает логины при выходе');
-  if (p.settings.ua === 'mobile') parts.push('Мобильные версии');
-  if (p.look.theme || p.look.palette) parts.push('Свой облик');
-  return parts.join(' · ') || 'Свои куки и логины';
+  if (p.settings.vpn !== 'inherit' && vpn) parts.push(t(vpn.label));
+  if (p.settings.clearOnExit && p.id !== DEFAULT_PROFILE_ID) parts.push(t('Стирает логины при выходе'));
+  if (p.settings.ua === 'mobile') parts.push(t('Мобильные версии'));
+  if (p.look.theme || p.look.palette) parts.push(t('Свой облик'));
+  return parts.join(' · ') || t('Свои куки и логины');
 }
 
 function fieldsFor(p: Profile): { label: string; value: string }[] {

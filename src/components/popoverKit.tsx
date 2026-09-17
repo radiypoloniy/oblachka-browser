@@ -1,6 +1,7 @@
 import type React from 'react';
 import { RADIUS, TEXT, sp, pad, motion } from '../styles/system';
 import { overlayPlate } from '../styles/island';
+import { useLanguage, tx } from '../i18n';
 
 // ── Набор для поповеров ───────────────────────────────────────────────────────────────────────
 //
@@ -108,13 +109,13 @@ export function PopoverIcon({ children }: { children: React.ReactNode }) {
 }
 
 /** Заголовок карточки: роль section, без собственного кегля. */
-export function PopoverTitle({ children }: { children: React.ReactNode }) {
-  return <div style={{ ...TEXT.section }}>{children}</div>;
+export function PopoverTitle({ children }: { children: React.ReactNode }) { const { t } = useLanguage();
+  return <div style={{ ...TEXT.section }}>{tx(t, children)}</div>;
 }
 
 /** Пояснение под заголовком — что произойдёт, если согласиться. */
-export function PopoverHint({ children }: { children: React.ReactNode }) {
-  return <div style={{ ...TEXT.body, color: 'var(--text-muted)' }}>{children}</div>;
+export function PopoverHint({ children }: { children: React.ReactNode }) { const { t } = useLanguage();
+  return <div style={{ ...TEXT.body, color: 'var(--text-muted)' }}>{tx(t, children)}</div>;
 }
 
 /**
@@ -141,7 +142,7 @@ export function PopoverRow({ icon, title, hint, trailing, selected, onClick, dis
    * где строк несколько и глазу нужно понять, что это перечень.
    */
   index?: number;
-}) {
+}) { const { t } = useLanguage();
   return (
     <button
       className="popover-row"
@@ -175,9 +176,9 @@ export function PopoverRow({ icon, title, hint, trailing, selected, onClick, dis
         <span style={{
           display: 'block', color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', fontWeight: 500,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{title}</span>
+        }}>{tx(t, title)}</span>
         {hint !== undefined && (
-          <span style={{ ...TEXT.caption, display: 'block' }}>{hint}</span>
+          <span style={{ ...TEXT.caption, display: 'block' }}>{tx(t, hint)}</span>
         )}
       </span>
       {/* ⚠️ Место под состояние держим ВСЕГДА, даже пустым: иначе строки без галочки выбиваются из
@@ -243,12 +244,12 @@ export function PrimaryButton({ children, onClick, disabled, stretch, big }: {
   stretch?: boolean;
   /** Крупная — только у вопроса о разрешении: в неё перестаёшь промахиваться. */
   big?: boolean;
-}) {
+}) { const { t } = useLanguage();
   return (
     <button onClick={onClick} disabled={disabled} style={{
       ...buttonBase, ...(big ? bigButton : null), background: 'var(--accent)', color: 'var(--on-accent)',
       opacity: disabled ? 0.5 : 1, ...(stretch ? { flex: 1 } : null),
-    }}>{children}</button>
+    }}>{tx(t, children)}</button>
   );
 }
 
@@ -267,7 +268,7 @@ export function QuietButton({ children, onClick, disabled, stretch, big, invert 
   big?: boolean;
   /** На инверсной плите тихая заливка тоже инверсная — иначе кнопка светится дырой. */
   invert?: boolean;
-}) {
+}) { const { t } = useLanguage();
   return (
     <button onClick={onClick} disabled={disabled} style={{
       ...buttonBase, ...(big ? bigButton : null),
@@ -275,6 +276,6 @@ export function QuietButton({ children, onClick, disabled, stretch, big, invert 
       color: invert ? 'var(--overlay-invert-ink)' : 'var(--text-body)',
       fontWeight: invert ? 600 : 500,
       opacity: disabled ? 0.5 : 1, ...(stretch ? { flex: 1 } : null),
-    }}>{children}</button>
+    }}>{tx(t, children)}</button>
   );
 }

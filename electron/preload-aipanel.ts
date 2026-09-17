@@ -2,6 +2,7 @@
 // контекст вкладки) — не трогают контракт основного хрома (shared/ipc.ts), как и
 // preload-translatepopover.ts.
 import { contextBridge, ipcRenderer } from 'electron'
+import { exposeUiLanguage } from './preload/uiLanguage'
 // ⚠️ Три канала ниже — ИЗ ОБЩЕГО КОНТРАКТА, в отличие от остальных 'ai-panel:*' здесь. Так и
 // должно быть: «занят ли ИИ» — состояние всего приложения, а не приватное дело панели, и его
 // же читает блокнот. Дублировать строки, как в sandboxed preload-content.ts, тут не нужно —
@@ -132,3 +133,4 @@ contextBridge.exposeInMainWorld('aiPanel', {
     ipcRenderer.send('ai-panel:webapp-bounds', appId, rect),
   webappClose: (appId: string) => ipcRenderer.send('ai-panel:webapp-close', appId),
 })
+exposeUiLanguage()

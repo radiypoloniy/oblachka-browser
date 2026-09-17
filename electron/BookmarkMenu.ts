@@ -15,6 +15,7 @@ import { pageKey } from '../shared/pageKey';
 import type { BookmarkNode } from '../shared/ipc';
 import type { BookmarkManager } from './BookmarkManager';
 import type { TabManager } from './TabManager';
+import { t as tr, tf } from './uiText';
 
 export interface BookmarkMenuDeps {
   /** Закладки АКТИВНОГО профиля — функцией, а не объектом: профиль переключается на ходу. */
@@ -100,18 +101,18 @@ export async function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): Pr
   };
 
   const template: MenuItemConstructorOptions[] = [
-    { label: 'Сохранено в закладки', enabled: false },
+    { label: tr('Сохранено в закладки'), enabled: false },
     // ⚠️ Подсказка — ОТДЕЛЬНЫЙ пункт-действие, а не предвыбранный radio в списке ниже. Отметка
     // означает «закладка лежит здесь», и поставить её на непроизошедший перенос значило бы
     // соврать: человек закрыл бы меню, не нажав ничего, а закладка осталась бы в корне.
     ...(suggested
       ? [
           { type: 'separator' } as MenuItemConstructorOptions,
-          { label: `Положить в «${suggested.title}»`, click: () => pick(suggested.id) },
+          { label: tf('Положить в «{name}»', { name: suggested.title }), click: () => pick(suggested.id) },
         ]
       : []),
     { type: 'separator' },
-    { label: 'Все закладки', type: 'radio', checked: currentParent === null, click: () => pick(null) },
+    { label: tr('Все закладки'), type: 'radio', checked: currentParent === null, click: () => pick(null) },
     ...folders.map((f): MenuItemConstructorOptions => ({
       label: `${'    '.repeat(f.depth)}${f.title}`,
       type: 'radio',
@@ -120,7 +121,7 @@ export async function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): Pr
     })),
     { type: 'separator' },
     {
-      label: 'Удалить из закладок',
+      label: tr('Удалить из закладок'),
       click: () => { deps!.bookmarks().remove(bookmarkId); deps!.notifyChanged(); },
     },
   ];

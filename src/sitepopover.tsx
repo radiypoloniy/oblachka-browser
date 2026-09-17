@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { StandaloneLanguageProvider } from './i18n';
+import { StandaloneLanguageProvider, useLanguage } from './i18n';
 import { Lock, ShieldOff, Camera, Mic, MapPin, Bell, Maximize, Clipboard, RotateCcw, History, ExternalLink, Wand2 } from 'lucide-react';
 import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
 // ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
@@ -97,7 +97,7 @@ const VPN_WORD: Record<string, string> = {
 // (та же причина, по которой у popoverKit свой SiteIcon).
 function Fact({ label, hint, value, on }: {
   label: string; hint: string; value: string; on?: boolean;
-}) {
+}) { const { t } = useLanguage();
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 4, minHeight: 74,
@@ -111,15 +111,15 @@ function Fact({ label, hint, value, on }: {
       <span style={{
         ...TEXT.caption, fontWeight: 650, color: 'inherit',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{label}</span>
+      }}>{t(label)}</span>
       <span style={{
         ...TEXT.caption, color: 'inherit', opacity: 0.62, lineHeight: 1.25,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{hint}</span>
+      }}>{t(hint)}</span>
       <span style={{
         ...DISPLAY_ROW, marginTop: 'auto', color: 'inherit',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{value}</span>
+      }}>{t(value)}</span>
     </div>
   );
 }
@@ -494,7 +494,7 @@ function SitePopoverApp() {
 }
 
 // Блок с разделителем сверху — тот же приём, что в карточках настроек.
-function Section({ title, children }: { title?: string; children: React.ReactNode }) {
+function Section({ title, children }: { title?: string; children: React.ReactNode }) { const { t } = useLanguage();
   return (
     <div style={{ borderTop: '1px solid var(--divider)', padding: '10px 0' }}>
       {title && (
@@ -502,7 +502,7 @@ function Section({ title, children }: { title?: string; children: React.ReactNod
         // единственной такой капителью на весь поповер и не совпадала ни с шапкой выпадашки,
         // ни с подписями настроек, куда отсюда ведут ссылки.
         <div style={{ ...CAPS, padding: '0 16px 6px' }}>
-          {title}
+          {t(title)}
         </div>
       )}
       {children}

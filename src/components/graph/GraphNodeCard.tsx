@@ -10,7 +10,7 @@ import StickerCard from './StickerCard';
 import type { ImagePreset } from '../../../shared/imagePresets';
 import { markdownComponents } from '../aiMarkdown';
 import { InfographicView, MindmapView, QuizView } from '../studioViews';
-import { RADIUS } from '../../styles/system';
+import { RADIUS } from '../../styles/system'; import { useLanguage } from '../../i18n';
 
 // Карточка узла на холсте. Только рисует и зовёт колбэки — планирование и прогон живут
 // в main (electron/GraphEngine.ts).
@@ -110,7 +110,7 @@ const outputBox: React.CSSProperties = {
 };
 
 export default function GraphNodeCard({ data, selected }: { data: GraphNodeData; selected?: boolean }) {
-  const spec = NODE_KINDS[data.kind];
+  const spec = NODE_KINDS[data.kind]; const { t } = useLanguage();
 
   if (data.kind === 'sticker') {
     return (
@@ -202,14 +202,14 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
           }}
         >
-          {spec.label}
+          {t(spec.label)}
         </span>
         <button
           type="button"
           className="nodrag"
           onClick={data.onRun}
           disabled={busy}
-          title={busy ? 'Уже в работе' : 'Посчитать этот узел и всё, что от него зависит'}
+          title={busy ? t('Уже в работе') : t('Посчитать этот узел и всё, что от него зависит')}
           style={{
             marginLeft: 'auto', display: 'inline-flex', alignItems: 'center',
             background: 'none', border: 0, padding: 3, borderRadius: '50%',
@@ -223,7 +223,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           type="button"
           className="nodrag"
           onClick={data.onDuplicate}
-          title="Дублировать узел (Ctrl+D)"
+          title={t('Дублировать узел (Ctrl+D)')}
           style={headerButton}
         >
           <Files size={13} />
@@ -232,7 +232,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           type="button"
           className="nodrag"
           onClick={data.onExpand}
-          title="Раскрыть на весь экран"
+          title={t('Раскрыть на весь экран')}
           style={headerButton}
         >
           <Maximize2 size={13} />
@@ -241,7 +241,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           type="button"
           className="nodrag"
           onClick={data.onDelete}
-          title="Удалить узел"
+          title={t('Удалить узел')}
           style={headerButton}
         >
           <X size={13} />
@@ -257,7 +257,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         <input
           className="nodrag"
           value={data.title}
-          placeholder="Название узла"
+          placeholder={t('Название узла')}
           onChange={(e) => data.onPatch({ title: e.target.value })}
           style={{
             ...fieldStyle, flex: 'none', background: 'transparent', border: 0, padding: 0,
@@ -289,7 +289,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
                 fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
               }}
             >
-              📎 {data.config.path ? 'Другой файл' : 'Выбрать файл'}
+              📎 {data.config.path ? t('Другой файл') : t('Выбрать файл')}
             </button>
             {data.config.path && (
               <div
@@ -321,7 +321,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
                 fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
               }}
             >
-              🖼️ {data.config.path ? 'Другая картинка' : 'Выбрать картинку'}
+              🖼️ {data.config.path ? t('Другая картинка') : t('Выбрать картинку')}
             </button>
             <ImagePreview path={data.config.path ?? ''} />
             <input
@@ -338,7 +338,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           <textarea
             className="nodrag nowheel"
             value={data.config.text ?? ''}
-            placeholder="Текст, который пойдёт дальше по графу"
+            placeholder={t('Текст, который пойдёт дальше по графу')}
             onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
             style={{ ...fieldStyle, flex: 1, minHeight: 60 }}
           />
@@ -358,8 +358,8 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
               }}
               disabled={!data.pullFromInput}
               title={data.pullFromInput
-                ? 'Подставить текст питающих узлов'
-                : 'Питающие узлы ещё ничего не выдали'}
+                ? t('Подставить текст питающих узлов')
+                : t('Питающие узлы ещё ничего не выдали')}
               style={{
                 flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 gap: 6, background: 'var(--surface)', color: 'var(--text-strong)',
@@ -584,7 +584,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           display: 'flex', alignItems: 'center', gap: 6, flex: 'none',
           padding: '5px 11px 7px', borderTop: '1px solid var(--divider)',
         }}
-        title={STATUS_HINT[data.status]}
+        title={t(STATUS_HINT[data.status])}
       >
         <StatusIcon status={data.status} />
         <span
@@ -594,7 +594,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}
         >
-          {STATUS_WORD[data.status]}
+          {t(STATUS_WORD[data.status])}
         </span>
       </div>
 

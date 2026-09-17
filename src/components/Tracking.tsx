@@ -5,7 +5,7 @@ import { CAPS, RADIUS, TEXT, sp } from '../styles/system';
 import { EmptyState } from './EmptyState';
 import type { LibrarySummary } from './library/kit';
 import { btnGhost } from './settings/kit';
-import { sectionCache } from './library/sectionCache';
+import { sectionCache } from './library/sectionCache'; import { useLanguage } from '../i18n';
 
 // Экран «что я отслеживаю» (PRICE-TRACKING.md). Компонент только рисует: список, историю цен и
 // группы считает main (electron/TrackingStore.ts).
@@ -56,14 +56,14 @@ function PriceLine({ values, width = 120, height = 30 }: { values: number[]; wid
 
 // «Проверено» человеческими словами. ⚠️ Показываем ИМЕННО давность проверки, а не только цену:
 // цена без даты выглядит свежей всегда, а браузер проверяет только пока открыт.
-function checkedAgo(ts: number): string {
-  if (!ts) return 'ещё не проверялось';
+function checkedAgo(ts: number, t: (s: string, vars?: Record<string, string | number>) => string): string {
+  if (!ts) return t('ещё не проверялось');
   const mins = Math.round((Date.now() - ts) / 60000);
-  if (mins < 2) return 'проверено только что';
-  if (mins < 60) return `проверено ${mins} мин назад`;
+  if (mins < 2) return t('проверено только что');
+  if (mins < 60) return t('проверено {n} мин назад', { n: mins });
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `проверено ${hours} ч назад`;
-  return `проверено ${Math.round(hours / 24)} дн назад`;
+  if (hours < 24) return t('проверено {n} ч назад', { n: hours });
+  return t('проверено {n} дн назад', { n: Math.round(hours / 24) });
 }
 
 function lastPrice(p: TrackedProduct): number {
@@ -117,7 +117,7 @@ export default function Tracking({ query, onSummary }: {
   query: string;
   onSummary: (s: LibrarySummary) => void;
 }) {
-  const [items, setItems] = useState<TrackedProduct[] | null>(cachedItems.get);
+  const { t } = useLanguage(); const [items, setItems] = useState<TrackedProduct[] | null>(cachedItems.get);
   const [checking, setChecking] = useState(false);
   const [checkNote, setCheckNote] = useState('');
   const [events, setEvents] = useState<TrackingEvent[]>(cachedEvents.get);
@@ -138,7 +138,7 @@ export default function Tracking({ query, onSummary }: {
     setChecking(false);
     // Честный итог: сколько магазинов ответили. Часть не отвечает никогда (см. PRICE-TRACKING.md),
     // и делать вид, что проверено всё, нельзя.
-    setCheckNote(res.total === 0 ? '' : `Ответили ${res.ok} из ${res.total}`);
+    setCheckNote(res.total === 0 ? '' : t('Ответили {ok} из {total}', { ok: res.ok, total: res.total }));
     reload();
   }
 
@@ -161,16 +161,16 @@ export default function Tracking({ query, onSummary }: {
     onSummary({
       hero: items === null ? '…' : cardCount === 0 ? '—' : `${totalDiff <= 0 ? '−' : '+'}${money} ₽`,
       heroLabel: cardCount === 0
-        ? 'вы пока ничего не отслеживаете'
-        : `${totalDiff <= 0 ? 'подешевело' : 'подорожало'} с тех пор, как вы добавили · ${cardCount} ${plural(cardCount, 'товар', 'товара', 'товаров')}`,
+        ? t('вы пока ничего не отслеживаете')
+        : t(`${totalDiff <= 0 ? 'подешевело' : 'подорожало'} с тех пор, как вы добавили · {n} ${plural(cardCount, 'товар', 'товара', 'товаров')}`, { n: cardCount }),
       facts: [
         { label: 'Товаров', hint: 'под наблюдением', value: String(cardCount), active: cardCount > 0 },
         { label: 'Изменилось', hint: 'по всем наблюдениям', value: cardCount === 0 ? '—' : `${totalDiff <= 0 ? '−' : '+'}${money} ₽`, active: cardCount > 0 && totalDiff < 0 },
-        { label: 'Проверка', hint: 'пока браузер открыт', value: lastCheck ? checkedAgo(lastCheck).replace('проверено ', '') : '—', active: lastCheck > 0 },
+        { label: 'Проверка', hint: 'пока браузер открыт', value: lastCheck ? checkedAgo(lastCheck, t).replace(/^проверено /, '') : '—', active: lastCheck > 0 },
         { label: 'Уведомления', hint: 'когда цена упала', value: notify ? 'Включены' : 'Молча', active: notify },
       ],
     });
-  }, [onSummary, items, cardCount, totalDiff, lastCheck, notify]);
+  }, [onSummary, items, cardCount, totalDiff, lastCheck, notify, t]);
 
   if (items === null) {
     return <div style={{ ...TEXT.body, color: 'var(--text-faint)', padding: sp(4) }}>Загрузка…</div>;
@@ -189,19 +189,18 @@ export default function Tracking({ query, onSummary }: {
           «не дёргай меня» ≠ «мне неинтересно». */}
       <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), flexWrap: 'wrap' }}>
         <span style={{ flex: 1, minWidth: 0, ...TEXT.caption, color: 'var(--text-faint)' }}>
-          Браузер сам перепроверяет цены, пока открыт. Часть магазинов не отдаёт цену роботу —
-          это видно по дате проверки.
+          {t('Браузер сам перепроверяет цены, пока открыт. Часть магазинов не отдаёт цену роботу — это видно по дате проверки.')}
         </span>
         {checkNote && (
           <span style={{ ...TEXT.caption, color: 'var(--text-faint)', flex: 'none' }}>{checkNote}</span>
         )}
         <button
-          title={notify ? 'Уведомления включены' : 'Уведомления выключены'}
+          title={notify ? t('Уведомления включены') : t('Уведомления выключены')}
           onClick={() => { const next = !notify; setNotify(next); void window.oblako.setTrackingNotify(next); }}
           style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
         >
           {notify ? <Bell size={14} /> : <BellOff size={14} />}
-          {notify ? 'Уведомлять' : 'Молча'}
+          {notify ? t('Уведомлять') : t('Молча')}
         </button>
         <button
           onClick={() => void checkNow()}
@@ -209,7 +208,7 @@ export default function Tracking({ query, onSummary }: {
           style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2), opacity: checking ? 0.6 : 1 }}
         >
           <RefreshCw size={14} />
-          {checking ? 'Проверяю…' : 'Проверить сейчас'}
+          {checking ? t('Проверяю…') : t('Проверить сейчас')}
         </button>
       </div>
 
@@ -357,6 +356,7 @@ function ProductCard({ card, onChanged }: { card: ProductCardData; onChanged: ()
 function OfferRow({ offer, currency, cheapest, onChanged }: {
   offer: TrackedProduct; currency: string; cheapest: boolean; showTitle: boolean; onChanged: () => void;
 }) {
+  const { t } = useLanguage();
   const prices = offer.points.map((p) => p.price);
   const last = prices[prices.length - 1] ?? 0;
   const first = prices[0] ?? 0;
@@ -393,7 +393,7 @@ function OfferRow({ offer, currency, cheapest, onChanged }: {
           )}
         </div>
         <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-          {[notes.join(', '), checkedAgo(offer.lastCheckedAt)].filter(Boolean).join(' · ')}
+          {[notes.join(', '), checkedAgo(offer.lastCheckedAt, t)].filter(Boolean).join(' · ')}
         </div>
       </div>
 

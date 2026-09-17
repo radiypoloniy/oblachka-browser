@@ -152,13 +152,19 @@ export function coverageFromCounts(
   return { withContent: safeWith, noisy, missing, total: safeWith + without.length };
 }
 
-export function formatHistoryCoverageLine(p: HistoryCoverageParts): string {
-  if (p.total === 0) return 'История пуста — умный поиск появится после просмотра страниц.';
-  if (p.missing === 0 && p.noisy === 0) return `Полный текст: ${p.withContent} из ${p.total} страниц`;
+export function formatHistoryCoverageLine(
+  p: HistoryCoverageParts,
+  t: (source: string, vars?: Record<string, string | number>) => string = (source, vars) => {
+    if (!vars) return source;
+    return source.replace(/\{(\w+)\}/g, (_, key: string) => String(vars[key] ?? ''));
+  },
+): string {
+  if (p.total === 0) return t('История пуста — умный поиск появится после просмотра страниц.');
+  if (p.missing === 0 && p.noisy === 0) return t('Полный текст: {n} из {m} страниц', { n: p.withContent, m: p.total });
   if (p.missing === 0) {
-    return `Полный текст: ${p.withContent} из ${p.total}. Остальные ${p.noisy} — вход и служебные, в поиск по смыслу не идут.`;
+    return t('Полный текст: {n} из {m}. Остальные {k} — вход и служебные, в поиск по смыслу не идут.', { n: p.withContent, m: p.total, k: p.noisy });
   }
-  return `Полный текст: ${p.withContent} из ${p.total}. Ещё ${p.missing} без текста — умный поиск их не видит, пока не откроете снова или не запустите полную индексацию.`;
+  return t('Полный текст: {n} из {m}. Ещё {k} без текста — умный поиск их не видит, пока не откроете снова или не запустите полную индексацию.', { n: p.withContent, m: p.total, k: p.missing });
 }
 
 export function formatOnboardingIndexLead(imported: number): string {

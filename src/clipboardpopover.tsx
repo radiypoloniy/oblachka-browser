@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { StandaloneLanguageProvider } from './i18n';
+import { StandaloneLanguageProvider, useLanguage } from './i18n';
 import { Clipboard, Copy, Check, Trash2, X, ChevronDown, ChevronRight, CornerUpRight, Link2, Pin, PinOff } from 'lucide-react';
 import type { ClipboardEntry, ClipboardRevealResult } from '../shared/ipc';
 // ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
@@ -52,16 +52,16 @@ const CARD_WIDTH = 380;
 // Сколько строк текста видно в свёрнутом виде.
 const PREVIEW_LINES = 2;
 
-function timeAgo(ts: number): string {
+function timeAgo(ts: number, t: (s: string, vars?: Record<string, string | number>) => string): string {
   const mins = Math.round((Date.now() - ts) / 60000);
-  if (mins < 1) return 'только что';
-  if (mins < 60) return `${mins} мин`;
+  if (mins < 1) return t('только что');
+  if (mins < 60) return t('{n} мин', { n: mins });
   const hours = Math.round(mins / 60);
-  return `${hours} ч`;
+  return t('{n} ч', { n: hours });
 }
 
 function ClipboardPopoverApp() {
-  const [entries, setEntries] = useState<ClipboardEntry[]>([]);
+  const [entries, setEntries] = useState<ClipboardEntry[]>([]); const { t } = useLanguage();
   const [enabled, setEnabled] = useState(true);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -119,19 +119,19 @@ function ClipboardPopoverApp() {
           padding: '10px 10px 10px 14px', borderBottom: '1px solid var(--divider)',
         }}>
           <Clipboard size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />
-          <span style={{ ...CAPS, flex: 1 }}>Скопировано со страниц</span>
+          <span style={{ ...CAPS, flex: 1 }}>{t('Скопировано со страниц')}</span>
           {/* ⚠️ Кнопка называет то, что делает: закреплённое она НЕ трогает (см. clearCopies).
               И появляется только когда есть что убирать — при списке из одних закреплённых она
               была бы кнопкой без действия. Стереть вообще всё, включая закреплённое, умеет
               выключатель ниже: там обещание другое — «не веди историю». */}
           {entries.some((e) => !e.pinned) && (
             <button
-              title={entries.some((e) => e.pinned) ? 'Очистить незакреплённое' : 'Очистить всё'}
+              title={entries.some((e) => e.pinned) ? t('Очистить незакреплённое') : t('Очистить всё')}
               onClick={() => { void window.clipboardPopover.clear().then(reload); }}
               style={iconBtn}
             ><Trash2 size={13} /></button>
           )}
-          <button title="Закрыть" onClick={() => window.clipboardPopover.close()} style={iconBtn}><X size={13} /></button>
+          <button title={t('Закрыть')} onClick={() => window.clipboardPopover.close()} style={iconBtn}><X size={13} /></button>
         </div>
 
         {hero && <HeroCopy entry={hero} onChanged={reload} />}
@@ -140,8 +140,8 @@ function ClipboardPopoverApp() {
           {entries.length === 0 && (
             <div style={{ padding: '22px 12px', textAlign: 'center', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
               {enabled
-                ? 'Скопируйте что-нибудь на странице — попадёт сюда'
-                : 'История копирования выключена'}
+                ? t('Скопируйте что-нибудь на странице — попадёт сюда')
+                : t('История копирования выключена')}
             </div>
           )}
           {pinned.length > 0 && (
@@ -155,9 +155,9 @@ function ClipboardPopoverApp() {
                 <Pin size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />
                 <span style={{
                   ...DISPLAY_ROW,
-                }}>Закреплённое</span>
+                }}> {t('Закреплённое')}</span>
                 <span style={{ ...TEXT.caption, color: 'var(--text-faint)', marginLeft: 'auto' }}>
-                  переживает перезапуск
+                  {t('переживает перезапуск')}
                 </span>
               </div>
               {pinned.map((e) => <Row key={e.id} entry={e} onChanged={reload} />)}
@@ -175,7 +175,7 @@ function ClipboardPopoverApp() {
                 <span style={{
                   ...DISPLAY_ROW,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{g.host}</span>
+                }}>{t(g.host)}</span>
               </div>
               {g.items.map((e) => <Row key={e.id} entry={e} onChanged={reload} />)}
             </div>
@@ -204,10 +204,10 @@ function ClipboardPopoverApp() {
         >
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: 'block', ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>
-              История копирования
+              {t('История копирования')}
             </span>
             <span style={{ display: 'block', ...TEXT.caption, color: 'var(--text-muted)' }}>
-              {enabled ? 'Собирается на этот сеанс' : 'Выключена — собранное стёрто'}
+              {enabled ? t('Собирается на этот сеанс') : t('Выключена — собранное стёрто')}
             </span>
           </span>
           <span style={{
@@ -245,7 +245,7 @@ const hostOf = (url: string): string => {
 // Чернила здесь законны по той же причине, что и в поповере замочка, — они контраст, а не цвет,
 // а поповер лежит поверх чужого сайта, где плакатному тону места нет.
 function HeroCopy({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => void }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(false); const { t } = useLanguage();
   const take = () => {
     void window.clipboardPopover.put(entry.id).then(() => {
       setCopied(true);
@@ -257,13 +257,13 @@ function HeroCopy({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () =
     <div style={{ padding: `${sp(2)}px ${sp(3)}px ${sp(3)}px`, borderBottom: '1px solid var(--divider)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), padding: `0 ${sp(1)}px ${sp(1)}px` }}>
         <span style={{ ...CAPS, flex: 1 }}>
-          последнее{entry.host ? ` · ${entry.host}` : ''}
+          {t('последнее')}{entry.host ? ` · ${entry.host}` : ''}
         </span>
-        <span style={{ ...TEXT.caption, color: 'var(--text-faint)' }}>{timeAgo(entry.at)}</span>
+        <span style={{ ...TEXT.caption, color: 'var(--text-faint)' }}>{timeAgo(entry.at, t)}</span>
       </div>
       <button
         onClick={take}
-        title="Скопировать снова"
+        title={t('Скопировать снова')}
         style={{
           display: 'flex', alignItems: 'flex-start', gap: sp(2), width: '100%', textAlign: 'left',
           padding: `${sp(2)}px ${sp(3)}px`, border: 'none', borderRadius: RADIUS.box, cursor: 'default',
@@ -285,7 +285,7 @@ function HeroCopy({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () =
 }
 
 function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => void }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false); const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
@@ -312,7 +312,7 @@ function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => voi
         background: hovered ? 'var(--surface-hover)' : 'transparent',
       }}
     >
-      <button title={open ? 'Свернуть' : 'Показать целиком'} onClick={() => setOpen((v) => !v)}
+      <button title={open ? t('Свернуть') : t('Показать целиком')} onClick={() => setOpen((v) => !v)}
         style={{ ...iconBtn, width: 18, height: 18, marginTop: 1 }}>
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
       </button>
@@ -339,7 +339,7 @@ function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => voi
           </div>
         )}
         <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-          {timeAgo(entry.at)}{entry.title ? ` · ${entry.title.slice(0, 40)}` : ''}
+          {timeAgo(entry.at, t)}{entry.title ? ` · ${entry.title.slice(0, 40)}` : ''}
         </div>
         {pinFull && (
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
@@ -354,7 +354,7 @@ function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => voi
             {links.map((l) => (
               <button
                 key={l.url}
-                title="Скопировать адрес"
+                title={t('Скопировать адрес')}
                 onClick={() => {
                   void window.clipboardPopover.putLink(entry.id, l.url).then(() => {
                     setCopiedLink(l.url);
@@ -391,7 +391,7 @@ function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => voi
         visibility: hovered || copied || entry.pinned ? 'visible' : 'hidden',
       }}>
         <button
-          title={entry.pinned ? 'Открепить' : 'Закрепить — переживёт перезапуск'}
+          title={entry.pinned ? t('Открепить') : t('Закрепить — переживёт перезапуск')}
           onClick={() => {
             void window.clipboardPopover.pin(entry.id, !entry.pinned).then((ok) => {
               // false = полка полна. Молчать тут нельзя: человек уверен, что запись сохранена.
@@ -408,13 +408,13 @@ function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => voi
             копированием, и это правильный порядок. За копией сюда приходят каждый раз, за
             «покажи, откуда это» — изредка, и подменять частое действие редким нельзя. */}
         {/^https?:\/\//i.test(entry.url) && (
-          <button title="Открыть страницу и подсветить" onClick={() => { void window.clipboardPopover.openSource(entry.id); }}
+          <button title={t('Открыть страницу и подсветить')} onClick={() => { void window.clipboardPopover.openSource(entry.id); }}
             style={iconBtn}><CornerUpRight size={13} /></button>
         )}
-        <button title="Скопировать" onClick={take} style={{ ...iconBtn, color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
+        <button title={t('Скопировать')} onClick={take} style={{ ...iconBtn, color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
           {copied ? <Check size={13} /> : <Copy size={13} />}
         </button>
-        <button title="Убрать из списка" onClick={() => { void window.clipboardPopover.remove(entry.id).then(onChanged); }}
+        <button title={t('Убрать из списка')} onClick={() => { void window.clipboardPopover.remove(entry.id).then(onChanged); }}
           style={iconBtn}><Trash2 size={13} /></button>
       </div>
     </div>

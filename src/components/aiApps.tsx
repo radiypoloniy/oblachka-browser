@@ -5,7 +5,7 @@
 // и виджеты с сетевыми данными — следующие заходы, см. план в истории задач.
 // Живёт в src/components (как aiMarkdown.tsx) — импортируется ТОЛЬКО из aipanel.tsx, в дерево
 // App.tsx не входит. Все цвета — токены (включая градиенты иконок/обоев — tokens/apps.css).
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'; import { useLanguage } from '../i18n'
 // Та же связка, что держит порядок вкладок и закреплённых в сайдбаре: свой HTML5 drag-and-drop
 // на этой сетке выглядел чужеродно (иконка не едет за курсором, соседи не расступаются, а цель
 // надо угадывать), а здесь ровно та же задача — порядок в одном списке.
@@ -163,7 +163,7 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   requestedApp?: string | null
   onRequestHandled?: () => void
 }) {
-  const [sheetOpen, setSheetOpen] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false); const { t } = useLanguage()
   const [sheetTab, setSheetTab] = useState<SheetTab>('bg')
   // Поля добавления сайта развёрнуты только по просьбе — пустыми они занимали место обещанием.
   const [addOpen, setAddOpen] = useState(false)
@@ -545,12 +545,12 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
                           <div style={{
                             fontSize: 'var(--fs-sm)', fontWeight: 550, color: 'var(--text-strong)',
                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>{a.label}</div>
+                          }}>{t(a.label)}</div>
                           {(own || !on) && (
                             <div style={{
                               fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
                               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            }}>{own ? hostOf(a.url ?? '') : 'скрыто с экрана'}</div>
+                            }}>{own ? hostOf(a.url ?? '') : t('скрыто с экрана')}</div>
                           )}
                         </div>
                         <Toggle checked={on} onChange={() => { if (on) hideApp(a.id); else unhideApp(a.id) }} />

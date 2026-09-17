@@ -2,6 +2,7 @@
 // (searchpopover:*), не часть контракта основного хрома — как у findbar/translate-popover:
 // поповер живёт в изолированной WebContentsView и боевой preload.ts ему не положен.
 import { contextBridge, ipcRenderer } from 'electron'
+import { exposeUiLanguage } from './preload/uiLanguage'
 import type { SearchTarget, QuickQueryResult } from '../shared/ipc'
 
 export interface SearchPopoverShowPayload {
@@ -27,3 +28,4 @@ contextBridge.exposeInMainWorld('searchPopover', {
   resize: (height: number) => ipcRenderer.send('searchpopover:resize', height),
   close: () => ipcRenderer.send('searchpopover:close'),
 })
+exposeUiLanguage()

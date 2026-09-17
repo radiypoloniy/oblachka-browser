@@ -8,6 +8,8 @@
 import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { BUILTIN_SKILLS, BUILTIN_SKILL_IDS, localizeBuiltinSkill } from '../shared/builtinSkills';
+import { uiLanguage } from './uiText';
 
 export interface Skill {
   id: string
@@ -26,12 +28,12 @@ type Listener = (skills: Skill[]) => void;
 
 // Дефолты — эквивалент двух prompt-кнопок, которые раньше были захардкожены в QUICK_ACTIONS
 // (src/aipanel.tsx) — засеиваются на первом запуске, пока файла ещё нет на диске.
-const DEFAULT_SKILLS: Skill[] = [
-  { id: 'explain', label: 'Объяснить', prompt: 'Объясни простыми словами, о чём эта страница.', builtin: true, visible: true },
-  { id: 'summary', label: 'Сделать саммари', prompt: 'Сделай краткое саммари этой страницы.', builtin: true, visible: true },
-];
+function defaultSkills(): Skill[] {
+  const pack = BUILTIN_SKILLS[uiLanguage()];
+  return BUILTIN_SKILL_IDS.map((id) => ({ id, ...pack[id], builtin: true, visible: true }));
+}
 
-let skills: Skill[] = DEFAULT_SKILLS;
+let skills: Skill[] = defaultSkills();
 const listeners = new Set<Listener>();
 
 function filePath(): string {
@@ -82,12 +84,17 @@ export function loadFromDisk(): void {
   } catch {
     // Файла нет — первый запуск, ниже засеиваем дефолтами и сразу пишем на диск.
   }
-  skills = DEFAULT_SKILLS;
+  skills = defaultSkills();
   write();
 }
 
 export function list(): Skill[] {
-  return [...skills];
+  const language = uiLanguage();
+  return skills.map((skill) => localizeBuiltinSkill(skill, language));
+}
+
+export function applyUiLanguage(): void {
+  notify();
 }
 
 // Валидация: label/prompt непустые, id уникален. Пользовательские скиллы всегда builtin:false и

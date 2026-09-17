@@ -6,6 +6,7 @@ import type { TabState } from '../../../shared/ipc';
 import { RADIUS, glyph } from '../../styles/system';
 import { CloseGlyph } from '../glyphs';
 import { FaviconTile } from './FaviconTile';
+import { useLanguage } from '../../i18n';
 
 interface TabRowProps {
   tab: TabState;
@@ -21,7 +22,7 @@ interface TabRowProps {
 }
 
 export function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitSplit, onToggleMute, ghost }: TabRowProps) {
-  const [hovered, setHovered] = useState(false);
+  const [hovered, setHovered] = useState(false); const { t } = useLanguage();
   const inSplit = tab.splitSide !== null;
   // ⚠️ Фон АКТИВНОЙ вкладки идёт через --tab-active, а не литералом --surface: на цветном
   // сайдбаре белая плашка выглядела вырезанной из другой темы, а в тёмной теме плашка почти
@@ -61,7 +62,7 @@ export function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, 
       <span style={{
         flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 500,
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-      }}>{tab.title || tab.url || 'Загрузка…'}</span>
+      }}>{(tab.kind ? t(tab.title) : tab.title) || tab.url || t('Загрузка…')}</span>
 
       {/* Звук. ⚠️ Показывается ВСЕГДА, а не по наведению, — в этом вся суть: человек ищет,
           откуда играет музыка, и обойти для этого все вкладки мышью значит не решить задачу.
@@ -329,7 +330,7 @@ export function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, o
   /** Клик по значку звука. Без него значок остаётся картинкой (ghost, призрак перетаскивания). */
   onToggleMute?: () => void;
   ghost?: boolean;
-}) {
+}) { const { t } = useLanguage();
   return (
     <button
       className="no-drag"
@@ -338,7 +339,7 @@ export function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, o
       onMouseDown={ghost || !onMiddleClick ? undefined : (e) => {
         if (e.button === 1) { e.preventDefault(); onMiddleClick(); }
       }}
-      title={ghost ? undefined : (tab.title || tab.url || '')}
+      title={ghost ? undefined : ((tab.kind ? t(tab.title) : tab.title) || tab.url || '')}
       // ⚠️ В СЖАТОЙ ПОЛОСЕ АКТИВНАЯ КЛЕТКА ЗАЛИВАЕТСЯ АКЦЕНТОМ В ПОЛНУЮ СИЛУ, и это не про вкус.
       // Раньше здесь была та же светлая плашка, что в развёрнутом списке, но она лежит на ЗЕМЛЕ:
       // белая плашка к --app-bg даёт 1,20:1 в светлой теме и 1,34 в тёмной при пороге различимости

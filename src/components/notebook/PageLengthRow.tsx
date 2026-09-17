@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { sp, pad, RADIUS, TEXT } from '../../styles/system';
 import { CapsLabel } from '../settings/kit';
+import { useLanguage } from '../../i18n';
 import type { PageLength } from '../../../shared/ipc';
 
 /**
@@ -23,7 +24,7 @@ export function PageLengthRow() {
   // ⚠️ Стартуем с 'normal', а не с null: при null контрол не рисовался вовсе, и любой сбой
   // канала превращался в «настройки просто нет» — молча. Значение по умолчанию совпадает с
   // тем, что вернёт main, поэтому подмены на глазах не происходит.
-  const [value, setValue] = useState<PageLength>('normal');
+  const [value, setValue] = useState<PageLength>('normal'); const { t } = useLanguage();
 
   useEffect(() => {
     let alive = true;
@@ -43,7 +44,7 @@ export function PageLengthRow() {
         {STEPS.map((s) => {
           const on = value === s.id;
           return (
-            <button key={s.id} onClick={() => pick(s.id)} title={s.hint}
+            <button key={s.id} onClick={() => pick(s.id)} title={t(s.hint)}
               style={{
                 flex: 1, border: '1px solid',
                 borderColor: on ? 'transparent' : 'var(--divider-strong)',
@@ -52,12 +53,12 @@ export function PageLengthRow() {
                 padding: pad(2, 2), borderRadius: RADIUS.control, cursor: 'default',
                 fontSize: 'var(--fs-xs)', fontWeight: 600, fontFamily: 'inherit',
               }}>
-              {s.label}
+              {t(s.label)}
             </button>
           );
         })}
       </div>
-      <div style={{ ...TEXT.caption, color: 'var(--text-faint)', marginTop: sp(1) }}>{hint}</div>
+      <div style={{ ...TEXT.caption, color: 'var(--text-faint)', marginTop: sp(1) }}>{hint ? t(hint) : hint}</div>
     </div>
   );
 }

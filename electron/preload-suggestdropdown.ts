@@ -3,6 +3,7 @@
 // Заход 4/5: + клавиатурная подсветка (onHighlight) — вью только отрисовывает номер, ничего не решает.
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
+import { exposeUiLanguage } from './preload/uiLanguage'
 import type { SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('suggestDropdown', {
@@ -43,3 +44,4 @@ contextBridge.exposeInMainWorld('suggestDropdown', {
   // и плитка оставалась буквой.
   favicon: (host: string) => ipcRenderer.invoke(IPC.FAVICON_GET, host) as Promise<string | null>,
 })
+exposeUiLanguage()

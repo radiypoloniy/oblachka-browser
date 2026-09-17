@@ -4,6 +4,7 @@ import { CAPS, DISPLAY, RADIUS, TEXT, grain, motion, pad, sp } from '../../style
 import { islandPlate, untintedPlateVars } from '../../styles/island';
 import { panelIsland } from '../../styles/system';
 import { FactGrid, TONE_INK, type LibrarySummary, type LibraryTone } from './kit';
+import { useLanguage, tx } from '../../i18n';
 
 // Оболочка большого меню: цветная шапка с героем, рельс разделов и одно поле поиска.
 //
@@ -42,7 +43,7 @@ export default function LibraryShell({
   tone, title, summary, query, onQuery, searchPlaceholder,
   everywhere, onEverywhere, onSubmit, rail, onClose, children,
 }: LibraryShellProps) {
-  const ink = TONE_INK[tone];
+  const { t } = useLanguage(); const ink = TONE_INK[tone];
   return (
     <div style={{
       height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -64,7 +65,7 @@ export default function LibraryShell({
             <div style={{
               ...DISPLAY, fontSize: 19, fontWeight: 700, letterSpacing: '-0.02em',
               color: 'inherit', opacity: 0.82,
-            }}>{title}</div>
+            }}>{t(title)}</div>
             {/* ⚠️ ГЕРОЙ — ЧИСЛО, ради которого раздел открывают. Раньше библиотека встречала
                 собственным названием («История посещений»), то есть словом, которое человек уже
                 прочитал в сайдбаре, пока сюда шёл. */}
@@ -73,11 +74,11 @@ export default function LibraryShell({
               lineHeight: 1.02, marginTop: sp(1), color: 'inherit',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{summary.hero}</div>
-            <div style={{ ...TEXT.body, opacity: 0.72, color: 'inherit' }}>{summary.heroLabel}</div>
+            <div style={{ ...TEXT.body, opacity: 0.72, color: 'inherit' }}>{tx(t, summary.heroLabel)}</div>
           </div>
           <button
             onClick={onClose}
-            title="Закрыть"
+            title={t('Закрыть')}
             style={{
               flex: 'none', width: 32, height: 32, borderRadius: '50%', border: 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'default',
@@ -107,7 +108,7 @@ export default function LibraryShell({
             value={query}
             onChange={(e) => onQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && onSubmit) onSubmit(); }}
-            placeholder={searchPlaceholder}
+            placeholder={t(searchPlaceholder)}
             style={{
               flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none',
               ...TEXT.body, color: 'var(--text-strong)', fontFamily: 'inherit',
@@ -119,8 +120,8 @@ export default function LibraryShell({
           <button
             onClick={() => onEverywhere(!everywhere)}
             title={everywhere
-              ? 'Ищем сразу по истории, закладкам и загрузкам — по Enter'
-              : 'Искать сразу по истории, закладкам и загрузкам'}
+              ? t('Ищем сразу по истории, закладкам и загрузкам — по Enter')
+              : t('Искать сразу по истории, закладкам и загрузкам')}
             style={{
               flex: 'none', ...CAPS, padding: `${sp(1)}px ${sp(2)}px`, borderRadius: RADIUS.pill,
               border: everywhere ? 'none' : '1px solid var(--divider)',
@@ -128,7 +129,7 @@ export default function LibraryShell({
               color: everywhere ? 'var(--app-bg)' : 'var(--text-muted)',
               cursor: 'default', transition: motion.state('background', 'color'),
             }}
-          >везде</button>
+          >{t('везде')}</button>
         </div>
       </div>
 

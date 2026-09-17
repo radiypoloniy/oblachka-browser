@@ -4,6 +4,7 @@
 // канал (findbar:*), не часть контракта основного хрома, как и у translate-popover/ai-panel.
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
+import { exposeUiLanguage } from './preload/uiLanguage'
 import type { FindResult, SmartFindResult } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('findbar', {
@@ -37,3 +38,4 @@ contextBridge.exposeInMainWorld('findbar', {
     return () => ipcRenderer.removeListener('findbar:refocus', handler)
   },
 })
+exposeUiLanguage()

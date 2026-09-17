@@ -12,7 +12,7 @@ import {
   WIDGET_SIZES, addItem, removeItem, hasItem, setScale, scaleOf, SCALE_PRESETS,
   type DesktopItem, type DesktopLayout, type DesktopScale,
 } from '../../newtab/desktop';
-import { WIDGET_FILLS, FILL_SWATCH } from './widgets';
+import { WIDGET_FILLS, FILL_SWATCH } from './widgets'; import { useLanguage } from '../../i18n';
 import CryptoIcon from '../CryptoIcon';
 import { RADIUS, ROW_TITLE, TEXT, motion, pad, sp } from '../../styles/system';
 import { GenShelf } from './GenCompose';
@@ -98,7 +98,7 @@ interface Props {
 }
 
 export default function SidePanel({ layout, onLayout, onClose, editing, onEditing, onStudio }: Props) {
-  const [s, setS] = useState<NewTabSettings>(() => loadNewTabSettings());
+  const [s, setS] = useState<NewTabSettings>(() => loadNewTabSettings()); const { t } = useLanguage();
   const [meshes, setMeshes] = useState(() => allMeshes());
   useEffect(() => subscribeMeshes(() => setMeshes(allMeshes())), []);
   const apply = (next: NewTabSettings): void => { setS(next); saveNewTabSettings(next); };
@@ -144,9 +144,9 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
           borderBottom: '1px solid var(--divider)', flex: 'none',
         }}>
           <span style={{ flex: 1, ...TEXT.title }}>
-            Настройка экрана
+            {t('Настройка экрана')}
           </span>
-          <button onClick={onClose} title="Закрыть" style={iconBtn}><X size={16} /></button>
+          <button onClick={onClose} title={t('Закрыть')} style={iconBtn}><X size={16} /></button>
         </div>
 
         <div style={{
@@ -402,12 +402,12 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
 // ⚠️ Раскладка секций — из настроек iOS, а не из плотной формы: заголовок обычным кеглем над
 // КАРТОЧКОЙ со строками, между строками разделители, между секциями воздух. Прежний вариант был
 // сплошным столбцом мелких строк без группировки — он и читался как перегруженная панель.
-function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) { const { t } = useLanguage();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-      <span style={{ ...TEXT.section }}>{title}</span>
+      <span style={{ ...TEXT.section }}>{t(title)}</span>
       {note && (
-        <span style={{ ...TEXT.caption, marginTop: -sp(1) }}>{note}</span>
+        <span style={{ ...TEXT.caption, marginTop: -sp(1) }}>{t(note)}</span>
       )}
       {children}
     </div>
@@ -436,7 +436,7 @@ function Row({ children, divider }: { children: React.ReactNode; divider?: boole
 
 function Toggle({ label, hint, on, onChange, icon }: {
   label: string; hint?: string; on: boolean; onChange: (v: boolean) => void; icon?: string;
-}) {
+}) { const { t } = useLanguage();
   return (
     <button
       onClick={() => onChange(!on)}
@@ -453,9 +453,9 @@ function Toggle({ label, hint, on, onChange, icon }: {
         }}>{icon}</span>
       )}
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', ...ROW_TITLE }}>{label}</span>
+        <span style={{ display: 'block', ...ROW_TITLE }}>{t(label)}</span>
         {hint && (
-          <span style={{ display: 'block', ...TEXT.caption }}>{hint}</span>
+          <span style={{ display: 'block', ...TEXT.caption }}>{t(hint)}</span>
         )}
       </span>
       <span style={{
@@ -477,11 +477,11 @@ function Toggle({ label, hint, on, onChange, icon }: {
 function Slider({ label, value, min, max, step, format, onChange }: {
   label: string; value: number; min: number; max: number; step: number;
   format: (v: number) => string; onChange: (v: number) => void;
-}) {
+}) { const { t } = useLanguage();
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
       <span style={{ display: 'flex', ...TEXT.body }}>
-        <span style={{ flex: 1 }}>{label}</span>
+        <span style={{ flex: 1 }}>{t(label)}</span>
         <span style={{ color: 'var(--text-faint)', fontVariantNumeric: 'tabular-nums' }}>{format(value)}</span>
       </span>
       <input
@@ -495,7 +495,7 @@ function Slider({ label, value, min, max, step, format, onChange }: {
 
 function Segmented({ value, options, onChange }: {
   value: string; options: [string, string][]; onChange: (v: string) => void;
-}) {
+}) { const { t } = useLanguage();
   return (
     <div style={{
       display: 'flex', gap: 2, padding: 2, background: 'var(--surface-sunken)',
@@ -515,7 +515,7 @@ function Segmented({ value, options, onChange }: {
             fontWeight: value === id ? 600 : 400,
             transition: motion.hover('background', 'color'),
           }}
-        >{label}</button>
+        >{t(label)}</button>
       ))}
     </div>
   );

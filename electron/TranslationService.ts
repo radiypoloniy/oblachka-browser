@@ -10,7 +10,7 @@
 // грузилась здесь, замер давал 15.4 с блокировок main за 15 с наблюдения — первое обращение к AI
 // подвешивало весь браузер. После выноса — 0 мс. Подробности и спайк — в InferenceHost.ts.
 // Ленивая загрузка сохранена: модель поднимается по первому реальному вызову, не при старте.
-import fs from 'node:fs'
+import { uiLanguage } from './uiText'; import fs from 'node:fs'
 import { getTargetLang } from './TranslationConfig'
 import * as ModelRegistry from './ModelRegistry'
 import * as Inference from './inference/InferenceHost'
@@ -760,7 +760,7 @@ export type ChatOutcome =
   | { ok: true; out: string; history: any[]; ms: number; tokPerSec: number; loadMs: number | null; via: ChatVia; files: AiFileMeta[] }
   | { ok: false; error: string; errorCode?: ModelErrorCode }
 
-const CHAT_SYSTEM_PROMPT = 'You are a helpful, concise assistant built into a web browser. Respond in the same language the user writes in.'
+function chatSystemPrompt(): string { return uiLanguage() === 'en' ? 'You are a helpful, concise assistant built into a web browser. Answer in English.' : 'You are a helpful, concise assistant built into a web browser. Отвечай по-русски.'; }
 // Было 700 — обрывало развёрнутые ответы и (особенно) кнопку «Перевести страницу» в AI-панели
 // (AiPanelManager.ts::quick-translate идёт через ЭТОТ ЖЕ runChatMessage, лимит общий): вход там
 // до PAGE_TEXT_MAX_CHARS=28000 симв. (~8-10k токенов, см. её же комментарий), а выход обрезался на
@@ -817,7 +817,7 @@ async function runChatMessageQueued(
     const wasLoaded = loadPromise !== null
     const loadMs = model.connection.kind === 'local' ? await ensureLoaded() : 0
     const { out, history: newHistory, ms, tokens, via, files: raw } = await model.chat(
-      userText, history, CHAT_SYSTEM_PROMPT, { maxTokens: CHAT_MAX_TOKENS, onChunk, abort },
+      userText, history, chatSystemPrompt(), { maxTokens: CHAT_MAX_TOKENS, onChunk, abort },
     )
     console.log(
       `[chat] "${userText.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +

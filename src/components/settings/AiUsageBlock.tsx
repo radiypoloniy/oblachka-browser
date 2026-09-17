@@ -1,3 +1,4 @@
+import { useLanguage } from '../../i18n';
 import { btnGhost, CapsLabel, Fact, FactGrid } from './kit';
 import { sp } from '../../styles/system';
 import { emptyUsage, formatCost, formatTokens, sumUsage, totalTokens, type AiUsage } from '../../../shared/aiUsage';
@@ -28,6 +29,7 @@ export function AiUsageBlock({ state, usage, onReset }: {
   usage: Record<string, AiUsage> | null;
   onReset: () => void;
 }) {
+  const { t, language } = useLanguage();
   if (state === null || usage === null) return null;
 
   const ids = Object.keys(usage);
@@ -48,10 +50,10 @@ export function AiUsageBlock({ state, usage, onReset }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: sp(3) }}>
-        <CapsLabel>Расход{since(total.since)}</CapsLabel>
+        <CapsLabel>{t('Расход')}{since(total.since, language)}</CapsLabel>
         {total.requests > 0 && (
           <button onClick={() => void reset()} style={{ ...btnGhost, marginLeft: 'auto', fontSize: 'var(--fs-xs)' }}>
-            Обнулить счёт
+            {t('Обнулить счёт')}
           </button>
         )}
       </div>
@@ -59,14 +61,14 @@ export function AiUsageBlock({ state, usage, onReset }: {
       <FactGrid>
         <Fact
           label="Запросов"
-          hint={total.requests === 0 ? 'счёт начнётся с первого ответа'
-            : cloudIds.length === 0 ? 'все — на этой машине' : `наружу ушло ${cloud.requests}`}
+          hint={total.requests === 0 ? t('счёт начнётся с первого ответа')
+            : cloudIds.length === 0 ? t('все — на этой машине') : t('наружу ушло {n}', { n: cloud.requests })}
           value={String(total.requests)}
           active={total.requests > 0}
         />
         <Fact
           label="Токенов наружу"
-          hint={cloud.requests === 0 ? 'облако ещё не отвечало' : `на приём ${formatTokens(cloud.completionTokens)}`}
+          hint={cloud.requests === 0 ? t('облако ещё не отвечало') : t('на приём {n}', { n: formatTokens(cloud.completionTokens) })}
           value={formatTokens(totalTokens(cloud))}
         />
         <Fact
@@ -76,7 +78,7 @@ export function AiUsageBlock({ state, usage, onReset }: {
         />
         <Fact
           label="На этой машине"
-          hint={local === undefined ? 'не использовалась' : `запросов ${local.requests}`}
+          hint={local === undefined ? t('не использовалась') : t('запросов {n}', { n: local.requests })}
           value={local === undefined ? '—' : formatTokens(totalTokens(local))}
         />
       </FactGrid>
@@ -85,7 +87,8 @@ export function AiUsageBlock({ state, usage, onReset }: {
 }
 
 /** ⚠️ «с 3 сентября», а не «03.09.2026»: это подпись к сводке, а не поле в таблице. */
-function since(ts: number): string {
+function since(ts: number, language: 'en' | 'ru'): string {
   if (!ts) return '';
-  return ` с ${new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`;
+  const locale = language === 'en' ? 'en-GB' : 'ru-RU';
+  return `${language === 'en' ? ' since ' : ' с '}${new Date(ts).toLocaleDateString(locale, { day: 'numeric', month: 'long' })}`;
 }

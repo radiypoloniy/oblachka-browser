@@ -5,7 +5,7 @@ import type { AddressProfile, AddressInput, CardMeta, ParsedAddressPart } from '
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, Subsection, LoadingNote,
   InlineError, TextField, InputRow, fieldFlex, OptionList, settingsBox,
-} from './kit';
+} from './kit'; import { useLanguage } from '../../i18n';
 import { EmptyState } from '../EmptyState';
 
 // Секция «Автозаполнение» — адреса и банковские карты (electron/AutofillManager.ts). Только
@@ -13,6 +13,7 @@ import { EmptyState } from '../EmptyState';
 // renderer приходит только маской (last4); полный — по кнопке «показать» под Windows Hello
 // (revealCardNumber, гейт в main), как у паролей. CVC не храним (PCI).
 export default function AutofillSection() {
+  const { t } = useLanguage();
   const [addresses, setAddresses] = useState<AddressProfile[] | null>(null);
   const [cards, setCards] = useState<CardMeta[] | null>(null);
   const [addrFormOpen, setAddrFormOpen] = useState(false);
@@ -88,7 +89,7 @@ export default function AutofillSection() {
               ))}
             </OptionList>
             <button onClick={() => { setEditingAddr(null); setAddrFormOpen(true); }} style={{ ...btnPrimary, display: 'flex', gap: 8, alignItems: 'center', alignSelf: 'flex-start' }}>
-              <Plus size={14} /> Добавить адрес
+              <Plus size={14} /> {t('Добавить адрес')}
             </button>
           </>
         )}
@@ -133,7 +134,7 @@ export default function AutofillSection() {
               ))}
             </OptionList>
             <button onClick={() => { setEditingCard(null); setCardFormOpen(true); }} style={{ ...btnPrimary, display: 'flex', gap: 8, alignItems: 'center', alignSelf: 'flex-start' }}>
-              <Plus size={14} /> Добавить карту
+              <Plus size={14} /> {t('Добавить карту')}
             </button>
           </>
         )}
@@ -167,7 +168,7 @@ function formatCardNumber(digits: string): string {
 
 // ── Форма адреса ──────────────────────────────────────────────────────────────
 function AddressForm({ initial, onCancel, onSaved }: { initial: AddressProfile | null; onCancel: () => void; onSaved: () => void }) {
-  const [f, setF] = useState<AddressInput>({
+  const { t } = useLanguage(); const [f, setF] = useState<AddressInput>({
     fullName: initial?.fullName ?? '', organization: initial?.organization ?? '',
     email: initial?.email ?? '', phone: initial?.phone ?? '', street: initial?.street ?? '',
     city: initial?.city ?? '', region: initial?.region ?? '', postalCode: initial?.postalCode ?? '',
@@ -224,7 +225,7 @@ function AddressForm({ initial, onCancel, onSaved }: { initial: AddressProfile |
       {error && <InlineError>{error}</InlineError>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={() => void save()} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
-          {saving ? 'Сохранение…' : 'Сохранить'}
+          {saving ? t('Сохранение…') : t('Сохранить')}
         </button>
         <button onClick={onCancel} style={btnGhost}>Отмена</button>
       </div>
@@ -283,6 +284,7 @@ function AddressPasteBox({ onParsed }: { onParsed: (parts: ParsedAddressPart[]) 
 
 // ── Форма карты ───────────────────────────────────────────────────────────────
 function CardForm({ initial, onCancel, onSaved }: { initial: CardMeta | null; onCancel: () => void; onSaved: () => void }) {
+  const { t } = useLanguage();
   const editing = initial !== null;
   const [cardholder, setCardholder] = useState(initial?.cardholder ?? '');
   const [number, setNumber] = useState('');
@@ -319,7 +321,7 @@ function CardForm({ initial, onCancel, onSaved }: { initial: CardMeta | null; on
       {error && <InlineError>{error}</InlineError>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={() => void save()} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
-          {saving ? 'Сохранение…' : 'Сохранить'}
+          {saving ? t('Сохранение…') : t('Сохранить')}
         </button>
         <button onClick={onCancel} style={btnGhost}>Отмена</button>
       </div>

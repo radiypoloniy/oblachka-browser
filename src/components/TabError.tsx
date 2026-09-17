@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { TabErrorState } from '../../shared/ipc';
 import { glassPlate } from '../styles/island';
+import { useLanguage } from '../i18n';
 
 interface Props {
   error: TabErrorState;
@@ -25,6 +26,7 @@ interface Info {
   title: string;
   detail: string;
   hint: string;
+  name?: string;
 }
 
 function hostOf(raw: string): string {
@@ -33,13 +35,13 @@ function hostOf(raw: string): string {
 
 // Коды Chromium (net_error_list.h) — только те, что реально видит человек за браузером.
 // Остальное честно уходит в общую ветку: выдуманный диагноз хуже признания незнания.
-function loadInfo(code: number, host: string): Info {
+function loadInfo(code: number, _host: string): Info {
   switch (code) {
     case -105: // ERR_NAME_NOT_RESOLVED
     case -137: // ERR_NAME_RESOLUTION_FAILED
       return {
         emoji: '🔍', title: 'Такого сайта не нашлось',
-        detail: `Мы спросили адрес ${host}, но в справочнике DNS о нём не слышали.`,
+        detail: 'Мы спросили адрес {host}, но в справочнике DNS о нём не слышали.',
         hint: 'Чаще всего виновата опечатка в адресе. Если адрес точно верный — сайт мог переехать или закрыться.',
       };
     case -106: // ERR_INTERNET_DISCONNECTED
@@ -51,7 +53,7 @@ function loadInfo(code: number, host: string): Info {
     case -102: // ERR_CONNECTION_REFUSED
       return {
         emoji: '🚪', title: 'Сервер не открыл дверь',
-        detail: `${host} получил запрос и ответил отказом.`,
+        detail: '{host} получил запрос и ответил отказом.',
         hint: 'Обычно так выглядит сайт, который лёг или закрыт для внешних подключений. Имеет смысл зайти позже.',
       };
     case -101: // ERR_CONNECTION_RESET
@@ -59,20 +61,20 @@ function loadInfo(code: number, host: string): Info {
     case -104: // ERR_CONNECTION_FAILED
       return {
         emoji: '🔌', title: 'Связь оборвалась',
-        detail: `Разговор с ${host} прервался на полуслове.`,
+        detail: 'Разговор с {host} прервался на полуслове.',
         hint: 'Почти всегда лечится обновлением. Если повторяется — виновата сеть между вами и сайтом.',
       };
     case -7:   // ERR_TIMED_OUT
     case -118: // ERR_CONNECTION_TIMED_OUT
       return {
         emoji: '⏳', title: 'Сайт молчит',
-        detail: `${host} не прислал ответ за отведённое время.`,
+        detail: '{host} не прислал ответ за отведённое время.',
         hint: 'Похоже, он перегружен или недоступен из вашей сети. Попробуйте обновить или вернуться позже.',
       };
     case -109: // ERR_ADDRESS_UNREACHABLE
       return {
         emoji: '🗺️', title: 'До этого адреса нет дороги',
-        detail: `Из вашей сети до ${host} не проложить маршрут.`,
+        detail: 'Из вашей сети до {host} не проложить маршрут.',
         hint: 'Так бывает при проблемах с роутером или когда сайт закрыт для вашего региона — здесь может выручить VPN.',
       };
     case -20: // ERR_BLOCKED_BY_CLIENT
@@ -97,13 +99,13 @@ function loadInfo(code: number, host: string): Info {
     case -310: // ERR_TOO_MANY_REDIRECTS
       return {
         emoji: '🌀', title: 'Страница зациклилась',
-        detail: `${host} перекидывает с адреса на адрес по кругу.`,
+        detail: '{host} перекидывает с адреса на адрес по кругу.',
         hint: 'Часто помогает очистить куки этого сайта. Если нет — он сломан на своей стороне.',
       };
     case -324: // ERR_EMPTY_RESPONSE
       return {
         emoji: '📭', title: 'Ответ пришёл пустым',
-        detail: `${host} закрыл соединение, не передав ни байта.`,
+        detail: '{host} закрыл соединение, не передав ни байта.',
         hint: 'Обычно это временный сбой на стороне сайта — попробуйте обновить.',
       };
     case -312: // ERR_UNSAFE_PORT
@@ -128,7 +130,7 @@ function loadInfo(code: number, host: string): Info {
     case -501: // ERR_INSECURE_RESPONSE
       return {
         emoji: '🔐', title: 'Защищённое соединение не сложилось',
-        detail: `Договориться о шифровании с ${host} не удалось.`,
+        detail: 'Договориться о шифровании с {host} не удалось.',
         hint: 'Либо сайт настроен неправильно, либо соединение кто-то подменяет. Пароли на нём сейчас вводить не стоит.',
       };
     default:
@@ -137,13 +139,13 @@ function loadInfo(code: number, host: string): Info {
       if (code <= -200 && code >= -219) {
         return {
           emoji: '🔒', title: 'С сертификатом что-то не так',
-          detail: `Браузер не доверяет сертификату ${host} (код ${code}).`,
+          detail: 'Браузер не доверяет сертификату {host} (код {code}).',
           hint: 'Он мог истечь или быть выписан на другой домен. Пока причина не ясна, не вводите здесь пароли и данные карт.',
         };
       }
       return {
         emoji: '😕', title: 'Страница не открылась',
-        detail: `Загрузка прервалась с кодом ${code}.`,
+        detail: 'Загрузка прервалась с кодом {code}.',
         hint: 'Попробуйте обновить. Если повторится — проблема, скорее всего, на стороне сайта.',
       };
   }
@@ -197,13 +199,15 @@ function buttonBase(): React.CSSProperties {
 }
 
 export default function TabError({ error, url, onRetry, canGoBack, onBack }: Props) {
+  const { t } = useLanguage();
   const base = errorInfo(error);
   // ⚠️ Отказ ПРОФИЛЯ выглядит для Chromium так же, как упавший прокси (ERR_PROXY_CONNECTION_FAILED),
   // но человеку это совсем другая история: он сам просил «этот профиль только через VPN», а мы
   // отвечали «сервер мог отвалиться, загляните в Защиту». Совет мимо причины хуже отсутствия
   // совета — человек идёт чинить то, что не сломано.
   const block = useProfileVpnBlock(error);
-  const { emoji, title, detail, hint } = block ?? base;
+  const { emoji, title, detail, hint, name } = block ?? base;
+  const vars = { host: hostOf(url), code: error.code, name: name ?? '' };
   // ⚠️ Включение туннеля предлагается КНОПКОЙ, а не делается само. Автозапуск по факту перехода
   // означал бы, что любая открытая ссылка молча поднимает VPN — решение за человека там, где он
   // его не просил. Кнопка закрывает то же неудобство, ничего за него не решая.
@@ -216,12 +220,12 @@ export default function TabError({ error, url, onRetry, canGoBack, onBack }: Pro
     try {
       const servers = await window.oblako.listVpnServers();
       const first = servers[0];
-      if (!first) { setVpnError('Сначала добавьте подписку в настройках VPN'); return; }
+      if (!first) { setVpnError(t('Сначала добавьте подписку в настройках VPN')); return; }
       const res = await window.oblako.vpnConnect(first.id);
-      if (!res.ok) { setVpnError(res.error || 'Не удалось подключиться'); return; }
+      if (!res.ok) { setVpnError(res.error || t('Не удалось подключиться')); return; }
       onRetry();
     } catch {
-      setVpnError('Не удалось подключиться');
+      setVpnError(t('Не удалось подключиться'));
     } finally {
       setVpnBusy(false);
     }
@@ -252,14 +256,14 @@ export default function TabError({ error, url, onRetry, canGoBack, onBack }: Pro
           margin: 0, fontSize: 'var(--fs-2xl)', fontWeight: 600,
           color: 'var(--text-strong)', letterSpacing: '-0.01em',
         }}>
-          {title}
+          {t(title)}
         </h1>
 
         <p style={{
           margin: 0, fontSize: 'var(--fs-lg)', color: 'var(--text-muted)',
           lineHeight: 1.5, maxWidth: 420,
         }}>
-          {detail}
+          {t(detail, vars)}
         </p>
 
         {/* Совет — «утопленной» карточкой внутри острова, чтобы «что делать» отделялось от «что
@@ -272,7 +276,7 @@ export default function TabError({ error, url, onRetry, canGoBack, onBack }: Pro
           fontSize: 'var(--fs-md)', color: 'var(--text-body)', lineHeight: 1.5,
           maxWidth: 440,
         }}>
-          {hint}
+          {t(hint)}
         </div>
 
         {url && (
@@ -293,7 +297,7 @@ export default function TabError({ error, url, onRetry, canGoBack, onBack }: Pro
               onClick={onBack}
               style={{ ...buttonBase(), background: 'var(--surface-sunken)', color: 'var(--text-body)' }}
             >
-              Назад
+              {t('Назад')}
             </button>
           )}
           {/* ⚠️ На отказе профиля главное действие — включить туннель, а не «Обновить»:
@@ -307,14 +311,14 @@ export default function TabError({ error, url, onRetry, canGoBack, onBack }: Pro
                 opacity: vpnBusy ? 0.6 : 1,
               }}
             >
-              {vpnBusy ? 'Подключаю…' : 'Включить VPN'}
+              {vpnBusy ? t('Подключаю…') : t('Включить VPN')}
             </button>
           ) : (
             <button
               onClick={onRetry}
               style={{ ...buttonBase(), background: 'var(--accent)', color: 'var(--on-accent)' }}
             >
-              Обновить
+              {t('Обновить')}
             </button>
           )}
         </div>
@@ -335,8 +339,7 @@ export default function TabError({ error, url, onRetry, canGoBack, onBack }: Pro
  * адресе никому не нужен. И только для активного профиля — вкладка чужого профиля покажет
  * обычный текст, но она и не та, куда человек сейчас смотрит.
  */
-function useProfileVpnBlock(error: TabErrorState):
-  { emoji: string; title: string; detail: string; hint: string } | null {
+function useProfileVpnBlock(error: TabErrorState): Info | null {
   const [blocked, setBlocked] = useState<string | null>(null);
   const code = error?.code ?? 0;
   useEffect(() => {
@@ -357,7 +360,8 @@ function useProfileVpnBlock(error: TabErrorState):
   return {
     emoji: '🛡️',
     title: 'Профиль ждёт VPN',
-    detail: `Профиль «${blocked}» настроен открывать сайты только через VPN, а туннель сейчас выключен.`,
+    detail: 'Профиль «{name}» настроен открывать сайты только через VPN, а туннель сейчас выключен.',
     hint: 'Включите VPN в поповере «Защита» — или смените выход в сеть у профиля в настройках.',
+    name: blocked,
   };
 }

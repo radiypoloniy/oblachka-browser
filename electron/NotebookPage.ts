@@ -1,3 +1,4 @@
+import { uiLanguage } from './uiText';
 import { runTabOrganizePrompt } from './TranslationService';
 import type { JsonSchema } from '../shared/aiSchema';
 import { sanitizeDocHtml, groupSections, markupTextLength, PAGE_MIN_CHARS, type PageSpec } from '../shared/docMarkup';
@@ -73,7 +74,9 @@ function hasNumbers(context: string): boolean {
  */
 function buildBodyPrompt(spec: PageLengthSpec): string {
   return [
-    'Напиши по приведённым ниже источникам статью на русском языке.',
+    uiLanguage() === 'en'
+      ? 'Write an article in English from the sources below. All headings and body text must be English.'
+      : 'Напиши по приведённым ниже источникам статью на русском языке.',
     '',
     'ФОРМАТ ОТВЕТА — HTML-разметка тела статьи, без <html>, <head>, <body> и без ```.',
     'Разрешены только эти теги: <h2> — заголовок раздела, <p> — абзац, <ul> и <li> — список,',

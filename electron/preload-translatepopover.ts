@@ -2,6 +2,7 @@
 // Отдельный от боевого preload.ts и от preload-translatetest.ts — свой маленький канал,
 // не трогает контракт основного чрома (shared/ipc.ts).
 import { contextBridge, ipcRenderer } from 'electron'
+import { exposeUiLanguage } from './preload/uiLanguage'
 import type { AiAction, AiActionOutcome } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('translatePopover', {
@@ -29,3 +30,4 @@ contextBridge.exposeInMainWorld('translatePopover', {
   // Вставить результат обратно в поле, откуда взяли текст, и закрыться.
   replace: (text: string) => ipcRenderer.send('translate-popover:replace', text),
 })
+exposeUiLanguage()

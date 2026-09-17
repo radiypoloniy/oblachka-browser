@@ -3,6 +3,7 @@
 // только вью, в которой рисуется вопрос. Показ и замер высоты — свой маленький канал
 // (permission-popover:*), не часть контракта основного хрома, как у findbar/translate-popover.
 import { contextBridge, ipcRenderer } from 'electron'
+import { exposeUiLanguage } from './preload/uiLanguage'
 import { IPC } from '../shared/ipc'
 import type { PermissionRequest } from '../shared/ipc'
 
@@ -18,3 +19,4 @@ contextBridge.exposeInMainWorld('permissionPopover', {
     return () => ipcRenderer.removeListener('permission-popover:request', handler)
   },
 })
+exposeUiLanguage()
