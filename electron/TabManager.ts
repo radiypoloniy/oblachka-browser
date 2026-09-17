@@ -16,6 +16,7 @@ import { disputedPageAction, disputedKeyStuckInFrame } from './tabHotkeyPolicy';
 import { wireTabNavigationGuard } from './tabNavigationGuard';
 import { wireTabGuestSignals } from './tabGuestSignals';
 import { wireTabPageLifecycle } from './tabPageLifecycle';
+import { wireTabCrashEvents } from './tabCrashEvents';
 import type { SplitPair } from './SplitPairRegistry';
 import type { PageContextMenuHost } from './pageContextMenu';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
@@ -1469,83 +1470,24 @@ export class TabManager {
       onFindResult: (result) => this.onFindResultCb(result),
     });
     wireWindowOpenPolicy(this.#windowOpenHost, id, view);
-    this.#wireCrashAndZoom(id, view, mine, notify);
-    this.#wireContextMenu(id, view);
+    wireTabCrashEvents(wc, {
+      mine,
+      notify,
+      onZoom: (direction) => this.adjustZoom(direction === 'in' ? ZOOM_STEP : -ZOOM_STEP),
+      isOnline: () => net.isOnline(),
+      isRussianCaCandidate,
+      reportError: (error) => {
+        this.errors.set(id, error);
+        if (this.activeId === id || this.#pairContaining(id)) this.hideView(id);
+      },
+      windowDestroyed: () => this.win.isDestroyed(),
+      viewStillCurrent: () => this.tabMap.get(id)?.view === view,
+      closeTab: () => this.closeTab(id),
+    });
+    wirePageContextMenu(this.#menuHost, id, view);
 
 
     this.registerHotkeyHandler(wc);
-  }
-
-  // Зум по Ctrl+колесу, ошибки загрузки, смерть вью и падение процесса рендеринга.
-  #wireCrashAndZoom(id: string, view: WebContentsView, mine: () => boolean, notify: () => void): void {
-    const wc = view.webContents;
-
-    // Ctrl+колесо → наш зум (preventDefault гасит нативный зум Chromium).
-    // Chromium перехватывает Ctrl+scroll как gesture, поэтому страница не скроллится.
-    wc.on('zoom-changed', (event, direction) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      event.preventDefault();
-      this.adjustZoom(direction === 'in' ? ZOOM_STEP : -ZOOM_STEP);
-    });
-
-    // Ошибка загрузки основного фрейма (DNS, сеть, TLS…)
-    // errorCode === -3 (ERR_ABORTED) — пользователь остановил загрузку; не ошибка.
-    wc.on('did-fail-load', (_e, errorCode, _desc, validatedURL, isMainFrame) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      if (!isMainFrame || errorCode === -3) return;
-      const url = wc.getURL() || validatedURL;
-      // Снимаем состояние сети ЗДЕСЬ, а не в renderer: к моменту показа плашки сеть может уже
-      // вернуться, и совет «проверьте подключение» окажется враньём задним числом.
-      // Отдельный признак для случая «сертификат от УЦ Минцифры, но домена нет в списке» — только
-      // в нём странице ошибки есть что объяснить (см. CertificateTrust.ts и TabError.tsx).
-      // ⚠️ Признак кандидата живёт до перезапуска, поэтому одного его мало: без сверки с кодом
-      // любая позднейшая ошибка на том же хосте (сеть отвалилась, сайт лёг) рассказывала бы
-      // человеку про сертификаты. -202 — ERR_CERT_AUTHORITY_INVALID, ровно наш случай.
-      let russianCa = false;
-      try {
-        russianCa = errorCode === -202 && isRussianCaCandidate(new URL(url).hostname);
-      } catch { /* адрес не разбирается */ }
-      this.errors.set(id, { type: 'load', code: errorCode, url, offline: !net.isOnline(), russianCa });
-      const isInSplit = !!this.#pairContaining(id);
-      if (this.activeId === id || isInSplit) this.hideView(id);
-      notify();
-    });
-
-    // Программное уничтожение вкладки САМИМ контентом (window.close() — типично для OAuth-попапов
-    // после логина), а не через наш closeTab(). Без этого слушателя tabMap/дерево нод/activeId
-    // продолжают ссылаться на уничтоженный WebContents — следующий снапшот падает на getURL.
-    // Пускаем через тот же closeTab(), что и обычное закрытие — единая атомарная уборка.
-    // Проверка tab.view === view отсекает устаревшие/ожидаемые destroyed от старой вьюхи —
-    // усыпление (sleepTab) и обычный closeTab() сами обнуляют/удаляют tab.view ДО close(),
-    // так что к моменту этого события они уже не совпадут и повторной уборки не случится.
-    wc.on('destroyed', () => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      // ⚠️ Выход из браузера приходит СЮДА ЖЕ. Electron сносит окно, а затем валит webContents
-      // вкладок по одному — каждый зовёт этот обработчик, и closeTab начинает разбирать
-      // структуру (пары split, дерево узлов, выбор следующей активной) в окне, которого уже
-      // нет: первое же обращение к this.win.contentView бросает "Object has been destroyed"
-      // и роняет main-процесс. Ловилось именно на split: closeTab → exitSplit → раскладка
-      // «выжившей» панели. Уборка тут и бессмысленна — сессия сохранена синхронно раньше,
-      // в win.on('close') (см. main.ts), а показывать результат уже некому и негде.
-      if (this.win.isDestroyed()) return;
-      const tab = this.tabMap.get(id);
-      if (!tab || tab.view !== view) return;
-      this.closeTab(id);
-    });
-
-    // Краш рендер-процесса: вьюха мертва — прячем, показываем экран ошибки.
-    wc.on('render-process-gone', () => {
-      const url = wc.getURL();
-      this.errors.set(id, { type: 'crash', code: 0, url, offline: false });
-      const isInSplit = !!this.#pairContaining(id);
-      if (this.activeId === id || isInSplit) this.hideView(id);
-      notify();
-    });
-  }
-
-  // Нативное контекстное меню страницы (ПКМ) — см. electron/pageContextMenu.ts.
-  #wireContextMenu(id: string, view: WebContentsView): void {
-    wirePageContextMenu(this.#menuHost, id, view);
   }
 
   /**
