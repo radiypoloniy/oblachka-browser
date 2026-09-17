@@ -12,6 +12,7 @@ import { wirePageContextMenu } from './pageContextMenu';
 import { wireWindowOpenPolicy } from './windowOpenPolicy';
 import type { WindowOpenHost } from './windowOpenPolicy';
 import { SplitPairRegistry } from './SplitPairRegistry';
+import { startPageFind, findQuoteInWebContents } from './tabFind';
 import type { SplitPair } from './SplitPairRegistry';
 import type { PageContextMenuHost } from './pageContextMenu';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
@@ -45,10 +46,6 @@ import { pushClosed, popClosed, peekClosed, type ClosedTab } from '../shared/clo
 // для preload-aipanel.js (__dirname здесь и там — один и тот же dist-electron/electron после
 // компиляции, см. electron/tsconfig.json).
 const CONTENT_PRELOAD_PATH = path.join(__dirname, 'preload-content.js');
-
-// Сколько ждём ответа Chromium на один findInPage смысловой цитаты (см. findQuoteInPage).
-// Обход документа занимает миллисекунды; секунда — с запасом на тяжёлую страницу.
-const FIND_QUOTE_TIMEOUT_MS = 1000;
 
 // Сколько ждём загрузку страницы при переходе к источнику скопированного (см. revealCopiedText).
 const REVEAL_LOAD_TIMEOUT_MS = 8000;
@@ -3172,18 +3169,7 @@ export class TabManager {
   findInPage(query: string, forward: boolean): void {
     const wc = this.getActiveWebContents();
     if (!wc) return;
-    // findNext:true = продолжить существующий поиск; false = начать новый.
-    const startsNew = query !== this.lastQuery;
-    wc.findInPage(query, { forward, findNext: !startsNew });
-    // ⚠️ Electron 40 НЕ шлёт `found-in-page` на начало нового поиска (findNext:false) — вообще
-    // никогда, ни через секунду, ни через десять. Замерено в голом Electron, без нашего кода:
-    // одиночный findNext:false молчит во всех случаях, а «продолжение» отвечает мгновенно.
-    // Из-за этого счётчик «3 / 12» не появлялся, пока человек не нажмёт Enter: первый — набор
-    // запроса — как раз и есть новый поиск. Лечится вторым вызовом того же запроса с
-    // findNext:true: он отвечает, а активное совпадение при этом остаётся ПЕРВЫМ (проверено на
-    // странице с тремя вхождениями: matches=3, activeMatchOrdinal=1) — то есть на подсветку и
-    // порядок обхода обход не влияет, только возвращает нам ответ.
-    if (startsNew) wc.findInPage(query, { forward, findNext: true });
+    startPageFind(wc, query, this.lastQuery, forward);
     this.lastQuery = query;
   }
 
@@ -3204,21 +3190,9 @@ export class TabManager {
   async findQuoteInPage(candidates: string[]): Promise<number> {
     const wc = this.getActiveWebContents();
     if (!wc) return 0;
-    for (const q of candidates) {
-      const matches = await this.#findOnce(wc, q);
-      // Лог по каждому кандидату: без него «не нашлось» неотличимо от «модель выбрала не то»,
-      // а это два разных дефекта в двух разных местах.
-      console.log(`[smart-find] подсветка ${q.length} симв. «${q.slice(0, 40)}…» → ${matches}`);
-      if (matches > 0) {
-        this.lastQuery = q;
-        return matches;
-      }
-    }
-    // Не нашлось ничем — снимаем выделение, иначе на странице осталась бы подсветка от
-    // предыдущего, уже неактуального запроса.
-    try { wc.stopFindInPage('clearSelection'); } catch { /* вкладка могла закрыться */ }
-    this.lastQuery = '';
-    return 0;
+    const result = await findQuoteInWebContents(wc, candidates);
+    this.lastQuery = result.query;
+    return result.matches;
   }
 
   /**
@@ -3284,45 +3258,6 @@ export class TabManager {
       };
       const timer = setTimeout(finish, REVEAL_LOAD_TIMEOUT_MS);
       wc.once('did-stop-loading', finish);
-    });
-  }
-
-  // Один заход findInPage с ожиданием ответа. ⚠️ Ждём именно finalUpdate и сверяем requestId:
-  // Chromium шлёт found-in-page несколько раз по ходу обхода документа, и промежуточные значения
-  // счётчика ещё не окончательны. Таймаут — страховка от страницы, которая ответ не пришлёт
-  // вовсе (навигация прямо во время поиска): без него промис завис бы, а с ним человек получит
-  // честное «не нашлось».
-  #findOnce(wc: WebContents, query: string): Promise<number> {
-    return new Promise((resolve) => {
-      let requestId = 0;
-      let done = false;
-      const finish = (n: number) => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        wc.removeListener('found-in-page', onFound);
-        resolve(n);
-      };
-      const onFound = (_e: unknown, r: Electron.Result) => {
-        if (r.requestId !== requestId || !r.finalUpdate) return;
-        finish(r.matches);
-      };
-      const timer = setTimeout(() => {
-        // Отличать «ноль совпадений» от «Chromium вообще не ответил» обязательно: для человека
-        // это одинаковое «не нашлось», а для починки — два разных места.
-        console.warn(`[smart-find] found-in-page не пришёл за ${FIND_QUOTE_TIMEOUT_MS} мс`);
-        finish(0);
-      }, FIND_QUOTE_TIMEOUT_MS);
-      wc.on('found-in-page', onFound);
-      try {
-        // Пара вызовов, а не один — см. подробный разбор в findInPage выше: на одиночный
-        // «начать новый поиск» Electron 40 не отвечает никогда, и ждать тут было бы нечего.
-        // Ответ приходит на ВТОРОЙ вызов, его requestId и сверяем.
-        wc.findInPage(query, { forward: true, findNext: false });
-        requestId = wc.findInPage(query, { forward: true, findNext: true });
-      } catch {
-        finish(0);
-      }
     });
   }
 
