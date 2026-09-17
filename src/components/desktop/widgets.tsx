@@ -16,7 +16,7 @@ import { AnalogFace, WideClusterClock, WideTypeClock } from './clockFaces';
 import { displayEm, DIGIT_EM, WIDE_EM } from './displayMetrics';
 // Общие со «Приложениями» AI-панели — см. шапку weatherIcon.tsx.
 import { WeatherIcon, wmoText, weatherSkin } from './weather';
-import { MoonWidget, ShieldWidget, DownloadsWidget, HolidayWidget, DigestWidget, TrackingWidget, CalendarWidget, TimerWidget } from './localWidgets';
+import { MoonWidget, ShieldWidget, DownloadsWidget, HolidayWidget, DigestWidget, TrackingWidget, CalendarWidget, TimerWidget, CardsWidget } from './localWidgets';
 
 // Виджеты рабочего стола.
 //
@@ -1286,5 +1286,5 @@ export const WIDGET_RENDERERS: Record<string, (p: WidgetProps) => React.ReactEle
   holiday: HolidayWidget,
   tracking: TrackingWidget,
   calendar: CalendarWidget,
-  timer: TimerWidget,
+  timer: TimerWidget, cards: CardsWidget,
 };

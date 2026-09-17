@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Карточки — виджет стола</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@600;700;800&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   КАРТОЧКИ, второй проход.
+   Плитка — скатерть. На ней лежит бумажная карточка. Размер выбирает игру:
+   2×2 знание, 4×2 выбор перевода, 4×4 память рубашкой вниз.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --r-tight:4px; --r-control:8px; --r-box:12px; --r-island:20px; --r-content:24px; --r-pill:999px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-standard:cubic-bezier(.2,0,.2,1);
+  --dur-fast:120ms; --dur-slow:260ms;
+  --success:#34C759; --danger:#FF3B30;
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n3:#EEEEF1; --n5:#DBDCE3; --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --app-bg:var(--n5); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+  --poster-tangerine:#E8611C; --poster-mustard:#E9BE1E; --poster-lime:#A9E86B;
+  --poster-tea:#1F5E52; --poster-sky:#9BD3DE; --poster-passion:#C63F3E;
+  --poster-neutral:#4C5665;
+  --on-poster-dark:#14140F; --on-poster-light:#F2EDE1;
+  /* Бумага карточки — всегда бумага, не «поверхность темы». Скатерть меняется, лист нет. */
+  --paper:#F2EDE1; --paper-ink:#14140F; --paper-mute:#5C584E;
+  --card:color-mix(in srgb, var(--accent) 10%, var(--surface));
+  --shadow:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
+  --paper-shadow:
+    0 1px 0 rgba(255,255,255,.55) inset,
+    0 1px 2px rgba(20,20,15,.08),
+    0 10px 24px rgba(20,20,15,.14);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.55);
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n3:#212123; --n5:#343439; --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#343439;
+  --divider:rgba(255,255,255,.14);
+  --shadow-tint:#000; --grain-op:.38;
+  --card:color-mix(in srgb, var(--accent) 13%, var(--surface));
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.06);
+  --paper:#E8E2D4; --paper-ink:#14140F; --paper-mute:#5C584E;
+  --paper-shadow:
+    0 1px 0 rgba(255,255,255,.28) inset,
+    0 1px 2px rgba(0,0,0,.25),
+    0 14px 28px rgba(0,0,0,.35);
+}
+
+* { box-sizing:border-box; }
+html, body { margin:0; min-height:100%; }
+body {
+  font-family:var(--font-ui); font-size:14px; line-height:1.5;
+  color:var(--text-body); background:var(--app-bg);
+  -webkit-font-smoothing:antialiased;
+}
+.ground {
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:linear-gradient(168deg,var(--ground-1) 0%,var(--ground-2) 46%,var(--ground-3) 100%);
+}
+.ground::after {
+  content:""; position:absolute; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:200px; opacity:var(--grain-op); mix-blend-mode:overlay;
+}
+
+.wrap { position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:var(--sp6) var(--sp4) 80px; }
+.topbar { display:flex; align-items:flex-start; gap:var(--sp3); margin-bottom:var(--sp6); flex-wrap:wrap; }
+.topbar h1 { margin:0; font-family:var(--font-display); font-size:28px; font-weight:700; letter-spacing:-.03em; line-height:1.1; color:var(--text-strong); }
+.lede { margin:8px 0 0; max-width:66ch; color:var(--text-muted); font-size:14px; }
+.caps { font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); }
+.seg { display:flex; gap:2px; padding:3px; border-radius:999px; background:color-mix(in srgb, var(--surface) 80%, transparent); margin-left:auto; }
+.seg button {
+  border:0; cursor:pointer; font:inherit; font-size:12.5px; font-weight:500;
+  padding:5px 12px; border-radius:999px; background:transparent; color:var(--text-muted);
+}
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); font-weight:600; }
+
+h2 { margin:40px 0 12px; font-size:16px; font-weight:600; letter-spacing:-.01em; color:var(--text-strong); }
+h3 { margin:0 0 8px; font-size:14px; font-weight:600; color:var(--text-strong); }
+p { margin:0 0 10px; }
+.note { font-size:12.5px; line-height:1.45; color:var(--text-muted); max-width:72ch; }
+.note b { color:var(--text-strong); font-weight:600; }
+code { font-family:var(--font-mono); font-size:12px; background:var(--sunken); padding:1px 6px; border-radius:4px; }
+
+.grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:var(--sp4); }
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:var(--sp4); }
+@media (max-width:860px) { .grid-3, .grid-2 { grid-template-columns:1fr; } }
+
+.plate {
+  background:var(--surface); border-radius:var(--r-content);
+  box-shadow:var(--shadow), var(--inner-light); padding:var(--sp4);
+}
+
+/* ── Скатерть ────────────────────────────────────────────────────────────── */
+.tile {
+  --ink: var(--on-poster-dark);
+  position:relative; border-radius:var(--r-content); overflow:hidden;
+  background:var(--fill, var(--poster-sky)); color:var(--ink);
+  box-shadow:var(--shadow), var(--inner-light);
+  display:flex; flex-direction:column; padding:12px;
+  user-select:none;
+}
+.tile.tea { --fill: var(--poster-tea); --ink: var(--on-poster-light); }
+.tile.sky { --fill: var(--poster-sky); --ink: var(--on-poster-dark); }
+.tile.mustard { --fill: var(--poster-mustard); --ink: var(--on-poster-dark); }
+.tile.lime { --fill: var(--poster-lime); --ink: var(--on-poster-dark); }
+.tile.passion { --fill: var(--poster-passion); --ink: var(--on-poster-light); }
+.size-s { width:248px; height:248px; }
+.size-m { width:510px; height:248px; }
+.size-l { width:510px; height:510px; }
+@media (max-width:560px) {
+  .size-s, .size-m, .size-l { width:100%; }
+  .size-l { height:min(510px, 92vw); }
+}
+
+.hud {
+  flex:none; display:flex; align-items:baseline; justify-content:space-between;
+  font-size:12.5px; font-weight:600; opacity:.7; min-height:18px;
+}
+.hud .n { font-variant-numeric:tabular-nums; font-family:var(--font-mono); font-size:11px; letter-spacing:.04em; }
+
+/* Бумажный лист */
+.paper {
+  background:var(--paper); color:var(--paper-ink);
+  border-radius:14px; box-shadow:var(--paper-shadow);
+  display:flex; align-items:center; justify-content:center; text-align:center;
+  padding:10px 12px;
+}
+.word {
+  font-family:var(--font-display); font-weight:700; letter-spacing:-.03em;
+  line-height:1.12; margin:0;
+}
+
+/* ── 2×2: колода в руке ──────────────────────────────────────────────────── */
+.review { flex:1; min-height:0; display:flex; flex-direction:column; gap:10px; }
+.stage { flex:1; min-height:0; position:relative; perspective:900px; cursor:pointer; }
+.stack, .stack2 {
+  position:absolute; border-radius:14px; background:var(--paper);
+  box-shadow:var(--paper-shadow); pointer-events:none;
+}
+.stack { inset:10px 0 8px 22px; transform:rotate(5deg); opacity:.7; }
+.stack2 { inset:12px 22px 6px 0; transform:rotate(-4deg); opacity:.45; }
+.flip {
+  position:absolute; inset:2px 10px 0; transform-style:preserve-3d;
+  transition:transform var(--dur-slow) var(--ease-out);
+}
+.flip.is-back { transform:rotateY(180deg); }
+.face {
+  position:absolute; inset:0; backface-visibility:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:16px 12px 14px; gap:8px;
+}
+.face.back { transform:rotateY(180deg); }
+.face .word { font-size:28px; }
+.face.back .word { font-size:22px; }
+.lang { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--paper-mute); }
+.verdict { display:grid; grid-template-columns:1fr 1fr; gap:8px; flex:none; }
+.verdict button {
+  border:0; cursor:pointer; font:inherit; font-weight:600; font-size:13px;
+  height:36px; border-radius:var(--r-pill);
+}
+.verdict .no {
+  background:color-mix(in srgb, var(--ink) 12%, transparent); color:inherit;
+}
+.verdict .yes {
+  background:var(--paper); color:var(--paper-ink);
+  box-shadow:0 1px 0 rgba(255,255,255,.4) inset, 0 2px 8px rgba(20,20,15,.12);
+}
+.verdict .yes:disabled { opacity:.38; cursor:default; }
+
+/* ── 4×2: слово слева, три ответа справа ─────────────────────────────────── */
+.choice { flex:1; min-height:0; display:grid; grid-template-columns:1.15fr 1fr; gap:12px; }
+.prompt { min-width:0; min-height:0; flex-direction:column; gap:8px; }
+.prompt .word { font-size:26px; }
+.answers { min-width:0; display:flex; flex-direction:column; gap:8px; }
+.answers button.paper {
+  flex:1; min-height:0; cursor:pointer; border:0; font:inherit;
+  font-family:var(--font-ui); font-weight:600; font-size:15px;
+  transition:transform var(--dur-fast) var(--ease-out), opacity var(--dur-slow);
+}
+.answers button.paper:hover { transform:translateY(-1px); }
+.answers button.paper.picked { transform:translateY(-1px) scale(1.02); }
+.answers button.paper.wrong { animation:shake .32s var(--ease-out); }
+.answers button.paper.dim { opacity:.38; }
+@keyframes shake {
+  0%,100% { transform:translateX(0); }
+  25% { transform:translateX(-5px); }
+  75% { transform:translateX(5px); }
+}
+
+/* ── 4×4: память ─────────────────────────────────────────────────────────── */
+.memory { flex:1; min-height:0; display:grid; grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(4,1fr); gap:8px; }
+.mem {
+  border:0; cursor:pointer; padding:0; min-width:0; min-height:0;
+  border-radius:12px; background:transparent; position:relative;
+  perspective:600px;
+}
+.mem .inner {
+  position:absolute; inset:0; transform-style:preserve-3d;
+  transition:transform var(--dur-slow) var(--ease-out);
+}
+.mem.open .inner { transform:rotateY(180deg); }
+.mem.gone { pointer-events:none; }
+.mem.gone .inner { opacity:.28; }
+.mem-face {
+  position:absolute; inset:0; backface-visibility:hidden; border-radius:12px;
+  box-shadow:var(--paper-shadow);
+  display:flex; align-items:center; justify-content:center; padding:6px;
+}
+.mem-face.back {
+  background:
+    repeating-linear-gradient(-22deg, transparent 0 7px, color-mix(in srgb, var(--paper-ink) 11%, transparent) 7px 8px),
+    var(--paper);
+  color:var(--paper-ink);
+  box-shadow:var(--paper-shadow), inset 0 0 0 1px rgba(20,20,15,.08);
+}
+.mark { width:28px; height:18px; opacity:.42; }
+.mem-face.front {
+  transform:rotateY(180deg);
+  background:var(--paper); color:var(--paper-ink);
+  font-family:var(--font-display); font-weight:700; font-size:14px;
+  letter-spacing:-.02em; line-height:1.1; text-align:center;
+}
+.mark { width:22px; height:14px; opacity:.28; }
+
+.done {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:6px; text-align:center;
+}
+.done .num {
+  font-family:var(--font-display); font-size:48px; font-weight:800;
+  letter-spacing:-.04em; line-height:1;
+}
+.again {
+  margin-top:8px; border:0; cursor:pointer; font:inherit; font-weight:600; font-size:13px;
+  height:36px; padding:0 16px; border-radius:var(--r-pill);
+  background:var(--paper); color:var(--paper-ink);
+}
+
+.desk {
+  position:relative; border-radius:28px; overflow:hidden; min-height:420px;
+  padding:28px; isolation:isolate;
+}
+.desk canvas { position:absolute; inset:0; width:100%; height:100%; }
+.desk-grid { position:relative; z-index:1; display:grid; grid-template-columns:248px 510px; gap:14px; align-items:start; }
+@media (max-width:860px) { .desk-grid { grid-template-columns:1fr; } .desk .size-m { width:100%; } }
+.clock-face { flex:1; display:flex; flex-direction:column; justify-content:flex-end; }
+.clock-face .t { font-family:var(--font-display); font-size:44px; font-weight:800; letter-spacing:-.04em; line-height:1; }
+.clock-face .d { font-size:13px; opacity:.7; margin-top:6px; }
+
+.rule { display:grid; grid-template-columns:92px 1fr; gap:12px; align-items:start; padding:12px; border-radius:var(--r-box); background:var(--card); margin-bottom:10px; }
+.rule .k { font-family:var(--font-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted); padding-top:2px; }
+
+.blank {
+  width:min(280px, 100%); min-height:160px; flex-direction:column; gap:10px; padding:20px;
+}
+.blank input {
+  width:100%; border:0; border-bottom:1px solid color-mix(in srgb, var(--paper-ink) 18%, transparent);
+  background:transparent; font:inherit; font-size:18px; font-weight:600; color:var(--paper-ink);
+  padding:4px 0; outline:none;
+}
+.blank input:last-of-type { font-family:var(--font-display); font-size:22px; font-weight:700; }
+.blank input::placeholder { color:var(--paper-mute); opacity:.6; }
+
+.foot { margin-top:40px; padding-top:20px; border-top:1px solid var(--divider); color:var(--text-muted); font-size:12.5px; max-width:72ch; }
+
+@media (prefers-reduced-motion: reduce) {
+  .flip, .mem .inner, .answers button.paper { transition:none; }
+}
+</style>
+</head>
+<body>
+<div class="ground"></div>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <div class="caps">Стол · виджет · второй проход</div>
+      <h1>Карточки</h1>
+      <p class="lede">Плитка — это скатерть. На ней лежит бумага. Размер не масштабирует одну игру, а выбирает другую: знание, выбор, память. «Ещё» больше нет — незнание такое же действие, как знание.</p>
+    </div>
+    <div class="seg" role="group" aria-label="Тема">
+      <button type="button" id="t-light" aria-pressed="true">Светлая</button>
+      <button type="button" id="t-dark" aria-pressed="false">Тёмная</button>
+    </div>
+  </div>
+
+  <p class="note">Первый макет красил чипы фирменным тоном и называл это дизайном. Слово на заливке, сетка кнопок, список пар — это интерфейс настроек, не колода. Здесь объект один: <b>лист бумаги</b>. Скатерть берёт заливку человека, лист всегда кремовый, как карточка на столе.</p>
+
+  <h2>Три размера — три игры</h2>
+  <div class="grid-3">
+    <div class="plate">
+      <h3>2×2 · Знание</h3>
+      <p class="note" style="margin:0;">Одна карта в руке. Касание переворачивает. <b>Не знаю</b> работает сразу: показывает перевод и оставляет слово в круге. <b>Знаю</b> доступно после того, как перевод видели — иначе это угадайка.</p>
+    </div>
+    <div class="plate">
+      <h3>4×2 · Выбор</h3>
+      <p class="note" style="margin:0;">Ширина здесь не «больше чипов», а сцена: слово слева, три бумажных ответа справа. Ошибка — это и есть «не знаю». Нет режима, нет списка.</p>
+    </div>
+    <div class="plate">
+      <h3>4×4 · Память</h3>
+      <p class="note" style="margin:0;">Рубашка вниз, два касания, пара уходит. Это та игра, ради которой квадрат 4×4 вообще существует. Переворот одной карты и список пар сюда не возвращаются.</p>
+    </div>
+  </div>
+
+  <h2>Живые плитки</h2>
+  <p class="note" style="margin-bottom:16px;">Трогать. На квадрате сначала «не знаю» без переворота — перевод сам покажется. На широкой — выбрать перевод. На большой — открыть две рубашки.</p>
+
+  <div style="display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start;">
+    <div>
+      <div class="caps" style="margin-bottom:8px;">2×2 · знание</div>
+      <div class="tile tea size-s" id="w-small"></div>
+    </div>
+    <div>
+      <div class="caps" style="margin-bottom:8px;">4×2 · выбор</div>
+      <div class="tile sky size-m" id="w-medium"></div>
+    </div>
+  </div>
+
+  <div style="margin-top:28px;" id="memory-live">
+    <div class="caps" style="margin-bottom:8px;">4×4 · память</div>
+    <div class="tile mustard size-l" id="w-large"></div>
+  </div>
+
+  <h2>На столе</h2>
+  <p class="note" style="margin-bottom:12px;">Соседние заливки по-прежнему не повторяются. Бумага на любой скатерти одна и та же — иначе на чае, небе и горчице получились бы три разных «карточки».</p>
+  <div class="desk" id="desk">
+    <canvas id="wall"></canvas>
+    <div class="desk-grid">
+      <div class="tile lime size-s" aria-hidden="true">
+        <div class="hud"><span>Москва</span></div>
+        <div class="clock-face">
+          <div class="t" id="clock-t">19:47</div>
+          <div class="d">чт, 17 сентября</div>
+        </div>
+      </div>
+      <div class="tile sky size-m" id="w-desk"></div>
+    </div>
+  </div>
+
+  <h2>Колода — не список дел</h2>
+  <p class="note" style="margin-bottom:12px;">Править пары нечем на самой игре: карандаш в углу (как шестерёнка таймера, когда она понадобится) кладёт на скатерть чистый лист. Две строки — лицо и оборот. Не чекбоксы.</p>
+  <div class="tile tea" style="width:min(280px,100%); height:220px; padding:16px;">
+    <div class="hud"><span>новая пара</span></div>
+    <div class="paper blank" style="flex:1;">
+      <input placeholder="слово" value="threshold">
+      <input placeholder="перевод" value="">
+    </div>
+  </div>
+
+  <h2>Почему так, а не чипами</h2>
+  <div class="rule"><div class="k">Объект</div><div class="note" style="margin:0;">Часы — циферблат. Луна — диск. Таймер — число. Карточки — <b>лист</b>. Слово, нарисованное на заливке, не является карточкой, сколько ни ставь Unbounded.</div></div>
+  <div class="rule"><div class="k">Размер</div><div class="note" style="margin:0;">Игра следует из геометрии, человек режим не выбирает. Переключатели «пары / переворот / колода» на 4×4 были приложением внутри плитки. Их нет.</div></div>
+  <div class="rule"><div class="k">Не знаю</div><div class="note" style="margin:0;">На 2×2 это отдельная кнопка, и она не прячется за «ещё». На 4×2 и 4×4 незнание — промах: неверная подпись или несовпавшая пара. Зелёным и красным фон не красится.</div></div>
+  <div class="rule"><div class="k">ИИ</div><div class="note" style="margin:0;">По-прежнему не вытаскивает слова со страницы сам. Предложить пары — карточкой подтверждения. В v1 этого нет.</div></div>
+
+  <h2>В коде</h2>
+  <div class="plate">
+    <p class="note" style="margin:0;">
+      <code>localWidgets.tsx</code> — три лица по <code>box</code>, не три режима в стейте.<br>
+      <code>shared/tileBudget.ts</code> — <code>cardsFit</code>: 2×2 всегда знание; шире 3.5 клеток — выбор; выше 3.5 — память. Никаких порогов «высота коробки &gt; 150».<br>
+      <code>cardsStore.ts</code> — пары и три коробки. Выбор и память пишут в те же коробки: верно = знаю, промах = не знаю.<br>
+      Стартовый стол не трогаем. <code>hasItem</code> — одна плитка. Карандаш колоды — отдельный заход, не v1 игры.
+    </p>
+  </div>
+
+  <div class="foot">
+    Открыть файл в браузере. Если идём делать — один заход: стор + три лица + строка в «+». Без карандаша колоды, без ИИ, без переключателя режимов.
+  </div>
+</div>
+
+<script>
+(function () {
+  var PAIRS = [
+    ['cloud', 'облако'],
+    ['window', 'окно'],
+    ['learn', 'учить'],
+    ['enough', 'достаточно'],
+    ['morning', 'утро'],
+    ['quiet', 'тихий'],
+    ['light', 'свет'],
+    ['page', 'страница']
+  ];
+  var MARK = '<svg class="mark" viewBox="0 0 22 14" fill="currentColor" aria-hidden="true"><ellipse cx="8" cy="9" rx="6" ry="4"/><ellipse cx="14" cy="8" rx="7" ry="5"/><ellipse cx="11" cy="5" rx="4.5" ry="3.2"/></svg>';
+
+  function $(id) { return document.getElementById(id); }
+  function shuffle(a) {
+    a = a.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function setTheme(mode) {
+    document.documentElement.setAttribute('data-theme', mode);
+    $('t-light').setAttribute('aria-pressed', mode === 'light' ? 'true' : 'false');
+    $('t-dark').setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
+    drawWall();
+  }
+  $('t-light').onclick = function () { setTheme('light'); };
+  $('t-dark').onclick = function () { setTheme('dark'); };
+
+  function mountReview(el, pairs) {
+    var i = 0, seen = false, known = 0, lock = false;
+    function render() {
+      if (i >= pairs.length) {
+        el.innerHTML = '<div class="hud"><span></span><span class="n">' + known + ' / ' + pairs.length + '</span></div>' +
+          '<div class="done"><div class="num">' + known + '</div><div style="font-weight:600;opacity:.8">из ' + pairs.length + '</div>' +
+          '<button class="again" type="button">Ещё круг</button></div>';
+        el.querySelector('.again').onclick = function () { i = 0; known = 0; seen = false; render(); };
+        return;
+      }
+      var p = pairs[i];
+      el.innerHTML =
+        '<div class="hud"><span>ещё ' + (pairs.length - i) + '</span><span class="n">' + known + ' знаю</span></div>' +
+        '<div class="review">' +
+          '<div class="stage">' +
+            '<div class="stack2"></div><div class="stack"></div>' +
+            '<div class="flip' + (seen ? ' is-back' : '') + '">' +
+              '<div class="face paper"><div class="lang">en</div><div class="word">' + p[0] + '</div></div>' +
+              '<div class="face paper back"><div class="lang">ru</div><div class="word">' + p[1] + '</div></div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="verdict">' +
+            '<button class="no" type="button">Не знаю</button>' +
+            '<button class="yes" type="button"' + (seen ? '' : ' disabled') + '>Знаю</button>' +
+          '</div>' +
+        '</div>';
+      el.querySelector('.stage').onclick = function () {
+        if (lock || seen) return;
+        seen = true; render();
+      };
+      el.querySelector('.no').onclick = function (e) {
+        e.stopPropagation();
+        if (lock) return;
+        if (!seen) {
+          seen = true; render();
+          lock = true;
+          setTimeout(function () { lock = false; i++; seen = false; render(); }, 700);
+          return;
+        }
+        i++; seen = false; render();
+      };
+      el.querySelector('.yes').onclick = function (e) {
+        e.stopPropagation();
+        if (!seen || lock) return;
+        known++; i++; seen = false; render();
+      };
+    }
+    render();
+  }
+
+  function mountChoice(el, pairs) {
+    var queue = shuffle(pairs);
+    var i = 0, score = 0, lock = false;
+    function round() {
+      if (i >= queue.length) {
+        el.innerHTML = '<div class="hud"><span></span><span class="n">' + score + ' / ' + queue.length + '</span></div>' +
+          '<div class="done"><div class="num">' + score + '</div><div style="font-weight:600;opacity:.8">верных</div>' +
+          '<button class="again" type="button">Ещё круг</button></div>';
+        el.querySelector('.again').onclick = function () { queue = shuffle(pairs); i = 0; score = 0; round(); };
+        return;
+      }
+      var p = queue[i];
+      var others = shuffle(pairs.filter(function (x) { return x[0] !== p[0]; })).slice(0, 2).map(function (x) { return x[1]; });
+      var opts = shuffle([p[1]].concat(others));
+      el.innerHTML =
+        '<div class="hud"><span>ещё ' + (queue.length - i) + '</span><span class="n">' + score + ' верно</span></div>' +
+        '<div class="choice">' +
+          '<div class="paper prompt"><div class="lang">en</div><div class="word">' + p[0] + '</div></div>' +
+          '<div class="answers">' +
+            opts.map(function (t) { return '<button type="button" class="paper" data-t="' + t + '">' + t + '</button>'; }).join('') +
+          '</div>' +
+        '</div>';
+      el.querySelectorAll('.answers button').forEach(function (btn) {
+        btn.onclick = function () {
+          if (lock) return;
+          var ok = btn.getAttribute('data-t') === p[1];
+          lock = true;
+          el.querySelectorAll('.answers button').forEach(function (b) {
+            if (b === btn) b.classList.add(ok ? 'picked' : 'wrong');
+            else b.classList.add('dim');
+          });
+          if (ok) score++;
+          setTimeout(function () { lock = false; i++; round(); }, ok ? 380 : 700);
+        };
+      });
+    }
+    round();
+  }
+
+  function mountMemory(el, pairs) {
+    var tiles, picked, lock, found, moves;
+    function deal() {
+      var set = shuffle(pairs).slice(0, 8);
+      tiles = [];
+      set.forEach(function (p, idx) {
+        tiles.push({ id: 'a' + idx, pair: idx, text: p[0], open: false, gone: false });
+        tiles.push({ id: 'b' + idx, pair: idx, text: p[1], open: false, gone: false });
+      });
+      tiles = shuffle(tiles);
+      picked = []; found = 0; moves = 0; lock = false;
+      paint();
+    }
+    function paint() {
+      if (found === 8) {
+        el.innerHTML = '<div class="hud"><span>память</span><span class="n">' + moves + ' хода</span></div>' +
+          '<div class="done"><div class="num">' + moves + '</div><div style="font-weight:600;opacity:.8">ходов на восемь пар</div>' +
+          '<button class="again" type="button">Ещё раз</button></div>';
+        el.querySelector('.again').onclick = deal;
+        return;
+      }
+      el.innerHTML = '<div class="hud"><span>ещё ' + (8 - found) + '</span><span class="n">' + moves + '</span></div>' +
+        '<div class="memory">' + tiles.map(function (t) {
+          var cls = 'mem' + (t.open || t.gone ? ' open' : '') + (t.gone ? ' gone' : '');
+          return '<button type="button" class="' + cls + '" data-id="' + t.id + '"><span class="inner">' +
+            '<span class="mem-face back">' + MARK + '</span>' +
+            '<span class="mem-face front">' + t.text + '</span>' +
+          '</span></button>';
+        }).join('') + '</div>';
+      el.querySelectorAll('.mem').forEach(function (btn) {
+        btn.onclick = function () {
+          if (lock) return;
+          var t = tiles.find(function (x) { return x.id === btn.getAttribute('data-id'); });
+          if (!t || t.open || t.gone) return;
+          t.open = true;
+          picked.push(t);
+          paint();
+          if (picked.length < 2) return;
+          moves++;
+          var a = picked[0], b = picked[1];
+          picked = [];
+          if (a.pair === b.pair) {
+            a.gone = b.gone = true; found++;
+            setTimeout(paint, 280);
+            return;
+          }
+          lock = true;
+          setTimeout(function () { a.open = b.open = false; lock = false; paint(); }, 800);
+        };
+      });
+    }
+    deal();
+  }
+
+  mountReview($('w-small'), PAIRS.slice(0, 6));
+  mountChoice($('w-medium'), PAIRS);
+  mountMemory($('w-large'), PAIRS);
+  mountChoice($('w-desk'), PAIRS);
+
+  function tick() {
+    var n = new Date();
+    var el = $('clock-t');
+    if (el) el.textContent = String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0');
+  }
+  tick(); setInterval(tick, 10000);
+
+  function drawWall() {
+    var cv = $('wall'), stand = $('desk');
+    if (!cv || !stand) return;
+    var r = stand.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.max(320, r.width), h = Math.max(280, r.height);
+    cv.width = w * dpr; cv.height = h * dpr;
+    cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var g = ctx.createLinearGradient(0, 0, w, h);
+    if (dark) { g.addColorStop(0, '#0A1018'); g.addColorStop(.5, '#0C1622'); g.addColorStop(1, '#070B11'); }
+    else { g.addColorStop(0, '#F2EFE7'); g.addColorStop(.55, '#E8E4DA'); g.addColorStop(1, '#DFDCD2'); }
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    ctx.lineWidth = 1;
+    var bars = Math.floor(w / 4);
+    for (var i = 0; i < bars; i++) {
+      var x = i * 4 + 2, t = i / bars;
+      var env = Math.pow(Math.sin(Math.PI * t), 1.4);
+      var wob = Math.sin(t * 34) * .28 + Math.sin(t * 11 + 1.2) * .5;
+      var amp = env * h * .42 * (.55 + .45 * Math.abs(wob));
+      var alpha = dark ? (.05 + env * .22) : (.04 + env * .12);
+      ctx.strokeStyle = dark ? 'rgba(150,196,235,' + alpha.toFixed(3) + ')' : 'rgba(80,90,70,' + alpha.toFixed(3) + ')';
+      ctx.beginPath(); ctx.moveTo(x, h / 2 - amp); ctx.lineTo(x, h / 2 + amp); ctx.stroke();
+    }
+  }
+  drawWall();
+  window.addEventListener('resize', drawWall);
+})();
+</script>
+</body>
+</html>

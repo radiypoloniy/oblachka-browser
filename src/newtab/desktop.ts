@@ -136,12 +136,31 @@ export const WIDGET_MIN: Record<string, CellSize> = {
   calendar: { w: 2, h: 2 },
   // Время, три кнопки длительности и кнопка хода — в клетку не складывается.
   timer: { w: 2, h: 2 },
+  // Карточка и два ответа: ниже 2×2 жест не читается.
+  cards: { w: 2, h: 2 },
+};
+
+/**
+ * Наибольший размер, до которого можно растянуть этот тип.
+ *
+ * ⚠️ Есть не у всех: большинству потолок даёт сетка (6×4). Карточкам 4×4 не отдаём — там была бы
+ * память рубашкой вниз, и в этом заходе её нет. Без потолка ручка тянула бы плитку в большой
+ * квадрат, а внутри оставался бы тот же выбор перевода, растянутый в дыру.
+ */
+export const WIDGET_MAX: Record<string, CellSize> = {
+  cards: { w: 4, h: 2 },
 };
 
 /** Наименьший размер, до которого можно ужать этот элемент. Иконки — всегда одна клетка. */
 export function minSizeFor(item: Pick<DesktopItem, 'kind' | 'widget'>): CellSize {
   if (item.kind !== 'widget') return { w: 1, h: 1 };
   return WIDGET_MIN[item.widget ?? ''] ?? { w: 1, h: 1 };
+}
+
+/** Потолок своего типа, иначе потолок сетки. */
+export function maxSizeFor(item: Pick<DesktopItem, 'kind' | 'widget'>): CellSize {
+  if (item.kind !== 'widget') return { w: 1, h: 1 };
+  return WIDGET_MAX[item.widget ?? ''] ?? { w: 6, h: 4 };
 }
 
 export function sizeName(size: CellSize): WidgetSizeName | null {
@@ -640,12 +659,13 @@ export function resizeItem(layout: DesktopLayout, id: string, size: CellSize): D
   }, id);
 }
 
-/** Размер в допустимых пределах: не меньше минимума своего типа и не больше потолка сетки. */
+/** Размер в допустимых пределах: не меньше минимума своего типа и не больше его потолка. */
 export function clampSize(item: Pick<DesktopItem, 'kind' | 'widget'>, size: CellSize): CellSize {
   const min = minSizeFor(item);
+  const max = maxSizeFor(item);
   return {
-    w: Math.max(min.w, Math.min(6, Math.round(size.w))),
-    h: Math.max(min.h, Math.min(4, Math.round(size.h))),
+    w: Math.max(min.w, Math.min(max.w, Math.round(size.w))),
+    h: Math.max(min.h, Math.min(max.h, Math.round(size.h))),
   };
 }
 

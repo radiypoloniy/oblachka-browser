@@ -41,6 +41,7 @@ const WIDGET_CHOICES: { key: string; label: string; hint: string; glyph: string;
   { key: 'clock',     label: 'Часы',             hint: 'Время и дата',                   glyph: '🕒', size: 'small' },
   { key: 'calendar',  label: 'Календарь',        hint: 'Месяц целиком',                  glyph: '📅', size: 'small' },
   { key: 'timer',     label: 'Таймер',           hint: '5, 10 или 20 минут',             glyph: '⏱', size: 'small' },
+  { key: 'cards',     label: 'Карточки',         hint: '80 слов · язык в настройках экрана', glyph: '🎴', size: 'small' },
   { key: 'weather',   label: 'Погода',           hint: 'Прогноз на ближайшие часы',      glyph: '🌤', size: 'medium' },
   { key: 'rates',     label: 'Курс валют',       hint: 'Доллар и евро, график за месяц', glyph: '₽', size: 'small' },
   { key: 'crypto',    label: 'Крипта',           hint: 'Цены в рублях и за 24 часа',     glyph: '₿', size: 'small' },

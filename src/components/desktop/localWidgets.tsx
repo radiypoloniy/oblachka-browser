@@ -3,6 +3,7 @@ import { DISPLAY, RADIUS } from '../../styles/system';
 import { Tile, TileCaption, Sparkline, TONE_GREEN, TONE_WARM, FILL_GREEN, FILL_WARM, type WidgetProps } from './widgets';
 import { displayEm } from './displayMetrics';
 import { CalendarFace, TimerLayout } from './clockFaces';
+export { CardsWidget } from './cardsWidget';
 import { TIMER_PRESETS, timerLeftMs, timerResume, timerRunning } from '../../newtab/timerStore';
 import type { TimerState } from '../../../shared/ipc';
 import type { TrackedProduct } from '../../../shared/ipc';

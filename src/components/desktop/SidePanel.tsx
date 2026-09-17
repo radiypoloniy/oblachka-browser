@@ -5,6 +5,8 @@ import {
   loadNewTabSettings, saveNewTabSettings, WALLPAPER_PRESETS, CRYPTO_CHOICES, RATE_CHOICES,
   type NewTabSettings,
 } from '../../newtab/settings';
+import { loadCards, setActiveDeck, subscribeCards } from '../../newtab/cardsStore';
+import { DECKS, DECK_IDS, isDeckId } from '../../../shared/cards';
 import { allMeshes, subscribeMeshes, meshCss } from '../../newtab/gradients';
 import {
   WIDGET_SIZES, addItem, removeItem, hasItem, setScale, scaleOf, SCALE_PRESETS,
@@ -45,6 +47,7 @@ const WIDGET_GROUPS: { title: string; note?: string; items: { key: string; label
       { key: 'clock',     label: 'Часы',             icon: '🕒', size: 'small' },
       { key: 'calendar',  label: 'Календарь',        icon: '📅', size: 'small' },
       { key: 'timer',     label: 'Таймер',           icon: '⏱',  size: 'small' },
+      { key: 'cards',     label: 'Карточки',         icon: '🎴', size: 'small' },
       { key: 'moon',      label: 'Луна',             icon: '🌙', size: 'small' },
       { key: 'shield',    label: 'Защита',           icon: '🛡', size: 'small' },
       { key: 'tasks',     label: 'Дела',             icon: '✓',  size: 'medium' },
@@ -306,6 +309,7 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
             </Section>
           ))}
 
+          <CardsSection layout={layout} />
           {hasItem(layout, 'widget', 'clock') && (
             <Section title="Часы">
               {/* ⚠️ Этот же выбор решает, каким будет лицо РАСТЯНУТОЙ плитки: стрелки — кластер
@@ -319,8 +323,7 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
               />
               <Toggle label={s.clock.face === 'analog' ? 'Секундная стрелка' : 'Секунды'} on={s.clock.seconds}
                 onChange={(v) => apply({ ...s, clock: { ...s.clock, seconds: v } })} />
-              <Toggle label="Дата" on={s.clock.date}
-                onChange={(v) => apply({ ...s, clock: { ...s.clock, date: v } })} />
+              <Toggle label="Дата" on={s.clock.date} onChange={(v) => apply({ ...s, clock: { ...s.clock, date: v } })} />
               {/* 24 часа осмысленны только у цифр — у стрелок этой разницы не существует. */}
               {s.clock.face === 'digital' && (
                 <Toggle label="24 часа" on={s.clock.hour24}
@@ -515,6 +518,30 @@ function Segmented({ value, options, onChange }: {
         >{label}</button>
       ))}
     </div>
+  );
+}
+
+function CardsSection({ layout }: { layout: DesktopLayout }) {
+  if (!hasItem(layout, 'widget', 'cards')) return null;
+  return (
+    <Section title="Карточки" note="Какой язык учить. У каждого свой прогресс, всего 80 слов">
+      <CardsLangChips />
+    </Section>
+  );
+}
+
+function CardsLangChips() {
+  const [active, setActive] = useState(() => loadCards().active);
+  useEffect(() => subscribeCards(() => setActive(loadCards().active)), []);
+  return (
+    <Chips
+      items={DECK_IDS.map((id) => ({ id, label: DECKS[id].title }))}
+      active={[active]}
+      onToggle={(id) => {
+        if (!isDeckId(id)) return;
+        setActive(setActiveDeck(loadCards(), id).active);
+      }}
+    />
   );
 }
 

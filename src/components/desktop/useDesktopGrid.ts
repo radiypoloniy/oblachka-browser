@@ -3,7 +3,7 @@ import type React from 'react';
 import type { DesktopLayout } from '../../newtab/desktop';
 import {
   DEFAULT_COLS, SCALE_PRESETS, computeGrid, moveItemTo, normalize, placeItems, resizeItem,
-  saveDesktop, scaleOf, minSizeFor,
+  saveDesktop, scaleOf, minSizeFor, maxSizeFor,
 } from '../../newtab/desktop';
 import { GEN_GHOST_ID, type GenGhost } from './GenStudio';
 import { APPS } from '../aiApps';
@@ -142,12 +142,12 @@ export function useDesktopGrid({
     const item = placed.find((p) => p.item.id === resizing.id);
     if (!box || !item) return;
     // Тянем от левого-верхнего угла элемента: сколько клеток укладывается до курсора.
-    // ⚠️ Не меньше минимума своего типа (см. WIDGET_MIN): на плитке 1×1 у «Курса» и «Защиты»
-    // содержимое налезает само на себя, и адаптацией это не лечится — там нет места под число
-    // и подпись к нему. Ручка просто не даёт утянуть туда, где виджет заведомо сломается.
+    // ⚠️ Не меньше минимума и не больше потолка своего типа (см. WIDGET_MIN / WIDGET_MAX):
+    // на плитке 1×1 у «Курса» содержимое налезает, а карточки в 4×4 в этом заходе не живут.
     const min = minSizeFor(item.item);
-    const w = Math.max(min.w, Math.min(grid.cols, Math.round((e.clientX - box.left - item.col * step) / step)));
-    const h = Math.max(min.h, Math.min(4, Math.round((e.clientY - box.top - item.row * step) / step)));
+    const max = maxSizeFor(item.item);
+    const w = Math.max(min.w, Math.min(max.w, grid.cols, Math.round((e.clientX - box.left - item.col * step) / step)));
+    const h = Math.max(min.h, Math.min(max.h, Math.round((e.clientY - box.top - item.row * step) / step)));
     if (w !== resizing.w || h !== resizing.h) setResizing({ ...resizing, w, h });
   };
 
