@@ -1,6 +1,5 @@
-﻿import os from 'os';
 import { app, WebContentsView, BrowserWindow, ipcMain, net } from 'electron';
-import type { LoadURLOptions, MenuItemConstructorOptions, PostBody, Referrer, WebContents, WebFrameMain } from 'electron';
+import type { LoadURLOptions, MenuItemConstructorOptions, PostBody, Referrer, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
@@ -17,6 +16,7 @@ import { wireTabNavigationGuard } from './tabNavigationGuard';
 import { wireTabGuestSignals } from './tabGuestSignals';
 import { wireTabPageLifecycle } from './tabPageLifecycle';
 import { wireTabCrashEvents } from './tabCrashEvents';
+import { startTabSleepTimer } from './tabSleepController';
 import type { SplitPair } from './SplitPairRegistry';
 import type { PageContextMenuHost } from './pageContextMenu';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
@@ -34,7 +34,6 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
 import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_PANE_RADIUS, splitPaneBounds, clampSplitRatio } from '../shared/layout';
-import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTimer, pressureCandidates, SLEEP_CHECK_INTERVAL, PRESSURE_SLEEP_PER_CHECK, MEDIA_GRACE } from '../shared/sleepPolicy';
 import { prepareSleepUnload } from './tabSleepIndex';
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
 import { buildOrganizedTree } from '../shared/organizeTree';
@@ -116,7 +115,7 @@ interface ManagedTab {
   // уничтожается вместе со своим состоянием, и проснувшаяся вкладка снова заорала бы.
   muted?: boolean;
   // Когда в этой вкладке в последний раз ВИДЕЛИ играющее медиа (звук от Electron или опрос кадров,
-  // см. #isPlayingMedia). Даёт отсрочку MEDIA_GRACE: без неё достаточно паузы на буферизацию
+  // см. tabSleepController.ts). Даёт отсрочку MEDIA_GRACE: без неё достаточно паузы на буферизацию
   // ровно в момент минутной проверки, чтобы выгрузить вкладку посреди просмотра.
   lastMediaAt?: number;
   // Псевдо-вкладка (История/Настройки, см. createSpecialTab) — обычная запись в tabMap/nodes
@@ -143,43 +142,6 @@ interface ManagedTab {
 export type DetachedTab =
   | { kind: 'live'; view: WebContentsView; incognito: boolean }
   | { kind: 'sleeping'; sleeping: SleepingMeta; incognito: boolean };
-
-// ⚠️ Скрипт «в этом кадре ИГРАЕТ медиа» — прямая замена wc.isCurrentlyAudible() как единственной
-// защиты. Живая жалоба: «даже видео во время воспроизведения может выгрузиться». Причина в том,
-// что isCurrentlyAudible отвечает не на вопрос «играет ли», а на «слышно ли ПРЯМО СЕЙЧАС», и мимо
-// него проходят сразу три обычных случая: вкладка приглушена нашей же кнопкой mute (Electron
-// считает приглушённую неслышимой), у ролика нет звуковой дорожки, звук выкручен в ноль.
-//
-// Проверяем сам факт воспроизведения. readyState >= 2 (HAVE_CURRENT_DATA) отсекает элементы,
-// которые «не на паузе» только потому, что ещё ничего не загрузили. Картинка-в-картинке и
-// полноэкранный режим — отдельные признаки: элемент может уехать в системное окно PiP, оставаясь
-// в этом документе, и выгрузка вкладки убила бы его вместе с окном.
-const MEDIA_PLAYING_SCRIPT = `(function(){
-  if (document.pictureInPictureElement || document.fullscreenElement) return true;
-  var els = document.querySelectorAll('video,audio');
-  for (var i = 0; i < els.length; i++) {
-    var m = els[i];
-    if (!m.paused && !m.ended && m.readyState >= 2) return true;
-  }
-  return false;
-})()`;
-// ⚠️ Потолок на число опрашиваемых кадров. Плееры живут в iframe (ютуб-эмбеды и почти вся
-// видеореклама), поэтому один top-frame их не видит; но у нагруженной страницы кадров бывают
-// десятки, и опрашивать все — дороже, чем сама выгрузка экономит.
-const MEDIA_PROBE_MAX_FRAMES = 12;
-
-// Скрипт проверки незаполненных форм — только top-frame (v1: поля внутри iframe не проверяются).
-const HAS_FILLED_FORMS_SCRIPT = `(function(){
-  var sel='input:not([type=checkbox]):not([type=radio]):not([type=hidden])' +
-    ':not([type=submit]):not([type=button]):not([type=reset]):not([type=file]),' +
-    'textarea,[contenteditable="true"]';
-  var els=document.querySelectorAll(sel);
-  for(var i=0;i<els.length;i++){
-    var v=els[i].value||els[i].textContent||'';
-    if(v.trim().length>0)return true;
-  }
-  return false;
-})()`;
 
 export class TabManager {
   private win: BrowserWindow;
@@ -1251,132 +1213,18 @@ export class TabManager {
     return kb * 1024;
   }
 
-  // Сами правила — в shared/sleepPolicy.ts (чистая арифметика под тестом), здесь только замеры ОС.
-  #memoryBudgetBytes(): number {
-    return memoryBudgetBytes(os.totalmem());
-  }
-
-  #systemFreeShare(): number {
-    return systemFreeShare(os.freemem(), os.totalmem());
-  }
-
-  /**
-   * Играет ли во вкладке медиа ПРЯМО СЕЙЧАС — с обходом суб-кадров.
-   * ⚠️ isCurrentlyAudible оставлен ПЕРВЫМ и как быстрый положительный ответ: если звук слышно,
-   * дальше спрашивать нечего и незачем гонять JS. Всё остальное — про беззвучное воспроизведение,
-   * мимо которого прежняя защита проходила молча.
-   */
-  async #isPlayingMedia(wc: WebContents): Promise<boolean> {
-    if (wc.isCurrentlyAudible()) return true;
-    let frames: WebFrameMain[];
-    try {
-      // mainFrame первым: у подавляющего большинства страниц плеер именно там, и до обхода
-      // кадров дело не доходит вовсе.
-      frames = [wc.mainFrame, ...wc.mainFrame.framesInSubtree.filter((f) => f !== wc.mainFrame)];
-    } catch { return false; } // вью уже уничтожена
-    for (const frame of frames.slice(0, MEDIA_PROBE_MAX_FRAMES)) {
-      try {
-        if (await frame.executeJavaScript(MEDIA_PLAYING_SCRIPT, true)) return true;
-      } catch { /* кадр умер или кросс-доменный сбой — просто идём дальше */ }
-    }
-    return false;
-  }
-
-  // Можно ли усыпить эту вкладку прямо сейчас. ⚠️ ОДНА проверка на оба критерия (таймер и
-  // давление): разведи их по двум копиям — и защиты (звук, заполненные формы, split, инкогнито)
-  // однажды разъедутся, а узнает об этом человек, у которого выгрузило форму на полуслове.
-  async #canSleepNow(tab: ManagedTab, protectedIds: Set<string>): Promise<boolean> {
-    if (tab.sleeping || protectedIds.has(tab.id)) return false;
-    // Инкогнито не усыпляем: усыпление уничтожает WebContentsView, а с ним потерялась бы
-    // in-memory сессия приватных вкладок (куки/логины текущей приватной сессии).
-    if (tab.incognito) return false;
-    if (!this.isHttpView(tab.view)) return false;
-
-    // Человек явно сказал «этот сайт не выгружать» (ПКМ по вкладке). Стоит РАНЬШЕ всех дорогих
-    // проверок: раз решение уже принято, спрашивать страницу про медиа и формы незачем.
-    const host = hostOfUrl(this.#tabUrl(tab));
-    if (host && this.isNeverSleepHost(host)) return false;
-
-    const wc = tab.view.webContents;
-
-    // ── Медиа ─────────────────────────────────────────────────────────────────────────────────
-    // Сначала ОТСРОЧКА по последнему замеченному воспроизведению — она дешёвая и закрывает дыру
-    // «пауза на буферизацию ровно в момент минутной проверки».
-    if (tab.lastMediaAt && Date.now() - tab.lastMediaAt < MEDIA_GRACE) return false;
-    if (await this.#isPlayingMedia(wc)) {
-      // Запоминаем факт: следующая проверка не полезет в кадры повторно, пока идёт отсрочка.
-      tab.lastMediaAt = Date.now();
-      return false;
-    }
-    // Вкладка могла стать активной, пока шёл опрос кадров.
-    if (protectedIds.has(tab.id) || tab.sleeping || !this.isHttpView(tab.view)) return false;
-
-    // Async: незаполненные формы — только после всех sync-фильтров, запрос не бесплатный.
-    let hasForms = false;
-    try {
-      hasForms = await wc.executeJavaScript(HAS_FILLED_FORMS_SCRIPT, true);
-    } catch {
-      return false; // WebContents недоступен
-    }
-    if (hasForms) return false;
-
-    // Перепроверяем после await: вкладка могла стать активной, пока шёл JS-запрос —
-    // показываемую пару пересчитываем заново, старая могла устареть.
-    if (protectedIds.has(tab.id) || tab.sleeping || !this.isHttpView(tab.view)) return false;
-    if (tab.id === this.activeId) return false;
-    const freshPair = this.#activePair();
-    if (freshPair && (tab.id === freshPair.leftId || tab.id === freshPair.rightId)) return false;
-    return true;
-  }
-
   private startSleepTimer(): void {
-    this.sleepTimer = setInterval(async () => {
-      const now = Date.now();
-      const activePair = this.#activePair();
-
-      // Набор защищённых id: активная вкладка + обе панели ПОКАЗЫВАЕМОЙ пары.
-      // Припаркованные пары не защищены — их вкладки могут усыпляться как обычные.
-      const protectedIds = new Set<string>([this.activeId]);
-      if (activePair) {
-        protectedIds.add(activePair.leftId);
-        protectedIds.add(activePair.rightId);
-      }
-
-      // ── Критерий 1: вкладку давно не открывали ────────────────────────────────────────────
-      for (const tab of this.tabMap.values()) {
-        // Не гоняем дорогой JS-запрос зря — сперва дешёвая проверка по часам.
-        if (!isIdleForTimer(now - tab.lastActiveAt, this.isTabPinned(tab.id))) continue;
-        if (await this.#canSleepNow(tab, protectedIds)) this.sleepTab(tab.id);
-      }
-
-      // ── Критерий 2: памяти стало тесно ────────────────────────────────────────────────────
-      // ⚠️ Порядок важен: сначала таймер, потом давление. Иначе давление усыпляло бы вкладки,
-      // до которых и так дошла бы очередь, и «до бюджета» пришлось бы спускаться лишний раз.
-      // ⚠️ Оба условия обязательны (см. SYSTEM_FREE_MIN_SHARE): мы над своим бюджетом И машине
-      // действительно тесно. Одного первого не хватало — на любой современной машине браузер
-      // висел над бюджетом всегда и выгружал вкладки без всякой на то нужды.
-      const budget = this.#memoryBudgetBytes();
-      if (!isUnderMemoryPressure(this.#appWorkingSetBytes(), budget, this.#systemFreeShare())) return;
-
-      // Кого и в каком порядке — см. pressureCandidates (незакреплённые раньше закреплённых,
-      // внутри групп от самых давних к свежим).
-      const order = pressureCandidates(
-        [...this.tabMap.values()].map((t) => ({ id: t.id, lastActiveAt: t.lastActiveAt, pinned: this.isTabPinned(t.id) })),
-        now,
-      );
-
-      let slept = 0;
-      for (const { id } of order) {
-        if (slept >= PRESSURE_SLEEP_PER_CHECK) break;
-        if (this.#appWorkingSetBytes() <= budget) break;
-        const tab = this.tabMap.get(id);
-        if (tab && await this.#canSleepNow(tab, protectedIds)) {
-          console.log(`[память] бюджет ${Math.round(budget / 1048576)} МБ превышен — усыпляю вкладку`);
-          this.sleepTab(id);
-          slept += 1;
-        }
-      }
-    }, SLEEP_CHECK_INTERVAL);
+    this.sleepTimer = startTabSleepTimer({
+      tabs: () => this.tabMap.values(),
+      tab: (id) => this.tabMap.get(id),
+      activeId: () => this.activeId,
+      activePair: () => this.#activePair(),
+      isPinned: (id) => this.isTabPinned(id),
+      isNeverSleepHost: (host) => this.isNeverSleepHost(host),
+      tabUrl: (tab) => { const current = this.tabMap.get(tab.id); return current ? this.#tabUrl(current) : ''; },
+      appWorkingSetBytes: () => this.#appWorkingSetBytes(),
+      sleepTab: (id) => this.sleepTab(id),
+    });
   }
 
   // Окно закрылось — менеджер больше никому не нужен. Снимаем всё, что переживает окно само по
