@@ -28,7 +28,7 @@ export interface PageCopyRich {
   links: ClipboardLink[];
 }
 import type { SessionSnapshot, SavedNode, SavedActiveRef, SavedTab } from './SessionManager';
-import { PIP_ENTER_SCRIPT, PIP_EXIT_SCRIPT } from './videoPip';
+import { PIP_ENTER_SCRIPT, PIP_EXIT_SCRIPT, runPipScript } from './videoPip';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
@@ -3134,31 +3134,11 @@ export class TabManager {
   }
 
   // ── Геометрия "дырки" под контент ──
-  // Просьба к странице увести/вернуть кадр из окошка поверх окон. ⚠️ Второй аргумент
-  // executeJavaScript означает «это действие человека»: без него запрос на
-  // Picture-in-Picture отклоняется — API требует жеста, а переключение вкладки им и было.
-  // Ошибки глушим намеренно: у страницы может не быть видео вовсе, и это норма.
+  // Просьба к странице увести/вернуть кадр из окошка поверх окон.
   private sendPip(tabId: string, script: string): void {
     const tab = this.tabMap.get(tabId);
     if (!tab || !this.isHttpView(tab.view)) return;
-    const wc = tab.view.webContents;
-    if (wc.isDestroyed()) return;
-    const entering = script === PIP_ENTER_SCRIPT;
-    // ⚠️ Ответ скрипта РАЗБИРАЕМ, а не выбрасываем. Раньше здесь стоял голый .catch(() => {}), и
-    // «окошко перестало появляться» было неотличимо от «на странице нет играющего видео»: скрипт
-    // возвращает разные причины ('уже'/'нечего'/'отказ'), и все они молча пропадали. Живая жалоба
-    // про пропавший PiP посреди работы разбиралась вслепую именно поэтому.
-    // ⚠️ Логируем ХОСТ, а не адрес: в прод-логах не должно быть полных URL страниц.
-    wc.executeJavaScript(script, true)
-      .then((res: unknown) => {
-        // 'нечего' — самый обычный исход (на странице просто нет видео), про него молчим.
-        if (!entering || res === 'ок' || res === 'нечего') return;
-        console.log(`[pip] ${hostOfUrl(wc.getURL())} → ${String(res)}`);
-      })
-      .catch((e: unknown) => {
-        if (!entering) return;
-        console.log(`[pip] ${hostOfUrl(wc.getURL())} → скрипт не выполнился: ${(e as Error)?.message ?? e}`);
-      });
+    runPipScript(tab.view.webContents, script);
   }
 
   // Вьюхи, которые сейчас едут: repositionViews их не трогает, иначе первый же ResizeObserver

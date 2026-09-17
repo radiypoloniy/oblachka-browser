@@ -10,6 +10,9 @@
 // об этом не знает — поэтому скрипт исполняется через `executeJavaScript(code, true)`, где
 // второй аргумент и означает «считать это действием человека». Без него запрос отклоняется.
 
+import type { WebContents } from 'electron';
+import { hostOfUrl } from '../shared/rules';
+
 // Уводим в окошко ТОЛЬКО то, что человек реально смотрит: играющее, не закончившееся, с
 // картинкой заметного размера. Иначе окно выскакивало бы от любого фонового ролика-заглушки
 // или превью в ленте.
@@ -35,3 +38,21 @@ export const PIP_EXIT_SCRIPT = `(async () => {
   if (!document.pictureInPictureElement) return 'нет';
   try { await document.exitPictureInPicture(); return 'ок'; } catch (e) { return 'отказ'; }
 })()`;
+
+// ⚠️ Ответ скрипта РАЗБИРАЕМ, а не выбрасываем. Раньше в TabManager стоял голый .catch(() => {}),
+// и «окошко перестало появляться» было неотличимо от «на странице нет играющего видео».
+// ⚠️ Логируем ХОСТ, а не адрес: в прод-логах не должно быть полных URL страниц.
+export function runPipScript(wc: WebContents, script: string): void {
+  if (wc.isDestroyed()) return;
+  const entering = script === PIP_ENTER_SCRIPT;
+  wc.executeJavaScript(script, true)
+    .then((res: unknown) => {
+      // 'нечего' — самый обычный исход (на странице просто нет видео), про него молчим.
+      if (!entering || res === 'ок' || res === 'нечего') return;
+      console.log(`[pip] ${hostOfUrl(wc.getURL())} → ${String(res)}`);
+    })
+    .catch((e: unknown) => {
+      if (!entering) return;
+      console.log(`[pip] ${hostOfUrl(wc.getURL())} → скрипт не выполнился: ${(e as Error)?.message ?? e}`);
+    });
+}
