@@ -12,7 +12,7 @@
     "ipc": 0
   },
   "electron/TabManager.ts": {
-    "lines": 3337,
+    "lines": 3300,
     "fn": 106,
     "effects": 0,
     "ipc": 0
