@@ -14,6 +14,7 @@ import { SplitPairRegistry } from './SplitPairRegistry';
 import { startPageFind, findQuoteInWebContents } from './tabFind';
 import { disputedPageAction, disputedKeyStuckInFrame } from './tabHotkeyPolicy';
 import { wireTabNavigationGuard } from './tabNavigationGuard';
+import { wireTabGuestSignals } from './tabGuestSignals';
 import type { SplitPair } from './SplitPairRegistry';
 import type { PageContextMenuHost } from './pageContextMenu';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
@@ -1412,7 +1413,21 @@ export class TabManager {
     // каждый из них по-прежнему первым делом спрашивает mine() — вкладку могли передать другому
     // окну, а снять слушатели выборочно нечем (см. разбор выше).
     wireTabNavigationGuard(wc);
-    this.#wireGuestSignals(id, view, mine);
+    wireTabGuestSignals(wc, {
+      mine,
+      isIncognito: () => !!this.tabMap.get(id)?.incognito,
+      onPasswordForm: (hasLoginForm, hasUsernameField, url) => this.onPasswordFormCb?.(id, hasLoginForm, hasUsernameField, url),
+      onPasswordSubmit: (username, password, url) => this.onPasswordSubmitCb?.(id, username, password, url),
+      onPasswordFieldAnchor: (rect, url) => this.onPasswordFieldAnchorCb?.(id, rect, url),
+      onMediaReport: (report, url) => this.onMediaReportCb?.(id, report, url),
+      onPasswordDismiss: () => this.onPasswordDismissCb?.(),
+      onAutofillFieldFocus: (rect, kind, url) => this.onAutofillFieldFocusCb?.(id, rect, kind, url),
+      onAutofillPasteBlob: (text, rect) => this.onAutofillPasteBlobCb?.(id, text, rect),
+      onPageCopy: (text, url, title, rich) => this.onPageCopyCb?.(text, url, title, rich),
+      onAutofillDismiss: () => this.onAutofillDismissCb?.(),
+      mapFields: (origin, fields) => this.#autofillMapper?.(origin, fields),
+      onAutofillSubmit: (kind, fields, url) => this.onAutofillSubmitCb?.(id, kind, fields, url),
+    });
     this.#wirePageLifecycle(id, view, mine, notify);
     wireWindowOpenPolicy(this.#windowOpenHost, id, view);
     this.#wireCrashAndZoom(id, view, mine, notify);
@@ -1420,142 +1435,6 @@ export class TabManager {
 
 
     this.registerHotkeyHandler(wc);
-  }
-
-  // Сигналы ОТ гостевой страницы (content-preload): пароли, автозаполнение, буфер обмена.
-  #wireGuestSignals(id: string, view: WebContentsView, mine: () => boolean): void {
-    const wc = view.webContents;
-    // Менеджер паролей, шаг 2 — per-view IPC (webContents.ipc, не общий ipcMain): main точно
-    // знает, какая вкладка прислала сообщение, без реверс-маппинга webContents.id → tabId.
-    // Origin НЕ берём из payload content-preload (недоверенный источник) — только из wc.getURL()
-    // здесь, в main, в момент события (см. PasswordAutofillManager.ts).
-    wc.ipc.on(IPC.PASSWORDS_FORM_DETECTED, (_e, payload: { hasLoginForm: boolean; hasUsernameField: boolean }) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      try {
-        this.onPasswordFormCb?.(id, payload.hasLoginForm, payload.hasUsernameField, wc.getURL());
-      } catch (e) {
-        console.warn('[TabMgr] onPasswordFormCb error:', (e as Error).message);
-      }
-    });
-    wc.ipc.on(IPC.PASSWORDS_CREDENTIAL_SUBMITTED, (_e, payload: { username: string; password: string }) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      try {
-        this.onPasswordSubmitCb?.(id, payload.username, payload.password, wc.getURL());
-      } catch (e) {
-        console.warn('[TabMgr] onPasswordSubmitCb error:', (e as Error).message);
-      }
-    });
-    wc.ipc.on(IPC.PASSWORDS_FIELD_ICON_CLICK, (_e, payload: { rect: { x: number; y: number; width: number; height: number } }) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      try {
-        this.onPasswordFieldAnchorCb?.(id, payload.rect, wc.getURL());
-      } catch (e) {
-        console.warn('[TabMgr] onPasswordFieldAnchorCb error:', (e as Error).message);
-      }
-    });
-    // Что играет на этой странице — отчёт её медиасессии (см. MediaSessionManager.ts).
-    wc.ipc.on(IPC.MEDIA_SESSION_REPORT, (_e, report: MediaSessionReport) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      try {
-        this.onMediaReportCb?.(id, report, wc.getURL());
-      } catch (e) {
-        console.warn('[TabMgr] onMediaReportCb error:', (e as Error).message);
-      }
-    });
-    // Страница просит убрать карточку паролей: клик мимо, Esc, прокрутка.
-    wc.ipc.on(IPC.PASSWORDS_DISMISS, () => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      try {
-        this.onPasswordDismissCb?.();
-      } catch (e) {
-        console.warn('[TabMgr] onPasswordDismissCb error:', (e as Error).message);
-      }
-    });
-    // Клик в само пустое поле пароля — тот же якорь и те же права (см. выше).
-    wc.ipc.on(IPC.PASSWORDS_FIELD_FOCUS, (_e, payload: { rect: { x: number; y: number; width: number; height: number } }) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      try {
-        this.onPasswordFieldAnchorCb?.(id, payload.rect, wc.getURL());
-      } catch (e) {
-        console.warn('[TabMgr] onPasswordFieldAnchorCb error (field):', (e as Error).message);
-      }
-    });
-    // Автозаполнение — фокус на поле адреса/карты. Origin/url — из wc.getURL() (не из payload).
-    wc.ipc.on(IPC.AUTOFILL_FIELD_FOCUS, (_e, payload: { rect: { x: number; y: number; width: number; height: number }; kind: 'address' | 'card' }) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      try {
-        this.onAutofillFieldFocusCb?.(id, payload.rect, payload.kind, wc.getURL());
-      } catch (e) {
-        console.warn('[TabMgr] onAutofillFieldFocusCb error:', (e as Error).message);
-      }
-    });
-    // Вставленная в поле строка, похожая на адрес одной строкой (AI-IDEAS.md №1). Текст пришёл от
-    // страницы, но наружу он не идёт: его читает локальная модель в main.
-    wc.ipc.on(IPC.AUTOFILL_PASTE_BLOB, (_e, payload: { text: string; rect: { x: number; y: number; width: number; height: number } }) => {
-      if (!mine()) return;
-      try {
-        this.onAutofillPasteBlobCb?.(id, payload.text, payload.rect);
-      } catch (e) {
-        console.warn('[TabMgr] onAutofillPasteBlobCb error:', (e as Error).message);
-      }
-    });
-    // Скопировали текст на странице — в буфер браузера (см. ClipboardBuffer.ts).
-    // ⚠️ Инкогнито исключаем ЗДЕСЬ, а не в буфере: приватная вкладка не оставляет следов нигде,
-    // и список скопированного — ровно такой же след, как история или загрузки.
-    wc.ipc.on(IPC.CLIPBOARD_COPIED, (_e, payload: { text: string; title: string; html?: string; links?: ClipboardLink[] }) => {
-      if (!mine() || this.tabMap.get(id)?.incognito) return;
-      try {
-        this.onPageCopyCb?.(payload.text, wc.getURL(), payload.title, {
-          html: payload.html ?? '',
-          links: payload.links ?? [],
-        });
-      } catch (e) {
-        console.warn('[TabMgr] onPageCopyCb error:', (e as Error).message);
-      }
-    });
-    // Страница просит убрать поповер (Esc, уход фокуса, прокрутка) — см. AUTOFILL_DISMISS.
-    wc.ipc.on(IPC.AUTOFILL_DISMISS, () => {
-      if (!mine()) return;
-      try {
-        this.onAutofillDismissCb?.();
-      } catch (e) {
-        console.warn('[TabMgr] onAutofillDismissCb error:', (e as Error).message);
-      }
-    });
-    // «Что это за поля?» — страница спрашивает про те, что не осилила её эвристика (см.
-    // AutofillFieldMapper.ts). ⚠️ Origin берём из wc.getURL(), а НЕ из payload: адрес, присланный
-    // самой страницей, — это то, что она захотела сообщить, а не то, где она открыта, и по нему
-    // страница могла бы прочитать чужой кэш полей.
-    //
-    // ⚠️ removeHandler ПЕРЕД handle — единственный handle во всей проводке, и потому единственное
-    // место, которое ломалось при передаче вкладки другому окну. Слушатели (.on) терпят второй
-    // экземпляр и разбираются через mine(), а вот второй handle того же канала на том же
-    // webContents Electron ЗАПРЕЩАЕТ и БРОСАЕТ. Бросок прилетал в середину adoptTab: вкладка уже
-    // лежала в дереве приёмника, но activate() до неё не доходил (вкладка видна в сайдбаре,
-    // страница не показана — «нужен клик по сайдбару»), а исключение уносило и хвост
-    // moveTabToExistingWindow, где закрывается опустевшее окно-источник (пустое лёгкое окно
-    // оставалось на экране). Обработчик всегда один и принадлежит НЫНЕШНЕМУ владельцу вкладки.
-    wc.ipc.removeHandler(IPC.AUTOFILL_MAP_FIELDS);
-    wc.ipc.handle(IPC.AUTOFILL_MAP_FIELDS, async (_e, payload: { fields?: unknown }) => {
-      if (!mine()) return {};
-      try {
-        let origin = '';
-        try { origin = new URL(wc.getURL()).origin; } catch { return {}; }
-        if (!origin.startsWith('http')) return {}; // локальные/служебные страницы не обслуживаем
-        return await this.#autofillMapper?.(origin, payload?.fields) ?? {};
-      } catch (e) {
-        console.warn('[TabMgr] autofill map error:', (e as Error).message);
-        return {};
-      }
-    });
-    wc.ipc.on(IPC.AUTOFILL_SUBMIT, (_e, payload: { kind: 'address' | 'card'; fields: Record<string, string> }) => {
-      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
-      try {
-        this.onAutofillSubmitCb?.(id, payload.kind, payload.fields, wc.getURL());
-      } catch (e) {
-        console.warn('[TabMgr] onAutofillSubmitCb error:', (e as Error).message);
-      }
-    });
   }
 
   // Жизненный цикл страницы: фокус, загрузка, навигация, полный экран, заголовок, значок, звук, поиск.
