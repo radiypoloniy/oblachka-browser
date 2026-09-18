@@ -297,10 +297,28 @@ console.log('\n— стопка split после перезапуска —');
     { type: 'single', tabId: 'n3' }, { type: 'single', tabId: 'n4' },
   ];
   check('одинаковые URL не путают вкладки в стопке', restoreSplitStacks(saved, restored, keyToId).get('n1'),
-    { left: ['n3'], right: [] });
+    { left: ['n3'], right: [], leftGroupId: null, rightGroupId: null });
   check('старый файл без ключей даёт пустую стопку', restoreSplitStacks([
     { type: 'split-pair', leftUrl: url, rightUrl: url, ratio: 0.5 },
   ], restored, keyToId).size, 0);
+}
+{
+  const nodes = [
+    { type: 'split-pair', leftTabId: 'left', rightTabId: 'current', ratio: 0.5 },
+    { type: 'group', id: 'g', label: 'Работа', color: null, collapsed: false,
+      children: [{ type: 'single', tabId: 'next' }] },
+  ];
+  const world = makeWorld({ left: tab('https://left.ru'), current: tab('https://current.ru'), next: tab('https://next.ru') });
+  world.stack = () => ({ left: [], right: ['next'], rightGroupId: 'g' });
+  const saved = serializeNodes(nodes, world);
+  check('группа текущей панели записана', saved[0].rightGroupId, 'g');
+  const restored = [
+    { type: 'split-pair', leftTabId: 'n1', rightTabId: 'n2', ratio: 0.5 },
+    { type: 'group', id: 'g', label: 'Работа', color: null, collapsed: false,
+      children: [{ type: 'single', tabId: 'n3' }] },
+  ];
+  const origins = restoreSplitStacks(saved, restored, new Map([['left', 'n1'], ['current', 'n2'], ['next', 'n3']]));
+  check('группа текущей панели восстановлена', origins.get('n1')?.rightGroupId, 'g');
 }
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);

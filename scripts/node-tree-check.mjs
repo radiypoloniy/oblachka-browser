@@ -401,6 +401,14 @@ console.log('\n— синхронизация split-узла —');
   check('выселенная вкладка остаётся внутри родителя пары', collectTabIds(target.children), ['left', 'incoming', 'right', 'inside']);
 }
 {
+  const split = pair('left', 'current');
+  const source = group('source', 'Источник', [single('next')]);
+  const nodes = [split, source];
+  replaceSplitPairPanelNode(nodes, 'current', 'next', 'right', 'source');
+  check('выселенная вкладка вернулась в свою группу', collectTabIds(source.children), ['current']);
+  check('группа не исчезла при выборе её последней вкладки', findGroupById('source', nodes)?.id, 'source');
+}
+{
   const nodes = [single('incoming')];
   check('потерянный узел пары сообщает об отказе', replaceSplitPairPanelNode(nodes, 'evicted', 'incoming', 'left'), false);
   check('выселенная вкладка при отказе возвращена в корень', collectTabIds(nodes), ['evicted']);

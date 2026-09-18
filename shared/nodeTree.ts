@@ -309,18 +309,19 @@ export function insertSplitPairAt(
 }
 
 // Заменяет одну панель пары обычной вкладкой: входящая исчезает со старого места, выселенная
-// становится single сразу после пары. Если узел пары потерян, выселенную всё равно возвращаем в
-// корень — живая вкладка не должна стать недоступной из сайдбара.
+// становится single в исходной группе либо сразу после пары. Если узел пары потерян, выселенную
+// всё равно возвращаем в корень — живая вкладка не должна стать недоступной из сайдбара.
 export function replaceSplitPairPanelNode(
   nodes: SidebarNode[],
   panelId: string,
   newId: string,
   side: 'left' | 'right',
+  evictedGroupId?: string | null,
 ): boolean {
+  const returnGroup = evictedGroupId ? findGroupById(evictedGroupId, nodes) : null;
   const incoming = findTabParent(newId, nodes);
   if (incoming && incoming.parent[incoming.idx]?.type === 'single') {
     incoming.parent.splice(incoming.idx, 1);
-    pruneEmptyGroups(nodes);
   }
 
   const found = findTabParent(panelId, nodes);
@@ -328,11 +329,14 @@ export function replaceSplitPairPanelNode(
   if (found && node?.type === 'split-pair') {
     if (side === 'left') node.leftTabId = newId;
     else node.rightTabId = newId;
-    found.parent.splice(found.idx + 1, 0, { type: 'single', tabId: panelId });
+    if (returnGroup) returnGroup.children.unshift({ type: 'single', tabId: panelId });
+    else found.parent.splice(found.idx + 1, 0, { type: 'single', tabId: panelId });
+    pruneEmptyGroups(nodes);
     return true;
   }
 
   nodes.push({ type: 'single', tabId: panelId });
+  pruneEmptyGroups(nodes);
   return false;
 }
 

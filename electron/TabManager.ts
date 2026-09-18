@@ -738,7 +738,8 @@ export class TabManager {
       liveRatio: (leftTabId) => this.#pairContaining(leftTabId)?.splitRatio ?? null,
       stack: (leftTabId) => {
         const pair = this.#pairContaining(leftTabId);
-        return pair ? { left: pair.leftStack, right: pair.rightStack } : null;
+        return pair ? { left: pair.leftStack, right: pair.rightStack,
+          leftGroupId: pair.leftGroupId, rightGroupId: pair.rightGroupId } : null;
       },
     });
 
@@ -766,7 +767,9 @@ export class TabManager {
     // решает activate(targetId) через #pairContaining, а не порядок здесь.
     this.splitPairs.replace(collectSplitPairs(this.nodes)
       .map((p) => ({ leftId: p.leftId, rightId: p.rightId, activePanel: 'left' as const, splitRatio: p.ratio,
-        leftStack: stacks.get(p.leftId)?.left ?? [], rightStack: stacks.get(p.leftId)?.right ?? [] })));
+        leftStack: stacks.get(p.leftId)?.left ?? [], rightStack: stacks.get(p.leftId)?.right ?? [],
+        leftGroupId: stacks.get(p.leftId)?.leftGroupId ?? null,
+        rightGroupId: stacks.get(p.leftId)?.rightGroupId ?? null })));
   }
 
   // DBG: проверяет, что каждый SplitPairNode в дереве ссылается на существующие tabMap-записи.
@@ -2170,7 +2173,7 @@ export class TabManager {
     this.splitPairs.add({
       leftId, rightId, splitRatio: 0.5,
       activePanel: anchorId === leftId ? 'left' : 'right',
-      leftStack: [], rightStack: [],
+      leftStack: [], rightStack: [], leftGroupId: null, rightGroupId: null,
     });
 
     for (const splitId of [leftId, rightId]) {
@@ -2284,11 +2287,15 @@ export class TabManager {
 
     const side = this.splitPairs.sideOf(panelId);
     if (!side) return;
+    const evictedGroupId = side === 'left' ? pair.leftGroupId : pair.rightGroupId;
+    const incomingGroupId = this.#groupContaining(newId)?.id ?? null;
     if (newTab.sleeping) this.wakeTab(newId);
 
-    replaceSplitPairPanelNode(this.nodes, panelId, newId, side);
+    replaceSplitPairPanelNode(this.nodes, panelId, newId, side, evictedGroupId);
 
     this.splitPairs.replacePanel(pair, panelId, newId);
+    if (side === 'left') pair.leftGroupId = incomingGroupId;
+    else pair.rightGroupId = incomingGroupId;
     if (!rememberEvicted) this.splitPairs.forget(panelId);
     // Остальные вкладки принесённой группы остаются в сайдбаре и получают лишь связь со
     // слотом. Убираем прежние связи, чтобы одна вкладка не числилась в двух стопках.

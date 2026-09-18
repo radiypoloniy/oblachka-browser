@@ -8,6 +8,8 @@ export interface SplitPair {
   splitRatio: number;
   leftStack: string[];
   rightStack: string[];
+  leftGroupId: string | null;
+  rightGroupId: string | null;
 }
 
 export interface SplitExitPlan {
@@ -110,6 +112,7 @@ export class SplitPairRegistry implements Iterable<SplitPair> {
     if (!this.#pairs.includes(pair)) return false;
     [pair.leftId, pair.rightId] = [pair.rightId, pair.leftId];
     [pair.leftStack, pair.rightStack] = [pair.rightStack, pair.leftStack];
+    [pair.leftGroupId, pair.rightGroupId] = [pair.rightGroupId, pair.leftGroupId];
     pair.activePanel = pair.activePanel === 'left' ? 'right' : 'left';
     return true;
   }

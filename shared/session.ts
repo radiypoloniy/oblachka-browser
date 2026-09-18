@@ -51,6 +51,8 @@ export interface SavedSplitPairNode {
   rightKey?: string;
   leftStackKeys?: string[];
   rightStackKeys?: string[];
+  leftGroupId?: string;
+  rightGroupId?: string;
   leftTitle?: string;
   rightTitle?: string;
   leftFaviconData?: string;

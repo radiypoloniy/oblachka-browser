@@ -337,6 +337,8 @@ function filterKnownNodes(arr: unknown[]): SavedNode[] {
       if (typeof n['rightKey'] === 'string') node.rightKey = n['rightKey'];
       if (Array.isArray(n['leftStackKeys'])) node.leftStackKeys = n['leftStackKeys'].filter((id): id is string => typeof id === 'string').slice(0, 100);
       if (Array.isArray(n['rightStackKeys'])) node.rightStackKeys = n['rightStackKeys'].filter((id): id is string => typeof id === 'string').slice(0, 100);
+      if (typeof n['leftGroupId'] === 'string') node.leftGroupId = n['leftGroupId'];
+      if (typeof n['rightGroupId'] === 'string') node.rightGroupId = n['rightGroupId'];
       if (typeof n['leftTitle'] === 'string') node.leftTitle = n['leftTitle'];
       if (typeof n['rightTitle'] === 'string') node.rightTitle = n['rightTitle'];
       if (typeof n['leftFaviconData'] === 'string') node.leftFaviconData = n['leftFaviconData'];

@@ -38,7 +38,7 @@ export interface SerializeDeps {
   view(tabId: string): TabView | null;
   // Живой ratio показываемой или припаркованной пары; null — пары сейчас нет, берём из узла.
   liveRatio(leftTabId: string): number | null;
-  stack?(leftTabId: string): { left: string[]; right: string[] } | null;
+  stack?(leftTabId: string): { left: string[]; right: string[]; leftGroupId?: string | null; rightGroupId?: string | null } | null;
 }
 
 function toSavedSingle(v: TabView, key: string): SavedSingleNode {
@@ -89,6 +89,8 @@ function serializeBranch(nodes: SidebarNode[], d: SerializeDeps, singleIds: Set<
           const rightKeys = stack.right.filter((id) => singleIds.has(id));
           if (leftKeys.length) pairNode.leftStackKeys = leftKeys;
           if (rightKeys.length) pairNode.rightStackKeys = rightKeys;
+          if (stack.leftGroupId) pairNode.leftGroupId = stack.leftGroupId;
+          if (stack.rightGroupId) pairNode.rightGroupId = stack.rightGroupId;
         }
         if (left!.title) pairNode.leftTitle = left!.title;
         if (right!.title) pairNode.rightTitle = right!.title;
@@ -176,7 +178,7 @@ export function collectSplitPairs(nodes: SidebarNode[]): RestoredPair[] {
 // одновременно жить несколько вкладок одного адреса.
 export function restoreSplitStacks(
   saved: SavedNode[], nodes: SidebarNode[], keyToId: Map<string, string>,
-): Map<string, { left: string[]; right: string[] }> {
+): Map<string, { left: string[]; right: string[]; leftGroupId: string | null; rightGroupId: string | null }> {
   const savedPairs: SavedSplitPairNode[] = [];
   const visit = (items: SavedNode[]): void => {
     for (const item of items) {
@@ -194,7 +196,7 @@ export function restoreSplitStacks(
   };
   collectSingles(nodes);
   const runtimePairs = new Map(collectSplitPairs(nodes).map((pair) => [pair.leftId, pair.rightId]));
-  const result = new Map<string, { left: string[]; right: string[] }>();
+  const result = new Map<string, { left: string[]; right: string[]; leftGroupId: string | null; rightGroupId: string | null }>();
   for (const pair of savedPairs) {
     const leftId = pair.leftKey && keyToId.get(pair.leftKey);
     const rightId = pair.rightKey && keyToId.get(pair.rightKey);
@@ -210,7 +212,18 @@ export function restoreSplitStacks(
       }
       return ids;
     };
-    result.set(leftId, { left: resolve(pair.leftStackKeys), right: resolve(pair.rightStackKeys) });
+    result.set(leftId, {
+      left: resolve(pair.leftStackKeys), right: resolve(pair.rightStackKeys),
+      leftGroupId: pair.leftGroupId && findSavedGroup(pair.leftGroupId, saved) ? pair.leftGroupId : null,
+      rightGroupId: pair.rightGroupId && findSavedGroup(pair.rightGroupId, saved) ? pair.rightGroupId : null,
+    });
   }
   return result;
+}
+
+function findSavedGroup(id: string, nodes: SavedNode[]): boolean {
+  for (const node of nodes) {
+    if (node.type === 'group' && (node.id === id || findSavedGroup(id, node.children))) return true;
+  }
+  return false;
 }
