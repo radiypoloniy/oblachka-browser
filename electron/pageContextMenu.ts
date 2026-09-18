@@ -98,6 +98,10 @@ export interface PageContextMenuHost {
   openTab(url: string, background: boolean, incognito: boolean, referrer?: Referrer): string;
   /** Запомнить, с какого сайта и из какой вкладки родилась новая. */
   noteOpened(openedId: string, fromHost: string, openerId: string): void;
+  /**
+   * Фон («в новой вкладке»). Main сам решает, класть ли вкладку в стопку соседней половины.
+   */
+  didOpenBackgroundTab(openedId: string, openerId: string): void;
   /** Показывается ли сейчас split-пара. */
   splitShown(): boolean;
   enterSplit(tabId: string): void;
@@ -142,6 +146,7 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
         const openedId = host.openTab(p.linkURL, true, priv, p.referrerPolicy);
         // Третий аргумент — «кто открыл»: см. closeTab, закрытие вернёт человека сюда же.
         host.noteOpened(openedId, hostOfUrl(wc.getURL()), id);
+        host.didOpenBackgroundTab(openedId, id);
       },
     },
     // Окно создаёт main — TabManager про окна не знает (тот же приём, что у пункта
@@ -166,6 +171,16 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
         if (newId) host.enterSplit(newId); // активная → левая, новая → правая
       },
     });
+  } else {
+    // Пара уже на экране: ссылка открывается НА СОСЕДНЕЙ панели, эта остаётся.
+    out.push({
+      label: tr('Открыть в другой половине'),
+      click: () => {
+        const openedId = host.openTab(p.linkURL, true, priv, p.referrerPolicy);
+        host.noteOpened(openedId, hostOfUrl(wc.getURL()), id);
+        host.didOpenBackgroundTab(openedId, id);
+      },
+    });
   }
   out.push({ label: tr('Копировать адрес ссылки'), click: () => clipboard.writeText(p.linkURL) });
   // «Добавить в граф» строит main: TabManager не должен знать про хранилище графов,
@@ -175,7 +190,7 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
   return out;
 }
 
-function imageSection(host: PageContextMenuHost, wc: WebContents, p: ContextMenuParams, priv: boolean, hasPrev: boolean): MenuItemConstructorOptions[] {
+function imageSection(host: PageContextMenuHost, id: string, wc: WebContents, p: ContextMenuParams, priv: boolean, hasPrev: boolean): MenuItemConstructorOptions[] {
   const out: MenuItemConstructorOptions[] = hasPrev ? [{ type: 'separator' }] : [];
   out.push(
     { label: tr('Копировать картинку'), click: () => wc.copyImageAt(p.x, p.y) },
@@ -189,7 +204,10 @@ function imageSection(host: PageContextMenuHost, wc: WebContents, p: ContextMenu
       label: tr('Сохранить картинку как…'),
       click: () => { host.saveAs(p.srcURL); wc.downloadURL(p.srcURL); },
     },
-    { label: tr('Открыть картинку в новой вкладке'), click: () => host.openTab(p.srcURL, true, priv) },
+    { label: tr('Открыть картинку в новой вкладке'), click: () => {
+      const openedId = host.openTab(p.srcURL, true, priv);
+      host.didOpenBackgroundTab(openedId, id);
+    } },
   );
   return out;
 }
@@ -331,7 +349,7 @@ export function wirePageContextMenu(host: PageContextMenuHost, id: string, view:
     const priv = host.isIncognito(id);
 
     if (p.linkURL) items.push(...linkSection(host, id, wc, p, priv));
-    if (p.mediaType === 'image' && p.srcURL) items.push(...imageSection(host, wc, p, priv, items.length > 0));
+    if (p.mediaType === 'image' && p.srcURL) items.push(...imageSection(host, id, wc, p, priv, items.length > 0));
     // isEditable обрабатываем ДО selectionText: cut/copy/paste — главное для инпутов.
     if (p.isEditable) {
       items.push(...editableSection(host, wc, view, p, priv, engine, items.length > 0));

@@ -6,7 +6,7 @@ import { hostOfUrl } from '../shared/rules';
 //
 // ⚠️ Отдельным файлом, а не методом TabManager, по той же причине, что и pageContextMenu.ts: это
 // ЗАМКНУТОЕ РЕШЕНИЕ («окно или вкладка, и в какой сессии»), которое ничего не знает про дерево
-// вкладок, split, усыпление и автосейв. С менеджером его связывают четыре вызова при семидесяти
+// вкладок, split, усыпление и автосейв. С менеджером его связывают шесть вызовов при семидесяти
 // строках разбора — самый узкий шов, какой в TabManager остался после меню.
 
 export interface WindowOpenHost {
@@ -25,6 +25,16 @@ export interface WindowOpenHost {
   ): string;
   /** Запомнить, с какого сайта и из какой вкладки родилась новая. */
   noteOpened(openedId: string, fromHost: string, openerId: string): void;
+  /**
+   * Не перехватывать экран новой вкладкой: человек уже смотрит пару страниц.
+   * Политика про split не знает — только этот ответ.
+   */
+  keepCurrentView(): boolean;
+  /**
+   * Фон (Ctrl+клик / средняя кнопка) или keepCurrentView. Main сам решает, класть ли
+   * вкладку в стопку половины: этот файл про split не знает.
+   */
+  didOpenBackgroundTab(openedId: string, openerId: string): void;
 }
 
 export function wireWindowOpenPolicy(host: WindowOpenHost, id: string, view: WebContentsView): void {
@@ -87,9 +97,10 @@ export function wireWindowOpenPolicy(host: WindowOpenHost, id: string, view: Web
     // «Подтверждение опасной операции» вместо оплаты — симптом плавал, сайты без сверки работали.
     // Полей у details ровно шесть, и теперь не теряется ни одно: url, frameName, features и
     // disposition разобраны выше, postBody и referrer уходят во вкладку.
+    const stay = host.keepCurrentView();
     const openedId = host.openTab(
       url,
-      disposition === 'background-tab',
+      stay || disposition === 'background-tab',
       disposition === 'new-window',
       host.isIncognito(id), // приватная вкладка открывает приватную
       postBody,
@@ -98,6 +109,9 @@ export function wireWindowOpenPolicy(host: WindowOpenHost, id: string, view: Web
     // «Перешёл по ссылке с сайта X» — для новой вкладки источник это страница, которая её
     // открыла: своего предыдущего адреса у неё ещё нет.
     host.noteOpened(openedId, hostOfUrl(wc.getURL()), id);
+    // target=_blank в обычной вкладке уходит на новую — так ждут сайты. В уже показанной паре
+    // это выкидывает из работы: остаёмся на экране и кладём ссылку в стопку этой половины.
+    if (stay || disposition === 'background-tab') host.didOpenBackgroundTab(openedId, id);
     return { action: 'deny' };
   });
   // Настоящее окно OAuth-попапа (action:'allow' выше) Electron создаёт и закрывает сам —

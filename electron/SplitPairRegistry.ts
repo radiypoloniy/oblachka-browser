@@ -96,6 +96,27 @@ export class SplitPairRegistry implements Iterable<SplitPair> {
     }
   }
 
+  // Положить вкладку ПОД текущую страницу половины, не меняя то, что на экране.
+  // ⚠️ Это не replacePanel: вытеснять черновик ради ссылки как раз то, чего жест «открыть
+  // отдельно» из пары делать не должен. Потолок 100 — как у leftStackKeys в сейве.
+  pushUnder(pair: SplitPair, side: 'left' | 'right', tabId: string): boolean {
+    if (!this.#pairs.includes(pair)) return false;
+    if (tabId === pair.leftId || tabId === pair.rightId) return false;
+    this.forget(tabId);
+    const stack = side === 'left' ? pair.leftStack : pair.rightStack;
+    stack.unshift(tabId);
+    if (stack.length > 100) stack.length = 100;
+    return true;
+  }
+
+  underCount(tabId: string): number {
+    const pair = this.containing(tabId);
+    if (!pair) return 0;
+    if (tabId === pair.leftId) return pair.leftStack.length;
+    if (tabId === pair.rightId) return pair.rightStack.length;
+    return 0;
+  }
+
   setRatio(pair: SplitPair, ratio: number): boolean {
     if (!this.#pairs.includes(pair)) return false;
     pair.splitRatio = ratio;

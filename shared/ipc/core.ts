@@ -221,6 +221,9 @@ export interface TabState {
   isHub: boolean;       // true = вкладка-хаб (наш UI), без WebContentsView
   isPinned: boolean;    // закреплена — переживает перезапуск, нельзя закрыть крестиком
   splitSide: 'left' | 'right' | null; // null = не в split-режиме
+  // Сколько вкладок лежит в стопке ЭТОЙ половины (не считая текущую на экране). Есть только
+  // у панелей пары: по нему ▣ становится акцентом, иначе значок молчит.
+  splitStackCount?: number;
   isSleeping: boolean;  // WebContentsView выгружен, хранятся только url/title/favicon
   incognito: boolean;   // приватная вкладка (in-memory сессия, без истории) — для бейджа в UI
   // Вкладка прямо СЕЙЧАС воспроизводит звук. Нужно, чтобы было видно, откуда играет музыка:

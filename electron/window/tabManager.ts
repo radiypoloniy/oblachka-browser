@@ -34,6 +34,8 @@ import { closeSearchPopover } from '../SearchPopoverManager';
 import { closeSitePopover } from '../SitePopoverManager';
 import { hideSuggestDropdown } from '../SuggestDropdownManager';
 import { closeTranslatePopoverForClosedTab, closeTranslatePopoverOnTabSwitch, showTranslatePopover } from '../TranslatePopoverManager';
+import { closeSplitStackPopover } from '../SplitStackPopoverManager';
+import { findActiveSplitPairNode } from '../../shared/nodeTree';
 import { broadcastToChrome } from '../WindowRegistry';
 import type { WindowDeps } from './deps';
 
@@ -77,12 +79,17 @@ export function createWindowTabManager(
       if (!tabs) return;
       // Атомарный push: tabs и nodes в одном сообщении → один рендер, нет рассинхрона.
       const tabsSnapshot = tabs.snapshot();
+      const nodes = tabs.sidebarNodesSnapshot();
       chromeView?.webContents.send(IPC.SYNC_CHANGED, {
         tabs: tabsSnapshot,
-        nodes: tabs.sidebarNodesSnapshot(),
+        nodes,
         hasOrganizeSnapshot: tabs.hasOrganizeSnapshot(),
         hasRenameSnapshot: tabs.hasRenameSnapshot(),
       });
+      // Нативная вью стопки живёт поверх страницы и сама split не видит: если пары на экране
+      // больше нет, карточку надо снять сразу, а не ждать клика мимо.
+      const activeTab = tabsSnapshot.find((t) => t.isActive);
+      if (!activeTab || !findActiveSplitPairNode(nodes, activeTab.id)) closeSplitStackPopover(win);
       // Тот же снапшот — источник правды для привязки чата AI-панели к вкладке (переключение/
       // закрытие/смена URL), без новых колбэков в TabManager.ts (см. AiPanelManager.ts). Не во
       // время выхода — AI-панель и так исчезает вместе с окном, синкать её незачем.

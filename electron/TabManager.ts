@@ -6,10 +6,9 @@ import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
 import { profilePartition, DEFAULT_PROFILE_ID } from '../shared/profiles';
 import { getActiveProfile } from './ProfileStore';
 import { closeWindowView } from './viewTeardown';
-import { wirePageContextMenu } from './pageContextMenu';
-import { wireWindowOpenPolicy } from './windowOpenPolicy';
-import type { WindowOpenHost } from './windowOpenPolicy';
-import { SplitPairRegistry } from './SplitPairRegistry';
+import { wirePageContextMenu, type PageContextMenuHost } from './pageContextMenu';
+import { wireWindowOpenPolicy, type WindowOpenHost } from './windowOpenPolicy';
+import { SplitPairRegistry, type SplitPair } from './SplitPairRegistry';
 import { startPageFind, findQuoteInWebContents } from './tabFind';
 import { wireTabHotkeys } from './tabHotkeys';
 import { wireTabNavigationGuard } from './tabNavigationGuard';
@@ -17,9 +16,8 @@ import { wireTabGuestSignals } from './tabGuestSignals';
 import { wireTabPageLifecycle } from './tabPageLifecycle';
 import { wireTabCrashEvents } from './tabCrashEvents';
 import { startTabSleepTimer } from './tabSleepController';
-import type { SplitPair } from './SplitPairRegistry';
-import type { PageContextMenuHost } from './pageContextMenu';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
+import { showOpenedOnOtherPane } from './tabSplitPark';
 
 // Разметка и ссылки скопированного куска — то, что страница присылает вместе с текстом, чтобы
 // повторная копия из буфера не теряла ссылки (см. ClipboardBuffer.ts и preload-content.ts).
@@ -518,7 +516,7 @@ export class TabManager {
         isHub: false, isPinned,
         splitSide: this.#tabSplitSide(t.id),
         // Спящая вкладка звучать не может — её WebContentsView выгружен целиком.
-        isSleeping: true, incognito: !!t.incognito, audible: false, muted: !!t.muted, kind: 'page',
+        isSleeping: true, incognito: !!t.incognito, audible: false, muted: !!t.muted, kind: 'page', ...(this.splitPairs.underCount(t.id) > 0 ? { splitStackCount: this.splitPairs.underCount(t.id) } : {}),
       };
     }
     if (!this.isHttpView(t.view) || t.view.webContents.isDestroyed()) {
@@ -548,7 +546,7 @@ export class TabManager {
       // Состояние момента: Chromium сам гасит его на паузе и в тишине между треками.
       audible: wc.isCurrentlyAudible(),
       muted: wc.isAudioMuted(),
-      kind: 'page',
+      kind: 'page', ...(this.splitPairs.underCount(t.id) > 0 ? { splitStackCount: this.splitPairs.underCount(t.id) } : {}),
     };
   }
 
@@ -1323,7 +1321,6 @@ export class TabManager {
     });
     wirePageContextMenu(this.#menuHost, id, view);
 
-
     this.registerHotkeyHandler(wc);
   }
 
@@ -1334,6 +1331,7 @@ export class TabManager {
   #windowOpenHost: WindowOpenHost = {
     externalOpen: (url, fromUrl, wcId) => this.#externalOpenCb?.(url, fromUrl, wcId),
     isIncognito: (tabId) => this.tabMap.get(tabId)?.incognito ?? false,
+    keepCurrentView: () => this.#activePair() !== undefined,
     openTab: (url, background, ephemeral, incognito, postBody, referrer) =>
       this.createTab(url, background, ephemeral, incognito, postBody, undefined, referrer),
     // ⚠️ Обе связи ставятся ПОСЛЕ createTab: активация внутри него забывает все связи, как
@@ -1343,6 +1341,7 @@ export class TabManager {
       this.#navFrom.set(openedId, fromHost);
       this.#openerOf.set(openedId, openerId);
     },
+    didOpenBackgroundTab: (openedId, openerId) => showOpenedOnOtherPane({ activePair: () => this.#activePair(), tab: (id) => this.tabMap.get(id), isPinned: (id) => this.isTabPinned(id), pairContaining: (id) => this.#pairContaining(id), splitPairs: this.splitPairs, replacePanel: (panelId, newId) => this.replaceSplitPanel(panelId, newId), onChange: () => this.onChange() }, openerId, openedId),
   };
 
   /**
@@ -1361,6 +1360,7 @@ export class TabManager {
       this.#navFrom.set(openedId, fromHost);
       this.#openerOf.set(openedId, openerId);
     },
+    didOpenBackgroundTab: (openedId, openerId) => this.#windowOpenHost.didOpenBackgroundTab(openedId, openerId),
     splitShown: () => this.#activePair() !== undefined,
     enterSplit: (tabId) => this.enterSplit(tabId),
     openInNewWindow: (url) => this.onOpenInNewWindowCb?.(url),

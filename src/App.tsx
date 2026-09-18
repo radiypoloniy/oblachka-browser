@@ -126,12 +126,15 @@ function SplitPanelHeader({ tab, active, onClose, onShowStack, dragging, dragHan
             onShowStack({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
           }}
           title="Вкладки этой половины"
-          aria-label="Вкладки этой половины"
+          aria-label={(tab.splitStackCount ?? 0) > 0 ? `Вкладки этой половины, ещё ${tab.splitStackCount}` : 'Вкладки этой половины'}
           style={{
             border: 'none', background: 'transparent', cursor: 'default', padding: 3,
-            borderRadius: RADIUS.tight, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)',
+            borderRadius: RADIUS.tight, display: 'inline-flex', flex: 'none', color: (tab.splitStackCount ?? 0) > 0 ? 'var(--accent)' : 'var(--text-muted)',
           }}
-        >▣</button>
+        >▣{(tab.splitStackCount ?? 0) > 0 && <span style={{
+          marginLeft: 4, padding: '0 5px', borderRadius: RADIUS.pill, background: 'var(--accent)',
+          color: 'var(--on-accent)', fontSize: 'var(--fs-xs)', fontWeight: 600, lineHeight: '16px',
+        }}>{tab.splitStackCount}</span>}</button>
       )}
       {!dragging && (
         <button
