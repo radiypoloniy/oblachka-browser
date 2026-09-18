@@ -41,6 +41,7 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import path from 'node:path'
 import { IPC } from '../shared/ipc'
+import { rememberOverlayHeight } from '../shared/overlayMetrics'
 import type { ContentBounds, OmniboxPanel, OmniboxRecommendEdit, SuggestDropdownItem } from '../shared/ipc'
 
 const GAP = 8 // зазор между низом омнибокса и верхом карточки
@@ -198,12 +199,13 @@ function ensureIpcRegistered(): void {
     if (st) onRecommendCb?.(st.win, edit)
   })
 
-  // Реальная высота карточки (ResizeObserver в suggestdropdown.tsx). Math.max(1, px) — защита от
-  // абсурдных 0/отрицательных значений (карточка ещё не отрендерилась).
+  // Реальная высота карточки (ResizeObserver в suggestdropdown.tsx).
+  // ⚠️ 0/крохи НЕ принимаем: скрытое окно схлопывается, и Math.max(1, 0) оставлял высоту в
+  // пиксель — следующий показ был полоской вместо списка (живая жалоба).
   ipcMain.on('suggest-dropdown:height', (e, px: number) => {
     const st = stateBySender(e.sender)
     if (!st) return
-    st.height = Math.max(1, px)
+    st.height = rememberOverlayHeight(px, st.height)
     layoutDropdown(st)
   })
 }

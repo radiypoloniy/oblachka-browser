@@ -44,6 +44,27 @@ export const FINDBAR_MIN_HEIGHT = 52;
 export const OVERLAY_FIELD_MAX_SHIFT = 48;
 
 /**
+ * Ниже этого ResizeObserver врёт: скрытая/снятая вью схлопывается в 0…пару пикселей, и если
+ * принять это как высоту, следующий показ — полоска вместо карточки. Живая жалоба на дропдаун
+ * омнибокса и на поповер пароля: «клик по полю ничего не даёт».
+ */
+export const OVERLAY_MIN_CONTENT_HEIGHT = 32;
+
+/**
+ * Запомнить высоту карточки оверлея. Крохи и NaN — не размер, а свёрнутая вью: оставляем
+ * предыдущее (или минимум), чтобы показ не открывался полоской в пару пикселей.
+ */
+export function rememberOverlayHeight(
+  reported: number,
+  previous: number,
+  min = OVERLAY_MIN_CONTENT_HEIGHT,
+): number {
+  const n = Math.round(Number(reported));
+  if (!Number.isFinite(n) || n < min) return Math.max(min, previous);
+  return n;
+}
+
+/**
  * Левый край карточки, заякоренной на ПОЛЕ ФОРМЫ.
  *
  * ⚠️ Карточка центрируется на поле, а НЕ прижимается к его краю, и это решение Chrome, принятое

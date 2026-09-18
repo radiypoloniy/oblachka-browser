@@ -11,7 +11,7 @@ import path from 'node:path';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds, PasswordIndicatorState } from '../shared/ipc';
 import { closeWindowView } from './viewTeardown';
-import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN, anchoredCardX } from '../shared/overlayMetrics';
+import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN, anchoredCardX, rememberOverlayHeight } from '../shared/overlayMetrics';
 
 const POPOVER_WIDTH = 280;
 const INITIAL_HEIGHT = 150;
@@ -111,7 +111,7 @@ function ensureIpcRegistered(): void {
   ipcMain.on('password-popover:height', (e, px: number) => {
     const st = stateBySender(e.sender);
     if (!st) return;
-    st.height = Math.max(1, px);
+    st.height = rememberOverlayHeight(px, st.height);
     layoutPopover(st);
   });
 }

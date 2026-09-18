@@ -30,6 +30,7 @@ import { PanelView, PANEL_CSS } from './components/suggest/PanelView';
 import { installOverlayReveal } from './overlayReveal';
 import { DISPLAY_ROW } from './styles/system';
 import { overlayPlate } from './styles/island';
+import { OVERLAY_MIN_CONTENT_HEIGHT } from '../shared/overlayMetrics';
 
 declare global {
   interface Window {
@@ -194,7 +195,14 @@ function SuggestDropdown() {
   useEffect(() => {
     const el = cardRef.current;
     if (!el) return;
-    const report = () => window.suggestDropdown.reportHeight(el.offsetHeight);
+    const report = () => {
+      // Скрытое окно схлопывается: offsetHeight ≈ 0, и main принял бы это как высоту — следующий
+      // показ открывался полоской в пару пикселей.
+      if (document.hidden) return;
+      const px = el.offsetHeight;
+      if (px < OVERLAY_MIN_CONTENT_HEIGHT) return;
+      window.suggestDropdown.reportHeight(px);
+    };
     report();
     const ro = new ResizeObserver(report);
     ro.observe(el);

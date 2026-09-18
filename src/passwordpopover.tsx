@@ -5,7 +5,7 @@ import type { PasswordIndicatorState } from '../shared/ipc';
 import PasswordIndicatorPopover from './components/PasswordIndicatorPopover';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
-import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
+import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN, OVERLAY_MIN_CONTENT_HEIGHT } from '../shared/overlayMetrics';
 
 declare global {
   interface Window {
@@ -35,7 +35,12 @@ function PasswordPopoverApp() {
   useEffect(() => {
     const el = cardRef.current;
     if (!el) return;
-    const report = () => window.passwordPopover.reportHeight(el.offsetHeight);
+    const report = () => {
+      if (document.hidden) return;
+      const px = el.offsetHeight;
+      if (px < OVERLAY_MIN_CONTENT_HEIGHT) return;
+      window.passwordPopover.reportHeight(px);
+    };
     report();
     const ro = new ResizeObserver(report);
     ro.observe(el);

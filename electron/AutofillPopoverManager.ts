@@ -10,7 +10,7 @@ import type { BrowserWindow } from 'electron';
 import path from 'node:path';
 import type { ContentBounds, AddressProfile, CardMeta } from '../shared/ipc';
 import { closeWindowView } from './viewTeardown';
-import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN, anchoredCardX } from '../shared/overlayMetrics';
+import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN, anchoredCardX, rememberOverlayHeight } from '../shared/overlayMetrics';
 
 const POPOVER_WIDTH = 300;
 const INITIAL_HEIGHT = 120;
@@ -138,7 +138,7 @@ function ensureIpcRegistered(): void {
   ipcMain.on('autofill-popover:height', (e, px: number) => {
     const st = stateBySender(e.sender);
     if (!st) return;
-    st.height = Math.max(1, px);
+    st.height = rememberOverlayHeight(px, st.height);
     layoutPopover(st);
   });
   ipcMain.on('autofill-popover:pick', (e, id: number) => {

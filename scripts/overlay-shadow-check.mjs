@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { OVERLAY_SHADOW_MARGIN, OVERLAY_GAP, OVERLAY_FIELD_MAX_SHIFT, anchoredCardX } from '../shared/overlayMetrics.ts';
+import { OVERLAY_SHADOW_MARGIN, OVERLAY_GAP, OVERLAY_FIELD_MAX_SHIFT, anchoredCardX, rememberOverlayHeight, OVERLAY_MIN_CONTENT_HEIGHT } from '../shared/overlayMetrics.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -149,6 +149,13 @@ check('поле у левого края: карточка не левее по�
 // Окно уже карточки (узкое лёгкое окно) — деление на отрицательный остаток не должно давать
 // отрицательный x: карточка просто прижимается к левому полю.
 check('окно уже карточки: x не отрицательный', anchoredCardX(10, 100, W, 200, M), M);
+
+console.log('\n— свёрнутая вью не становится высотой карточки —');
+check('ноль не затирает последнюю настоящую высоту', rememberOverlayHeight(0, 280), 280);
+check('полоска в пару пикселей — тоже не высота', rememberOverlayHeight(2, 150), 150);
+check('NaN не принимаем', rememberOverlayHeight(Number.NaN, 48), Math.max(OVERLAY_MIN_CONTENT_HEIGHT, 48));
+check('настоящая высота проходит', rememberOverlayHeight(312, 48), 312);
+check('первое значение крошечное — берём минимум, не 1', rememberOverlayHeight(1, 0), OVERLAY_MIN_CONTENT_HEIGHT);
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);
