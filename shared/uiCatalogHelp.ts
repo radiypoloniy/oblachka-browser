@@ -26,7 +26,7 @@ export const HELP: Record<string, string> = {
   'Вкладки, группы, сплит-пары, закреп и порядок списка пишутся на диск при закрытии окна и возвращаются целиком при следующем запуске.': 'Tabs, groups, splits, pins and order are written on close and come back whole on the next launch.',
   'Само': 'Automatic',
   'Снимок вкладки': 'Tab screenshot',
-  'Снимает страницу целиком и показывает карточкой: сохранить файлом или скопировать в буфер, не уходя со страницы.': 'Captures the whole page and shows a card: save as a file or copy, without leaving the page.',
+  'Снимает страницу и сразу кладёт кадр в буфер, как ножницы Windows: отправить можно не сохраняя файл. После правки в редакторе — снова в буфер.': 'Captures the page and puts it on the clipboard right away, like Windows Snipping Tool: send without saving a file. After editing, it goes to the clipboard again.',
   'Буфер скопированного': 'Clipboard history',
   'История того, что вы копировали в браузере: последние записи, вытеснение старых, вставка в один клик.': 'What you copied in the browser: recent items, older ones drop off, paste in one click.',
   'Страницы ошибок по-человечески': 'Human error pages',

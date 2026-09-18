@@ -1,7 +1,7 @@
 // Нижняя пилюля редактора снимка. Вынесена, чтобы ShotEditor не перерос порог функции.
 
 import type { ReactNode } from 'react';
-import { ArrowUpRight, Check, Crop, Circle, Scan, Type } from 'lucide-react';
+import { ArrowUpRight, Check, Copy, Crop, Circle, Scan, Type } from 'lucide-react';
 import { ICON, RADIUS, TEXT, glyph, pad, sp } from '../styles/system';
 import { cropReady, type CropFrame, type ShotTool } from '../../shared/screenshotMarkup';
 import { SourceSeg } from './SourceSeg';
@@ -15,6 +15,7 @@ export function ShotBar(props: {
   onSource: (next: ShotSource) => void;
   onPick: () => void;
   onTool: (id: ShotTool) => void;
+  onCopy: () => void;
   onDone: () => void;
 }): ReactNode {
   const g = glyph(ICON.md);
@@ -57,6 +58,19 @@ export function ShotBar(props: {
           }}
         >{t.icon}</button>
       ))}
+      <button
+        type="button"
+        title="Копировать (Ctrl+C)"
+        disabled={props.capturing}
+        onClick={props.onCopy}
+        style={{
+          width: 32, height: 32, border: 'none', borderRadius: RADIUS.pill,
+          background: 'transparent', color: 'var(--text-muted)',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          marginLeft: sp(1),
+          opacity: props.capturing ? 0.6 : 1,
+        }}
+      ><Copy {...g} /></button>
       <button
         type="button"
         onClick={props.onDone}

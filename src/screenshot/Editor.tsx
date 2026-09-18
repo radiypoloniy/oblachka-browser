@@ -25,6 +25,7 @@ export function ShotEditor(props: {
   onDone: (raw: string) => void;
   onSave: (raw: string) => void;
   onCancel: () => void;
+  onCopy: (raw: string) => void;
 }): ReactNode {
   const { source, working, capturing, failed, bake: applyShot, choose, pickElement, undo } = useShotSource(props.raw);
   const [tool, setTool] = useState<ShotTool>('oval');
@@ -92,6 +93,12 @@ export function ShotEditor(props: {
         return;
       }
       if (e.key === 'Enter' && frame && !textAt) { e.preventDefault(); commitCrop(); return; }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        if (textAt) return; // набор подписи — обычное копирование текста
+        e.preventDefault();
+        props.onCopy(working);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
         if (textAt) commitText();
@@ -183,6 +190,7 @@ export function ShotEditor(props: {
           onSource={(next) => { resetDraft(); choose(next); }}
           onPick={() => { resetDraft(); pickElement(); }}
           onTool={(id) => { setTool(id); resetDraft(); }}
+          onCopy={() => props.onCopy(working)}
           onDone={() => {
             if (frame && cropReady(frame)) commitCrop();
             else props.onDone(working);

@@ -71,6 +71,9 @@ export function ScreenshotRoot(): ReactNode {
       shotRef.current = url;
       setShot(url);
       enterCard();
+      // Как в ножницах Windows: после правки кадр снова в буфере — отправить можно не сохраняя.
+      window.screenshotOverlay.copy(url);
+      setCopied(true);
       if (thenSave) void doSave(url);
     });
   }, [doSave, enterCard]);
@@ -88,6 +91,9 @@ export function ScreenshotRoot(): ReactNode {
       void decorate(incoming).then((url) => {
         shotRef.current = url;
         setShot(url);
+        // Сразу в буфер, как Win+Shift+S: карточку можно не трогать, если нужно только вставить.
+        window.screenshotOverlay.copy(url);
+        setCopied(true);
         scheduleHide(AUTO_HIDE_MS);
       });
     });
@@ -113,6 +119,10 @@ export function ScreenshotRoot(): ReactNode {
         onDone={(next) => applyRaw(next, false)}
         onSave={(next) => applyRaw(next, true)}
         onCancel={enterCard}
+        onCopy={(url) => {
+          window.screenshotOverlay.copy(url);
+          setCopied(true);
+        }}
       />
     );
   }
