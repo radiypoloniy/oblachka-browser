@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oblako · Куда движется браузер</title>
+  <style>
+    :root{color-scheme:dark;--bg:#101519;--panel:#192126;--panel2:#202b30;--line:#344147;--text:#edf2f0;--muted:#9eaeac;--accent:#cbebad;--accent2:#82c9bd;--warm:#f0c499;--existing:#95a6ab;--future:#d6b8ee;--shadow:0 24px 80px #04080975}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 16% 2%,#2a3b36 0,transparent 27%),radial-gradient(circle at 90% 25%,#24343b 0,transparent 24%),var(--bg);color:var(--text);font:15px/1.5 Inter,Segoe UI,Arial,sans-serif}button{font:inherit;cursor:pointer}button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}a{color:var(--accent2)}.page{max-width:1380px;margin:auto;padding:38px 32px 70px}.topline{display:flex;justify-content:space-between;align-items:center;gap:12px}.brand{font-weight:800;letter-spacing:-.05em;font-size:25px}.brand span{color:var(--accent)}.date{color:var(--muted);font-size:12px;letter-spacing:.1em;text-transform:uppercase}.hero{max-width:1000px;padding:72px 0 52px}.kicker{display:inline-block;color:var(--accent);font-size:12px;letter-spacing:.17em;text-transform:uppercase;font-weight:800}.hero h1{font-size:clamp(40px,6.3vw,88px);line-height:.99;letter-spacing:-.07em;margin:16px 0 24px;font-weight:750}.hero h1 em{font-style:normal;color:var(--accent)}.hero p{font-size:clamp(17px,1.8vw,23px);color:#bccbc8;max-width:840px;margin:0}.thesis{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:34px}.thesis span{border:1px solid #546b61;background:#23372e;border-radius:999px;padding:8px 13px;color:#dcf5d6;font-size:13px}.thesis b{color:var(--accent);font-size:19px;font-weight:400}.section-head{display:flex;justify-content:space-between;gap:24px;align-items:end;margin:40px 0 20px}.section-head h2{font-size:clamp(27px,3.2vw,44px);line-height:1.06;letter-spacing:-.05em;margin:0}.section-head p{max-width:540px;color:var(--muted);margin:0;font-size:14px}.section-num{font-size:12px;color:var(--accent2);letter-spacing:.13em;margin-bottom:9px;font-weight:800}.current{border:1px solid var(--line);border-radius:24px;background:#152024d9;box-shadow:var(--shadow);padding:26px}.current-layout{display:grid;grid-template-columns:1.05fr 1.6fr;gap:20px}.current-lead{padding:17px 18px}.current-lead strong{display:block;font-size:24px;line-height:1.16;letter-spacing:-.04em;margin-bottom:15px}.current-lead p{color:var(--muted);margin:0}.inventory{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.inventory-item{background:#243137;border:1px solid #3a4a4e;border-radius:13px;padding:13px 15px}.inventory-item small{display:block;color:var(--accent2);font-size:10px;letter-spacing:.13em;font-weight:800;text-transform:uppercase;margin-bottom:5px}.inventory-item b{font-size:15px}.inventory-item span{display:block;color:#aebfbb;font-size:12px;margin-top:3px}.rail{display:flex;align-items:stretch;gap:0;margin:26px 0 12px;overflow-x:auto;padding-bottom:6px}.rail-node{min-width:0;flex:1;position:relative;padding:18px 18px 17px;background:#1e2a2d;border-top:1px solid #51645d;border-bottom:1px solid #51645d}.rail-node:first-child{border-left:1px solid #51645d;border-radius:14px 0 0 14px}.rail-node:last-child{border-right:1px solid #51645d;border-radius:0 14px 14px 0}.rail-node:not(:last-child):after{content:'›';position:absolute;right:-9px;top:50%;transform:translateY(-50%);z-index:2;font-size:30px;color:var(--accent);line-height:1}.rail-node small{display:block;color:var(--accent);font-size:10px;letter-spacing:.13em;font-weight:800}.rail-node strong{display:block;margin-top:5px;font-size:15px}.rail-node em{display:block;font-style:normal;color:var(--muted);font-size:12px;margin-top:5px}.roles{display:flex;flex-wrap:wrap;gap:8px}.role{border:1px solid #4b5a5a;background:#202b2f;color:#d4e0dc;border-radius:999px;padding:10px 17px}.role[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#17251f;font-weight:750}.journey{display:grid;grid-template-columns:1fr 320px;gap:17px;margin-top:17px}.stage{border:1px solid var(--line);border-radius:22px;background:#1a2428;overflow:hidden}.stage-top{padding:20px 22px 0;display:flex;justify-content:space-between;gap:12px}.stage-top strong{font-size:17px}.stage-top span{color:var(--muted);font-size:12px}.steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;padding:23px 14px 18px}.step{position:relative;display:flex;flex-direction:column;text-align:left;border:0;background:transparent;color:var(--muted);padding:0 8px;min-height:178px}.step:before{content:'';position:absolute;top:17px;left:0;right:0;height:2px;background:#3c5050}.step:first-child:before{left:50%}.step:last-child:before{right:50%}.step .dot{width:36px;height:36px;flex:none;border-radius:50%;display:grid;place-items:center;background:#27373a;border:2px solid #61857e;color:#d6efe1;z-index:1;margin:0 auto 16px;font-size:13px;font-weight:800}.step.active .dot{background:var(--accent);color:#102019;border-color:var(--accent);box-shadow:0 0 0 6px #cbebad1b}.step b{font-size:14px;line-height:1.25;color:var(--text)}.step p{font-size:12px;line-height:1.35;margin:8px 0 0}.detail{background:#27392f;border:1px solid #5c8068;border-radius:22px;padding:22px;min-height:265px}.detail small{color:#b7e1ae;font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:10px}.detail h3{font-size:25px;line-height:1.08;letter-spacing:-.045em;margin:11px 0}.detail p{font-size:14px;color:#d1ddd2;margin:0}.detail .line{height:1px;background:#7390775c;margin:20px 0 14px}.detail .feature{font-size:12px;color:#b5d9b6}.legend{display:flex;gap:19px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:13px}.legend span{display:flex;gap:7px;align-items:center}.swatch{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--existing)}.swatch.next{background:var(--accent)}.swatch.later{background:var(--future)}.roadmap{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:20px}.phase{border:1px solid var(--line);border-radius:22px;padding:20px;background:#1b2428}.phase h3{font-size:21px;letter-spacing:-.04em;margin:5px 0 18px}.phase .phase-id{color:var(--accent2);font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.phase.now{border-color:#6d906e;background:#20322a}.phase.now .phase-id{color:var(--accent)}.phase.later .phase-id{color:var(--future)}.work{border-top:1px solid #ffffff22;padding:14px 0}.work strong{display:block;font-size:14px}.work p{color:var(--muted);font-size:12px;margin:5px 0 0}.work:last-child{padding-bottom:0}.guardrails{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:20px 0 0}.rule{padding:16px 17px;border-left:2px solid var(--accent2);background:#1d282b}.rule b{font-size:13px}.rule p{font-size:12px;color:var(--muted);margin:6px 0 0}.footer{border-top:1px solid var(--line);margin-top:62px;padding-top:22px;display:flex;justify-content:space-between;align-items:start;gap:20px;color:var(--muted);font-size:12px}.footer a{white-space:nowrap}.footer p{margin:0;max-width:780px}@media(max-width:900px){.current-layout,.journey{grid-template-columns:1fr}.current-lead{padding:4px}.detail{min-height:unset}.roadmap{grid-template-columns:1fr 1fr}.phase:last-child{grid-column:1/-1}.guardrails{grid-template-columns:1fr 1fr}.step{min-height:155px}}@media(max-width:650px){.page{padding:22px 16px 42px}.hero{padding:56px 0 35px}.section-head{display:block}.section-head p{margin-top:10px}.inventory,.roadmap,.guardrails{grid-template-columns:1fr}.phase:last-child{grid-column:auto}.rail{display:grid;grid-template-columns:1fr 1fr;gap:7px}.rail-node,.rail-node:first-child,.rail-node:last-child{border:1px solid #51645d;border-radius:12px}.rail-node:not(:last-child):after{display:none}.steps{grid-template-columns:1fr;gap:4px;padding:15px}.step{min-height:0;display:grid;grid-template-columns:36px 1fr;column-gap:12px;padding:8px 0}.step:before{left:17px!important;right:auto!important;top:0;bottom:0;width:2px;height:auto}.step:first-child:before{top:50%}.step:last-child:before{bottom:50%}.step .dot{grid-row:span 2;margin:0}.step b{align-self:end}.step p{margin:4px 0 0}.stage-top{display:block}.stage-top span{display:block;margin-top:3px}.footer{display:block}.footer a{display:inline-block;margin-top:12px}}
+  </style>
+</head>
+<body>
+<main class="page">
+  <div class="topline"><div class="brand">oblako<span>.</span></div><div class="date">Продуктовое направление · сентябрь 2026</div></div>
+  <header class="hero">
+    <div class="kicker">Браузер для тех, кто работает в браузере</div>
+    <h1>От открытой вкладки.<br><em>К готовому результату.</em></h1>
+    <p>Креатор, разработчик или исследователь собирает источники, сравнивает, забирает нужное и возвращается к задаче позже. Oblako должен удерживать весь этот контекст.</p>
+    <div class="thesis" aria-label="Основной путь работы"><span>Найти</span><b>→</b><span>Проверить</span><b>→</b><span>Сравнить</span><b>→</b><span>Забрать</span><b>→</b><span>Вернуться</span><b>→</b><span>Передать</span></div>
+  </header>
+
+  <section aria-labelledby="foundation-title">
+    <div class="section-head"><div><div class="section-num">01 / фундамент</div><h2 id="foundation-title">У нас уже есть детали системы</h2></div><p>Следующий продуктовый шаг — соединить их в непрерывный рабочий поток, не создавать ещё один параллельный хаб.</p></div>
+    <div class="current"><div class="current-layout"><div class="current-lead"><strong>Oblako уже больше, чем набор вкладок.</strong><p>В коде есть несколько слоёв работы. Пока пользователь чаще сам переносит контекст между ними.</p></div><div class="inventory">
+      <div class="inventory-item"><small>Рабочая поверхность</small><b>Split + стопки + группы</b><span>Два источника рядом, независимые стороны</span></div>
+      <div class="inventory-item"><small>Память</small><b>Поиск + история + закладки</b><span>Возврат к посещённому и сохранённому</span></div>
+      <div class="inventory-item"><small>Материал</small><b>Буфер + снимки + Notebook</b><span>Фрагменты, изображения, источники</span></div>
+      <div class="inventory-item"><small>Инструменты</small><b>Приложения + профили + правила</b><span>Рабочие утилиты и разные идентичности</span></div>
+    </div></div></div>
+    <div class="rail" aria-label="Целевая цепочка действий">
+      <div class="rail-node"><small>01</small><strong>Ссылка</strong><em>Из поиска, страницы или истории</em></div>
+      <div class="rail-node"><small>02</small><strong>Предпросмотр</strong><em>Быстро решить, нужна ли она</em></div>
+      <div class="rail-node"><small>03</small><strong>Split</strong><em>Сравнить с текущей работой</em></div>
+      <div class="rail-node"><small>04</small><strong>Захват</strong><em>Цитата, кадр или изображение с URL</em></div>
+      <div class="rail-node"><small>05</small><strong>Задача</strong><em>Сохранить контекст и вернуться</em></div>
+      <div class="rail-node"><small>06</small><strong>Результат</strong><em>Экспортировать и использовать</em></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="journey-title">
+    <div class="section-head"><div><div class="section-num">02 / реальная работа</div><h2 id="journey-title">Один путь, разные профессии</h2></div><p>Выберите роль и шаг. Карта показывает, какую именно работу помогает закончить браузер.</p></div>
+    <div class="roles" aria-label="Выбор сценария">
+      <button class="role" type="button" data-role="writer" aria-pressed="true">Автор / исследователь</button>
+      <button class="role" type="button" data-role="designer" aria-pressed="false">Дизайнер / креатор</button>
+      <button class="role" type="button" data-role="developer" aria-pressed="false">Разработчик</button>
+    </div>
+    <div class="journey"><div class="stage"><div class="stage-top"><strong id="scenario-title">Статья с проверяемыми источниками</strong><span>Нажмите на шаг, чтобы увидеть подробности</span></div><div class="steps" id="steps"></div></div><aside class="detail" aria-live="polite"><small id="detail-index">Шаг 1 / 5</small><h3 id="detail-title"></h3><p id="detail-body"></p><div class="line"></div><div class="feature" id="detail-feature"></div></aside></div>
+  </section>
+
+  <section aria-labelledby="roadmap-title">
+    <div class="section-head"><div><div class="section-num">03 / порядок движения</div><h2 id="roadmap-title">Что строить и в какой последовательности</h2></div><p>Каждый пункт — отдельная проверяемая работа. Порядок может измениться после теста на настоящих задачах.</p></div>
+    <div class="roadmap">
+      <div class="phase now"><div class="phase-id">Сейчас · довести основу</div><h3>Надёжная работа</h3><div class="work"><strong>Split без потери контекста</strong><p>Пять сценариев: открыть рядом, заменить, переключить стопку, перейти между парами, восстановить.</p></div><div class="work"><strong>Поповеры и фокус</strong><p>Первый клик по dropdown должен открывать полноценное меню в новой сессии.</p></div><div class="work"><strong>Копировать с источником</strong><p>Цитата, URL, Markdown, передача в текущий Notebook.</p></div></div>
+      <div class="phase"><div class="phase-id">Следом · склеить поток</div><h3>Меньше переключений</h3><div class="work"><strong>Предпросмотр → split</strong><p>Быстрая проверка ссылки и повышение её до рабочей страницы.</p></div><div class="work"><strong>Пауза и возврат</strong><p>Именованная задача с группой, парой и отобранными материалами.</p></div><div class="work"><strong>Поиск в контексте</strong><p>Открытые вкладки, группа, Notebook, копии и уже существующие источники поиска.</p></div><div class="work"><strong>Экспорт результата</strong><p>Подборка ссылок, цитат и снимков в Markdown.</p></div></div>
+      <div class="phase later"><div class="phase-id">Позже · специализация</div><h3>Режимы профессий</h3><div class="work"><strong>Референсы креатора</strong><p>Изображения и снимки с источниками, быстрый отбор в подборку.</p></div><div class="work"><strong>Проверка интерфейса</strong><p>Один URL в двух размерах, выбор профиля, синхронная прокрутка.</p></div><div class="work"><strong>Ветка исследования</strong><p>Необязательная связь страницы с родителем внутри задачи.</p></div><div class="work"><strong>Поисковые рецепты</strong><p>Поиск выделения по выбранным документациям и источникам.</p></div></div>
+    </div>
+    <div class="legend"><span><i class="swatch"></i> уже есть как основа</span><span><i class="swatch next"></i> ближний продуктовый срез</span><span><i class="swatch later"></i> проверить перед разработкой</span></div>
+  </section>
+
+  <section aria-labelledby="principles-title">
+    <div class="section-head"><div><div class="section-num">04 / границы</div><h2 id="principles-title">Принципы, которые держат направление</h2></div></div>
+    <div class="guardrails"><div class="rule"><b>Задача ≠ профиль</b><p>Профиль отвечает за аккаунт и cookies. Задача — за работу и возврат к ней.</p></div><div class="rule"><b>Материал с происхождением</b><p>Цитата и изображение сохраняются с URL, названием и временем.</p></div><div class="rule"><b>Действие важнее AI</b><p>Модель помогает найти или выбрать; результат должен быть проверяемым.</p></div><div class="rule"><b>Контроль данных</b><p>Никакого скрытого сбора системного буфера или полного снимка каждой страницы.</p></div></div>
+  </section>
+
+  <footer class="footer"><p>Основа схемы — аудит текущего Oblako и исследование Zen, Floorp, Workona, Tablerone, Horse, Are.na, Readwise, Polypane и расширений. Это направление для пользовательской проверки, а не спецификация всех функций.</p><a href="../product-research-2026-09-18.md">Полное исследование и источники ↗</a></footer>
+</main>
+<script>
+  const scenarios = {
+    writer: { title:'Статья с проверяемыми источниками', steps:[
+      ['Собрать','Поиск, история, ссылки из материалов','Автор находит несколько статей и тезисов. Сохранять каждую как вкладку рано.','Основа: омнибокс и поиск уже есть.'],
+      ['Проверить','Предпросмотр вместо лишней вкладки','Открыть найденную ссылку поверх работы и за секунды решить, стоит ли читать дальше.','Новый срез: предпросмотр ссылки.'],
+      ['Сравнить','Два источника в split','Оставить нужную статью рядом с черновиком или второй статьёй; менять материал в каждой стороне.','Основа: split и стопки уже есть.'],
+      ['Забрать','Цитата вместе с источником','Выделить нужный тезис и получить цитату, заголовок, URL и запись в Notebook.','Ближний срез: копирование с источником.'],
+      ['Продолжить','Вернуть задачу и отдать материал','На следующий день вернуть пару и подборку, затем экспортировать ссылки и цитаты в Markdown.','Следом: пауза задачи и экспорт.']
+    ]},
+    designer: { title:'Подборка референсов без потерянных ссылок', steps:[
+      ['Найти','Референсы из разных источников','Дизайнер просматривает сайты, галереи и отдельные изображения.','Основа: поиск, история и закладки.'],
+      ['Отобрать','Быстрый просмотр страницы','Проверить ссылку, не превращая каждый найденный вариант в постоянную вкладку.','Новый срез: предпросмотр ссылки.'],
+      ['Сравнить','Референс рядом с макетом','Один источник открыт в split рядом с живой работой или другим примером.','Основа: независимые стороны split.'],
+      ['Сохранить','Изображение или кадр с URL','Поместить изображение/снимок в подборку с адресом страницы и датой, чтобы источник не исчез.','Следующий срез: подборка референсов.'],
+      ['Передать','Экспортировать подборку','Передать ссылки и отобранные изображения в работу команды без ручного восстановления источников.','Следом: экспорт материала.']
+    ]},
+    developer: { title:'От чтения документации до воспроизводимого бага', steps:[
+      ['Найти','Документация и issue','Разработчик быстро находит релевантную страницу, фрагмент API или обсуждение проблемы.','Основа: поиск по странице и вкладкам.'],
+      ['Открыть','Контекст текущего проекта','Исходный сайт и документация остаются в отдельных сторонах split.','Основа: split и профили.'],
+      ['Проверить','Два размера одного сайта','Один URL показывается на двух ширинах; сначала синхронизируется прокрутка.','Поздний срез: режим проверки интерфейса.'],
+      ['Зафиксировать','Снимок с условиями','Сохранить URL, размеры, профиль и изображение без cookies, токенов и текста форм.','Основа: снимки; нужен контекст проверки.'],
+      ['Передать','Воспроизводимый пакет','Экспортировать ссылку, шаги и снимок в issue или Markdown-документ.','Следом: экспорт результата.']
+    ]}
+  };
+  let role='writer', selected=0;
+  const stepsEl=document.getElementById('steps');
+  function render(){
+    const data=scenarios[role];
+    document.getElementById('scenario-title').textContent=data.title;
+    stepsEl.innerHTML='';
+    data.steps.forEach((item,index)=>{
+      const button=document.createElement('button');
+      button.type='button'; button.className='step'+(index===selected?' active':''); button.setAttribute('aria-current',index===selected?'step':'false');
+      const dot=document.createElement('span');dot.className='dot';dot.textContent=String(index+1).padStart(2,'0');
+      const title=document.createElement('b');title.textContent=item[0];
+      const copy=document.createElement('p');copy.textContent=item[1];
+      button.append(dot,title,copy);button.addEventListener('click',()=>{selected=index;render()});stepsEl.append(button);
+    });
+    const step=data.steps[selected];
+    document.getElementById('detail-index').textContent='Шаг '+(selected+1)+' / 5';
+    document.getElementById('detail-title').textContent=step[0];
+    document.getElementById('detail-body').textContent=step[2];
+    document.getElementById('detail-feature').textContent=step[3];
+    document.querySelectorAll('.role').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.role===role)));
+  }
+  document.querySelectorAll('.role').forEach(button=>button.addEventListener('click',()=>{role=button.dataset.role;selected=0;render()}));
+  render();
+</script>
+</body>
+</html>
