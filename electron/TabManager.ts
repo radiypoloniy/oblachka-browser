@@ -2357,6 +2357,15 @@ export class TabManager {
 
   // Группа из сайдбара может создать новую пару тем же жестом, что и одиночная вкладка.
   enterSplitWithGroup(groupId: string, side: 'left' | 'right' = 'right'): void {
+    if (this.activeId === HUB_ID) {
+      const ids = this.#prepareGroupForSplit(groupId, []);
+      if (!ids) return;
+      // На хабе нет страницы-якоря: открываем вторую вкладку группы как якорь, чтобы
+      // первая заняла выбранную жестом сторону. При одной вкладке просто открываем её.
+      this.activate(ids[1] ?? ids[0]);
+      if (ids.length > 1) this.enterSplit(ids[0], side, ids.slice(2));
+      return;
+    }
     const anchor = this.tabMap.get(this.activeId);
     if (this.#pairContaining(this.activeId) || !this.#findTabParent(this.activeId) || !anchor ||
         (!this.isHttpView(anchor.view) && !anchor.sleeping) || this.isTabPinned(this.activeId)) return;
