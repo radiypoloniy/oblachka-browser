@@ -41,13 +41,12 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import path from 'node:path'
 import { IPC } from '../shared/ipc'
-import { rememberOverlayHeight } from '../shared/overlayMetrics'
+import { OVERLAY_MIN_CONTENT_HEIGHT, rememberOverlayHeight } from '../shared/overlayMetrics'
 import type { ContentBounds, OmniboxPanel, OmniboxRecommendEdit, SuggestDropdownItem } from '../shared/ipc'
 
 const GAP = 8 // зазор между низом омнибокса и верхом карточки
-// Стартовая высота — до первого реального замера от suggestdropdown.tsx (ResizeObserver →
-// 'suggest-dropdown:height'). Держим маленькой (высота ~1 строки): реальная высота прилетает почти
-// сразу после показа, поэтому стартовый флеш короткий и безвредный.
+// Стартовая высота нужна для раскладки скрытого окна. На первом показе не показываем её человеку:
+// ждём замера карточки, иначе тяжёлый старт оставляет видимой узкую полоску.
 const INITIAL_HEIGHT = 48
 // Тень карточки рисуется ВНУТРИ окна, а окно всё, что за своей границей, обрезает — поэтому вокруг
 // карточки нужен прозрачный запас не меньше реального охвата тени (offset+blur = 10+28, см.
@@ -86,8 +85,8 @@ interface WindowDropdown {
   // Последняя измеренная высота карточки: окно персистентно между показами, поэтому повторное
   // открытие переиспользует известное значение вместо возврата к INITIAL_HEIGHT.
   height: number
-  // Последний список — переотправляется на did-finish-load, если окно ещё не успело загрузиться
-  // к моменту первого sendSuggestItems().
+  measured: boolean
+  // Последний список — переотправляется после ready из React, если первый send пришёл до подписки.
   items: SuggestDropdownItem[]
   // Последняя панель (режим «нетронутая строка», заход 11) — переотправляется по тому же поводу.
   panel: OmniboxPanel | null
@@ -109,7 +108,7 @@ function stateFor(win: BrowserWindow): WindowDropdown {
   const created: WindowDropdown = {
     win, popup: null, bound: false,
     omniboxBounds: { x: 0, y: 0, width: 0, height: 0 },
-    height: INITIAL_HEIGHT, items: [], panel: null, mode: 'items', wanted: false,
+    height: INITIAL_HEIGHT, measured: false, items: [], panel: null, mode: 'items', wanted: false,
   }
   dropdowns.set(win.id, created)
   win.once('closed', () => {
@@ -205,8 +204,20 @@ function ensureIpcRegistered(): void {
   ipcMain.on('suggest-dropdown:height', (e, px: number) => {
     const st = stateBySender(e.sender)
     if (!st) return
+    if (!Number.isFinite(px) || px < OVERLAY_MIN_CONTENT_HEIGHT) return
     st.height = rememberOverlayHeight(px, st.height)
+    st.measured = true
     layoutDropdown(st)
+    if (st.wanted && st.win.isFocused() && !st.popup?.isVisible()) st.popup?.showInactive()
+  })
+
+  // did-finish-load может наступить до React useEffect. Только после этой квитанции можно
+  // надёжно послать первый список; иначе он теряется, а карточка остаётся пустой полоской.
+  ipcMain.on('suggest-dropdown:ready', (e) => {
+    const st = stateBySender(e.sender)
+    if (!st?.popup || st.popup.isDestroyed()) return
+    if (st.mode === 'panel' && st.panel) st.popup.webContents.send('suggest-dropdown:panel', st.panel)
+    else st.popup.webContents.send('suggest-dropdown:items', st.items)
   })
 }
 
@@ -232,6 +243,8 @@ function bindWindow(st: WindowDropdown): void {
 
 function ensurePopup(st: WindowDropdown): BrowserWindow {
   if (st.popup && !st.popup.isDestroyed()) return st.popup
+  st.measured = false
+  st.height = INITIAL_HEIGHT
   ensureIpcRegistered()
   const popup = new BrowserWindow({
     // parent — чтобы окно всегда лежало НАД главным и уезжало вместе с ним при сворачивании.
@@ -266,11 +279,6 @@ function ensurePopup(st: WindowDropdown): BrowserWindow {
   })
   popup.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   popup.webContents.once('did-finish-load', () => {
-    // Список мог прийти ДО загрузки страницы — тогда send ушёл бы в никуда (preload ещё не навесил
-    // обработчик). Переотправляем последнее известное явно — и ровно ОДНО, то, что просил омнибокс:
-    // послать оба сообщения подряд значит нарисовать не режим, а порядок отправки.
-    if (st.mode === 'panel' && st.panel) popup.webContents.send('suggest-dropdown:panel', st.panel)
-    else popup.webContents.send('suggest-dropdown:items', st.items)
     layoutDropdown(st)
   })
   popup.loadURL('oblako-chrome://localhost/suggestdropdown.html')
@@ -286,7 +294,7 @@ export function showSuggestDropdown(win: BrowserWindow): void {
   popup.setBounds(computeBounds(st))
   // ⚠️ showInactive(), а не show(): show() просит у системы активацию. Окно и так неактивируемое,
   // но просить активацию и не получать её — лишний повод системе дёрнуть фокус главного окна.
-  if (!popup.isVisible()) popup.showInactive()
+  if (st.measured && !popup.isVisible()) popup.showInactive()
 }
 
 // Живой список подсказок — buildSuggestions в Toolbar.tsx шлёт его на каждый пересчёт. Лениво

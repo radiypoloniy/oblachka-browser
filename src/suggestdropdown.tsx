@@ -35,6 +35,7 @@ import { OVERLAY_MIN_CONTENT_HEIGHT } from '../shared/overlayMetrics';
 declare global {
   interface Window {
     suggestDropdown: {
+      ready: () => void
       onItems: (cb: (items: SuggestDropdownItem[]) => void) => () => void
       onPanel: (cb: (panel: OmniboxPanel) => void) => () => void
       pick: (item: SuggestDropdownItem) => void
@@ -180,6 +181,7 @@ function SuggestDropdown() {
   useEffect(() => window.suggestDropdown.onItems((items) => setView({ kind: 'items', items })), []);
   useEffect(() => window.suggestDropdown.onPanel((panel) => setView({ kind: 'panel', panel })), []);
   useEffect(() => window.suggestDropdown.onHighlight(setKeyboardIdx), []);
+  useEffect(() => { window.suggestDropdown.ready(); }, []);
 
   // ⚠️ Панель прячется скрытием ОКНА, компонент при этом жив (см. шапку overlayReveal.ts), поэтому
   // режим правки надо гасить руками — иначе он встретит человека в следующий раз, хотя тот про
@@ -196,9 +198,8 @@ function SuggestDropdown() {
     const el = cardRef.current;
     if (!el) return;
     const report = () => {
-      // Скрытое окно схлопывается: offsetHeight ≈ 0, и main принял бы это как высоту — следующий
-      // показ открывался полоской в пару пикселей.
-      if (document.hidden) return;
+      // На первом открытии окно ещё скрыто: нормальную высоту отправляем и в этом состоянии,
+      // чтобы main показал его уже после замера. Нулевой замер скрытой карточки пропускаем.
       const px = el.offsetHeight;
       if (px < OVERLAY_MIN_CONTENT_HEIGHT) return;
       window.suggestDropdown.reportHeight(px);

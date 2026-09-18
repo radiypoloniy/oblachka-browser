@@ -7,6 +7,7 @@ import { exposeUiLanguage } from './preload/uiLanguage'
 import type { SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('suggestDropdown', {
+  ready: () => ipcRenderer.send('suggest-dropdown:ready'),
   onItems: (cb: (items: SuggestDropdownItem[]) => void) => {
     const handler = (_e: unknown, items: SuggestDropdownItem[]) => cb(items)
     ipcRenderer.on('suggest-dropdown:items', handler)
