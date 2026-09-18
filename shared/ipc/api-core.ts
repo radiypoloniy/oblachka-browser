@@ -199,6 +199,7 @@ export interface CoreApi {
   // из контекстного меню ссылки, где стороне взяться неоткуда). Перетаскивание же передаёт
   // сторону, за которую человек тянул, — иначе жест обещает одно, а делает другое.
   enterSplit(tabId: string, side?: 'left' | 'right'): Promise<void>;
+  enterSplitWithGroup(groupId: string, side?: 'left' | 'right'): Promise<void>;
   // Занять половину показываемой пары вкладкой из списка. Выселенная панель не закрывается —
   // возвращается в список обычной вкладкой сразу за парой, из которой вышла.
   replaceSplitPanel(panelId: string, newId: string): Promise<void>;

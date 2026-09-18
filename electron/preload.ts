@@ -220,6 +220,7 @@ const api: OblakoApi = {
   },
 
   enterSplit:      (tabId: string, side?: 'left' | 'right') => ipcRenderer.invoke(IPC.TAB_ENTER_SPLIT, tabId, side),
+  enterSplitWithGroup: (groupId: string, side?: 'left' | 'right') => ipcRenderer.invoke(IPC.TAB_ENTER_GROUP, groupId, side),
   replaceSplitPanel: (panelId: string, newId: string) => ipcRenderer.invoke(IPC.TAB_REPLACE_PANEL, panelId, newId),
   replaceSplitPanelWithGroup: (panelId: string, groupId: string) => ipcRenderer.invoke(IPC.TAB_REPLACE_GROUP, panelId, groupId),
   exitSplit:       (tabId: string, keepId?: string) => ipcRenderer.invoke(IPC.TAB_EXIT_SPLIT, tabId, keepId),

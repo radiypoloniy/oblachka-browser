@@ -2117,7 +2117,7 @@ export class TabManager {
   // левая), поэтому и жило под именами leftId/rightId; со свободной стороной совпадение
   // кончилось, и путать их больше нельзя.
   // Только обычные (не закреплённые, не хаб) вкладки могут участвовать.
-  enterSplit(movedId: string, side: 'left' | 'right' = 'right'): void {
+  enterSplit(movedId: string, side: 'left' | 'right' = 'right', relatedIds: string[] = []): void {
     // Коммит 4: лимит на ОБЩЕЕ число пар снят — блокируем только если конкретно активная
     // или приводимая вкладка УЖЕ состоит в какой-то паре (нельзя одну и ту же вкладку
     // впихнуть сразу в две). Разные вкладки без пары — новая пара разрешена,
@@ -2132,6 +2132,8 @@ export class TabManager {
 
     const anchorTab = this.tabMap.get(anchorId);
     if (!anchorTab || (!this.isHttpView(anchorTab.view) && !anchorTab.sleeping) || this.isTabPinned(anchorId)) return;
+    const movedGroupId = this.#groupContaining(movedId)?.id ?? null;
+    const anchorGroupId = this.#groupContaining(anchorId)?.id ?? null;
 
     const leftId  = side === 'left' ? movedId : anchorId;
     const rightId = side === 'left' ? anchorId : movedId;
@@ -2166,6 +2168,7 @@ export class TabManager {
     const pair: SplitPairNode = { type: 'split-pair', leftTabId: leftId, rightTabId: rightId, ratio: 0.5 };
 
     insertSplitPairAt(this.nodes, anchorParent, movedParent, movedId, pair);
+    for (const id of [movedId, ...relatedIds]) this.splitPairs.forget(id);
 
     // ⚠️ activePanel обязан указывать на сторону АКТИВНОЙ вкладки, а не всегда на левую:
     // activeId остаётся anchorId, и разъедься эти двое — Ctrl-переключение панелей и выход из
@@ -2173,7 +2176,10 @@ export class TabManager {
     this.splitPairs.add({
       leftId, rightId, splitRatio: 0.5,
       activePanel: anchorId === leftId ? 'left' : 'right',
-      leftStack: [], rightStack: [], leftGroupId: null, rightGroupId: null,
+      leftStack: side === 'left' ? relatedIds : [],
+      rightStack: side === 'right' ? relatedIds : [],
+      leftGroupId: side === 'left' ? movedGroupId : anchorGroupId,
+      rightGroupId: side === 'right' ? movedGroupId : anchorGroupId,
     });
 
     for (const splitId of [leftId, rightId]) {
@@ -2349,18 +2355,35 @@ export class TabManager {
     this.focusActiveView();
   }
 
+  // Группа из сайдбара может создать новую пару тем же жестом, что и одиночная вкладка.
+  enterSplitWithGroup(groupId: string, side: 'left' | 'right' = 'right'): void {
+    const anchor = this.tabMap.get(this.activeId);
+    if (this.#pairContaining(this.activeId) || !this.#findTabParent(this.activeId) || !anchor ||
+        (!this.isHttpView(anchor.view) && !anchor.sleeping) || this.isTabPinned(this.activeId)) return;
+    const ids = this.#prepareGroupForSplit(groupId, [this.activeId]);
+    if (!ids) return;
+    this.enterSplit(ids[0], side, ids.slice(1));
+  }
+
   // Группу кладём в показываемую половину как набор ссылок на уже открытые вкладки.
   // Первая становится панелью, остальные остаются в дереве и доступны через меню стопки.
   replaceSplitPanelWithGroup(panelId: string, groupId: string): void {
     const pair = this.#pairContaining(panelId);
+    if (!pair || pair !== this.#activePair()) return;
+    const ids = this.#prepareGroupForSplit(groupId, [pair.leftId, pair.rightId]);
+    if (!ids) return;
+    this.replaceSplitPanel(panelId, ids[0], true, ids.slice(1));
+  }
+
+  #prepareGroupForSplit(groupId: string, protectedIds: string[]): string[] | null {
     const group = this.#findGroupById(groupId);
-    if (!pair || pair !== this.#activePair() || !group) return;
+    if (!group) return null;
     const ids = collectTabIds(group.children);
-    if (!ids.length || ids.includes(pair.leftId) || ids.includes(pair.rightId)) return;
+    if (!ids.length || ids.some((id) => protectedIds.includes(id))) return null;
     if (ids.some((id) => {
       const tab = this.tabMap.get(id);
       return !tab || !this.#inActiveProfile(tab) || (!this.isHttpView(tab.view) && !tab.sleeping);
-    })) return;
+    })) return null;
 
     // Внутренние пары группы уже припаркованы: показываемая пара находится вне неё.
     // Разбираем их до перемещения первой вкладки, сохраняя обе страницы в том же порядке.
@@ -2369,7 +2392,7 @@ export class TabManager {
       this.#dissolveSplitPair(inner.leftId, inner.rightId);
       this.splitPairs.remove(inner);
     }
-    this.replaceSplitPanel(panelId, ids[0], true, ids.slice(1));
+    return ids;
   }
 
   // Список для одной половины показываемой пары. Вкладки в стопке остаются обычными узлами

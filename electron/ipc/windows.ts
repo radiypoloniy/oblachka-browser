@@ -141,6 +141,7 @@ export function registerWindowsIpc(d: IpcDeps): void {
 
   // Split View
   ipcMain.handle(IPC.TAB_ENTER_SPLIT, (e, tabId: string, side?: 'left' | 'right') => tabsOf(e)?.enterSplit(tabId, side));
+  ipcMain.handle(IPC.TAB_ENTER_GROUP, (e, groupId: string, side?: 'left' | 'right') => tabsOf(e)?.enterSplitWithGroup(groupId, side));
   ipcMain.handle(IPC.TAB_REPLACE_PANEL, (e, panelId: string, newId: string) => tabsOf(e)?.replaceSplitPanel(panelId, newId));
   ipcMain.handle(IPC.TAB_REPLACE_GROUP, (e, panelId: string, groupId: string) => tabsOf(e)?.replaceSplitPanelWithGroup(panelId, groupId));
   ipcMain.handle(IPC.TAB_EXIT_SPLIT,  (e, tabId: string, keepId?: string) => tabsOf(e)?.exitSplit(tabId, keepId));

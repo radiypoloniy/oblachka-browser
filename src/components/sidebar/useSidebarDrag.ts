@@ -342,8 +342,12 @@ const { tabs, onDropOnContent } = ctx;
   }
   // Дроп в контент-зону → split вместо reorder. Сторону считает main по реальному курсору
   // (см. TabDropResult.side) — вкладка встаёт туда, куда её вели, а не всегда справа.
-  // Группы в split не входят — проверяем только обычные вкладки.
+  // Группа приносит первую вкладку в новую пару, остальные доступны в её стопке.
   if (zone === 'split') {
+    if (draggedId.startsWith('group:')) {
+      void window.oblako.enterSplitWithGroup(draggedId.slice('group:'.length), side);
+      return true;
+    }
     if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
       onDropOnContent(draggedId, side);
     }
