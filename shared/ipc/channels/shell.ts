@@ -203,6 +203,11 @@ export const SHELL = {
   TAB_SPLIT_FOCUS:  'tab:split-focus',  // renderer → main: переключить фокус на панель
   TAB_SPLIT_RATIO:  'tab:split-ratio',  // renderer → main: новое соотношение панелей при drag
   TAB_SPLIT_SWAP:   'tab:split-swap',   // renderer → main: поменять половины пары местами (ширины слотов остаются)
+  SPLIT_STACK_SHOW: 'split:stack-show',
+  SPLIT_STACK_SELECT: 'split:stack-select',
+  SPLIT_STACK_FORGET: 'split:stack-forget',
+  SPLIT_STACK_CLOSE: 'split:stack-close',
+  SPLIT_STACK_DATA: 'split:stack-data',
   SPLIT_SWAP_HINT:  'split:swap-hint',  // renderer → main: подсветить панель-цель, пока половину тащат за шапку
   SPLIT_CAPTURE_PANE: 'split:capture-pane', // renderer → main: снимок панели для карточки в руке
   SPLIT_DRAG_THUMB:   'split:drag-thumb',   // renderer → main → оверлей: тот же снимок, чтобы карточка была одна

@@ -760,7 +760,7 @@ export class TabManager {
     // Регистрируем КАЖДУЮ найденную пару, не только первую: какая окажется показываемой,
     // решает activate(targetId) через #pairContaining, а не порядок здесь.
     this.splitPairs.replace(collectSplitPairs(this.nodes)
-      .map((p) => ({ leftId: p.leftId, rightId: p.rightId, activePanel: 'left' as const, splitRatio: p.ratio })));
+      .map((p) => ({ leftId: p.leftId, rightId: p.rightId, activePanel: 'left' as const, splitRatio: p.ratio, leftStack: [], rightStack: [] })));
   }
 
   // DBG: проверяет, что каждый SplitPairNode в дереве ссылается на существующие tabMap-записи.
@@ -1099,6 +1099,7 @@ export class TabManager {
         this.#pruneEmptyGroups(this.nodes);
       }
       const tab = this.tabMap.get(id)!;
+      this.splitPairs.forget(id);
       this.pinnedTabs.push(tab);
     }
     this.onChange();
@@ -1491,6 +1492,7 @@ export class TabManager {
     if (id === HUB_ID) return;
     if (this.isTabPinned(id)) return;
     this.clearOrganizeSnapshot();
+    this.splitPairs.forget(id);
     this.#navFrom.delete(id); // карта «откуда пришли» не должна копить мёртвые вкладки
 
     // ⚠️ Соседей считаем ЗДЕСЬ, до всякой уборки. Ниже вкладка исчезает и из tabMap, и из дерева
@@ -1623,6 +1625,7 @@ export class TabManager {
         this.#pruneEmptyGroups(this.nodes);
       }
     }
+    this.splitPairs.forget(id);
     this.tabMap.delete(id);
     this.errors.delete(id);
     // Снимаем вью с окна, но НЕ закрываем webContents — она сейчас же встанет в другое окно.
@@ -2161,6 +2164,7 @@ export class TabManager {
     this.splitPairs.add({
       leftId, rightId, splitRatio: 0.5,
       activePanel: anchorId === leftId ? 'left' : 'right',
+      leftStack: [], rightStack: [],
     });
 
     for (const splitId of [leftId, rightId]) {
@@ -2261,7 +2265,7 @@ export class TabManager {
   // ⚠️ Выселенная панель НЕ закрывается. Она возвращается в список обычной вкладкой и встаёт
   // сразу за парой, из которой вышла, — там, где человек будет её искать. Закрыть чужую страницу
   // по жесту, который человек считает перестановкой, — потеря его работы без спроса.
-  replaceSplitPanel(panelId: string, newId: string): void {
+  replaceSplitPanel(panelId: string, newId: string, rememberEvicted = true): void {
     const pair = this.#pairContaining(panelId);
     // Только ПОКАЗЫВАЕМАЯ пара: припаркованная не на экране, целиться в её панель нечем.
     if (!pair || pair !== this.#activePair()) return;
@@ -2279,6 +2283,7 @@ export class TabManager {
     replaceSplitPairPanelNode(this.nodes, panelId, newId, side);
 
     this.splitPairs.replacePanel(pair, panelId, newId);
+    if (!rememberEvicted) this.splitPairs.forget(panelId);
     // ⚠️ activeId переставляем ДО repositionViews: #activePair() ищет пару по activeId, и с
     // прежним (уже выселенным) id пара перестала бы находиться — раскладка на кадр схлопнулась
     // бы в одиночную вкладку.
@@ -2322,6 +2327,48 @@ export class TabManager {
 
     this.onChange();
     this.focusActiveView();
+  }
+
+  // Список для одной половины показываемой пары. Вкладки в стопке остаются обычными узлами
+  // сайдбара: здесь только связь с панелью, без второго владельца страницы.
+  splitStackEntries(side: 'left' | 'right'): TabState[] {
+    const pair = this.#activePair();
+    if (!pair) return [];
+    const currentId = side === 'left' ? pair.leftId : pair.rightId;
+    const stored = side === 'left' ? pair.leftStack : pair.rightStack;
+    return [currentId, ...stored].flatMap((id) => {
+      const tab = this.tabMap.get(id);
+      if (!tab || !this.#inActiveProfile(tab)) return [];
+      if (id !== currentId && (this.#pairContaining(id) || this.isTabPinned(id))) return [];
+      return [this.#tabToState(tab, false)];
+    });
+  }
+
+  selectSplitStackTab(side: 'left' | 'right', tabId: string): void {
+    const pair = this.#activePair();
+    if (!pair) return;
+    const stored = side === 'left' ? pair.leftStack : pair.rightStack;
+    if (!stored.includes(tabId)) return;
+    const panelId = side === 'left' ? pair.leftId : pair.rightId;
+    this.replaceSplitPanel(panelId, tabId);
+  }
+
+  dismissSplitStackTab(side: 'left' | 'right', tabId: string): void {
+    const pair = this.#activePair();
+    if (!pair) return;
+    const panelId = side === 'left' ? pair.leftId : pair.rightId;
+    const stored = side === 'left' ? pair.leftStack : pair.rightStack;
+    if (tabId !== panelId) {
+      if (!stored.includes(tabId)) return;
+      this.splitPairs.forget(tabId);
+      this.onChange();
+      return;
+    }
+    // Убрать текущую страницу из половины можно только показав следующую или разобрав пару.
+    // Обе страницы остаются обычными вкладками в сайдбаре.
+    const next = this.splitStackEntries(side).find((entry) => entry.id !== panelId);
+    if (next) this.replaceSplitPanel(panelId, next.id, false);
+    else this.exitSplit(panelId, side === 'left' ? pair.rightId : pair.leftId);
   }
 
   // Миниатюра страницы для карточки, которую человек несёт в руке, перетаскивая половину сплита

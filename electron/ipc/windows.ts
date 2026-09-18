@@ -3,7 +3,8 @@
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
 import { IPC } from '../../shared/ipc';
-import type { DragCard, RuleParseOutcome, SmartFindResult, SplitSwapHint } from '../../shared/ipc';
+import type { ContentBounds, DragCard, RuleParseOutcome, SmartFindResult, SplitSwapHint } from '../../shared/ipc';
+import { showSplitStackPopover } from '../SplitStackPopoverManager';
 import { endTabDrag, setSwapCursor, setSwapHint, setSwapThumb, startTabDrag } from '../DropZoneManager';
 import { parsePhraseToRule } from '../RuleParser';
 import { highlightCandidates, pickFragmentByMeaning } from '../SmartFind';
@@ -145,6 +146,11 @@ export function registerWindowsIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.TAB_SPLIT_FOCUS, (e, side: 'left' | 'right') => tabsOf(e)?.focusSplitPanel(side));
   ipcMain.handle(IPC.TAB_SPLIT_RATIO, (e, ratio: number)           => tabsOf(e)?.setSplitRatio(ratio));
   ipcMain.handle(IPC.TAB_SPLIT_SWAP,  (e, tabId: string)           => tabsOf(e)?.swapSplitPanels(tabId));
+  ipcMain.handle(IPC.SPLIT_STACK_SHOW, (e, side: 'left' | 'right', anchor: ContentBounds) => {
+    const win = winOf(e);
+    const tabs = tabsOf(e);
+    if (win && tabs) showSplitStackPopover(win, tabs, side, anchor);
+  });
   // Подсветка панели-цели при перетаскивании половины за шапку. Зону считает сам чром (жест держит
   // указатель через setPointerCapture, см. App.tsx) — от main нужна только картинка поверх страницы.
   // Одно сообщение на две работы: оверлей рисует подсветку и карточку, TabManager перестраивает

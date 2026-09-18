@@ -6,6 +6,8 @@ export interface SplitPair {
   rightId: string;
   activePanel: 'left' | 'right';
   splitRatio: number;
+  leftStack: string[];
+  rightStack: string[];
 }
 
 export interface SplitExitPlan {
@@ -70,15 +72,26 @@ export class SplitPairRegistry implements Iterable<SplitPair> {
 
   replacePanel(pair: SplitPair, panelId: string, newId: string): 'left' | 'right' | null {
     if (!this.#pairs.includes(pair)) return null;
+    if (panelId !== pair.leftId && panelId !== pair.rightId) return null;
+    this.forget(newId);
     if (panelId === pair.leftId) {
+      pair.leftStack = [panelId, ...pair.leftStack.filter((id) => id !== panelId)];
       pair.leftId = newId;
       return 'left';
     }
     if (panelId === pair.rightId) {
+      pair.rightStack = [panelId, ...pair.rightStack.filter((id) => id !== panelId)];
       pair.rightId = newId;
       return 'right';
     }
     return null;
+  }
+
+  forget(tabId: string): void {
+    for (const pair of this.#pairs) {
+      pair.leftStack = pair.leftStack.filter((id) => id !== tabId);
+      pair.rightStack = pair.rightStack.filter((id) => id !== tabId);
+    }
   }
 
   setRatio(pair: SplitPair, ratio: number): boolean {
@@ -96,6 +109,7 @@ export class SplitPairRegistry implements Iterable<SplitPair> {
   swap(pair: SplitPair): boolean {
     if (!this.#pairs.includes(pair)) return false;
     [pair.leftId, pair.rightId] = [pair.rightId, pair.leftId];
+    [pair.leftStack, pair.rightStack] = [pair.rightStack, pair.leftStack];
     pair.activePanel = pair.activePanel === 'left' ? 'right' : 'left';
     return true;
   }

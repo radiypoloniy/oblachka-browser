@@ -256,6 +256,11 @@ export interface SyncState {
   hasRenameSnapshot: boolean;   // true = доступен откат последнего массового переименования
 }
 
+export interface SplitStackMenuData {
+  side: 'left' | 'right';
+  entries: TabState[]; // первая — текущая; остальные можно убрать из стопки без закрытия
+}
+
 // Один предложенный кластер от TabOrganizer.ts → TabManager.applyOrganize().
 export interface OrganizeCluster {
   nodeIds:   string[];                       // tabId (single) или leftTabId (split-pair)

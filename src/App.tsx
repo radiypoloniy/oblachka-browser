@@ -26,7 +26,7 @@ import { useChromeAppearance } from './app/useChromeAppearance';
 import { watchGenClocks } from './newtab/genClocks';
 import { setDesktopProfile } from './newtab/desktop';
 import ProfilePicker from './components/ProfilePicker';
-import type { TabState } from '../shared/ipc';
+import type { ContentBounds, TabState } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
 import { RADIUS } from './styles/system';
 
@@ -72,10 +72,11 @@ const TAB_FRAME_STYLE: CSSProperties = {
 //
 // dragging — страницу этого острова несут в руке. Тогда шапка пустеет: см. ниже, почему это
 // правильно и почему при этом сама полоса обязана остаться.
-function SplitPanelHeader({ tab, active, onClose, dragging, dragHandlers }: {
+function SplitPanelHeader({ tab, active, onClose, onShowStack, dragging, dragHandlers }: {
   tab: TabState;
   active: boolean;
   onClose: () => void;
+  onShowStack: (anchor: ContentBounds) => void;
   dragging: boolean;
   dragHandlers: {
     onPointerDown: (e: React.PointerEvent) => void;
@@ -116,6 +117,21 @@ function SplitPanelHeader({ tab, active, onClose, dragging, dragHandlers }: {
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           transition: 'color var(--dur-fast) var(--ease-standard)',
         }}>{tab.title || tab.url || 'Загрузка…'}</span>
+      )}
+      {!dragging && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            onShowStack({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+          }}
+          title="Вкладки этой половины"
+          aria-label="Вкладки этой половины"
+          style={{
+            border: 'none', background: 'transparent', cursor: 'default', padding: 3,
+            borderRadius: RADIUS.tight, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)',
+          }}
+        >▣</button>
       )}
       {!dragging && (
         <button
@@ -437,6 +453,7 @@ export default function App() {
               >
                 <SplitPanelHeader
                   tab={headerLeft!} onClose={() => close(headerLeft!.id)}
+                  onShowStack={(anchor) => void window.oblako.showSplitStack('left', anchor)}
                   active={activeId === headerLeft!.id}
                   dragging={panelDrag?.tabId === headerLeft!.id}
                   dragHandlers={{
@@ -497,6 +514,7 @@ export default function App() {
               >
                 <SplitPanelHeader
                   tab={headerRight!} onClose={() => close(headerRight!.id)}
+                  onShowStack={(anchor) => void window.oblako.showSplitStack('right', anchor)}
                   active={activeId === headerRight!.id}
                   dragging={panelDrag?.tabId === headerRight!.id}
                   dragHandlers={{

@@ -208,6 +208,7 @@ export interface CoreApi {
   focusSplitPanel(side: 'left' | 'right'): Promise<void>; // переключить активную панель
   setSplitRatio(ratio: number): Promise<void>;      // drag разделителя: 0.2..0.8
   swapSplitPanels(tabId: string): Promise<void>;    // половины пары меняются местами; ширины слотов не меняются
+  showSplitStack(side: 'left' | 'right', anchor: ContentBounds): Promise<void>;
   // Подсветка панели-цели во время перетаскивания половины за шапку; null — убрать оверлей.
   setSplitSwapHint(hint: SplitSwapHint | null): Promise<void>;
   // Курсор для призрака, который едет поверх страницы; null — курсор ушёл с области контента.

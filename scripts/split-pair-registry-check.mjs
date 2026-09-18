@@ -13,7 +13,7 @@ function check(what, actual, expected) {
 }
 
 const pair = (leftId, rightId, activePanel = 'left', splitRatio = 0.5) => ({
-  leftId, rightId, activePanel, splitRatio,
+  leftId, rightId, activePanel, splitRatio, leftStack: [], rightStack: [],
 });
 
 console.log('\n— поиск runtime split-пар —');
@@ -109,6 +109,7 @@ console.log('\n— диагностическая сериализация —')
   registry.add(pair('left', 'right', 'right', 0.42));
   check('JSON содержит прежнюю форму массива', JSON.parse(JSON.stringify(registry)), [{
     leftId: 'left', rightId: 'right', activePanel: 'right', splitRatio: 0.42,
+    leftStack: [], rightStack: [],
   }]);
 }
 
