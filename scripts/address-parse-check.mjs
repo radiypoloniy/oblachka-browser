@@ -5,7 +5,7 @@
 // доставки, — ошибка здесь уводит посылку по чужому индексу, и заметить её человеку почти нечем.
 //
 // Запуск: npm run address-parse-check
-import { partsFromModelOutput, cleanPostal, cleanPhone, cleanEmail } from '../shared/addressParts.ts';
+import { partsFromModelOutput, cleanPostal, cleanPhone, cleanEmail, isSaveableAddress } from '../shared/addressParts.ts';
 
 let passed = 0;
 let failed = 0;
@@ -75,6 +75,13 @@ check('телефон: возвращается как написан (чело�
 check('телефон: слишком много цифр — отказ', cleanPhone('12345678901234567890'), '');
 check('почта: обычная проходит', cleanEmail('ivan@mail.ru'), 'ivan@mail.ru');
 check('почта: без домена — отказ', cleanEmail('ivan@mail'), '');
+
+console.log('\n— что считаем адресом для offer-save —');
+check('имя + почта — не адрес', isSaveableAddress({ fullName: 'Иван', email: 'ivan@mail.ru' }), false);
+check('пусто — не адрес', isSaveableAddress({}), false);
+check('город + индекс — адрес', isSaveableAddress({ city: 'Москва', postalCode: '123456' }), true);
+check('улица + имя — адрес', isSaveableAddress({ street: 'ул. Ленина 1', fullName: 'Иван' }), true);
+check('один индекс — мало', isSaveableAddress({ postalCode: '123456' }), false);
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

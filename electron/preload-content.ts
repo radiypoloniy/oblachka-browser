@@ -577,6 +577,31 @@ function setNativeValue(input: HTMLInputElement | HTMLTextAreaElement, value: st
   input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
+// Копия shared/passwordFill.ts: sandbox не импортирует shared (сторож password-fill-check).
+function passwordFieldRole(attrs: {
+  autocomplete?: string; name?: string; id?: string; placeholder?: string; label?: string;
+}): 'current' | 'new' | 'unknown' {
+  const ac = (attrs.autocomplete ?? '').toLowerCase();
+  if (/(?:^|\s)new-password(?:\s|$)/.test(ac)) return 'new';
+  if (/(?:^|\s)current-password(?:\s|$)/.test(ac)) return 'current';
+  const hay = [attrs.name, attrs.id, attrs.placeholder, attrs.label].filter(Boolean).join(' ').toLowerCase();
+  if (/confirm|repeat|re-?type|re-?enter|повтор|подтверд/.test(hay)) return 'new';
+  if (/current password|old password|текущий пароль|старый пароль/.test(hay)) return 'current';
+  return 'unknown';
+}
+function passwordFillTargets(roles: readonly ('current' | 'new' | 'unknown')[]): number[] {
+  if (roles.length === 0) return [];
+  const idx = (role: 'current' | 'new' | 'unknown') =>
+    roles.map((r, i) => (r === role ? i : -1)).filter((i) => i >= 0);
+  const news = idx('new');
+  if (news.length > 0) return news;
+  const currents = idx('current');
+  const unknowns = idx('unknown');
+  if (currents.length > 0 && unknowns.length > 0) return unknowns;
+  if (roles.length >= 3 && unknowns.length === roles.length) return roles.map((_, i) => i).slice(1);
+  return roles.map((_, i) => i);
+}
+
 // username: undefined (поле ОТСУТСТВУЕТ в payload, не пустая строка) — не трогать поле логина.
 // Нужно генератору пароля: пользователь мог уже начать вводить логин, затирать его нельзя.
 // Пустая строка — легитимное значение сохранённого логина (сайт без поля логина вообще).
@@ -585,11 +610,29 @@ function setNativeValue(input: HTMLInputElement | HTMLTextAreaElement, value: st
 function fillCredential(username: string | undefined, password: string, onlyIfEmpty?: boolean): boolean {
   try {
     if (!isTopFrame()) return false;
-    const passwordField = renderedPasswordFields()[0];
-    if (!passwordField) return false;
-    if (onlyIfEmpty && passwordField.value) return false;
+    const fields = renderedPasswordFields();
+    if (fields.length === 0) return false;
+    const focused = document.activeElement instanceof HTMLInputElement
+      && fields.includes(document.activeElement) ? document.activeElement : null;
+    const anchor = focused ?? fields[0]!;
+    const scoped = anchor.form ? fields.filter((f) => f.form === anchor.form) : fields;
+    const roles = scoped.map((el) => passwordFieldRole({
+      autocomplete: el.getAttribute('autocomplete') || '',
+      name: el.getAttribute('name') || '',
+      id: el.id,
+      placeholder: el.getAttribute('placeholder') || '',
+      label: labelTextFor(el),
+    }));
+    // ⚠️ Не одно поле: иначе «повторить пароль» пустой, и человек ищет пароль в настройках.
+    let wrote = false;
+    for (const i of passwordFillTargets(roles)) {
+      const field = scoped[i];
+      if (!field || (onlyIfEmpty && field.value)) continue;
+      setNativeValue(field, password);
+      wrote = true;
+    }
     if (typeof username === 'string') {
-      const usernameField = findUsernameField(passwordField);
+      const usernameField = findUsernameField(anchor);
       // ⚠️ ПУСТОЙ логин НИКОГДА не пишется поверх заполненного поля. Живой случай: сгенерировали
       // пароль из поля — он сохраняется в сейф сразу, но с пустым username (логина мы ещё не
       // знаем, см. handleGenerateAndFill). Дальше эта же запись предлагается «подставить
@@ -600,10 +643,10 @@ function fillCredential(username: string | undefined, password: string, onlyIfEm
       if (usernameField && isRendered(usernameField)
         && !(onlyIfEmpty && usernameField.value) && !wipesFilledField) {
         setNativeValue(usernameField, username);
+        wrote = true;
       }
     }
-    setNativeValue(passwordField, password);
-    return true;
+    return wrote;
   } catch {
     return false;
   }
@@ -1071,49 +1114,56 @@ window.addEventListener('focusin', (e) => {
   }
 }, true);
 
-// Отправка формы с данными адреса/карты → предлагаем сохранить (offer-save, как у паролей).
-// Собираем ТЕКУЩИЕ значения распознанных полей; если это карта (есть номер) — kind 'card', иначе
-// адрес (если заполнено хоть сколько-то осмысленных полей). Только top-frame.
-function gatherAutofillSubmit(): { kind: 'address' | 'card'; fields: Partial<Record<AfKey, string>> } | null {
+// Offer-save адреса/карты. Без улицы/города/индекса это не адрес (имя+почта — подписка).
+// SPA — только если человек реально ввёл в поле (как dirty у паролей), не на каждый pushState.
+const AF_GEO_KEYS: ReadonlySet<AfKey> = new Set<AfKey>(['street', 'city', 'postalCode']);
+
+function gatherAutofillSubmit(form?: HTMLFormElement | null): { kind: 'address' | 'card'; fields: Partial<Record<AfKey, string>> } | null {
   const values: Partial<Record<AfKey, string>> = {};
   for (const { key, el } of collectAutofillFields()) {
+    if (form && el.form !== form && !(el.form === null && form.contains(el))) continue;
     const v = (el.value || '').trim();
     if (v) values[key] = v;
   }
-  // Карта: есть номер (>=12 цифр). CVC не собираем (детектор его и не отдаёт).
   if (values.ccNumber && values.ccNumber.replace(/\D/g, '').length >= 12) {
     return { kind: 'card', fields: values };
   }
-  // Адрес: хотя бы два осмысленных поля из ключевых — иначе это не форма адреса.
+  if (![...AF_GEO_KEYS].some((k) => values[k])) return null;
   const addressKeys: AfKey[] = ['fullName', 'givenName', 'familyName', 'email', 'phone', 'street', 'city', 'postalCode', 'region', 'country'];
-  const filled = addressKeys.filter((k) => values[k]);
-  if (filled.length >= 2) return { kind: 'address', fields: values };
+  if (addressKeys.filter((k) => values[k]).length >= 2) return { kind: 'address', fields: values };
   return null;
 }
 
-function reportAutofillSubmit() {
+let autofillDirty = false;
+document.addEventListener('input', (e) => {
+  try {
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
+    const key = detectFieldKey(t);
+    if (key && (AF_ADDRESS_KEYS.has(key) || key.startsWith('cc'))) autofillDirty = true;
+  } catch { /* noop */ }
+}, true);
+
+function reportAutofillSubmit(form?: HTMLFormElement | null) {
   try {
     if (!isTopFrame()) return;
-    const payload = gatherAutofillSubmit();
+    const payload = gatherAutofillSubmit(form);
     if (payload) ipcRenderer.send(CH_AUTOFILL_SUBMIT, payload);
-  } catch {
-    // детектор не должен ронять страницу
-  }
+    autofillDirty = false;
+  } catch { /* noop */ }
 }
 
-// Тот же submit-хук, что у паролей (и SPA-навигация через pushState/popstate, уже перехваченные
-// выше для checkSpaSubmit) — переиспользуем событие submit; SPA-случай ловим в тех же местах.
-document.addEventListener('submit', () => reportAutofillSubmit(), true);
+document.addEventListener('submit', (e) => {
+  reportAutofillSubmit(e.target instanceof HTMLFormElement ? e.target : null);
+}, true);
 try {
   const origPush = history.pushState.bind(history);
   history.pushState = function (...args: Parameters<typeof history.pushState>) {
-    reportAutofillSubmit();
+    if (autofillDirty) reportAutofillSubmit();
     return origPush(...args);
   };
-  window.addEventListener('popstate', reportAutofillSubmit);
-} catch {
-  // сайт мог заморозить history — offer-save на SPA просто не сработает
-}
+  window.addEventListener('popstate', () => { if (autofillDirty) reportAutofillSubmit(); });
+} catch { /* SPA offer-save просто не сработает */ }
 
 // ── Вставленная строка с адресом (AI-IDEAS.md №1) ───────────────────────────
 //

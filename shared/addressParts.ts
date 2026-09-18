@@ -66,6 +66,22 @@ export function cleanEmail(raw: string): string {
 export const MIN_PARTS = 2;
 
 /**
+ * Есть ли в наборе полей настоящий адрес, а не просто контакты.
+ *
+ * ⚠️ Имя + почта формой адреса не делают: это подписка, отзыв, регистрация. Без улицы, города
+ * или индекса предлагать «сохранить адрес» нечего — живая жалоба «мне предлагают сохранить
+ * адрес, хотя никакого адреса нет».
+ */
+export function isSaveableAddress(a: {
+  fullName?: string; email?: string; phone?: string;
+  street?: string; city?: string; postalCode?: string;
+}): boolean {
+  const filled = (v?: string): boolean => !!(v && v.trim());
+  if (!filled(a.street) && !filled(a.city) && !filled(a.postalCode)) return false;
+  return [a.fullName, a.email, a.phone, a.street, a.city, a.postalCode].filter(filled).length >= 2;
+}
+
+/**
  * Собирает части из сырого ответа модели.
  *
  * ⚠️ Меньше двух частей — это НЕ разбор: строку целиком с тем же успехом вставит сам человек, а

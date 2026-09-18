@@ -5,6 +5,7 @@
 import type { BrowserWindow } from 'electron';
 import type { AutofillManager } from './AutofillManager';
 import type { AddressProfile, CardMeta, AddressInput, CardInput, AutofillFillFields } from '../shared/ipc';
+import { isSaveableAddress } from '../shared/addressParts';
 import type { AutofillPopoverState } from './AutofillPopoverManager';
 import { contextForWindow } from './WindowRegistry';
 
@@ -156,7 +157,7 @@ export function handleAutofillSubmit(win: BrowserWindow, kind: 'address' | 'card
     return { kind: 'save-card', title: `•••• ${last4}`, sub: input.cardholder };
   }
   const input = fieldsToAddress(fields);
-  if (meaningfulCount(input) < 2) return null;
+  if (!isSaveableAddress(input)) return null;
   if (amRef.listAddresses().some((a) => sameAddress(a, input))) return null; // уже сохранён
   st.pendingSave = { kind: 'address', input };
   return {
@@ -194,10 +195,6 @@ function fieldsToAddress(f: AutofillFillFields): AddressInput {
     phone: f.phone ?? '', street: f.street ?? '', city: f.city ?? '', region: f.region ?? '',
     postalCode: f.postalCode ?? '', country: f.country ?? '',
   };
-}
-
-function meaningfulCount(a: AddressInput): number {
-  return [a.fullName, a.email, a.phone, a.street, a.city, a.postalCode].filter((v) => v && v.trim()).length;
 }
 
 // Дубль адреса: совпал непустой e-mail ЛИБО связка улица+город+индекс — этого достаточно, чтобы
