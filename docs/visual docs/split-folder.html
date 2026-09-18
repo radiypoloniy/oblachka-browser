@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oblako · Папка с листами</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700&display=swap">
+<style>
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-standard:var(--ease-out);
+  --dur-fast:120ms; --dur-base:200ms; --dur-slow:320ms;
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEEF1; --n4:#E2E3E8; --n5:#DBDCE3; --n7:#BBBECE;
+  --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --app-bg:var(--n4); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14); --divider-strong:rgba(60,60,67,.24);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+  --selected:color-mix(in srgb, var(--accent) 14%, var(--surface));
+  --header-h:36px; --inset:6px; --page-r:14px; --island-r:20px; --gap:10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n7:#55555E;
+    --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --on-accent:#121213;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+    --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+    --shadow-tint:#000000;
+    --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n7:#55555E;
+  --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+  --divider:rgba(255,255,255,.14); --divider-strong:rgba(255,255,255,.22);
+  --shadow-tint:#000000;
+  --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+}
+:root {
+  --shadow-island:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 8px 20px color-mix(in srgb, var(--shadow-tint) 8%, transparent);
+  --shadow-pop:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 8%, transparent),
+    0 10px 24px color-mix(in srgb, var(--shadow-tint) 14%, transparent),
+    0 28px 48px color-mix(in srgb, var(--shadow-tint) 12%, transparent);
+  --inner-light: inset 0 1px 0 rgba(255,255,255,.55);
+}
+:root[data-theme="dark"] { --inner-light: inset 0 1px 0 rgba(255,255,255,.08); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --inner-light: inset 0 1px 0 rgba(255,255,255,.08); }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-body);
+  background: var(--app-bg);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible, [data-drag]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.ground { position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: linear-gradient(168deg, var(--ground-1) 0%, var(--ground-2) 46%, var(--ground-3) 100%); }
+.ground::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px; opacity: var(--grain-op); mix-blend-mode: overlay;
+}
+
+.page { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 28px 20px 80px; }
+.topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.caps { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
+.theme-btn {
+  border: 1px solid var(--divider); background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border-radius: 999px; padding: 7px 12px; color: var(--text-muted); cursor: pointer;
+}
+.theme-btn:hover { color: var(--text-strong); background: var(--surface); }
+h1 { font-family: var(--font-display); font-size: clamp(28px, 4vw, 44px); font-weight: 700; letter-spacing: -.03em; line-height: 1.05; color: var(--text-strong); margin: 14px 0 0; max-width: 18ch; }
+.lede { max-width: 62ch; color: var(--text-muted); margin: 12px 0 0; }
+.lede b { color: var(--text-strong); font-weight: 600; }
+
+.bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 14px; align-items: center; }
+.pill {
+  border: 1px solid var(--divider); background: color-mix(in srgb, var(--surface) 72%, transparent);
+  border-radius: 999px; padding: 8px 13px; color: var(--text-body); cursor: pointer;
+}
+.pill:hover { background: var(--surface); }
+.pill.on { background: var(--selected); color: var(--text-strong); border-color: color-mix(in srgb, var(--accent) 28%, var(--divider)); font-weight: 600; }
+.bar .grow { flex: 1; }
+
+.browser {
+  height: min(720px, 78vh); min-height: 560px;
+  display: flex; flex-direction: column;
+  border-radius: 24px; overflow: hidden; position: relative;
+  background: var(--app-bg);
+  box-shadow: var(--shadow-pop);
+}
+.toolbar {
+  height: 52px; flex: none; display: flex; align-items: center; gap: 12px;
+  padding: 0 16px; position: relative; z-index: 4;
+}
+.dots { display: flex; gap: 6px; }
+.dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--n7); }
+.addr {
+  margin: auto; width: min(52%, 480px); height: 30px; border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface) 90%, transparent);
+  color: var(--text-faint); font-size: 12px; display: grid; place-items: center;
+}
+.shell { flex: 1; min-height: 0; display: flex; gap: var(--gap); padding: 0 12px 12px; }
+.sidebar {
+  width: 228px; flex: none; border-radius: var(--island-r); overflow: hidden;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  box-shadow: var(--shadow-island); display: flex; flex-direction: column;
+}
+.side-scroll { padding: 14px 8px; overflow: auto; flex: 1; }
+.side-brand { font-weight: 700; letter-spacing: -.03em; font-size: 16px; color: var(--text-strong); padding: 2px 10px 12px; }
+.side-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-faint); margin: 12px 10px 6px; }
+.side-tab, .side-group {
+  width: 100%; display: flex; align-items: center; gap: 8px; text-align: left;
+  border: 0; background: transparent; border-radius: 10px; min-height: 36px;
+  padding: 6px 8px; color: var(--text-body); cursor: grab;
+}
+.side-tab:hover, .side-group:hover { background: color-mix(in srgb, var(--surface) 90%, var(--n3)); }
+.side-tab.on { background: var(--selected); color: var(--text-strong); font-weight: 600; }
+.side-tab.is-grabbed, .side-group.is-grabbed { opacity: .4; }
+.ico {
+  width: 20px; height: 20px; flex: none; border-radius: 6px; display: grid; place-items: center;
+  color: #fff; font-size: 10px; font-weight: 700; letter-spacing: -.02em;
+  background: linear-gradient(180deg, hsl(var(--h) 62% 62%), hsl(var(--h) 58% 48%));
+}
+.side-copy { min-width: 0; flex: 1; }
+.side-copy strong, .side-copy small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side-copy strong { font-size: 12px; font-weight: 600; }
+.side-copy small { font-size: 10px; color: var(--text-faint); font-weight: 400; }
+.kids { margin: 0 0 0 18px; padding-left: 8px; border-left: 1px solid var(--divider); }
+.side-foot { padding: 10px 14px; border-top: 1px solid var(--divider); font-size: 11px; color: var(--text-faint); }
+
+.work { flex: 1; min-width: 0; display: flex; gap: var(--gap); position: relative; }
+.pane {
+  position: relative; min-width: 0; flex: 1;
+  border-radius: var(--island-r);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: var(--shadow-island);
+  overflow: hidden;
+  transition: box-shadow var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+.pane.focus { box-shadow: var(--shadow-island), 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent); }
+.pane.drop-show { box-shadow: var(--shadow-island), 0 0 0 2px var(--accent); }
+.pane.drop-under { box-shadow: var(--shadow-island), 0 0 0 2px hsl(36 70% 46%); }
+.pane.empty-slot {
+  background: color-mix(in srgb, var(--surface) 32%, transparent);
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+
+.head {
+  position: absolute; inset: 0 0 auto; height: var(--header-h);
+  display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  z-index: 6; cursor: grab; user-select: none;
+}
+.head:active { cursor: grabbing; }
+.head-title {
+  flex: 1; min-width: 0; font-size: 12px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-body);
+}
+.pane.focus .head-title { font-weight: 600; color: var(--text-strong); }
+.head-x, .list-btn {
+  border: 0; background: transparent; color: var(--text-faint); width: 22px; height: 22px;
+  border-radius: 6px; display: grid; place-items: center; cursor: default; padding: 0;
+}
+.head-x:hover, .list-btn:hover { background: var(--sunken); color: var(--text-strong); }
+
+.spine {
+  display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 4px 0 2px;
+  border: 0; background: transparent; border-radius: 8px; cursor: pointer; flex: none;
+  color: var(--text-faint);
+}
+.spine:hover { background: var(--sunken); color: var(--text-strong); }
+.spine[aria-expanded="true"] { background: var(--selected); color: var(--text-strong); }
+.spine-deck { position: relative; height: 20px; width: calc(14px + var(--n) * 10px); }
+.edge {
+  position: absolute; top: 1px; left: calc(var(--i) * 10px);
+  width: 18px; height: 18px; border-radius: 4px 4px 2px 2px;
+  background: var(--surface);
+  box-shadow:
+    inset 0 4px 0 hsl(var(--h) 62% 50%),
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 14%, transparent),
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 10%, transparent);
+  transform-origin: bottom center;
+  transition: transform var(--dur-fast) var(--ease-out), left var(--dur-base) var(--ease-out);
+}
+.spine:hover .edge { transform: translateY(-2px) rotate(calc((var(--i) - .6) * 5deg)); }
+.spine-n { font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 600; min-width: 8px; }
+
+.page-card {
+  position: absolute;
+  top: calc(var(--header-h) + var(--inset));
+  left: var(--inset); right: var(--inset); bottom: var(--inset);
+  border-radius: var(--page-r); overflow: hidden;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--divider);
+}
+.pane.empty-slot .page-card { display: none; }
+.site { height: 100%; padding: 22px 24px; animation: siteIn var(--dur-slow) var(--ease-out); }
+@keyframes siteIn { from { opacity: .55; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.site-host { font-size: 11px; color: var(--text-faint); display: flex; justify-content: space-between; }
+.site h2 { margin: 18px 0 8px; font-size: clamp(20px, 2.4vw, 32px); letter-spacing: -.04em; line-height: 1.1; color: var(--text-strong); font-weight: 700; }
+.site p { margin: 0; max-width: 36ch; color: var(--text-muted); font-size: 13px; }
+.rows { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
+.row { height: 36px; border-radius: 10px; background: var(--sunken); display: flex; align-items: center; gap: 10px; padding: 0 10px; }
+.row b { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--h) 62% 52%); flex: none; }
+.row i { height: 7px; border-radius: 99px; background: var(--n5); flex: 1; }
+.row i.s { flex: .45; }
+.hero-mark {
+  width: 40px; height: 40px; border-radius: 12px; margin-top: 28px;
+  display: grid; place-items: center; color: #fff; font-weight: 700;
+  background: linear-gradient(180deg, hsl(var(--h) 62% 62%), hsl(var(--h) 58% 48%));
+}
+.code { font-family: var(--font-mono); font-size: 11px; line-height: 1.7; color: var(--text-muted); margin-top: 20px; }
+.code em { font-style: normal; color: var(--accent); }
+
+.fan, .menu {
+  position: absolute; z-index: 8;
+  left: var(--inset); right: var(--inset);
+  top: calc(var(--header-h) + var(--inset));
+  bottom: var(--inset);
+  border-radius: var(--page-r);
+  overflow: hidden;
+}
+.fan { background: color-mix(in srgb, var(--app-bg) 78%, transparent); backdrop-filter: blur(8px); }
+.fan-stage { position: absolute; inset: 0; }
+.sheet {
+  position: absolute; left: 16px; right: 22px; height: var(--sh, 86px); top: 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, hsl(var(--h) 45% 72%) 14%, var(--surface));
+  box-shadow: var(--shadow-pop);
+  display: flex; align-items: stretch;
+  cursor: pointer; border: 0; padding: 0; text-align: left; color: inherit;
+  transform-origin: 16% top;
+  overflow: hidden;
+  transition: transform var(--dur-slow) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), height var(--dur-slow) var(--ease-out);
+}
+  border-radius: 14px;
+  background: color-mix(in srgb, hsl(var(--h) 45% 72%) 14%, var(--surface));
+  box-shadow: var(--shadow-pop);
+  display: flex; align-items: stretch;
+  cursor: pointer; border: 0; padding: 0; text-align: left; color: inherit;
+  transform-origin: 20% top;
+  transition: transform var(--dur-slow) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+}
+.sheet::before {
+  content: ""; position: absolute; inset: 0 0 auto; height: 7px;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(90deg, hsl(var(--h) 62% 60%), hsl(var(--h) 64% 46%));
+}
+.sheet.enter { animation: sheetIn .48s var(--ease-out) both; animation-delay: calc(var(--i) * 42ms); }
+@keyframes sheetIn {
+  from { opacity: 0; transform: translate(calc(var(--x) * .2), calc(-80px + var(--y))) rotate(calc(var(--r) * .3)) scale(.94); }
+  to { opacity: 1; transform: translate(var(--x), var(--y)) rotate(var(--r)); }
+}
+.sheet { transform: translate(var(--x), var(--y)) rotate(var(--r)); }
+.fan.picking .sheet { transition: transform .42s var(--ease-out), opacity .32s var(--ease-out); }
+.sheet.chosen { transform: translate(8px, 10px) rotate(0deg) scale(1.03); z-index: 5 !important; }
+.sheet.tuck { opacity: 0; transform: translate(var(--x), -36px) rotate(var(--r)) scale(.88); }
+.sheet:hover { box-shadow: var(--shadow-pop), 0 0 0 1.5px color-mix(in srgb, var(--accent) 35%, transparent); transform: translate(var(--x), calc(var(--y) - 4px)) rotate(var(--r)); }
+.sheet.now { box-shadow: var(--shadow-pop), 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent); }
+.sheet-body { flex: 1; min-width: 0; padding: 8px 10px 6px 12px; display: flex; gap: 10px; align-items: center; }
+.sheet.now .sheet-body { padding: 16px 10px 10px 12px; align-items: flex-start; }
+.sheet-copy { min-width: 0; flex: 1; }
+.sheet-copy strong, .sheet-copy small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-copy strong { font-size: 13px; font-weight: 650; color: var(--text-strong); }
+.sheet-copy small { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+.sheet:not(.now) .sheet-copy small { display: none; }
+.sheet-copy .lines { display: none; margin-top: 10px; flex-direction: column; gap: 5px; }
+.sheet.now .lines { display: flex; }
+.lines i { display: block; height: 5px; border-radius: 99px; background: var(--sunken); width: 88%; }
+.lines i:last-child { width: 54%; }
+.forget {
+  width: 26px; height: 26px; flex: none; border: 0; background: transparent;
+  color: var(--text-faint); border-radius: 8px; margin: 8px 8px 0 0; cursor: pointer;
+}
+.forget:hover { background: var(--sunken); color: var(--text-strong); }
+.fan-hint {
+  position: absolute; left: 18px; right: 18px; bottom: 12px;
+  font-size: 11px; color: var(--text-muted); pointer-events: none; text-align: center;
+}
+
+.menu {
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: var(--shadow-pop); padding: 10px; display: flex; flex-direction: column; gap: 4px;
+  bottom: auto; max-height: min(320px, calc(100% - 12px)); overflow: auto;
+  animation: menuIn var(--dur-base) var(--ease-out);
+}
+@keyframes menuIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.menu-cap { font-size: 10px; color: var(--text-faint); padding: 4px 8px 6px; font-family: var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.menu-row { display: flex; align-items: center; border-radius: 10px; }
+.menu-row:hover { background: var(--sunken); }
+.menu-pick {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  border: 0; background: transparent; text-align: left; padding: 8px; cursor: pointer; color: inherit;
+}
+.menu-pick strong, .menu-pick small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-pick strong { font-size: 12px; }
+.menu-pick small { font-size: 10px; color: var(--text-faint); }
+.menu-row.now { background: var(--selected); }
+
+.divider { width: 10px; flex: none; display: grid; place-items: center; cursor: col-resize; touch-action: none; }
+.divider::after { content: ""; width: 4px; height: 44px; border-radius: 99px; background: var(--n7); transition: height var(--dur-fast), background var(--dur-fast); }
+.divider:hover::after { height: 58px; background: var(--accent); }
+
+.toast {
+  position: absolute; z-index: 20; left: 50%; bottom: 18px;
+  transform: translate(-50%, 12px); opacity: 0; pointer-events: none;
+  background: var(--n12); color: var(--n1); border-radius: 12px;
+  padding: 10px 14px; font-size: 12px; box-shadow: var(--shadow-pop);
+  transition: opacity var(--dur-base), transform var(--dur-base); max-width: 80%;
+}
+:root[data-theme="dark"] .toast, @media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .toast { background: var(--n5); color: var(--n12); }
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.ghost {
+  position: fixed; z-index: 80; pointer-events: none; left: 0; top: 0;
+  width: 220px; border-radius: 14px; overflow: hidden;
+  background: var(--surface); box-shadow: var(--shadow-pop);
+  transform: translate3d(var(--x), var(--y), 0) rotate(-3deg);
+}
+.ghost-h { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12px; font-weight: 650; color: var(--text-strong); }
+.ghost-b { height: 118px; background: var(--sunken); padding: 14px; }
+.ghost-b i { display: block; height: 7px; border-radius: 99px; background: var(--n5); margin-top: 8px; }
+
+.guide { display: flex; justify-content: space-between; gap: 16px; margin: 12px 2px 0; font-size: 12px; color: var(--text-faint); }
+.guide b { color: var(--text-muted); font-weight: 600; }
+
+.below { display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; margin-top: 36px; }
+.card { background: color-mix(in srgb, var(--surface) 70%, transparent); border-radius: 20px; padding: 22px; box-shadow: var(--shadow-island); }
+.card h2 { margin: 0 0 8px; font-size: 18px; letter-spacing: -.02em; color: var(--text-strong); font-weight: 700; }
+.card p { margin: 8px 0 0; color: var(--text-muted); font-size: 13px; max-width: none; }
+.rule { display: flex; gap: 12px; padding: 11px 0; border-top: 1px solid var(--divider); font-size: 13px; color: var(--text-body); }
+.rule:first-of-type { border-top: 0; padding-top: 4px; }
+.rule em { flex: none; width: 72px; font-style: normal; font-weight: 650; color: var(--text-strong); }
+
+.bad { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.bad figure {
+  margin: 0; border-radius: 16px; overflow: hidden; background: #f3f3f4;
+  box-shadow: var(--shadow-island); min-height: 160px; position: relative;
+}
+.bad figcaption { padding: 12px 14px 14px; background: color-mix(in srgb, var(--surface) 80%, transparent); }
+.bad strong { display: block; font-size: 13px; color: var(--text-strong); }
+.bad span { display: block; font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.mock-gpt { height: 150px; background: #f6f6f6; position: relative; }
+.mock-gpt .box { position: absolute; top: 28px; height: 90px; border-radius: 16px; background: #ececee; }
+.mock-gpt .box.a { left: 18px; width: 38%; }
+.mock-gpt .box.b { left: 46%; width: 42%; }
+.mock-gpt .gold { position: absolute; left: 46%; top: 28px; width: 42%; height: 6px; border-radius: 16px 16px 0 0; background: #e8c84a; }
+.mock-gpt .tools { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); height: 22px; width: 46%; border-radius: 99px; background: #fff; box-shadow: 0 4px 12px #0001; }
+.mock-peek { height: 150px; background: #eceef2; display: flex; align-items: end; justify-content: center; gap: 16px; padding: 16px; }
+.mock-peek .p { width: 42%; height: 110px; border-radius: 14px 14px 0 0; background: #fff; position: relative; box-shadow: 0 8px 18px #0001; }
+.mock-peek .p::after, .mock-peek .p::before { content: ""; position: absolute; left: 8px; right: 8px; height: 10px; border-radius: 0 0 10px 10px; }
+.mock-peek .p::before { bottom: -10px; background: #c9e4dc; }
+.mock-peek .p::after { bottom: -18px; background: #e8d99c; }
+.mock-ok { height: 150px; background: #e6e7ea; display: flex; flex-direction: column; padding: 18px 16px 0; }
+.mock-ok .hh { height: 28px; border-radius: 10px 10px 0 0; background: #f7f7f8; display: flex; align-items: center; padding: 0 8px; gap: 6px; }
+.mock-ok .hh b { width: 10px; height: 14px; border-radius: 2px; }
+.mock-ok .pg { flex: 1; background: #fff; border-radius: 0 0 12px 12px; }
+
+@media (max-width: 980px) {
+  .sidebar { width: 168px; }
+  .below, .bad { grid-template-columns: 1fr; }
+  .side-copy small { display: none; }
+}
+@media (max-width: 720px) {
+  .page { padding: 16px 12px 48px; }
+  .sidebar { display: none; }
+  .browser { min-height: 480px; height: 560px; }
+  h1 { font-size: 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="ground"></div>
+<main class="page">
+  <div class="topline">
+    <span class="caps">Oblako · split</span>
+    <button class="theme-btn" id="theme" type="button">Тема</button>
+  </div>
+  <h1>Листы в папке, не шапка над сайтом</h1>
+  <p class="lede">Текущая страница остаётся страницей. То, что лежит под ней, видно кромками в уже оплаченных <b>36 пикселях</b> шапки. Клик раскрывает стопку веером поверх панели — без второй полосы, без отъема высоты у сайта и без цветных колод на весь экран.</p>
+
+  <div class="bar" id="bar">
+    <button class="pill on" data-scene="desk" type="button">Стол с папкой</button>
+    <button class="pill" data-scene="drop" type="button">Бросить вкладку</button>
+    <button class="pill" data-scene="many" type="button">Пять листов</button>
+    <button class="pill" data-scene="solo" type="button">Одна страница</button>
+    <span class="grow"></span>
+    <button class="pill on" data-mode="fan" type="button">Веер</button>
+    <button class="pill" data-mode="list" type="button">Список как сейчас</button>
+    <button class="pill" id="replay" type="button">Показать жест</button>
+  </div>
+
+  <section class="browser" aria-label="Интерактивный прототип split">
+    <div class="toolbar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <div class="addr">oblako://split-folder</div>
+    </div>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="side-scroll" id="sidebar"></div>
+        <div class="side-foot">Перетащите вкладку на половину или на кромки</div>
+      </aside>
+      <div class="work" id="work"></div>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+  </section>
+  <div class="guide">
+    <span><b>Попробуйте:</b> нажмите цветные кромки справа · бросьте «Исследование» на левую половину · перетащите шапку на соседнюю панель</span>
+    <span>Esc закрывает веер · × убирает лист, вкладка остаётся</span>
+  </div>
+
+  <div class="below">
+    <article class="card">
+      <span class="caps">Как это работает</span>
+      <h2>Остров — это папка</h2>
+      <div class="rule"><em>Покой</em><span>Текущий лист — живая страница. Нижние торчат кромками в шапке. Если в половине одна вкладка, кромок нет: нечего открывать.</span></div>
+      <div class="rule"><em>Клик</em><span>Стопка выезжает из-под шапки веером. Каждый лист — бумага с цветным корешком сайта, а не серый прямоугольник с жёлтой полосой сверху.</span></div>
+      <div class="rule"><em>Выбор</em><span>Нажали лист — он встаёт наверх, остальные заезжают обратно. Соседняя половина не двигается.</span></div>
+      <div class="rule"><em>Сброс</em><span>На страницу — показать здесь, прежняя уходит вниз. На кромки — положить под низ, текущая не меняется. На шапку соседней — поменять половины.</span></div>
+    </article>
+    <article class="card">
+      <span class="caps">Посадка в код</span>
+      <h2>Ничего не отнимаем у страницы</h2>
+      <p>Шапка остаётся <b>SPLIT_HEADER_HEIGHT = 36</b>. Кромки заменяют кнопку ▣. Веер рисуется в уже существующем <b>SplitStackPopover</b> — нативной вью поверх гостя, потому что CSS под страницей не нажать.</p>
+      <p>Снимки страниц для веера не берём. <b>capturePage</b> уже стоит дорого на жесте переноса половины; стопка из пяти вкладок превратила бы клик в паузу. Цвет — <b>siteHue(host)</b>, кромка листа сверху, не заливка острова. Фиолетового в наборе нет.</p>
+      <p>Список в переключателе — то, что сейчас в <code style="font-family:var(--font-mono);font-size:12px">splitstack.tsx</code>. Его можно оставить запасным, но веер — целевой вид.</p>
+    </article>
+  </div>
+
+  <section class="bad" aria-label="Что отвергнуто">
+    <figure>
+      <div class="mock-gpt"><div class="box a"></div><div class="box b"></div><div class="gold"></div><div class="tools"></div></div>
+      <figcaption><strong>Не колоды на весь экран</strong><span>Пустые карты, цветная шапка, плавающая панель инструментов. Сайт пропадает, управление раздувается.</span></figcaption>
+    </figure>
+    <figure>
+      <div class="mock-peek"><div class="p"></div><div class="p"></div></div>
+      <figcaption><strong>Не листы из-под страницы</strong><span>Двадцать пикселей снизу отнимаются у WebContentsView навсегда, даже когда стопку не открывают.</span></figcaption>
+    </figure>
+    <figure>
+      <div class="mock-ok">
+        <div class="hh"><span style="width:10px;height:10px;border-radius:3px;background:#c9a227"></span><span style="flex:1;height:6px;background:#ddd;border-radius:4px"></span><b style="background:#d97848"></b><b style="background:#3d8f78"></b><b style="background:#2c4bd8"></b></div>
+        <div class="pg"></div>
+      </div>
+      <figcaption><strong>Кромки в шапке</strong><span>Бюджет уже заплачен. Цвет только у торцов нижних листов. Страница на месте.</span></figcaption>
+    </figure>
+  </section>
+</main>
+
+<script>
+(() => {
+  const TILE_HUES = [8, 22, 36, 48, 96, 140, 168, 190, 210, 232, 348];
+  const siteHue = (host) => {
+    let hash = 0;
+    for (let i = 0; i < host.length; i++) hash = (hash * 31 + host.charCodeAt(i)) | 0;
+    return TILE_HUES[Math.abs(hash) % TILE_HUES.length];
+  };
+  const TABS = {
+    mail:   { title: "Входящие",     host: "mail.google.com",   letter: "G", kind: "mail" },
+    notion: { title: "Исследование", host: "notion.so",         letter: "N", kind: "doc" },
+    github: { title: "oblako",       host: "github.com",        letter: "G", kind: "code" },
+    wiki:   { title: "Split view",   host: "en.wikipedia.org",  letter: "W", kind: "article" },
+    figma:  { title: "Макет",        host: "figma.com",         letter: "F", kind: "design" },
+    docs:   { title: "Черновик",     host: "docs.google.com",   letter: "D", kind: "doc" },
+    yt:     { title: "Обзор",        host: "youtube.com",       letter: "Y", kind: "video" },
+    cal:    { title: "Календарь",    host: "calendar.google.com", letter: "C", kind: "mail" },
+  };
+  Object.values(TABS).forEach((t) => { t.h = siteHue(t.host); });
+  const GROUP = ["notion", "github", "docs"];
+  const $ = (s, r = document) => r.querySelector(s);
+  const all = (s, r = document) => [...r.querySelectorAll(s)];
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const tab = (id) => TABS[id];
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const scenes = {
+    desk: () => ({ left: "wiki", right: "mail", stacks: { left: [], right: ["notion", "github"] }, focus: "right", note: "Справа под почтой лежат ещё два листа. Нажмите кромки." }),
+    drop: () => ({ left: "wiki", right: "figma", stacks: { left: [], right: [] }, focus: "left", note: "Перетащите вкладку на страницу — она станет верхней. На кромки — ляжет вниз." }),
+    many: () => ({ left: "docs", right: "mail", stacks: { left: ["github"], right: ["notion", "wiki", "figma", "yt"] }, focus: "right", note: "Пять листов. Веер не обязан показывать миниатюры — хватает корешка и имени." }),
+    solo: () => ({ left: "wiki", right: null, stacks: { left: [], right: [] }, focus: "left", note: "Одна страница. Бросьте вкладку к правому краю — появится пара." }),
+  };
+
+  const state = {
+    ...scenes.desk(),
+    scene: "desk",
+    mode: "fan",
+    fan: null,
+    picking: false,
+    ratio: 0.48,
+    toastTimer: 0,
+    suppressClick: 0,
+  };
+
+  const idsOf = (side) => {
+    const cur = state[side];
+    return cur ? [cur, ...state.stacks[side]] : [];
+  };
+  const owner = (id) => {
+    for (const side of ["left", "right"]) {
+      if (state[side] === id) return { side, current: true };
+      if (state.stacks[side].includes(id)) return { side, current: false };
+    }
+    return null;
+  };
+  const unlink = (id) => {
+    for (const side of ["left", "right"]) state.stacks[side] = state.stacks[side].filter((x) => x !== id);
+  };
+
+  function toast(msg) {
+    const el = $("#toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(state.toastTimer);
+    state.toastTimer = setTimeout(() => el.classList.remove("show"), 3200);
+  }
+
+  function ico(id) {
+    const t = tab(id);
+    return `<span class="ico" style="--h:${t.h}">${esc(t.letter)}</span>`;
+  }
+
+  function site(id) {
+    const t = tab(id);
+    const body = {
+      mail: `<div class="rows">${["Письмо от Ани","Макет на ревью","Счёт за облако"].map((x) => `<div class="row" style="--h:${t.h}"><b></b><i></i><i class="s"></i></div>`).join("")}</div>`,
+      doc: `<div class="hero-mark" style="--h:${t.h}">${esc(t.letter)}</div><h2>${esc(t.title)}</h2><p>Черновик рядом с источником. Соседняя половина не закрывается.</p>`,
+      article: `<div class="hero-mark" style="--h:${t.h}">W</div><h2>${esc(t.title)}</h2><p>Статья остаётся статьёй. Стопка не рисуется поверх текста, пока её не открыли.</p>`,
+      code: `<div class="code"><em>electron/TabManager.ts</em><br/>splitStackEntries(side)<br/>selectSplitStackTab(side, id)</div>`,
+      design: `<div class="hero-mark" style="--h:${t.h}">F</div><h2>Макет острова</h2><p>Шапка 36, кант 6, радиус страницы 14. Это уже есть в layout.ts.</p>`,
+      video: `<div class="hero-mark" style="--h:${t.h}">▶</div><h2>${esc(t.title)}</h2><p>Видео не выгружается из половины: стопка — связь, не второй владелец вкладки.</p>`,
+    };
+    return `<section class="site" style="--h:${t.h}"><div class="site-host"><span>${esc(t.host)}</span><span>${esc(t.kind)}</span></div>${body[t.kind] || body.doc}</section>`;
+  }
+
+  function spine(side) {
+    const under = state.stacks[side];
+    if (!under.length) return "";
+    const n = Math.min(under.length, 4);
+    const edges = under.slice(0, n).map((id, i) => `<span class="edge" style="--i:${i};--h:${tab(id).h}"></span>`).join("");
+    return `<button class="spine" data-fan="${side}" aria-expanded="${state.fan === side}" aria-label="Листы этой половины, ${under.length + 1}" title="Листы этой половины">
+      <span class="spine-deck" style="--n:${n}">${edges}</span>
+      <span class="spine-n">${under.length + 1}</span>
+    </button>`;
+  }
+
+  function fan(side) {
+    const ids = idsOf(side);
+    if (state.mode === "list") {
+      return `<div class="menu" role="menu">${`<div class="menu-cap">Вкладки этой половины</div>`}${ids.map((id, i) => `<div class="menu-row ${i === 0 ? "now" : ""}">
+        <button class="menu-pick" data-pick="${id}" data-side="${side}">${ico(id)}<span><strong>${esc(tab(id).title)}</strong><small>${i === 0 ? "На экране" : tab(id).host}</small></span></button>
+        <button class="forget" data-forget="${id}" data-side="${side}" aria-label="Убрать ${esc(tab(id).title)}">×</button>
+      </div>`).join("")}</div>`;
+    }
+      return `<div class="fan ${state.picking ? "picking" : ""}" data-fan-root="${side}">
+      <div class="fan-stage">${ids.map((id, i) => {
+        const front = i === 0;
+        const y = front ? 6 : 6 + 78 + (i - 1) * 40;
+        const x = i * 10;
+        const r = (i * 1.6).toFixed(2) + "deg";
+        const sh = front ? 92 : 44;
+        return `<div class="sheet enter ${front ? "now" : ""}" role="button" data-pick="${id}" data-side="${side}" data-drag="${id}" style="--i:${i};--h:${tab(id).h};--x:${x}px;--y:${y}px;--r:${r};--sh:${sh}px;z-index:${10 - i}">
+          <span class="sheet-body">${ico(id)}<span class="sheet-copy"><strong>${esc(tab(id).title)}</strong><small>${front ? "Сейчас на экране · " : ""}${esc(tab(id).host)}</small><span class="lines"><i></i><i></i></span></span>
+          <button class="forget" data-forget="${id}" data-side="${side}" aria-label="Убрать ${esc(tab(id).title)}">×</button></span>
+        </div>`;
+      }).join("")}</div>
+      <div class="fan-hint">Нажмите лист · перетащите на другую половину · × убирает из папки</div>
+    </div>`;
+  }
+
+  function pane(side) {
+    const id = state[side];
+    const empty = !id;
+    const focused = state.focus === side && !empty;
+    const width = side === "left" ? state.ratio : 1 - state.ratio;
+    if (empty) {
+      return `<div class="pane empty-slot" data-pane="${side}" style="flex:${width}"><div class="head"></div></div>`;
+    }
+    return `<div class="pane ${focused ? "focus" : ""}" data-pane="${side}" style="flex:${width}">
+      <div class="head" data-handle="${side}">
+        ${ico(id)}
+        <span class="head-title">${esc(tab(id).title)}</span>
+        ${spine(side)}
+        ${state.mode === "list" && state.stacks[side].length ? `<button class="list-btn" data-fan="${side}" aria-label="Список">▣</button>` : ""}
+        <button class="head-x" data-close="${side}" aria-label="Закрыть половину">×</button>
+      </div>
+      <div class="page-card">${site(id)}</div>
+      ${state.fan === side ? fan(side) : ""}
+    </div>`;
+  }
+
+  function renderSidebar() {
+    const shown = new Set([state.left, state.right].filter(Boolean));
+    const row = (id) => {
+      const o = owner(id);
+      const mark = o ? (o.current ? "На экране" : "В стопке") : "Вкладка";
+      return `<button class="side-tab ${shown.has(id) ? "on" : ""}" data-select="${id}" data-drag="${id}">${ico(id)}<span class="side-copy"><strong>${esc(tab(id).title)}</strong><small>${mark}</small></span></button>`;
+    };
+    $("#sidebar").innerHTML = `
+      <div class="side-brand">☁ Oblako</div>
+      <div class="side-label">Открыты</div>
+      ${["wiki", "mail", "figma", "yt", "cal"].map(row).join("")}
+      <div class="side-label">Папка</div>
+      <button class="side-group" data-drag="group">${ico("notion")}<span class="side-copy"><strong>Исследование</strong><small>3 вкладки · бросьте на половину</small></span></button>
+      <div class="kids">${GROUP.map(row).join("")}</div>`;
+  }
+
+  function renderWork() {
+    $("#work").innerHTML = `${pane("left")}<div class="divider" id="divider"></div>${pane("right")}`;
+  }
+
+  function render() {
+    renderSidebar();
+    renderWork();
+    all("[data-scene]").forEach((b) => b.classList.toggle("on", b.dataset.scene === state.scene));
+    all("[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === state.mode));
+  }
+
+  function setScene(name) {
+    Object.assign(state, scenes[name](), { scene: name, fan: null, picking: false, ratio: 0.48 });
+    render();
+    toast(state.note);
+  }
+
+  function replace(side, id, extra = []) {
+    if (state[side] === id) return;
+    const o = owner(id);
+    if (o?.current) { toast(`«${tab(id).title}» уже на экране в другой половине.`); return; }
+    unlink(id);
+    extra.forEach(unlink);
+    const old = state[side];
+    if (!old) {
+      state[side] = id;
+      state.stacks[side] = extra.filter((x) => x !== id);
+    } else {
+      state[side] = id;
+      state.stacks[side] = [old, ...extra, ...state.stacks[side]].filter((x, i, a) => x !== id && a.indexOf(x) === i);
+    }
+    state.focus = side;
+    state.fan = null;
+    render();
+    toast(old ? `«${tab(id).title}» сверху. «${tab(old).title}» ушла вниз.` : `«${tab(id).title}» открыта в этой половине.`);
+  }
+
+  function addUnder(side, id, extra = []) {
+    if (!state[side]) { replace(side, id, extra); return; }
+    if (state[side] === id) return;
+    const o = owner(id);
+    if (o?.current) { toast(`«${tab(id).title}» уже на экране.`); return; }
+    unlink(id);
+    extra.forEach(unlink);
+    const add = [id, ...extra].filter((x, i, a) => x !== state[side] && a.indexOf(x) === i);
+    state.stacks[side] = [...add, ...state.stacks[side]].filter((x, i, a) => a.indexOf(x) === i);
+    state.focus = side;
+    state.fan = null;
+    render();
+    toast(`«${tab(id).title}» легла под «${tab(state[side]).title}».`);
+  }
+
+  function pick(side, id) {
+    if (state[side] === id) { state.fan = null; render(); return; }
+    if (!idsOf(side).includes(id)) return;
+    if (state.mode === "list" || reduced()) {
+      replace(side, id);
+      return;
+    }
+    state.picking = true;
+    const root = $(`[data-fan-root="${side}"]`);
+    all(".sheet", root).forEach((el) => {
+      el.classList.remove("enter");
+      if (el.dataset.pick === id) el.classList.add("chosen");
+      else el.classList.add("tuck");
+    });
+    setTimeout(() => {
+      const rest = idsOf(side).filter((x) => x !== id);
+      state[side] = id;
+      unlink(id);
+      state.stacks[side] = rest;
+      state.picking = false;
+      state.fan = null;
+      state.focus = side;
+      render();
+    }, 380);
+  }
+
+  function forget(side, id) {
+    if (state[side] !== id) {
+      state.stacks[side] = state.stacks[side].filter((x) => x !== id);
+      render();
+      toast(`«${tab(id).title}» убрана из папки, вкладка открыта.`);
+      return;
+    }
+    const next = state.stacks[side][0];
+    if (next) {
+      state.stacks[side] = state.stacks[side].slice(1);
+      state[side] = next;
+      render();
+      toast(`«${tab(id).title}» убрана. Сверху «${tab(next).title}».`);
+    } else {
+      const other = side === "left" ? "right" : "left";
+      state[side] = null;
+      state.stacks[side] = [];
+      state.fan = null;
+      if (!state[other]) state[other] = "wiki";
+      state.focus = other;
+      render();
+      toast("Половина разобрана, вкладка осталась в сайдбаре.");
+    }
+  }
+
+  function swap() {
+    const l = state.left, r = state.right;
+    const ls = [...state.stacks.left], rs = [...state.stacks.right];
+    state.left = r; state.right = l;
+    state.stacks.left = rs; state.stacks.right = ls;
+    state.fan = null;
+    render();
+    toast("Половины поменялись местами.");
+  }
+
+  function drop(kind, side, zone) {
+    const id = kind === "group" ? GROUP[0] : kind;
+    const extra = kind === "group" ? GROUP.slice(1) : [];
+    if (zone === "under") addUnder(side, id, extra);
+    else replace(side, id, extra);
+  }
+
+  function selectTab(id) {
+    const o = owner(id);
+    if (o?.current) { state.focus = o.side; state.fan = null; render(); return; }
+    if (o && !o.current) { pick(o.side, id); return; }
+    toast(`«${tab(id).title}» открыта отдельно. Бросьте её на половину, чтобы собрать папку.`);
+  }
+
+  async function replay() {
+    setScene("desk");
+    await new Promise((r) => setTimeout(r, 360));
+    state.fan = "right";
+    state.focus = "right";
+    render();
+    if (reduced()) return;
+    await new Promise((r) => setTimeout(r, 900));
+    pick("right", "notion");
+  }
+
+  function markDrop(pane, zone) {
+    all(".pane").forEach((p) => p.classList.remove("drop-show", "drop-under"));
+    if (!pane) return;
+    pane.classList.add(zone === "under" ? "drop-under" : "drop-show");
+  }
+
+  function zoneFor(paneEl, y) {
+    if (!paneEl || paneEl.classList.contains("empty-slot")) return "show";
+    const r = paneEl.getBoundingClientRect();
+    return y < r.top + 36 ? "under" : "show";
+  }
+
+  document.addEventListener("click", (e) => {
+    if (Date.now() < state.suppressClick) return;
+    const t = e.target.closest("button, .sheet");
+    if (!t) {
+      if (state.fan && !e.target.closest(".fan, .menu, .spine, .list-btn")) { state.fan = null; render(); }
+      return;
+    }
+    if (t.dataset.scene) { setScene(t.dataset.scene); return; }
+    if (t.dataset.mode) { state.mode = t.dataset.mode; state.fan = null; render(); return; }
+    if (t.id === "replay") { void replay(); return; }
+    if (t.id === "theme") {
+      const cur = document.documentElement.getAttribute("data-theme");
+      document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : cur === "light" ? "" : "dark");
+      return;
+    }
+    if (t.dataset.select) { selectTab(t.dataset.select); return; }
+    if (t.dataset.fan) {
+      state.fan = state.fan === t.dataset.fan ? null : t.dataset.fan;
+      state.focus = t.dataset.fan;
+      render();
+      return;
+    }
+    if (t.dataset.pick) { pick(t.dataset.side, t.dataset.pick); return; }
+    if (t.dataset.forget) { e.stopPropagation(); forget(t.dataset.side, t.dataset.forget); return; }
+    if (t.dataset.close) { forget(t.dataset.close, state[t.dataset.close]); return; }
+    if (t.closest("[data-pane]") && !t.closest(".fan, .menu, .spine, .head-x, .list-btn")) {
+      const side = t.closest("[data-pane]").dataset.pane;
+      if (state[side]) { state.focus = side; render(); }
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && state.fan) { state.fan = null; render(); }
+    if (state.fan && e.key >= "1" && e.key <= "9") {
+      const id = idsOf(state.fan)[Number(e.key) - 1];
+      if (id) pick(state.fan, id);
+    }
+  });
+
+  document.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest("#divider")) {
+      const move = (ev) => {
+        const r = $("#work").getBoundingClientRect();
+        state.ratio = Math.max(0.28, Math.min(0.72, (ev.clientX - r.left) / r.width));
+        all(".pane").forEach((p) => { p.style.flex = p.dataset.pane === "left" ? state.ratio : 1 - state.ratio; });
+      };
+      const up = () => { document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+      e.preventDefault();
+      return;
+    }
+
+    const source = e.target.closest("[data-drag], [data-handle]");
+    if (!source || e.target.closest(".forget, .head-x, .spine, .list-btn")) return;
+    const start = { x: e.clientX, y: e.clientY };
+    const kind = source.dataset.drag || "pane:" + source.dataset.handle;
+    let ghost = null, started = false, over = null, zone = "show";
+
+    const move = (ev) => {
+      if (!started && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 6) return;
+      if (!started) {
+        started = true;
+        source.classList.add("is-grabbed");
+        ghost = document.createElement("div");
+        ghost.className = "ghost";
+        const label = kind.startsWith("pane:") ? tab(state[kind.slice(5)]).title : kind === "group" ? "Исследование · 3" : tab(kind).title;
+        const h = kind.startsWith("pane:") ? tab(state[kind.slice(5)]).h : kind === "group" ? tab("notion").h : tab(kind).h;
+        ghost.innerHTML = `<div class="ghost-h">${esc(label)}</div><div class="ghost-b" style="--h:${h}"><i></i><i></i><i style="width:40%"></i></div>`;
+        document.body.append(ghost);
+      }
+      ghost.style.setProperty("--x", `${ev.clientX + 14}px`);
+      ghost.style.setProperty("--y", `${ev.clientY + 10}px`);
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      const paneEl = hit?.closest("[data-pane]");
+      const nextZone = zoneFor(paneEl, ev.clientY);
+      if (over !== paneEl || zone !== nextZone) { over = paneEl; zone = nextZone; markDrop(over, zone); }
+    };
+    const finish = (ev) => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", finish);
+      source.classList.remove("is-grabbed");
+      ghost?.remove();
+      markDrop(null);
+      if (!started) return;
+      state.suppressClick = Date.now() + 80;
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      const paneEl = hit?.closest("[data-pane]");
+      if (!paneEl) return;
+      const side = paneEl.dataset.pane;
+      const z = zoneFor(paneEl, ev.clientY);
+      if (kind.startsWith("pane:")) {
+        const from = kind.slice(5);
+        if (from !== side && state[side]) swap();
+        else if (from !== side && !state[side]) {
+          state[side] = state[from];
+          state.stacks[side] = state.stacks[from];
+          state[from] = null;
+          state.stacks[from] = [];
+          state.fan = null;
+          render();
+          toast("Половина переехала.");
+        }
+        return;
+      }
+      drop(kind, side, z);
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", finish);
+  });
+
+  render();
+  toast("Справа — папка из трёх листов. Нажмите цветные кромки.");
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oblako · Что ещё умеет split</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700&display=swap">
+<style>
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --dur-fast:120ms; --dur-base:200ms;
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEEF1; --n4:#E2E3E8; --n5:#DBDCE3; --n7:#BBBECE;
+  --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --ok:#1F5E52; --warn:#9A6700; --no:#8B2E2A;
+  --app-bg:var(--n4); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+  --selected:color-mix(in srgb, var(--accent) 14%, var(--surface));
+  --notes:#1F5E52; --source:#9A6700; --article:#2C4BD8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n7:#55555E;
+    --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --on-accent:#121213;
+    --ok:#7dba9a; --warn:#e0b15a; --no:#e08a84;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+    --divider:rgba(255,255,255,.14); --shadow-tint:#000;
+    --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+    --notes:#7dba9a; --source:#e0b15a; --article:#6E8BFF;
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n7:#55555E;
+  --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --ok:#7dba9a; --warn:#e0b15a; --no:#e08a84;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+  --divider:rgba(255,255,255,.14); --shadow-tint:#000;
+  --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+  --notes:#7dba9a; --source:#e0b15a; --article:#6E8BFF;
+}
+:root {
+  --shadow:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 8px 20px color-mix(in srgb, var(--shadow-tint) 8%, transparent);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: var(--font-ui); font-size: 14px; line-height: 1.5;
+  color: var(--text-body); background: var(--app-bg); -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: var(--font-mono); font-size: 12px; }
+
+.ground { position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: linear-gradient(168deg, var(--ground-1), var(--ground-2) 46%, var(--ground-3)); }
+.ground::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px; opacity: var(--grain-op); mix-blend-mode: overlay;
+}
+
+.page { position: relative; z-index: 1; max-width: 980px; margin: 0 auto; padding: 28px 20px 88px; }
+.topline { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.caps { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
+.theme {
+  border: 1px solid var(--divider); background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border-radius: 999px; padding: 7px 12px; cursor: pointer; color: var(--text-muted);
+}
+h1 { font-family: var(--font-display); font-size: clamp(28px, 4.4vw, 46px); font-weight: 700;
+  letter-spacing: -.03em; line-height: 1.05; color: var(--text-strong); margin: 14px 0 0; max-width: 18ch; }
+.lede { max-width: 62ch; color: var(--text-muted); margin: 12px 0 0; }
+.lede b { color: var(--text-strong); font-weight: 600; }
+
+/* ── главный разбор ссылок ── */
+.story {
+  margin: 28px 0 0; padding: 20px 20px 18px; border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent); box-shadow: var(--shadow);
+}
+.story h2 { margin: 0 0 8px; font-size: 20px; letter-spacing: -.02em; color: var(--text-strong); }
+.story .lead { margin: 0 0 16px; max-width: 64ch; color: var(--text-body); }
+.not {
+  margin: 0 0 16px; padding: 12px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--no) 10%, var(--sunken));
+  color: var(--text-body); font-size: 13px;
+}
+.not b { color: var(--no); }
+.steps { margin: 0 0 16px; padding: 0; list-style: none; display: grid; gap: 8px; }
+.steps li {
+  display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start;
+  font-size: 13px; color: var(--text-body);
+}
+.steps i {
+  width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center;
+  font-style: normal; font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+  background: var(--selected); color: var(--text-strong);
+}
+.steps b { color: var(--text-strong); }
+.gestures { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0 0 8px; }
+.gestures th, .gestures td { text-align: left; padding: 8px 10px; vertical-align: top; border-top: 1px solid var(--divider); }
+.gestures th { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; border-top: 0; }
+.gestures td:first-child { color: var(--text-strong); font-weight: 600; white-space: nowrap; width: 28%; }
+.gestures .now { color: var(--text-muted); }
+.gestures .want { color: var(--text-strong); }
+.foot { margin: 12px 0 0; font-size: 13px; color: var(--text-muted); }
+.foot b { color: var(--text-strong); }
+
+/* ── макет пары ── */
+.lab { margin-top: 18px; }
+.lab-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.pill {
+  border: 1px solid var(--divider); background: color-mix(in srgb, var(--surface) 72%, transparent);
+  border-radius: 999px; padding: 8px 13px; cursor: pointer;
+}
+.pill.on { background: var(--selected); color: var(--text-strong); font-weight: 600; border-color: color-mix(in srgb, var(--accent) 30%, var(--divider)); }
+.stage {
+  display: grid; grid-template-columns: 52px 1fr; gap: 10px;
+  background: color-mix(in srgb, var(--n5) 55%, var(--surface));
+  border-radius: 18px; padding: 10px; min-height: 280px;
+}
+.side {
+  display: flex; flex-direction: column; gap: 6px; padding-top: 8px;
+}
+.side .ghost {
+  height: 22px; border-radius: 8px; background: color-mix(in srgb, var(--surface) 70%, transparent);
+  font-size: 10px; color: var(--text-faint); display: flex; align-items: center; padding: 0 6px;
+  overflow: hidden; white-space: nowrap;
+}
+.side .ghost.on { outline: 2px solid var(--accent); color: var(--text-strong); }
+.side .ghost.pop {
+  animation: popin var(--dur-base) var(--ease-out);
+  background: var(--selected); color: var(--text-strong);
+}
+@keyframes popin { from { transform: translateY(-6px); opacity: 0; } }
+.pair {
+  display: grid; grid-template-columns: 1fr 8px 1fr; gap: 0; min-height: 260px;
+  background: color-mix(in srgb, var(--n3) 80%, transparent); border-radius: 14px; overflow: hidden;
+}
+.gap { width: 8px; background: transparent; position: relative; }
+.gap::after {
+  content: ""; position: absolute; left: 2px; top: 42%; width: 4px; height: 36px; border-radius: 99px;
+  background: var(--n7);
+}
+.pane { min-width: 0; display: flex; flex-direction: column; background: var(--sunken); }
+.hdr {
+  height: 36px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  position: relative;
+}
+.hdr .dot {
+  width: 12px; height: 12px; border-radius: 4px; flex: none;
+}
+.hdr .ttl {
+  flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: var(--text-strong);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.back {
+  flex: none; max-width: 42%; height: 24px; border: 0; cursor: pointer;
+  display: none; align-items: center; gap: 5px; padding: 0 8px 0 6px;
+  border-radius: 999px; background: var(--selected); color: var(--text-strong);
+  font-size: 11px; font-weight: 600;
+  animation: chipin var(--dur-base) var(--ease-out);
+}
+.back.show { display: inline-flex; }
+@keyframes chipin { from { transform: translateX(8px); opacity: 0; } }
+.back .mini { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.back span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 9ch; }
+.stackbtn {
+  border: 0; background: transparent; color: var(--text-muted); padding: 3px; border-radius: 6px;
+  font-size: 13px; position: relative; line-height: 1; cursor: default;
+}
+.stackbtn .n {
+  position: absolute; top: -2px; right: -4px; min-width: 14px; height: 14px; padding: 0 3px;
+  border-radius: 99px; background: var(--accent); color: var(--on-accent);
+  font-size: 9px; font-weight: 700; display: none; place-items: center;
+}
+.stackbtn .n.on { display: grid; }
+.x { border: 0; background: transparent; color: var(--text-faint); font-size: 14px; padding: 2px; }
+.pagebox { flex: 1; margin: 0 6px 6px; border-radius: 14px; background: var(--surface); padding: 14px; font-size: 13px; }
+.pagebox .hit {
+  display: inline; border: 0; padding: 0; background: transparent; cursor: pointer;
+  color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
+}
+.out {
+  margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--sunken);
+  font-size: 13px; color: var(--text-body); min-height: 44px;
+}
+.out b { color: var(--text-strong); }
+
+.rails { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 28px 0 8px; }
+.rail {
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  border-radius: 16px; padding: 16px 16px 14px; box-shadow: var(--shadow);
+}
+.rail h2 { margin: 0 0 8px; font-size: 15px; color: var(--text-strong); letter-spacing: -.01em; }
+.rail ul { margin: 0; padding: 0; list-style: none; }
+.rail li { padding: 6px 0; border-top: 1px solid var(--divider); font-size: 13px; color: var(--text-body); }
+.rail li:first-child { border-top: 0; }
+.rail li code { color: var(--text-strong); }
+
+.bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 28px 0 14px; }
+.list { display: flex; flex-direction: column; gap: 10px; }
+.card {
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border-radius: 18px; box-shadow: var(--shadow); overflow: hidden;
+}
+.card[hidden] { display: none !important; }
+.head {
+  width: 100%; display: grid; grid-template-columns: 92px 1fr auto; gap: 12px;
+  align-items: start; text-align: left; border: 0; background: transparent;
+  padding: 16px 16px 14px; cursor: pointer;
+}
+.cost { font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em; padding-top: 3px; font-weight: 500; }
+.cost.go { color: var(--ok); }
+.cost.seam { color: var(--warn); }
+.cost.no { color: var(--no); }
+.head h3 { margin: 0; font-size: 16px; letter-spacing: -.015em; color: var(--text-strong); font-weight: 700; }
+.head .why { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
+.chev { color: var(--text-faint); padding-top: 2px; }
+.card.open .chev { transform: rotate(90deg); }
+.body { display: none; padding: 0 16px 16px 120px; color: var(--text-body); font-size: 13px; }
+.card.open .body { display: block; }
+.body p { margin: 0 0 8px; max-width: 62ch; }
+.body ul { margin: 0; padding-left: 18px; }
+.body li { margin: 4px 0; }
+.body .sit { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--sunken); }
+.body .sit b { color: var(--text-strong); }
+
+@media (max-width: 720px) {
+  .rails, .head, .pair, .stage { grid-template-columns: 1fr; }
+  .side { flex-direction: row; flex-wrap: wrap; }
+  .head { gap: 4px; }
+  .body { padding: 0 16px 16px; }
+  .gap { display: none; }
+  .gestures td:first-child { white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="ground"></div>
+<main class="page">
+  <div class="topline">
+    <span class="caps">Oblako · split · идеи, не макет</span>
+    <button class="theme" id="theme" type="button">Тема</button>
+  </div>
+  <h1>Ссылка не должна бросать пару</h1>
+  <p class="lede">Прошлый текст смешал три разных жеста в одну фразу. Ниже — один сценарий, три клика, и зачем в шапке появляется «назад», а не ещё один немой ▣.</p>
+
+  <section class="story">
+    <h2>Что предлагаю со ссылками</h2>
+    <p class="lead">Вы уже в split: слева статья, справа черновик. В статье ссылка на исходник. Вопрос не «открывать ли ссылки в split» — часть из них и так открывается в этой же вкладке. Вопрос: <b>куда девать ссылку, которую сегодня уносят в сайдбар третьей вкладкой.</b></p>
+    <p class="not"><b>Не это.</b> Обычный клик по ссылке не перехватываем. Статья сама уезжает на исходник, вернуться — Back этой вкладки. Иначе сломается любой сайт, который ходит по своим же страницам.</p>
+    <ol class="steps">
+      <li><i>1</i><span><b>Жест «открыть отдельно»</b> — Ctrl+клик, средняя кнопка, пункт меню «в новой вкладке» / «в другой половине». Сегодня это всегда новая строка в сайдбаре. Пара про неё ничего не знает.</span></li>
+      <li><i>2</i><span><b>Предложение:</b> тот же жест кладёт исходник <em>в правую половину</em>. Статья слева не двигается. Черновик не закрывается и не уезжает в конец сайдбара — он остаётся вкладкой этой половины, просто не на экране.</span></li>
+      <li><i>3</i><span><b>Чтобы это было видно:</b> в шапке правой половины (те же 36px) появляется чип «← Заметки». Нажал — черновик снова на экране, исходник ушёл под него. Это уже существующий <code>selectSplitStackTab</code>, ему просто нет кнопки.</span></li>
+    </ol>
+    <table class="gestures">
+      <thead>
+        <tr><th>Жест</th><th>Сейчас</th><th>Предложение</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Обычный клик</td>
+          <td class="now">Эта вкладка переходит по ссылке</td>
+          <td class="want">Так и оставить</td>
+        </tr>
+        <tr>
+          <td>Ctrl / средняя / «в новой»</td>
+          <td class="now">Третья вкладка в сайдбаре, чтение сбито поиском</td>
+          <td class="want">В другую половину. Вытесненная — в стопку этой половины</td>
+        </tr>
+        <tr>
+          <td>Пока пары нет, «в split»</td>
+          <td class="now">Собирает пару. Если якорь в группе — молча не работает</td>
+          <td class="want">Оставить пункт, починить отказ из группы</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="foot">Стопка уже умеет помнить вытесненную: так работает перетаскивание вкладки на панель. Человек этого не видит — ▣ в шапке выглядит одинаково, пустая стопка или пять страниц. Чип «← …» как раз про это, а не про новую геометрию.</p>
+
+    <div class="lab">
+      <div class="lab-bar">
+        <button class="pill on" data-act="beside" type="button">Открыть рядом</button>
+        <button class="pill" data-act="plain" type="button">Обычный клик</button>
+        <button class="pill" data-act="tab" type="button">Как сейчас</button>
+        <button class="pill" id="reset" type="button">Сначала</button>
+      </div>
+      <div class="stage">
+        <div class="side" id="sidebar" aria-label="Сайдбар">
+          <div class="ghost on" id="sbPair">Статья + …</div>
+          <div class="ghost" id="sbExtra" hidden>Исходник</div>
+        </div>
+        <div class="pair">
+          <div class="pane" id="leftPane">
+            <div class="hdr">
+              <span class="dot" id="lDot"></span>
+              <span class="ttl" id="lTitle">Обзор API</span>
+              <button class="back" id="lBack" type="button" title="Вернуть предыдущую"><span class="mini" id="lMini"></span><span id="lBackT"></span></button>
+              <span class="stackbtn" title="Вкладки этой половины">▣<span class="n" id="lN">0</span></span>
+              <span class="x">×</span>
+            </div>
+            <div class="pagebox" id="lBody"></div>
+          </div>
+          <div class="gap"></div>
+          <div class="pane">
+            <div class="hdr">
+              <span class="dot" id="rDot"></span>
+              <span class="ttl" id="rTitle">Заметки</span>
+              <button class="back" id="rBack" type="button" title="Вернуть предыдущую"><span class="mini" id="rMini"></span><span id="rBackT"></span></button>
+              <span class="stackbtn" title="Вкладки этой половины">▣<span class="n" id="rN">0</span></span>
+              <span class="x">×</span>
+            </div>
+            <div class="pagebox" id="rBody"></div>
+          </div>
+        </div>
+      </div>
+      <p class="out" id="labOut"></p>
+    </div>
+  </section>
+
+  <div class="rails">
+    <section class="rail">
+      <h2>Почему это не ломает браузер</h2>
+      <ul>
+        <li>Две панели как были. Третью не рисуем — вытесненная живёт в уже сериализуемой стопке.</li>
+        <li>Чип сидит в шапке 36px, поверх гостя лезть не надо.</li>
+        <li><code>replaceSplitPanel</code> уже кладёт вытесненную в стопку. Нужен жест и кнопка, не формат сессии.</li>
+        <li>Настроек нет: жест «открыть отдельно» в паре всегда значит «в другую половину».</li>
+      </ul>
+    </section>
+    <section class="rail">
+      <h2>Чего здесь нет</h2>
+      <ul>
+        <li>Перехват каждого клика («следить за ссылками») — это другой режим, и он сырой.</li>
+        <li>Веер страниц и толстые шапки. Чип — одна строка, один возврат.</li>
+        <li>Раздел «Split» в настройках. Если без тумблера непонятно — идея ещё не готова.</li>
+        <li>Снимки стопки через <code>capturePage</code>. В чипе достаточно заголовка.</li>
+      </ul>
+    </section>
+  </div>
+
+  <div class="bar" id="filters">
+    <button class="pill on" data-filter="all" type="button">Остальные идеи</button>
+    <button class="pill" data-filter="go" type="button">Сразу</button>
+    <button class="pill" data-filter="seam" type="button">Шов</button>
+    <button class="pill" data-filter="no" type="button">Не надо</button>
+  </div>
+  <div class="list" id="ideas"></div>
+</main>
+
+<script>
+const pages = {
+  article: { title: "Обзор API", color: "var(--article)", body: "Читаете обзор. В тексте ссылка на <button class=\"hit\" id=\"hit\" type=\"button\">исходник</button>." },
+  notes:   { title: "Заметки",   color: "var(--notes)",   body: "Черновик. Его не хочется терять и не хочется искать потом в сайдбаре." },
+  source:  { title: "Исходник",  color: "var(--source)",  body: "Код, на который ссылалась статья." },
+};
+
+const lab = {
+  left: "article",
+  right: "notes",
+  leftStack: [],
+  rightStack: [],
+  extraTab: false,
+  act: "beside",
+};
+
+const $ = (s, r=document) => r.querySelector(s);
+
+function paintPane(side) {
+  const id = lab[side];
+  const p = pages[id];
+  const stack = lab[side + "Stack"];
+  $(side === "left" ? "#lDot" : "#rDot").style.background = p.color;
+  $(side === "left" ? "#lTitle" : "#rTitle").textContent = p.title;
+  $(side === "left" ? "#lBody" : "#rBody").innerHTML = p.body;
+  const back = $(side === "left" ? "#lBack" : "#rBack");
+  const n = $(side === "left" ? "#lN" : "#rN");
+  if (stack.length) {
+    const prev = pages[stack[0]];
+    back.classList.add("show");
+    $(side === "left" ? "#lMini" : "#rMini").style.background = prev.color;
+    $(side === "left" ? "#lBackT" : "#rBackT").textContent = "← " + prev.title;
+    n.textContent = String(stack.length);
+    n.classList.add("on");
+  } else {
+    back.classList.remove("show");
+    n.classList.remove("on");
+  }
+}
+
+function draw(msg) {
+  paintPane("left");
+  paintPane("right");
+  $("#sbPair").textContent = pages[lab.left].title + " + " + pages[lab.right].title;
+  const extra = $("#sbExtra");
+  extra.hidden = !lab.extraTab;
+  extra.classList.toggle("pop", lab.extraTab);
+  extra.classList.toggle("on", lab.extraTab);
+  $("#labOut").innerHTML = msg;
+  const hit = $("#hit");
+  if (hit) hit.addEventListener("click", onHit);
+}
+
+function reset(msg) {
+  lab.left = "article";
+  lab.right = "notes";
+  lab.leftStack = [];
+  lab.rightStack = [];
+  lab.extraTab = false;
+  draw(msg || "Нажмите «исходник» в статье — сработает выбранный жест.");
+}
+
+function push(side, id) {
+  const st = lab[side + "Stack"];
+  lab[side + "Stack"] = [id, ...st.filter((x) => x !== id)];
+}
+
+function onHit() {
+  if (lab.act === "plain") {
+    lab.left = "source";
+    lab.leftStack = [];
+    lab.extraTab = false;
+    draw("<b>Обычный клик.</b> Левая вкладка сама стала исходником. Заметки справа на месте, но обзор живёт только в истории этой вкладки — чипа «вернуться к статье» нет, это Back, не стопка.");
+    return;
+  }
+  if (lab.act === "tab") {
+    lab.extraTab = true;
+    draw("<b>Как сейчас.</b> Исходник — третья вкладка слева. Пара не изменилась, стопка пуста, чипа нет. Связь «это из статьи» держит только память человека.");
+    return;
+  }
+  if (lab.right !== "source") push("right", lab.right);
+  lab.right = "source";
+  lab.extraTab = false;
+  draw("<b>Открыть рядом.</b> Статья не уехала. Исходник встал справа. Черновик жив — его имя в чипе шапки. Нажмите «← Заметки».");
+}
+
+$("#rBack").addEventListener("click", () => {
+  if (!lab.rightStack.length) return;
+  const prev = lab.rightStack[0];
+  push("right", lab.right);
+  lab.right = prev;
+  lab.rightStack = lab.rightStack.filter((x) => x !== prev);
+  draw("<b>Вернули.</b> Черновик снова на экране. Исходник не закрыт — теперь он в чипе. Тот же <code>selectSplitStackTab</code>, который уже есть.");
+});
+$("#lBack").addEventListener("click", () => {
+  if (!lab.leftStack.length) return;
+  const prev = lab.leftStack[0];
+  push("left", lab.left);
+  lab.left = prev;
+  lab.leftStack = lab.leftStack.filter((x) => x !== prev);
+  draw("<b>Вернули левую.</b> То же самое с другой стороны.");
+});
+
+document.querySelector(".lab-bar").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]");
+  if (b) {
+    lab.act = b.dataset.act;
+    [...document.querySelector(".lab-bar").children].forEach((x) => x.classList.toggle("on", x.dataset && x.dataset.act === lab.act));
+    reset();
+  }
+});
+$("#reset").addEventListener("click", () => reset());
+
+$("#theme").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : cur === "light" ? "" : "dark");
+});
+
+const ideas = [
+  {
+    id: "chip", cost: "go",
+    title: "Чип «← страница» в шапке 36px",
+    why: "Стопка уже помнит вытесненную. ▣ не меняется, пустая или нет — поэтому «старая страница тут» не видно.",
+    body: `<p>Когда у половины <code>stack.length &gt; 0</code> — справа от заголовка чип: стрелка, фавикон, имя предыдущей. Клик — <code>selectSplitStackTab(side, stack[0])</code>. На ▣ — точка-счётчик. Высоту шапки не едим, поверх гостя не лезем.</p>
+    <div class="sit"><b>Посадка.</b> Это чинит уже существующее поведение: перетащил вкладку на панель — предыдущая ушла в стопку без единого знака. Ссылка «в другую половину» пользуется тем же. Веер и папку не рисуем.</div>`
+  },
+  {
+    id: "hotkeys", cost: "go",
+    title: "Три хоткея на уже существующие каналы",
+    why: "<code>TAB_SPLIT_FOCUS</code>, <code>TAB_SPLIT_SWAP</code> и выбор из стопки живут в IPC. В <code>tabHotkeys.ts</code> split нет вовсе.",
+    body: `<p>Без экрана настройки: <code>Ctrl+Shift+\\</code> — фокус на другую половину; обмен — жест шапки как сейчас; <code>Alt+Backspace</code> — то же, что чип «←». Хорды — в справку рядом с перетаскиванием шапки, не в настройки.</p>`
+  },
+  {
+    id: "ratio", cost: "go",
+    title: "Двойной клик по разделителю = 50/50",
+    why: "<code>setSplitRatio</code> уже клампит 0.2…0.8. Жест доли есть, жеста сброса нет.",
+    body: `<p>В <code>useSplitDivider.ts</code> на <code>dblclick</code> — <code>0.5</code>. Любимую долю в settings.json не пишем.</p>`
+  },
+  {
+    id: "omnibox", cost: "go",
+    title: "Адресная строка знает про соседнюю",
+    why: "Enter ведёт сфокусированную половину. Нет жеста «открой это рядом».",
+    body: `<p><code>Alt+Enter</code> в омнибоксе: нет пары — <code>enterSplit</code>; есть — <code>replaceSplitPanel</code> на другую сторону. Чип «←» появится сам, если вытеснили живую вкладку.</p>`
+  },
+  {
+    id: "group-bug", cost: "go",
+    title: "Починить тихий отказ из группы",
+    why: "Единственный пункт «открыть ссылку в split» молчит, если якорь в группе.",
+    body: `<p>Либо создавать вкладку в том же родителе, либо перед <code>enterSplit</code> вынимать якорь. Не оставлять no-op.</p>`
+  },
+  {
+    id: "duplicate", cost: "go",
+    title: "Эта же страница — во второй половине",
+    why: "Оригинал и перевод, статья и комментарии. Куки общие — два аккаунта так не получить, и не надо.",
+    body: `<p>Пункт «Открыть копию рядом»: <code>openTab(currentUrl)</code> + <code>replaceSplitPanel</code> / <code>enterSplit</code>. Дальше на копии можно включить перевод, не ломая оригинал.</p>`
+  },
+  {
+    id: "stack-push", cost: "seam",
+    title: "В стопку, не на экран",
+    why: "Иногда ссылка нужна потом, а не вместо черновика справа.",
+    body: `<p>Отдельный пункт меню «В стопку этой половины»: вкладка появляется в ▣ и в чипе, экран не меняется. Это второй жест, не дефолт. Дефолт «открыть отдельно» — всё-таки на экран соседней половины, иначе человек не видит, что ссылка открылась.</p>`
+  },
+  {
+    id: "translate", cost: "seam",
+    title: "Перевод — во вторую половину",
+    why: "Bergamot сейчас переписывает ту же вью. Split — место, где оригинал и перевод могут жить сразу.",
+    body: `<p>Пункт «Перевести рядом»: копия URL в другую половину, прогрев движка на той вью. Человек жмёт сам.</p>`
+  },
+  {
+    id: "follow", cost: "seam",
+    title: "Режим «ссылки — в другую половину»",
+    why: "Документация слева, пример справа. Это не дефолт и не галочка в настройках.",
+    body: `<p>Переключатель на паре, гаснет при разборе. После рестарта выключен. Перехватывать только <code>target=_blank</code> и модифицированный клик. Обычная навигация остаётся навигацией.</p>`
+  },
+  {
+    id: "pairs", cost: "seam",
+    title: "Листать припаркованные пары",
+    why: "Ушёл на одиночную вкладку — пара не уничтожается, только прячется.",
+    body: `<p>Хоткей следующей/предыдущей по массиву <code>splitPairs</code>. Сайдбар уже рисует пару как один узел.</p>`
+  },
+  {
+    id: "diff", cost: "seam",
+    title: "Что изменилось между половинами",
+    why: "<code>textDiff.ts</code> уже сравнивает страницу с прошлым визитом. Две живые панели — тот же код.",
+    body: `<p>Команда, не режим: «Сравнить половины». Оверлей как findbar. Почта и видео — молча отказ.</p>`
+  },
+  {
+    id: "graph", cost: "seam",
+    title: "Из графа и блокнота — открыть рядом",
+    why: "Узлы уже открываются вкладкой. Рядом — тот же <code>enterSplit</code>.",
+    body: `<p>Пункт на узле «Открыть рядом с текущей». Холст остаётся холстом.</p>`
+  },
+  {
+    id: "mcp", cost: "seam",
+    title: "Внешний агент предлагает пару, не собирает её сам",
+    why: "MCP уже отдаёт вкладки. Изменение — карточка подтверждения в браузере.",
+    body: `<p>Инструмент «собрать split из двух id». Карточка: два заголовка и «Разделить». Отказ ничего не делает.</p>`
+  },
+  {
+    id: "third", cost: "no",
+    title: "Третья панель, сетка, вертикаль",
+    why: "Ломает инвариант, ради которого написаны sessionTree, layout и sleep.",
+    body: `<p>Вытесненная страница — это стопка, не третья колонка. Вертикальный split — вторая формула bounds и другой <code>ratio</code> в файле сессии.</p>`
+  },
+  {
+    id: "settings", cost: "no",
+    title: "Раздел настроек «Split»",
+    why: "Куда уходит ссылка из пары — решение момента, ему место в жесте, не в settings.json.",
+    body: `<p>Если поведение неочевидно без тумблера, идея ещё сырая. Чип как раз делает дефолт видимым.</p>`
+  },
+  {
+    id: "scroll", cost: "no",
+    title: "Синхронный скролл и два аккаунта в одной паре",
+    why: "Чтобы скроллить чужой документ, надо в него влезть. Чтобы развести аккаунты — две сессии.",
+    body: `<p>Инъекция в гостя ломает sandbox. Два аккаунта — другое окно, оно уже есть.</p>`
+  }
+];
+
+const ideasEl = $("#ideas");
+ideasEl.innerHTML = ideas.map((it) => `
+  <article class="card" data-cost="${it.cost}" data-id="${it.id}">
+    <button class="head" type="button" aria-expanded="false">
+      <span class="cost ${it.cost}">${it.cost === "go" ? "сразу" : it.cost === "seam" ? "шов" : "не надо"}</span>
+      <span><h3>${it.title}</h3><p class="why">${it.why}</p></span>
+      <span class="chev">›</span>
+    </button>
+    <div class="body">${it.body}</div>
+  </article>`).join("");
+
+ideasEl.addEventListener("click", (e) => {
+  const btn = e.target.closest(".head");
+  if (!btn) return;
+  const card = btn.closest(".card");
+  const open = card.classList.toggle("open");
+  btn.setAttribute("aria-expanded", String(open));
+});
+
+let filter = "all";
+$("#filters").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-filter]");
+  if (!b) return;
+  filter = b.dataset.filter;
+  [...$("#filters").children].forEach((x) => x.classList.toggle("on", x === b));
+  ideasEl.querySelectorAll(".card").forEach((c) => {
+    c.hidden = filter !== "all" && c.dataset.cost !== filter;
+  });
+});
+
+reset();
+</script>
+</body>
+</html>

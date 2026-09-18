@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oblako · Зачем две папки</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@600;700&display=swap">
+<style>
+:root {
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp6:24px; --sp8:32px;
+  --font-ui:"Golos Text",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --ease:cubic-bezier(.16,1,.3,1);
+  --dur:200ms; --slow:420ms;
+  --ground-1:#E3E5E7; --ground-2:#E1E2E5; --ground-3:#E0DFE4;
+  --n1:#FEFEFF; --n2:#F7F8F8; --n3:#EEEEF1; --n4:#E2E3E8; --n5:#DBDCE3; --n7:#BBBECE;
+  --n9:#6D7492; --n10:#565A71; --n11:#3D3F4E; --n12:#24252E;
+  --accent:#2C4BD8; --on-accent:#FFFFFF;
+  --app-bg:var(--n4); --surface:var(--n1); --sunken:var(--n3);
+  --divider:rgba(60,60,67,.14);
+  --text-strong:var(--n12); --text-body:var(--n11); --text-muted:var(--n10); --text-faint:var(--n9);
+  --shadow-tint:#0C0D12; --grain-op:.45;
+  --selected:color-mix(in srgb, var(--accent) 14%, var(--surface));
+  --header-h:36px; --inset:6px; --page-r:14px; --island-r:20px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+    --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n7:#55555E;
+    --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+    --accent:#6E8BFF; --on-accent:#121213;
+    --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+    --divider:rgba(255,255,255,.14); --shadow-tint:#000;
+    --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+  }
+}
+:root[data-theme="dark"] {
+  --ground-1:#0F1116; --ground-2:#0D0D12; --ground-3:#0C0B10;
+  --n1:#121213; --n2:#19191B; --n3:#212123; --n4:#29292D; --n5:#343439; --n7:#55555E;
+  --n9:#90909A; --n10:#B0B0B6; --n11:#D9D9DC; --n12:#FFFFFF;
+  --accent:#6E8BFF; --on-accent:#121213;
+  --app-bg:var(--n1); --surface:#29292D; --sunken:#212123;
+  --divider:rgba(255,255,255,.14); --shadow-tint:#000;
+  --selected:color-mix(in srgb, var(--accent) 24%, var(--surface));
+}
+:root {
+  --shadow:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 8px 20px color-mix(in srgb, var(--shadow-tint) 8%, transparent);
+  --shadow-pop:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 8%, transparent),
+    0 16px 40px color-mix(in srgb, var(--shadow-tint) 14%, transparent);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: var(--font-ui); font-size: 14px; line-height: 1.5;
+  color: var(--text-body); background: var(--app-bg); -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: var(--font-mono); font-size: 11.5px; }
+
+.ground { position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: linear-gradient(168deg, var(--ground-1), var(--ground-2) 46%, var(--ground-3)); }
+.ground::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px; opacity: var(--grain-op); mix-blend-mode: overlay;
+}
+
+.page { position: relative; z-index: 1; max-width: 1080px; margin: 0 auto; padding: 28px 20px 96px; }
+.topline { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.caps { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
+.theme {
+  border: 1px solid var(--divider); background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border-radius: 999px; padding: 7px 12px; cursor: pointer; color: var(--text-muted);
+}
+h1 { font-family: var(--font-display); font-size: clamp(30px, 5vw, 52px); font-weight: 700;
+  letter-spacing: -.035em; line-height: 1.02; color: var(--text-strong); margin: 16px 0 0; max-width: 14ch; }
+.lede { max-width: 58ch; color: var(--text-muted); margin: 14px 0 0; font-size: 16px; }
+.lede b { color: var(--text-strong); font-weight: 600; }
+
+.plays { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 28px 0 14px; }
+.play {
+  text-align: left; border: 0; cursor: pointer; border-radius: 16px; padding: 12px 13px 11px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent); box-shadow: var(--shadow);
+  min-height: 76px;
+}
+.play:hover { background: var(--surface); }
+.play.on { background: var(--selected); }
+.play .k { font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+.play b { display: block; margin-top: 4px; font-size: 14px; letter-spacing: -.02em; color: var(--text-strong); }
+.play small { display: block; margin-top: 2px; font-size: 12px; color: var(--text-muted); line-height: 1.3; }
+
+.desk {
+  position: relative; height: min(560px, 68vh); min-height: 420px;
+  border-radius: 24px; overflow: hidden; box-shadow: var(--shadow-pop);
+  background: color-mix(in srgb, var(--n5) 40%, var(--surface));
+  display: grid; grid-template-columns: 1fr 10px 1fr; padding: 12px;
+}
+.gap { position: relative; }
+.gap::after {
+  content: ""; position: absolute; left: 3px; top: 42%; width: 4px; height: 40px; border-radius: 99px; background: var(--n7);
+}
+.folder {
+  position: relative; min-width: 0; border-radius: var(--island-r); overflow: hidden;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); box-shadow: var(--shadow);
+}
+.folder.focus { box-shadow: var(--shadow), 0 0 0 1.5px color-mix(in srgb, var(--accent) 40%, transparent); }
+.head {
+  position: absolute; inset: 0 0 auto; height: var(--header-h); z-index: 4;
+  display: flex; align-items: center; gap: 6px; padding: 0 10px;
+}
+.head .ttl { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: var(--text-strong);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spine {
+  display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 4px;
+  border: 0; background: transparent; border-radius: 8px; cursor: pointer; color: var(--text-faint);
+}
+.spine:hover, .spine.open { background: var(--sunken); color: var(--text-strong); }
+.deck { position: relative; height: 18px; }
+.edge {
+  position: absolute; top: 0; width: 16px; height: 16px; border-radius: 4px 4px 2px 2px;
+  background: var(--surface); cursor: pointer;
+  box-shadow: inset 0 3px 0 hsl(var(--h) 62% 50%), 0 0 0 1px color-mix(in srgb, var(--shadow-tint) 14%, transparent);
+  transition: transform var(--dur) var(--ease), left var(--dur) var(--ease);
+}
+.spine:hover .edge, .spine.open .edge { transform: translateY(-2px) rotate(calc((var(--i) - .5) * 6deg)); }
+.sheet {
+  position: absolute; top: calc(var(--header-h) + var(--inset));
+  left: var(--inset); right: var(--inset); bottom: var(--inset);
+  border-radius: var(--page-r); background: var(--surface); overflow: hidden;
+  box-shadow: 0 0 0 1px var(--divider);
+}
+.site { padding: 20px 22px; height: 100%; animation: in var(--slow) var(--ease); }
+@keyframes in { from { opacity: .4; transform: translateY(10px); } }
+.site .host { font-size: 11px; color: var(--text-faint); }
+.site h2 { margin: 10px 0 8px; font-size: clamp(18px, 2.2vw, 28px); letter-spacing: -.04em; line-height: 1.1; color: var(--text-strong); }
+.site p { margin: 0; color: var(--text-muted); font-size: 13px; max-width: 42ch; }
+.mark { display: inline-block; margin-top: 12px; font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 8px; background: var(--selected); color: var(--text-strong); }
+.ghost-sheet {
+  outline: 1.5px dashed color-mix(in srgb, var(--accent) 50%, var(--divider));
+  background: color-mix(in srgb, var(--selected) 55%, var(--surface));
+}
+.ghost-sheet .site { opacity: .7; }
+.confirm {
+  position: absolute; right: 14px; bottom: 14px; z-index: 5;
+  display: none; gap: 6px;
+}
+.confirm.show { display: flex; }
+.confirm button {
+  border: 0; border-radius: 999px; padding: 7px 12px; cursor: pointer; font-size: 12px; font-weight: 600;
+}
+.confirm .yes { background: var(--accent); color: var(--on-accent); }
+.confirm .no { background: var(--sunken); color: var(--text-body); }
+
+.fly {
+  position: fixed; z-index: 40; width: 160px; height: 110px; border-radius: 12px; pointer-events: none;
+  background: var(--surface); box-shadow: var(--shadow-pop); padding: 10px;
+  font-size: 12px; font-weight: 600; color: var(--text-strong);
+  box-shadow: inset 0 5px 0 hsl(var(--h) 62% 50%), var(--shadow-pop);
+  transition: left var(--slow) var(--ease), top var(--slow) var(--ease), transform var(--slow) var(--ease), opacity var(--slow) var(--ease);
+}
+
+.say {
+  margin: 12px 0 0; min-height: 52px; padding: 12px 14px; border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent); box-shadow: var(--shadow);
+  font-size: 14px; color: var(--text-body);
+}
+.say b { color: var(--text-strong); }
+
+.why { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 28px; }
+.why article {
+  padding: 16px; border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent); box-shadow: var(--shadow);
+}
+.why h2 { margin: 0 0 8px; font-size: 16px; letter-spacing: -.02em; color: var(--text-strong); }
+.why p, .why li { font-size: 13px; color: var(--text-body); }
+.why ul { margin: 0; padding-left: 18px; }
+.why li { margin: 5px 0; }
+.why .no { color: var(--text-muted); }
+
+@media (max-width: 860px) {
+  .plays { grid-template-columns: 1fr 1fr; }
+  .desk, .why { grid-template-columns: 1fr; }
+  .gap { display: none; }
+  .desk { height: auto; min-height: 640px; }
+  .folder { min-height: 280px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="ground"></div>
+<main class="page">
+  <div class="topline">
+    <span class="caps">Oblako · split · ходы, не пункты меню</span>
+    <button class="theme" id="theme" type="button">Тема</button>
+  </div>
+  <h1>Зачем две папки</h1>
+  <p class="lede">Папка с переключением листов — это уже интересно. «Ссылка откроется в сплите» — нет: это один скучный ход из колоды, которую вы придумали. Ниже стол. Нажмите ход — не карточку с IPC.</p>
+
+  <div class="plays" id="plays">
+    <button class="play on" data-play="deal" type="button"><span class="k">ход 1</span><b>Сдать в другую</b><small>Статья не двигается. Источники падают в правую папку.</small></button>
+    <button class="play" data-play="throw" type="button"><span class="k">ход 2</span><b>Перекинуть лист</b><small>Не «открыть». Лист летит из папки в папку.</small></button>
+    <button class="play" data-play="twin" type="button"><span class="k">ход 3</span><b>Близнец</b><small>Перевод и «вчера» — не порча страницы, а второй лист.</small></button>
+    <button class="play" data-play="trail" type="button"><span class="k">ход 4</span><b>След</b><small>Откуда вы пришли — листы под текущей.</small></button>
+    <button class="play" data-play="memory" type="button"><span class="k">ход 5</span><b>Из памяти</b><small>Связанные из истории предлагает лечь в папку. Вы жмёте.</small></button>
+    <button class="play" data-play="pockets" type="button"><span class="k">ход 6</span><b>Два кармана</b><small>«Навести порядок» раскладывает не группы, а две папки стола.</small></button>
+    <button class="play" data-play="desks" type="button"><span class="k">ход 7</span><b>Столы</b><small>Припаркованные пары — колода столов. Листаете целиком.</small></button>
+    <button class="play" data-play="reset" type="button"><span class="k">сброс</span><b>Пустой стол</b><small>Статья и черновик. Папки без кромок.</small></button>
+  </div>
+
+  <section class="desk" id="desk" aria-label="Стол из двух папок">
+    <div class="folder focus" id="fL" data-side="left"></div>
+    <div class="gap"></div>
+    <div class="folder" id="fR" data-side="right"></div>
+  </section>
+  <p class="say" id="say"></p>
+
+  <div class="why">
+    <article>
+      <h2>Почему это не «ещё один браузер с split»</h2>
+      <p>Две живые страницы есть у всех. Папка на половине есть почти ни у кого: стопка у нас уже сериализуется, просто ведёт себя как молчаливый список за ▣.</p>
+      <p>Интересное начинается, когда лист — не вкладка сайдбара, а карта на столе. Тогда перевод, прошлый визит и «вы это уже читали» становятся <b>типами карт</b>, а не пунктами в трёх разных меню.</p>
+    </article>
+    <article>
+      <h2>Рельсы те же</h2>
+      <ul>
+        <li>Две половины. Третья карта уходит в папку, не в третью колонку.</li>
+        <li>Кромки — в 36px. Веер — в уже существующем SplitStackPopover.</li>
+        <li>Близнец перевода греет Bergamot на той вью, не переписывает эту.</li>
+        <li>«Из памяти» и «два кармана» — карточка подтверждения. Модель предлагает.</li>
+        <li>Столы — это уже припаркованные <code>splitPairs</code>. Имени в session.json нет.</li>
+      </ul>
+      <p class="no">Не делаем: сетку, синхронный скролл, раздел настроек, перехват каждого клика, снимки через capturePage.</p>
+    </article>
+  </div>
+</main>
+
+<script>
+const T = {
+  paper:  { title: "Attention Is All You Need", host: "arxiv.org", h: 36,  body: "Статья, которую читаете. Из неё торчат ссылки на код, вики и чей-то разбор." },
+  notes:  { title: "Черновик", host: "notes.local", h: 96, body: "То, ради чего стол вообще стоит. Его нельзя сбивать каждой ссылкой." },
+  code:   { title: "github.com/google-research", host: "github.com", h: 232, body: "Репозиторий из сноски. Нужен рядом, не вместо черновика." },
+  wiki:   { title: "Transformer (encyclopedia)", host: "en.wikipedia.org", h: 168, body: "Справка. Один лист в папке источников." },
+  talk:   { title: "Annotated paper", host: "nlp.stanford.edu", h: 48, body: "Чей-то конспект той же статьи." },
+  ru:     { title: "Внимание — это всё, что нужно", host: "arxiv.org", h: 22, body: "Тот же URL, другая вью: Bergamot. Оригинал не переписан — он лист под этим." },
+  then:   { title: "Та же страница · вчера", host: "arxiv.org", h: 8, body: "Снимок из индекса истории. Не «обновить», а второй лист. Flip — было / стало." },
+  blog:   { title: "Как вы сюда попали", host: "jalammar.github.io", h: 140, body: "Опенер. Вкладка, с которой открыли статью. След, не сайдбар." },
+  issue:  { title: "Issue #412 · CUDA OOM", host: "github.com", h: 210, body: "Делать." },
+  spec:   { title: "Спека протокола", host: "datatracker.ietf.org", h: 190, body: "Читать." },
+  pr:     { title: "PR · kill switch", host: "github.com", h: 348, body: "Делать." },
+  rfc:    { title: "RFC 8446", host: "rfc-editor.org", h: 210, body: "Читать." },
+  mail:   { title: "Письмо от Анны", host: "mail.local", h: 22, body: "Другой стол. Пара целиком, не вкладка." },
+  cal:    { title: "Календарь", host: "cal.local", h: 168, body: "Правая папка второго стола." },
+};
+
+const desk = { L: "paper", R: "notes", l: [], r: [], ghost: null, propose: false };
+let gen = 0;
+
+const $ = (s, r=document) => r.querySelector(s);
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const sleep = (ms) => reduced() ? Promise.resolve() : new Promise((r) => setTimeout(r, ms));
+
+function ids(side) {
+  const cur = desk[side === "left" ? "L" : "R"];
+  const st = desk[side === "left" ? "l" : "r"];
+  return [cur, ...st].filter(Boolean);
+}
+function paintFolder(el, side) {
+  const cur = desk[side === "left" ? "L" : "R"];
+  const st = desk[side === "left" ? "l" : "r"];
+  const t = T[cur];
+  const under = [...st];
+  if (desk.ghost && side === "right") under.push(desk.ghost);
+  const n = under.length;
+  const w = n ? 14 + (n - 1) * 10 : 0;
+  el.innerHTML = `
+    <div class="head">
+      <button class="spine ${n ? "" : "is-empty"}" data-spine="${side}" ${n ? "" : "hidden"} title="Листы папки">
+        <span class="deck" style="width:${w}px">${under.map((id, i) =>
+          `<span class="edge" data-flip="${side}:${id}" style="--h:${T[id].h};--i:${i};left:${i * 10}px"></span>`
+        ).join("")}</span>
+      </button>
+      <span class="ttl">${t.title}</span>
+    </div>
+    <div class="sheet ${desk.ghost && side === "right" && desk.propose ? "ghost-sheet" : ""}">
+      <div class="site">
+        <div class="host">${t.host}</div>
+        <h2>${t.title}</h2>
+        <p>${t.body}</p>
+        ${side === "left" && cur === "paper" ? "<span class='mark'>статья</span>" : ""}
+        ${cur === "ru" ? "<span class='mark'>близнец · язык</span>" : ""}
+        ${cur === "then" ? "<span class='mark'>близнец · вчера</span>" : ""}
+      </div>
+    </div>
+    ${side === "right" ? `<div class="confirm ${desk.propose ? "show" : ""}">
+      <button class="yes" type="button">Положить</button>
+      <button class="no" type="button">Не надо</button>
+    </div>` : ""}`;
+}
+function render() {
+  paintFolder($("#fL"), "left");
+  paintFolder($("#fR"), "right");
+  $("#fL").classList.toggle("focus", true);
+}
+
+function say(html) { $("#say").innerHTML = html; }
+
+function fly(fromEl, toEl, tabId) {
+  if (reduced() || !fromEl || !toEl) return Promise.resolve();
+  const a = fromEl.getBoundingClientRect();
+  const b = toEl.getBoundingClientRect();
+  const el = document.createElement("div");
+  el.className = "fly";
+  el.style.setProperty("--h", T[tabId].h);
+  el.textContent = T[tabId].title;
+  el.style.left = a.left + a.width * .35 + "px";
+  el.style.top = a.top + 48 + "px";
+  document.body.append(el);
+  requestAnimationFrame(() => {
+    el.style.left = b.right - 180 + "px";
+    el.style.top = b.top + 8 + "px";
+    el.style.transform = "scale(.45)";
+    el.style.opacity = ".15";
+  });
+  return sleep(430).then(() => el.remove());
+}
+
+function deal(side, id) {
+  const key = side === "left" ? "l" : "r";
+  if (desk[side === "left" ? "L" : "R"] === id) return;
+  desk[key] = [id, ...desk[key].filter((x) => x !== id)];
+}
+function flip(side, id) {
+  const curK = side === "left" ? "L" : "R";
+  const stK = side === "left" ? "l" : "r";
+  const cur = desk[curK];
+  if (cur === id) return;
+  desk[stK] = [cur, ...desk[stK].filter((x) => x !== id && x !== cur)];
+  desk[curK] = id;
+}
+function toss(id, from, to) {
+  const fromK = from === "left" ? "l" : "r";
+  const fromC = from === "left" ? "L" : "R";
+  if (desk[fromC] === id) {
+    const next = desk[fromK][0];
+    desk[fromK] = desk[fromK].slice(1);
+    desk[fromC] = next || desk[fromC];
+  } else desk[fromK] = desk[fromK].filter((x) => x !== id);
+  deal(to, id);
+}
+
+async function run(name) {
+  const my = ++gen;
+  desk.ghost = null; desk.propose = false;
+  $("#desk").style.opacity = "1";
+  $("#desk").style.transform = "none";
+  document.querySelectorAll(".play").forEach((b) => b.classList.toggle("on", b.dataset.play === name));
+  const alive = () => my === gen;
+
+  if (name === "reset") {
+    desk.L = "paper"; desk.R = "notes"; desk.l = []; desk.r = [];
+    render();
+    say("<b>Пустой стол.</b> Две страницы, кромок нет. Это сегодня. Интересное — когда под ними появляются листы.");
+    return;
+  }
+
+  if (name === "deal") {
+    desk.L = "paper"; desk.R = "notes"; desk.l = []; desk.r = [];
+    render();
+    say("<b>Сдать.</b> Ctrl+клик по ссылке не рождает вкладку в сайдбаре. Карта падает в <em>другую</em> папку. Черновик остаётся сверху.");
+    for (const id of ["code", "wiki", "talk"]) {
+      if (!alive()) return;
+      await fly($("#fL"), $("#fR"), id);
+      if (!alive()) return;
+      deal("right", id);
+      render();
+      await sleep(180);
+    }
+    say("<b>Три источника под черновиком.</b> Кромки справа — github, wiki, конспект. Статья слева на месте. Это уже не «открылось в сплите». Это колода.");
+    return;
+  }
+
+  if (name === "throw") {
+    desk.L = "paper"; desk.R = "code"; desk.l = []; desk.r = ["wiki", "talk", "notes"];
+    render();
+    say("<b>Перекинуть.</b> Код оказался сверху справа, а вы хотите его слева, под статьёй. Не меню — жест из папки в папку.");
+    await sleep(500);
+    if (!alive()) return;
+    await fly($("#fR"), $("#fL"), "code");
+    if (!alive()) return;
+    toss("code", "right", "left");
+    desk.R = "notes";
+    desk.r = desk.r.filter((x) => x !== "notes");
+    render();
+    say("<b>Лист переехал.</b> Слева статья, под ней код. Справа снова черновик, под ним вики. Сайдбар не вырос.");
+    return;
+  }
+
+  if (name === "twin") {
+    desk.L = "paper"; desk.R = "notes"; desk.l = []; desk.r = [];
+    render();
+    say("<b>Близнец.</b> «Перевести» не переписывает страницу. Кладёт второй лист в ту же папку. Flip — язык, не навигация.");
+    await sleep(400);
+    if (!alive()) return;
+    deal("left", "ru");
+    render();
+    await sleep(500);
+    if (!alive()) return;
+    flip("left", "ru");
+    render();
+    await sleep(700);
+    if (!alive()) return;
+    deal("left", "then");
+    render();
+    await sleep(400);
+    if (!alive()) return;
+    flip("left", "then");
+    render();
+    say("<b>Два близнеца под рукой.</b> Язык и вчерашний снимок — карты одной папки. Черновик справа даже не дёрнулся. Bergamot и textDiff уже есть; им не хватало места, куда лечь, кроме как поверх единственной вью.");
+    return;
+  }
+
+  if (name === "trail") {
+    desk.L = "paper"; desk.R = "notes"; desk.l = ["blog"]; desk.r = [];
+    render();
+    say("<b>След.</b> Мы уже помним, кто открыл вкладку (<code>noteOpened</code>). Сейчас это нигде не видно. В папке — лист «как я сюда попал».");
+    await sleep(800);
+    if (!alive()) return;
+    flip("left", "blog");
+    render();
+    await sleep(700);
+    if (!alive()) return;
+    flip("left", "paper");
+    render();
+    say("<b>Назад по следу, не по истории сайта.</b> История вкладки — это URL этой страницы. След — другие вкладки. Папка умеет оба, шапка Back — только первое.");
+    return;
+  }
+
+  if (name === "memory") {
+    desk.L = "paper"; desk.R = "notes"; desk.l = []; desk.r = [];
+    desk.ghost = "talk"; desk.propose = true;
+    render();
+    say("<b>Из памяти.</b> «Вы это уже читали» сейчас прячется в замке омнибокса. На столе это предлагаемый лист: лечь в правую папку или исчезнуть. Модель не раскладывает сама.");
+    return;
+  }
+
+  if (name === "pockets") {
+    desk.L = "spec"; desk.R = "issue"; desk.l = []; desk.r = [];
+    render();
+    say("<b>Два кармана.</b> «Навести порядок» сегодня делает группы в сайдбаре. На столе тот же промпт может предложить: читать слева, делать справа.");
+    await sleep(450);
+    if (!alive()) return;
+    deal("left", "rfc"); deal("right", "pr");
+    render();
+    say("<b>Не группы — стол.</b> Спека и RFC в левой папке, issue и PR в правой. Откат — как у группировки: одно движение. Подтверждение карточкой, не автоматом.");
+    return;
+  }
+
+  if (name === "desks") {
+    desk.L = "paper"; desk.R = "notes"; desk.l = ["code"]; desk.r = ["wiki"];
+    render();
+    say("<b>Столы.</b> Ушли на почту — пара не умерла, она припаркована. Сейчас это невидимо. Жест «следующий стол» меняет обе папки сразу.");
+    await sleep(700);
+    if (!alive()) return;
+    $("#desk").style.opacity = ".35";
+    $("#desk").style.transform = "translateX(-24px)";
+    await sleep(280);
+    if (!alive()) return;
+    desk.L = "mail"; desk.R = "cal"; desk.l = []; desk.r = [];
+    render();
+    $("#desk").style.opacity = "1";
+    $("#desk").style.transform = "none";
+    say("<b>Другой стол, тот же split.</b> Исследование не закрыто — оно следующее в колоде пар. Имени стола в файле сессии нет: хватает двух заголовков сверху.");
+    return;
+  }
+}
+
+$("#plays").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-play]");
+  if (b) void run(b.dataset.play);
+});
+$("#desk").addEventListener("click", (e) => {
+  const flipEl = e.target.closest("[data-flip]");
+  if (flipEl) {
+    const [side, id] = flipEl.dataset.flip.split(":");
+    desk.ghost = null; desk.propose = false;
+    flip(side, id);
+    render();
+    say(`<b>Переключили.</b> «${T[id].title}» сверху. Остальные — кромки. Это и есть папка.`);
+    return;
+  }
+});
+$("#desk").addEventListener("click", (e) => {
+  if (e.target.closest(".yes") && desk.ghost) {
+    deal("right", desk.ghost);
+    desk.ghost = null; desk.propose = false;
+    render();
+    say("<b>Положили.</b> Конспект из истории лёг под черновик. Статья не уехала.");
+    return;
+  }
+  if (e.target.closest(".no")) {
+    desk.ghost = null; desk.propose = false;
+    render();
+    say("<b>Не надо.</b> Лист-предложение исчез. Стол как был.");
+  }
+});
+$("#theme").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : cur === "light" ? "" : "dark");
+});
+
+$("#desk").style.transition = "opacity 280ms var(--ease), transform 280ms var(--ease)";
+void run("deal");
+</script>
+</body>
+</html>
