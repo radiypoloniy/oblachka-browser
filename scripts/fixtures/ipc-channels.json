@@ -393,6 +393,7 @@
   "TAB_PIN_TOGGLE=tab:pin-toggle",
   "TAB_RELOAD=tab:reload",
   "TAB_REORDER=tab:reorder",
+  "TAB_REPLACE_GROUP=tab:replace-group",
   "TAB_REPLACE_PANEL=tab:replace-panel",
   "TAB_SET_MUTED=tab:set-muted",
   "TAB_SHOW_MENU=tab:show-menu",

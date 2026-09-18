@@ -2271,7 +2271,7 @@ export class TabManager {
   // ⚠️ Выселенная панель НЕ закрывается. Она возвращается в список обычной вкладкой и встаёт
   // сразу за парой, из которой вышла, — там, где человек будет её искать. Закрыть чужую страницу
   // по жесту, который человек считает перестановкой, — потеря его работы без спроса.
-  replaceSplitPanel(panelId: string, newId: string, rememberEvicted = true): void {
+  replaceSplitPanel(panelId: string, newId: string, rememberEvicted = true, relatedIds: string[] = []): void {
     const pair = this.#pairContaining(panelId);
     // Только ПОКАЗЫВАЕМАЯ пара: припаркованная не на экране, целиться в её панель нечем.
     if (!pair || pair !== this.#activePair()) return;
@@ -2290,6 +2290,13 @@ export class TabManager {
 
     this.splitPairs.replacePanel(pair, panelId, newId);
     if (!rememberEvicted) this.splitPairs.forget(panelId);
+    // Остальные вкладки принесённой группы остаются в сайдбаре и получают лишь связь со
+    // слотом. Убираем прежние связи, чтобы одна вкладка не числилась в двух стопках.
+    if (relatedIds.length) {
+      for (const id of relatedIds) this.splitPairs.forget(id);
+      const stack = side === 'left' ? pair.leftStack : pair.rightStack;
+      stack.push(...relatedIds.filter((id) => id !== panelId && id !== newId && !stack.includes(id)));
+    }
     // ⚠️ activeId переставляем ДО repositionViews: #activePair() ищет пару по activeId, и с
     // прежним (уже выселенным) id пара перестала бы находиться — раскладка на кадр схлопнулась
     // бы в одиночную вкладку.
@@ -2333,6 +2340,29 @@ export class TabManager {
 
     this.onChange();
     this.focusActiveView();
+  }
+
+  // Группу кладём в показываемую половину как набор ссылок на уже открытые вкладки.
+  // Первая становится панелью, остальные остаются в дереве и доступны через меню стопки.
+  replaceSplitPanelWithGroup(panelId: string, groupId: string): void {
+    const pair = this.#pairContaining(panelId);
+    const group = this.#findGroupById(groupId);
+    if (!pair || pair !== this.#activePair() || !group) return;
+    const ids = collectTabIds(group.children);
+    if (!ids.length || ids.includes(pair.leftId) || ids.includes(pair.rightId)) return;
+    if (ids.some((id) => {
+      const tab = this.tabMap.get(id);
+      return !tab || !this.#inActiveProfile(tab) || (!this.isHttpView(tab.view) && !tab.sleeping);
+    })) return;
+
+    // Внутренние пары группы уже припаркованы: показываемая пара находится вне неё.
+    // Разбираем их до перемещения первой вкладки, сохраняя обе страницы в том же порядке.
+    for (const inner of [...this.splitPairs]) {
+      if (!ids.includes(inner.leftId) || !ids.includes(inner.rightId)) continue;
+      this.#dissolveSplitPair(inner.leftId, inner.rightId);
+      this.splitPairs.remove(inner);
+    }
+    this.replaceSplitPanel(panelId, ids[0], true, ids.slice(1));
   }
 
   // Список для одной половины показываемой пары. Вкладки в стопке остаются обычными узлами

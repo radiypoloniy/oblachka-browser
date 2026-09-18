@@ -199,6 +199,7 @@ export const SHELL = {
   // Split View
   TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (вкладка + сторона)
   TAB_REPLACE_PANEL: 'tab:replace-panel', // renderer → main: занять половину сплита, выселенная уходит в список
+  TAB_REPLACE_GROUP: 'tab:replace-group', // renderer → main: первая вкладка группы в половину, остальные в стопку
   TAB_EXIT_SPLIT:   'tab:exit-split',   // renderer → main: выйти из split, обе вкладки остаются
   TAB_SPLIT_FOCUS:  'tab:split-focus',  // renderer → main: переключить фокус на панель
   TAB_SPLIT_RATIO:  'tab:split-ratio',  // renderer → main: новое соотношение панелей при drag

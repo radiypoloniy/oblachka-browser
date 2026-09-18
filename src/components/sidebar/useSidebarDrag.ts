@@ -328,9 +328,13 @@ const { tabs, onDropOnContent } = ctx;
     return true;
   }
   // Отпустили над панелью уже открытого сплита — вкладка занимает её место, выселенная
-  // возвращается в список. Ту же проверку, что и у split ниже: группу и половину чужой пары
-  // на панель не кладём.
+  // возвращается в список. Группа открывает первую вкладку и связывает остальные со стопкой;
+  // половину чужой пары напрямую на панель не кладём.
   if (zone === 'replace' && replaceId) {
+    if (draggedId.startsWith('group:')) {
+      void window.oblako.replaceSplitPanelWithGroup(replaceId, draggedId.slice('group:'.length));
+      return true;
+    }
     if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
       void window.oblako.replaceSplitPanel(replaceId, draggedId);
     }

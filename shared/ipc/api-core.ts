@@ -202,6 +202,7 @@ export interface CoreApi {
   // Занять половину показываемой пары вкладкой из списка. Выселенная панель не закрывается —
   // возвращается в список обычной вкладкой сразу за парой, из которой вышла.
   replaceSplitPanel(panelId: string, newId: string): Promise<void>;
+  replaceSplitPanelWithGroup(panelId: string, groupId: string): Promise<void>;
   // keepId — какая панель НАЙДЕННОЙ пары остаётся активной (по умолчанию текущая активная).
   // Нужен жесту «вытащить половину в список»: активной обязана остаться та, которую НЕ тащили.
   exitSplit(tabId: string, keepId?: string): Promise<void>; // схлопнуть пару, содержащую tabId; обе вкладки остаются
