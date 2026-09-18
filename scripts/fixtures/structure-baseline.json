@@ -18,7 +18,7 @@
     "ipc": 0
   },
   "electron/ipc/menus.ts": {
-    "lines": 434,
+    "lines": 435,
     "fn": 406,
     "effects": 0,
     "ipc": 0
@@ -30,7 +30,7 @@
     "ipc": 0
   },
   "electron/preload-content.ts": {
-    "lines": 1622,
+    "lines": 1672,
     "fn": 63,
     "effects": 0,
     "ipc": 0
@@ -48,13 +48,13 @@
     "ipc": 0
   },
   "src/App.tsx": {
-    "lines": 620,
+    "lines": 623,
     "fn": 413,
     "effects": 4,
     "ipc": 26
   },
   "src/aipanel.tsx": {
-    "lines": 450,
+    "lines": 451,
     "fn": 260,
     "effects": 3,
     "ipc": 0
@@ -72,7 +72,7 @@
     "ipc": 10
   },
   "src/components/History.tsx": {
-    "lines": 408,
+    "lines": 398,
     "fn": 246,
     "effects": 3,
     "ipc": 6
@@ -90,7 +90,7 @@
     "ipc": 3
   },
   "src/components/ModelsSection.tsx": {
-    "lines": 582,
+    "lines": 572,
     "fn": 274,
     "effects": 1,
     "ipc": 22
@@ -168,8 +168,8 @@
     "ipc": 3
   },
   "src/components/settings/AppearanceSection.tsx": {
-    "lines": 699,
-    "fn": 498,
+    "lines": 700,
+    "fn": 497,
     "effects": 2,
     "ipc": 4
   },
@@ -192,14 +192,14 @@
     "ipc": 17
   },
   "src/components/settings/RulesSection.tsx": {
-    "lines": 431,
+    "lines": 446,
     "fn": 314,
     "effects": 2,
     "ipc": 7
   },
   "src/components/settings/VpnSection.tsx": {
     "lines": 272,
-    "fn": 247,
+    "fn": 246,
     "effects": 1,
     "ipc": 10
   },
@@ -210,13 +210,13 @@
     "ipc": 1
   },
   "src/searchpopover.tsx": {
-    "lines": 480,
+    "lines": 481,
     "fn": 325,
     "effects": 5,
     "ipc": 0
   },
   "src/sitepopover.tsx": {
-    "lines": 519,
+    "lines": 520,
     "fn": 291,
     "effects": 5,
     "ipc": 0
