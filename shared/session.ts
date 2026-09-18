@@ -34,6 +34,8 @@ export interface SavedTab {
 export interface SavedSingleNode {
   type: 'single';
   url: string;
+  /** Временный ключ для восстановления связи со стопкой split, не постоянный tabId. */
+  key?: string;
   title?: string;
   faviconData?: string;
   /** Профиль вкладки — необязательное, см. SavedTab.profileId. */
@@ -45,6 +47,10 @@ export interface SavedSplitPairNode {
   leftUrl: string;
   rightUrl: string;
   ratio: number;
+  leftKey?: string;
+  rightKey?: string;
+  leftStackKeys?: string[];
+  rightStackKeys?: string[];
   leftTitle?: string;
   rightTitle?: string;
   leftFaviconData?: string;

@@ -11,7 +11,7 @@
 //
 // Запуск: npm test -- session
 import {
-  serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs,
+  serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs, restoreSplitStacks,
 } from '../shared/sessionTree.ts';
 
 let passed = 0;
@@ -102,7 +102,7 @@ console.log('\n— заголовок и иконка —');
   const world = makeWorld({ a: tab('https://a.ru', { title: 'Заголовок', faviconData: 'data:image/png;base64,X' }) });
   const saved = serializeNodes([{ type: 'single', tabId: 'a' }], world);
   check('title и faviconData сохраняются', saved[0], {
-    type: 'single', url: 'https://a.ru', title: 'Заголовок', faviconData: 'data:image/png;base64,X',
+    type: 'single', url: 'https://a.ru', key: 'a', title: 'Заголовок', faviconData: 'data:image/png;base64,X',
   });
 }
 {
@@ -110,7 +110,7 @@ console.log('\n— заголовок и иконка —');
   // title:undefined раздувала бы session.json пустышками при каждом автосейве.
   const world = makeWorld({ a: tab('https://a.ru') });
   const saved = serializeNodes([{ type: 'single', tabId: 'a' }], world);
-  check('неизвестные title/favicon в файл не пишутся', Object.keys(saved[0]), ['type', 'url']);
+  check('неизвестные title/favicon в файл не пишутся', Object.keys(saved[0]), ['type', 'url', 'key']);
 }
 
 console.log('\n— что в сессию не идёт —');
@@ -150,7 +150,7 @@ console.log('\n— split-пара —');
   // и не сохранить приватный адрес.
   const world = makeWorld({ l: tab('https://l.ru'), r: tab('https://secret.ru', { savable: false }) });
   const saved = serializeNodes([{ type: 'split-pair', leftTabId: 'l', rightTabId: 'r', ratio: 0.5 }], world);
-  check('пара вырождается в одиночную вкладку', saved, [{ type: 'single', url: 'https://l.ru' }]);
+  check('пара вырождается в одиночную вкладку', saved, [{ type: 'single', url: 'https://l.ru', key: 'l' }]);
 }
 {
   const world = makeWorld({ l: tab('https://a.ru', { savable: false }), r: tab('https://b.ru', { savable: false }) });
@@ -276,6 +276,31 @@ console.log('\n— пустая сессия —');
   check('пустое дерево сохраняется пустым', serializeNodes([], makeWorld({})), []);
   check('пустое восстанавливается пустым', restore([]), []);
   check('счётчик пустого — ноль', countSavedTabs([]), 0);
+}
+
+console.log('\n— стопка split после перезапуска —');
+{
+  const url = 'https://same.example/';
+  const nodes = [
+    { type: 'split-pair', leftTabId: 'current', rightTabId: 'right', ratio: 0.5 },
+    { type: 'single', tabId: 'previous' },
+    { type: 'single', tabId: 'other' },
+  ];
+  const world = makeWorld({ current: tab(url), right: tab('https://right.example/'),
+    previous: tab(url), other: tab(url) });
+  world.stack = () => ({ left: ['previous'], right: [] });
+  const saved = serializeNodes(nodes, world);
+  check('ссылка на прежнюю вкладку записана', saved[0].leftStackKeys, ['previous']);
+  const keyToId = new Map([['current', 'n1'], ['right', 'n2'], ['previous', 'n3'], ['other', 'n4']]);
+  const restored = [
+    { type: 'split-pair', leftTabId: 'n1', rightTabId: 'n2', ratio: 0.5 },
+    { type: 'single', tabId: 'n3' }, { type: 'single', tabId: 'n4' },
+  ];
+  check('одинаковые URL не путают вкладки в стопке', restoreSplitStacks(saved, restored, keyToId).get('n1'),
+    { left: ['n3'], right: [] });
+  check('старый файл без ключей даёт пустую стопку', restoreSplitStacks([
+    { type: 'split-pair', leftUrl: url, rightUrl: url, ratio: 0.5 },
+  ], restored, keyToId).size, 0);
 }
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);

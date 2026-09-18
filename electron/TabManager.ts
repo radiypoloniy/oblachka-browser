@@ -37,7 +37,7 @@ import type { BangStore } from './BangStore';
 import { SPLIT_PANE_RADIUS, splitPaneBounds, splitIslandRects, splitPanelEntryFrom, clampSplitRatio } from '../shared/layout';
 import { PANEL_SLIDE_MS, slideSplitViews, type SplitSlideMove } from './tabSplitMotion';
 import { prepareSleepUnload } from './tabSleepIndex';
-import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
+import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs, restoreSplitStacks } from '../shared/sessionTree';
 import { buildOrganizedTree } from '../shared/organizeTree';
 import { collectTabIds, collectDirectGroupTabIds, findTopLevelGroupId, reorderNodes, filterNodesByTab, wrapTabInGroup, moveTabNodeToGroup, removeTabNodeFromGroup, findTabParent, groupContaining, findGroupByLabel, findGroupById, renameGroupNode, setGroupNodeColor, toggleGroupNodeCollapse, pruneEmptyGroups, insertSplitPairAt, replaceSplitPairPanelNode, setSplitPairNodeRatio, swapSplitPairNode, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
@@ -736,6 +736,10 @@ export class TabManager {
         return t ? this.#tabView(t) : null;
       },
       liveRatio: (leftTabId) => this.#pairContaining(leftTabId)?.splitRatio ?? null,
+      stack: (leftTabId) => {
+        const pair = this.#pairContaining(leftTabId);
+        return pair ? { left: pair.leftStack, right: pair.rightStack } : null;
+      },
     });
 
     // Инвариант: число сериализованных вкладок == число сохраняемых вкладок tabMap.
@@ -755,12 +759,14 @@ export class TabManager {
   // Восстанавливает дерево узлов из сохранённой сессии.
   // urlToIds: URL → очередь tabId (поддерживает дубликаты URL).
   // Вызывается после создания всех вкладок через createTab, ДО activate().
-  rebuildNodeTree(savedNodes: SavedNode[], urlToIds: Map<string, string[]>): void {
+  rebuildNodeTree(savedNodes: SavedNode[], urlToIds: Map<string, string[]>, keyToId = new Map<string, string>()): void {
     this.nodes = buildNodesFromSaved(savedNodes, urlToIds);
+    const stacks = restoreSplitStacks(savedNodes, this.nodes, keyToId);
     // Регистрируем КАЖДУЮ найденную пару, не только первую: какая окажется показываемой,
     // решает activate(targetId) через #pairContaining, а не порядок здесь.
     this.splitPairs.replace(collectSplitPairs(this.nodes)
-      .map((p) => ({ leftId: p.leftId, rightId: p.rightId, activePanel: 'left' as const, splitRatio: p.ratio, leftStack: [], rightStack: [] })));
+      .map((p) => ({ leftId: p.leftId, rightId: p.rightId, activePanel: 'left' as const, splitRatio: p.ratio,
+        leftStack: stacks.get(p.leftId)?.left ?? [], rightStack: stacks.get(p.leftId)?.right ?? [] })));
   }
 
   // DBG: проверяет, что каждый SplitPairNode в дереве ссылается на существующие tabMap-записи.

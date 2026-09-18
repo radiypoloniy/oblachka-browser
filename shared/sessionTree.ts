@@ -38,10 +38,12 @@ export interface SerializeDeps {
   view(tabId: string): TabView | null;
   // Живой ratio показываемой или припаркованной пары; null — пары сейчас нет, берём из узла.
   liveRatio(leftTabId: string): number | null;
+  stack?(leftTabId: string): { left: string[]; right: string[] } | null;
 }
 
-function toSavedSingle(v: TabView): SavedSingleNode {
+function toSavedSingle(v: TabView, key: string): SavedSingleNode {
   const node: SavedSingleNode = { type: 'single', url: v.url };
+  node.key = key;
   if (v.title) node.title = v.title;
   if (v.faviconData) node.faviconData = v.faviconData;
   if (v.profileId) node.profileId = v.profileId;
@@ -50,12 +52,24 @@ function toSavedSingle(v: TabView): SavedSingleNode {
 
 // Рекурсивная сериализация узлов с деградацией split-pair при отсутствии сохраняемых вкладок.
 export function serializeNodes(nodes: SidebarNode[], d: SerializeDeps): SavedNode[] {
+  const singleIds = new Set<string>();
+  const collectSingles = (items: SidebarNode[]): void => {
+    for (const item of items) {
+      if (item.type === 'single' && d.view(item.tabId)?.savable) singleIds.add(item.tabId);
+      else if (item.type === 'group') collectSingles(item.children);
+    }
+  };
+  collectSingles(nodes);
+  return serializeBranch(nodes, d, singleIds);
+}
+
+function serializeBranch(nodes: SidebarNode[], d: SerializeDeps, singleIds: Set<string>): SavedNode[] {
   const result: SavedNode[] = [];
   for (const node of nodes) {
     if (node.type === 'single') {
       const v = d.view(node.tabId);
       if (!v) continue;
-      if (v.savable) result.push(toSavedSingle(v));
+      if (v.savable) result.push(toSavedSingle(v, node.tabId));
     } else if (node.type === 'split-pair') {
       const left = d.view(node.leftTabId);
       const right = d.view(node.rightTabId);
@@ -67,19 +81,27 @@ export function serializeNodes(nodes: SidebarNode[], d: SerializeDeps): SavedNod
         const ratio = d.liveRatio(node.leftTabId) ?? node.ratio;
         const pairNode: SavedSplitPairNode = {
           type: 'split-pair', leftUrl: left!.url, rightUrl: right!.url, ratio,
+          leftKey: node.leftTabId, rightKey: node.rightTabId,
         };
+        const stack = d.stack?.(node.leftTabId);
+        if (stack) {
+          const leftKeys = stack.left.filter((id) => singleIds.has(id));
+          const rightKeys = stack.right.filter((id) => singleIds.has(id));
+          if (leftKeys.length) pairNode.leftStackKeys = leftKeys;
+          if (rightKeys.length) pairNode.rightStackKeys = rightKeys;
+        }
         if (left!.title) pairNode.leftTitle = left!.title;
         if (right!.title) pairNode.rightTitle = right!.title;
         if (left!.faviconData) pairNode.leftFaviconData = left!.faviconData;
         if (right!.faviconData) pairNode.rightFaviconData = right!.faviconData;
         result.push(pairNode);
       } else if (leftOk) {
-        result.push(toSavedSingle(left!));
+        result.push(toSavedSingle(left!, node.leftTabId));
       } else if (rightOk) {
-        result.push(toSavedSingle(right!));
+        result.push(toSavedSingle(right!, node.rightTabId));
       }
     } else if (node.type === 'group') {
-      const children = serializeNodes(node.children, d);
+      const children = serializeBranch(node.children, d, singleIds);
       // Пустая группа в сессию не идёт: после рестарта это была бы пустая полоса без вкладок.
       if (children.length > 0) {
         result.push({
@@ -148,4 +170,47 @@ export function collectSplitPairs(nodes: SidebarNode[]): RestoredPair[] {
     }
   }
   return out;
+}
+
+// Связывает сохранённые стопки с новыми id вкладок. URL здесь не годится: в дереве могут
+// одновременно жить несколько вкладок одного адреса.
+export function restoreSplitStacks(
+  saved: SavedNode[], nodes: SidebarNode[], keyToId: Map<string, string>,
+): Map<string, { left: string[]; right: string[] }> {
+  const savedPairs: SavedSplitPairNode[] = [];
+  const visit = (items: SavedNode[]): void => {
+    for (const item of items) {
+      if (item.type === 'split-pair') savedPairs.push(item);
+      else if (item.type === 'group') visit(item.children);
+    }
+  };
+  visit(saved);
+  const singles = new Set<string>();
+  const collectSingles = (items: SidebarNode[]): void => {
+    for (const item of items) {
+      if (item.type === 'single') singles.add(item.tabId);
+      else if (item.type === 'group') collectSingles(item.children);
+    }
+  };
+  collectSingles(nodes);
+  const runtimePairs = new Map(collectSplitPairs(nodes).map((pair) => [pair.leftId, pair.rightId]));
+  const result = new Map<string, { left: string[]; right: string[] }>();
+  for (const pair of savedPairs) {
+    const leftId = pair.leftKey && keyToId.get(pair.leftKey);
+    const rightId = pair.rightKey && keyToId.get(pair.rightKey);
+    if (!leftId || !rightId || runtimePairs.get(leftId) !== rightId) continue;
+    const resolve = (keys?: string[]): string[] => {
+      const seen = new Set<string>();
+      const ids: string[] = [];
+      for (const key of keys ?? []) {
+        const id = keyToId.get(key);
+        if (!id || !singles.has(id) || seen.has(id)) continue;
+        seen.add(id);
+        ids.push(id);
+      }
+      return ids;
+    };
+    result.set(leftId, { left: resolve(pair.leftStackKeys), right: resolve(pair.rightStackKeys) });
+  }
+  return result;
 }

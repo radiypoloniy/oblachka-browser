@@ -316,6 +316,7 @@ function filterKnownNodes(arr: unknown[]): SavedNode[] {
 
     if (n['type'] === 'single' && typeof n['url'] === 'string') {
       const node: SavedSingleNode = { type: 'single', url: n['url'] as string };
+      if (typeof n['key'] === 'string') node.key = n['key'];
       if (typeof n['title'] === 'string') node.title = n['title'];
       if (typeof n['faviconData'] === 'string') node.faviconData = n['faviconData'];
       result.push(node);
@@ -332,6 +333,10 @@ function filterKnownNodes(arr: unknown[]): SavedNode[] {
         rightUrl: n['rightUrl'] as string,
         ratio:    n['ratio']    as number,
       };
+      if (typeof n['leftKey'] === 'string') node.leftKey = n['leftKey'];
+      if (typeof n['rightKey'] === 'string') node.rightKey = n['rightKey'];
+      if (Array.isArray(n['leftStackKeys'])) node.leftStackKeys = n['leftStackKeys'].filter((id): id is string => typeof id === 'string').slice(0, 100);
+      if (Array.isArray(n['rightStackKeys'])) node.rightStackKeys = n['rightStackKeys'].filter((id): id is string => typeof id === 'string').slice(0, 100);
       if (typeof n['leftTitle'] === 'string') node.leftTitle = n['leftTitle'];
       if (typeof n['rightTitle'] === 'string') node.rightTitle = n['rightTitle'];
       if (typeof n['leftFaviconData'] === 'string') node.leftFaviconData = n['leftFaviconData'];

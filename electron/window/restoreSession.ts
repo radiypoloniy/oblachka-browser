@@ -30,6 +30,7 @@ export function restoreSession(restored: SessionSnapshot, tabs: TabManager, star
     // tabs.activate(targetId) ниже — уже существующий wake-путь (wakeTab), трогать его не нужно:
     // он одинаково умеет будить и "давно уснувшую", и "рождённую спящей" вкладку.
     const urlToIds = new Map<string, string[]>();
+    const keyToId = new Map<string, string>();
     const collectTabs = (nodes: SavedNode[]) => {
       for (const node of nodes) {
         if (node.type === 'single') {
@@ -37,11 +38,14 @@ export function restoreSession(restored: SessionSnapshot, tabs: TabManager, star
           // createSleepingTab сам фоллбэкнет на домен/null. НЕ путать с доменом: если поле
           // есть в файле — это настоящие данные, накопленные в прошлых сеансах.
           const id = tabs!.createSleepingTab(node.url, node.title, node.faviconData, node.profileId);
+          if (node.key) keyToId.set(node.key, id);
           const list = urlToIds.get(node.url) ?? [];
           list.push(id); urlToIds.set(node.url, list);
         } else if (node.type === 'split-pair') {
           const lId = tabs!.createSleepingTab(node.leftUrl, node.leftTitle, node.leftFaviconData);
           const rId = tabs!.createSleepingTab(node.rightUrl, node.rightTitle, node.rightFaviconData);
+          if (node.leftKey) keyToId.set(node.leftKey, lId);
+          if (node.rightKey) keyToId.set(node.rightKey, rId);
           const lList = urlToIds.get(node.leftUrl)  ?? []; lList.push(lId); urlToIds.set(node.leftUrl,  lList);
           const rList = urlToIds.get(node.rightUrl) ?? []; rList.push(rId); urlToIds.set(node.rightUrl, rList);
         } else if (node.type === 'group') {
@@ -52,7 +56,7 @@ export function restoreSession(restored: SessionSnapshot, tabs: TabManager, star
     collectTabs(restored.nodes);
 
     // Перестраиваем дерево узлов по сохранённой структуре (с группами, парами).
-    tabs.rebuildNodeTree(restored.nodes, urlToIds);
+    tabs.rebuildNodeTree(restored.nodes, urlToIds, keyToId);
 
     // Активная вкладка по activeRef.
     const ref = restored.activeRef;
