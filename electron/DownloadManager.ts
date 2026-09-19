@@ -373,6 +373,13 @@ export class DownloadManager {
       .sort((a, b) => b.startedAt - a.startedAt);
   }
 
+  /** Только постоянные загрузки активного профиля; приватные не попадают в дисковый индекс. */
+  getIndexableCompleted(): DownloadEntry[] {
+    return this.getAll().filter((entry) =>
+      !this.#incognitoIds.has(entry.id) && entry.state === 'completed' && !!entry.savePath,
+    );
+  }
+
   pause(id: string):  void { this.#items.get(id)?.pause(); }
   resume(id: string): void { this.#items.get(id)?.resume(); }
   cancel(id: string): void { this.#items.get(id)?.cancel(); }

@@ -108,8 +108,7 @@ export async function indexHiddenHistoryRow(
       chunkIndex: i, url: row.url, title: row.title,
       text: chunkText, vector: new Float32Array(0), dims: 0,
     }));
-    history.saveContentChunks(row.id, chunkInputs, TEXT_EXTRACTION_VERSION);
-    return 'saved';
+    return history.saveContentChunks(row.id, chunkInputs, TEXT_EXTRACTION_VERSION) ? 'saved' : 'failed';
   } catch (e) {
     console.warn(`[HistoryContentBackfill] страница пропущена (${row.url}):`, (e as Error).message);
     return 'failed';

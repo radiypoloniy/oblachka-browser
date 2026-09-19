@@ -41,7 +41,7 @@ function buildPrompt(lines: string[]): string {
 
 // Тот же разбор, что у групп вкладок: модель может вернуть несуществующий номер, повторить его
 // в двух папках или дописать пояснение — невалидное отбрасываем молча, не падаем.
-function parseAndValidate(raw: string, items: Candidate[]): BookmarkFolderProposal[] {
+export function parseAndValidate(raw: string, items: Candidate[]): BookmarkFolderProposal[] {
   const used = new Set<number>(); // повтор — выигрывает первое вхождение
   const out: BookmarkFolderProposal[] = [];
 
@@ -52,14 +52,16 @@ function parseAndValidate(raw: string, items: Candidate[]): BookmarkFolderPropos
     if (!label) continue;
 
     const ids: number[] = [];
+    const lineNumbers: number[] = [];
     for (const raw of m[2]!.split(',')) {
       const n = Number(raw.trim());
       if (!Number.isInteger(n) || n < 1 || n > items.length) continue;
-      if (used.has(n)) continue;
-      used.add(n);
+      if (used.has(n) || lineNumbers.includes(n)) continue;
+      lineNumbers.push(n);
       ids.push(items[n - 1]!.id);
     }
     if (ids.length < 2) continue; // папка из одной закладки — не раскладка, а переименование
+    for (const n of lineNumbers) used.add(n);
     out.push({ label, ids });
   }
   return out;

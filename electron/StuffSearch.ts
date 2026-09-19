@@ -18,6 +18,8 @@ import type { BookmarkNode, StuffHit } from '../shared/ipc';
 import { collectHistoryCandidates } from './HistorySearch';
 import { queryTokens, countMatches } from '../shared/wordMatch';
 import { rerankHistoryCandidates } from './TranslationService';
+import { fileContentIndexFor } from './FileContentIndex';
+import { getActiveProfile } from './ProfileStore';
 
 // Сколько кандидатов даём модели. Больше — промпт перестаёт быть коротким, и качество отбора падает
 // (тот же потолок, что у умного поиска истории).
@@ -66,7 +68,7 @@ export async function searchStuff(
   const hits: StuffHit[] = [];
 
   // История — тем же сбором, что у умного поиска.
-  for (const c of collectHistoryCandidates(history, q).slice(0, MAX_PER_SOURCE * 2)) {
+  for (const c of collectHistoryCandidates(history, q).slice(0, MAX_PER_SOURCE)) {
     hits.push({
       kind: 'history',
       title: c.title || c.url,
@@ -93,9 +95,31 @@ export async function searchStuff(
     console.warn('[stuff-search] закладки не прочитались:', (e as Error).message);
   }
 
-  // Загрузки — по имени файла. ⚠️ Пропавшие с диска не предлагаем: «нашлось» без возможности
-  // открыть хуже, чем не нашлось вовсе.
+  // Загрузки: FTS содержимого и имя файла. Явный запрос немного ждёт текущую фоновую
+  // индексацию; большая старая коллекция продолжит индексироваться без задержки UI на минуты.
   try {
+    const index = fileContentIndexFor(getActiveProfile().id);
+    const indexable = downloads.getIndexableCompleted();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        index.sync(indexable),
+        new Promise<void>((resolve) => { timer = setTimeout(resolve, 1500); }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    const byId = new Map(indexable.map((entry) => [entry.id, entry]));
+    const downloadHits: StuffHit[] = [];
+    for (const match of index.search(q, MAX_PER_SOURCE)) {
+      const entry = byId.get(match.downloadId);
+      if (!entry || entry.savePath !== match.savePath || entry.fileMissing) continue;
+      downloadHits.push({
+        kind: 'download', title: entry.filename, url: entry.savePath,
+        subtitle: new Date(entry.startedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
+        downloadId: entry.id, snippet: match.snippet,
+      });
+    }
     const scored = downloads.getAll()
       .filter((d) => d.state === 'completed' && d.savePath && !d.fileMissing)
       .map((d) => ({ d, score: countMatches(d.filename, tokens) }))
@@ -103,12 +127,14 @@ export async function searchStuff(
       .sort((a, z) => z.score - a.score)
       .slice(0, MAX_PER_SOURCE);
     for (const { d } of scored) {
+      if (downloadHits.some((hit) => hit.downloadId === d.id)) continue;
       // ⚠️ Подпись загрузки — ДАТА, а не домен источника. Домен у файлов почти всегда бессмысленная
       // раздача («doc-0g-6k-docstext.googleusercontent.com» вместо Google Docs) — он не помогает
       // узнать файл, а место в строке занимает. «Когда я это скачал» человек помнит, «с какой CDN» — нет.
       const when = new Date(d.startedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-      hits.push({ kind: 'download', title: d.filename, url: d.savePath, subtitle: when, downloadId: d.id });
+      downloadHits.push({ kind: 'download', title: d.filename, url: d.savePath, subtitle: when, downloadId: d.id });
     }
+    hits.push(...downloadHits.slice(0, MAX_PER_SOURCE));
   } catch (e) {
     console.warn('[stuff-search] загрузки не прочитались:', (e as Error).message);
   }

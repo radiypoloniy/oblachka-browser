@@ -94,7 +94,7 @@ export async function getPageChanges(
     const chunks = buildTextChunks(after).map((text, i) => ({
       chunkIndex: i, url, title: '', text, vector: new Float32Array(0), dims: 0,
     }));
-    history.saveContentChunks(historyId, chunks, TEXT_EXTRACTION_VERSION);
+    if (!history.saveContentChunks(historyId, chunks, TEXT_EXTRACTION_VERSION)) return NOTHING;
 
     let summary = '';
     if (isModelWarm()) {

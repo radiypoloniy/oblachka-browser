@@ -106,7 +106,7 @@ export default function StuffSearchView({ query, runToken, onSummary, onClose }:
       <EmptyState
         icon={<Sparkles size={22} />}
         title="Ничего не нашлось"
-        hint="Попробуйте другими словами — поиск смотрит по заголовкам, адресам и именам файлов."
+        hint="Попробуйте другими словами — поиск смотрит по заголовкам, адресам и содержимому скачанных документов."
       />
     );
   }
@@ -129,7 +129,7 @@ export default function StuffSearchView({ query, runToken, onSummary, onClose }:
               color: 'var(--text-muted)',
             }}><Icon size={14} /></span>}
             title={hit.title}
-            subtitle={hit.subtitle}
+            subtitle={hit.kind === 'download' && hit.snippet ? `${hit.subtitle} · ${hit.snippet}` : hit.subtitle}
             meta={KIND_LABEL[hit.kind]}
             title2={hit.url}
             onClick={() => open(hit)}

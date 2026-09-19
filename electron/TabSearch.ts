@@ -7,10 +7,8 @@
 // генерации, а она в проекте одна и общая (withQwenQueue) — человек ждал бы модель ради того,
 // что и так найдено подстрокой.
 //
-// ⚠️ Работает только на ТЁПЛОЙ модели (гейт isModelWarm в main.ts): холодная загрузка 9B —
-// 31 секунда и ~6 ГБ VRAM (замерено), и запускать её оттого, что человек печатает фразу в
-// омнибоксе, нельзя. Пока модель холодная, фича молчит; после первого явного обращения к AI
-// (перевод, панель, правка текста) начинает работать сама.
+// ⚠️ FTS уже сохранённого текста отвечает и при холодной модели. Qwen вызывается только
+// когда она тёплая: холодная загрузка 9B — 31 секунда и ~6 ГБ VRAM (замерено).
 //
 // ⚠️ Формат ответа — одна строка «ANSWER: N», не JSON и не голое число (см. buildPrompt).
 //
@@ -19,7 +17,11 @@
 // её точно не видно, то есть ровно там, где поиск нужнее всего. Окна собирает вызывающий (main),
 // сюда они приходят готовым списком: модуль о реестре окон не знает.
 import type { TabState } from '../shared/ipc';
-import { runTabOrganizePrompt } from './TranslationService';
+import { isModelWarm, runTabOrganizePrompt } from './TranslationService';
+import type { HistoryManager } from './HistoryManager';
+import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
+import { normalizeForOmnibox } from '../shared/frecency';
+import { makeSearchSnippet } from './SearchSnippet';
 
 /** Вкладка-кандидат вместе с окном, в котором она живёт. */
 export interface TabCandidate {
@@ -28,7 +30,7 @@ export interface TabCandidate {
 }
 
 // Выше этого числа промпт перестаёт быть коротким, а качество отбора падает: модель начинает
-// «терять» середину списка. У кого открыто больше — тому и обычный поиск по заголовку поможет.
+// «терять» середину списка. FTS ищет по всем открытым вкладкам до этого ограничения.
 const MAX_TABS = 60;
 // Ниже этого числа вкладки видны глазами, и звать ради них модель незачем.
 // ⚠️ Порог живёт ЗДЕСЬ, а не в омнибоксе, с тех пор как ищем по всем окнам: у окна-спрашивающего
@@ -101,26 +103,56 @@ function parseAnswer(out: string, count: number): number[] {
  * Ищет вкладки по смыслу запроса среди ВСЕХ переданных кандидатов (окна собирает вызывающий).
  * Возвращает их в порядке уверенности модели.
  *
- * Пустой массив — «не нашлось» и «модели нет» одновременно: для омнибокса это одно и то же,
- * подсказок просто не появится (страница ошибки ради ненайденной вкладки была бы нелепа).
+ * Пустой массив — не нашлось. Если модель холодная, FTS возвращает свои кандидаты напрямую.
  */
-export async function searchTabsByMeaning(query: string, tabs: TabCandidate[]): Promise<TabCandidate[]> {
+export async function searchTabsByMeaning(
+  query: string, tabs: TabCandidate[], history?: HistoryManager,
+): Promise<TabCandidate[]> {
   const q = query.trim();
   if (q.length < 3) return [];
   // Хаб и пустые вкладки исключаем: искать «новую вкладку» бессмысленно, а модель, увидев их,
   // охотно предлагает именно их — им нечем не подойти.
-  const candidates = tabs
-    .filter((c) => !c.tab.isHub && (c.tab.title.trim() || c.tab.url.trim()))
-    .slice(0, MAX_TABS);
-  if (candidates.length < MIN_TABS) return [];
+  const open = tabs.filter((c) => !c.tab.isHub && (c.tab.title.trim() || c.tab.url.trim()));
+  const byUrl = new Map<string, TabCandidate[]>();
+  for (const candidate of open) {
+    if (candidate.tab.incognito) continue;
+    const key = normalizeForOmnibox(candidate.tab.url);
+    byUrl.set(key, [...(byUrl.get(key) ?? []), candidate]);
+  }
+  const openUrls = [...new Set(open.filter((candidate) => !candidate.tab.incognito)
+    .flatMap((candidate) => [candidate.tab.url, candidate.tab.url.split('#')[0]!]))];
+  const matchingChunks = history?.searchOpenTabChunksFts(q, TEXT_EXTRACTION_VERSION, openUrls, MAX_TABS * 8) ?? [];
+  const ftsHits: TabCandidate[] = [];
+  const snippets = new Map<string, string>();
+  const seen = new Set<string>();
+  for (const chunk of matchingChunks) {
+    const key = normalizeForOmnibox(chunk.url);
+    for (const candidate of byUrl.get(key) ?? []) {
+      const tabKey = `${candidate.windowId}:${candidate.tab.id}`;
+      if (seen.has(tabKey)) continue;
+      seen.add(tabKey);
+      ftsHits.push(candidate);
+      snippets.set(tabKey, makeSearchSnippet(chunk.text, q, 180));
+    }
+  }
+  // FTS может отвечать без модели; заголовки остаются запасным путём при тёплой модели.
+  if (!isModelWarm()) return ftsHits.slice(0, MAX_HITS);
+  const candidates = [...ftsHits, ...open.filter((candidate) =>
+    !seen.has(`${candidate.windowId}:${candidate.tab.id}`),
+  )].slice(0, MAX_TABS);
+  if (candidates.length < MIN_TABS) return ftsHits.slice(0, MAX_HITS);
 
-  const lines = candidates.map((c, i) => `${i + 1}. ${c.tab.title.trim() || c.tab.url} — ${hostOf(c.tab.url)}`);
+  const lines = candidates.map((c, i) => {
+    const snippet = snippets.get(`${c.windowId}:${c.tab.id}`);
+    return `${i + 1}. ${c.tab.title.trim() || c.tab.url} — ${hostOf(c.tab.url)}` +
+      (snippet ? ` | ${snippet}` : '');
+  });
   // ⚠️ Фоновая полоса: человек печатает в омнибоксе, а не заказывал генерацию. Если он в этот
   // же момент нажмёт «перевести», перевод пойдёт первым (см. QwenQueue.ts).
   const res = await runTabOrganizePrompt(buildPrompt(q, lines), { role: 'search', background: true });
   if (!res.ok) {
     console.warn('[tab-search] модель не ответила:', res.error);
-    return [];
+    return ftsHits.slice(0, MAX_HITS);
   }
 
   const out = res.out.trim();

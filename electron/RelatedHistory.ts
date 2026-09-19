@@ -46,7 +46,8 @@ type RelatedJob = {
   ranked: Promise<SemanticSearchResult[]> | null;
 };
 
-let inflight: RelatedJob | null = null;
+// Один и тот же адрес и заголовок встречается в разных профилях с разной историей.
+const jobs = new WeakMap<HistoryManager, RelatedJob>();
 
 function jobKey(currentKey: string, q: string): string {
   return `${currentKey}\n${q}`;
@@ -72,16 +73,16 @@ export async function findRelatedPages(
 
   const currentKey = normalizeForOmnibox(currentUrl);
   const key = jobKey(currentKey, q);
-  if (inflight?.key === key) {
-    if (inflight.ranked) return DONE(await inflight.ranked);
-    return DONE(inflight.fts);
+  const existing = jobs.get(history);
+  if (existing?.key === key) {
+    if (existing.ranked) return DONE(await existing.ranked);
+    return DONE(existing.fts);
   }
 
   const fts = takeRelated(collectHistoryCandidates(history, q), currentKey, limit);
   console.log(`[related] «${q.slice(0, 40)}» → ${fts.length} страниц (FTS)`);
 
   const job: RelatedJob = { key, fts, ranked: null };
-  inflight = job;
   if (!isModelWarm()) return DONE(fts);
 
   job.ranked = searchHistorySmart(history, q, limit + 4, { background: true, related: true })
@@ -94,6 +95,11 @@ export async function findRelatedPages(
     .catch((err) => {
       console.warn('[related] ошибка реранка:', err);
       return fts;
+    })
+    .finally(() => {
+      // После завершения следующий клик должен видеть новые визиты и удаление истории.
+      if (jobs.get(history) === job) jobs.delete(history);
     });
+  jobs.set(history, job);
   return { results: fts, pending: true };
 }

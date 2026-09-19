@@ -7,6 +7,7 @@ import type { SidebarNode, TabState, OrganizeCluster, OrganizeProposal, ModelErr
 import { normalizeForOmnibox } from '../shared/frecency';
 import { groupNameFromDomain } from '../shared/rules';
 import { getLoadedModelId, runTabOrganizePrompt } from './TranslationService';
+import { parse as parseTld } from 'tldts-experimental';
 
 let tabManagerRef: TabManager | null = null;
 export function setTabManager(tm: TabManager): void {
@@ -70,21 +71,14 @@ function extractHostname(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
 }
 
-// Двухуровневые доменные зоны, где «последние две метки» дали бы бессмыслицу («co.uk»).
-// Список короткий намеренно: полный public suffix list — это отдельная зависимость на мегабайт,
-// а нам нужно лишь не склеить в одну группу два разных сайта.
-const TWO_LEVEL_TLDS = new Set(['co.uk', 'org.uk', 'ac.uk', 'com.au', 'com.br', 'co.jp', 'com.tr', 'com.ua']);
-
 // Сайт, которому принадлежит вкладка: daily.afisha.ru и m.afisha.ru — это один сайт afisha.ru.
 // Группировать по ПОЛНОМУ хосту нельзя: поддомены новостных изданий разъехались бы по разным
 // группам, хотя для человека это одно место.
-function siteOf(url: string): string {
+export function siteOf(url: string): string {
   const host = extractHostname(url);
-  if (!host || /^[\d.:]+$/.test(host)) return host; // IP — оставляем как есть
-  const parts = host.split('.');
-  if (parts.length <= 2) return host;
-  const lastTwo = parts.slice(-2).join('.');
-  return TWO_LEVEL_TLDS.has(lastTwo) ? parts.slice(-3).join('.') : lastTwo;
+  if (!host) return host;
+  // Private suffix важен: foo.github.io и bar.github.io принадлежат разным владельцам.
+  return parseTld(host, { allowPrivateDomains: true }).domain ?? host;
 }
 
 const SNIPPET_MAX_CHARS = 200;

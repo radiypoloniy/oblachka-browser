@@ -3,8 +3,8 @@ import path from 'node:path';
 import type { HistoryEntry, HistoryClearPeriod, HistoryContentCoverage } from '../shared/ipc';
 import { isSearchResultUrl } from '../shared/searchEngines';
 import { normalizeForOmnibox } from '../shared/frecency';
-import { coverageFromCounts, isNoisyForEmbedding } from '../shared/historyIndex';
-import { stemText, stemQuery } from './textStemming';
+import { coverageFromCounts, isNoisyForEmbedding, IDLE_CATCHUP_MAX_AGE_MS, IDLE_CATCHUP_MAX_PAGES } from '../shared/historyIndex';
+import { stemText, stemQuery, STEM_VERSION } from './textStemming';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
@@ -70,6 +70,7 @@ export class HistoryManager {
       this.#db = new SqliteConstructor(this.#dbPath);
       this.#setup();
       this.#migrateContentChunksToTextVersion();
+      this.#rebuildFtsWithStemming();
       this.#dropEmbeddingsTable();
       console.log('[History] база инициализирована:', this.#dbPath);
     } catch (e) {
@@ -173,17 +174,16 @@ export class HistoryManager {
     }
   }
 
-  saveContentChunks(historyId: number, chunks: ContentChunkInput[], modelVersion: string): void {
-    if (!this.#db || chunks.length === 0) return;
+  saveContentChunks(historyId: number, chunks: ContentChunkInput[], modelVersion: string): boolean {
+    if (!this.#db || chunks.length === 0) return false;
     const db = this.#db;
     try {
       const run = db.transaction(() => {
         const oldIds = db.prepare(`
           SELECT id FROM history_content_chunks WHERE history_id = ? AND model_version = ?
         `).all(historyId, modelVersion) as Array<{ id: number }>;
-        for (const row of oldIds) {
-          try { db.prepare(`DELETE FROM history_content_chunks_fts WHERE rowid = ?`).run(row.id); } catch { /* FTS может быть недоступен */ }
-        }
+        const deleteFts = db.prepare(`DELETE FROM history_content_chunks_fts WHERE rowid = ?`);
+        for (const row of oldIds) deleteFts.run(row.id);
         db.prepare(`DELETE FROM history_content_chunks WHERE history_id = ? AND model_version = ?`).run(historyId, modelVersion);
 
         const insertChunk = db.prepare(`
@@ -191,12 +191,9 @@ export class HistoryManager {
             (history_id, chunk_index, url, title, text, vector, dims, model_version, indexed_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        let insertFts: import('better-sqlite3').Statement | null = null;
-        try {
-          insertFts = db.prepare(`
-            INSERT INTO history_content_chunks_fts(rowid, text, title, url) VALUES (?, ?, ?, ?)
-          `);
-        } catch { /* FTS может быть недоступен */ }
+        const insertFts = db.prepare(`
+          INSERT INTO history_content_chunks_fts(rowid, text, title, url) VALUES (?, ?, ?, ?)
+        `);
         const indexedAt = Date.now();
         for (const chunk of chunks) {
           const buf = Buffer.from(chunk.vector.buffer, chunk.vector.byteOffset, chunk.vector.byteLength);
@@ -207,12 +204,14 @@ export class HistoryManager {
           // Стеммим ТОЛЬКО копию для FTS — chunk.text/chunk.title выше в history_content_chunks
           // остаются как есть (сниппеты, промпт Qwen). url не стеммим — не проза, стеммер на нём
           // не навредит (латиница проходит без изменений), но и пользы нет, лишний повод для сомнений.
-          try { insertFts?.run(Number(info.lastInsertRowid), stemText(chunk.text), stemText(chunk.title), chunk.url); } catch { /* FTS может быть недоступен */ }
+          insertFts.run(Number(info.lastInsertRowid), stemText(chunk.text), stemText(chunk.title), chunk.url);
         }
       });
       run();
+      return true;
     } catch (e) {
       console.warn('[History] saveContentChunks error:', (e as Error).message);
+      return false;
     }
   }
 
@@ -257,6 +256,33 @@ export class HistoryManager {
       console.warn('[History] getHistoryWithoutContent error:', (e as Error).message);
       return [];
     }
+  }
+
+  // Тихому добору нужны только несколько свежих содержательных страниц. Идём по индексу
+  // last_visit и прекращаем чтение после восьмой подходящей строки, чтобы старый большой архив
+  // не выгружался в JS каждые 30 секунд простоя. Полный бэкфилл и счётчик охвата используют
+  // прежний getHistoryWithoutContent() без этих ограничений.
+  getIdleCatchupPages(nowMs: number): Array<{ id: number; url: string; title: string; lastVisit: number }> {
+    if (!this.#db) return [];
+    const pages: Array<{ id: number; url: string; title: string; lastVisit: number }> = [];
+    try {
+      const rows = this.#db.prepare(`
+        SELECT h.id, h.url, h.title, h.last_visit AS lastVisit FROM history h
+        WHERE h.last_visit >= ?
+          AND NOT EXISTS (
+            SELECT 1 FROM history_content_chunks c WHERE c.history_id = h.id
+          )
+        ORDER BY h.last_visit DESC
+      `).iterate(nowMs - IDLE_CATCHUP_MAX_AGE_MS) as IterableIterator<{ id: number; url: string; title: string; lastVisit: number }>;
+      for (const row of rows) {
+        if (isNoisyForEmbedding(row.url, row.title)) continue;
+        pages.push(row);
+        if (pages.length >= IDLE_CATCHUP_MAX_PAGES) break;
+      }
+    } catch (e) {
+      console.warn('[History] getIdleCatchupPages error:', (e as Error).message);
+    }
+    return pages;
   }
 
   countAll(): number {
@@ -554,6 +580,65 @@ export class HistoryManager {
       run();
     } catch (e) {
       console.warn('[History] migrateContentChunksToTextVersion error:', (e as Error).message);
+    }
+  }
+
+  /** Поиск только по открытым адресам: закрытые страницы не съедают лимит подсказок вкладок. */
+  searchOpenTabChunksFts(query: string, modelVersion: string, urls: string[], limit: number): HistoryContentChunk[] {
+    if (!this.#db || urls.length === 0) return [];
+    const ftsQuery = buildFtsQuery(query);
+    if (!ftsQuery) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT c.id AS chunkId, c.history_id AS historyId, c.chunk_index AS chunkIndex,
+               c.url, h.title AS title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
+               c.vector, c.dims, c.model_version AS modelVersion,
+               bm25(history_content_chunks_fts) AS rank
+        FROM history_content_chunks_fts
+        JOIN history_content_chunks c ON c.id = history_content_chunks_fts.rowid
+        JOIN history h ON h.id = c.history_id
+        WHERE history_content_chunks_fts MATCH ? AND c.model_version = ?
+          AND h.url IN (SELECT value FROM json_each(?))
+        ORDER BY rank ASC LIMIT ?
+      `).all(ftsQuery, modelVersion, JSON.stringify(urls), limit) as HistoryContentChunk[];
+    } catch (e) {
+      console.warn('[History] searchOpenTabChunksFts error:', (e as Error).message);
+      return [];
+    }
+  }
+
+  // В старых профилях FTS мог содержать исходные слова; пересборка помечает версию после коммита.
+  #rebuildFtsWithStemming(): void {
+    if (!this.#db) return;
+    const db = this.#db;
+    try {
+      const version = db.prepare(`SELECT value FROM history_meta WHERE key = 'fts_stem_version'`).get() as { value: string } | undefined;
+      if (version?.value === STEM_VERSION) return;
+      const rebuild = db.transaction(() => {
+        db.prepare(`DELETE FROM history_content_chunks_fts`).run();
+        const insert = db.prepare(`
+          INSERT INTO history_content_chunks_fts(rowid, text, title, url) VALUES (?, ?, ?, ?)
+        `);
+        const nextRows = db.prepare(`
+          SELECT id, text, title, url FROM history_content_chunks
+          WHERE id > ? ORDER BY id LIMIT 256
+        `);
+        type FtsSourceRow = { id: number; text: string; title: string; url: string };
+        let lastId = 0;
+        while (true) {
+          const rows = nextRows.all(lastId) as FtsSourceRow[];
+          if (rows.length === 0) break;
+          for (const row of rows) insert.run(row.id, stemText(row.text), stemText(row.title), row.url);
+          lastId = rows[rows.length - 1].id;
+        }
+        db.prepare(`
+          INSERT INTO history_meta(key, value) VALUES ('fts_stem_version', ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `).run(STEM_VERSION);
+      });
+      rebuild();
+    } catch (e) {
+      console.warn('[History] FTS не удалось пересобрать:', (e as Error).message);
     }
   }
 

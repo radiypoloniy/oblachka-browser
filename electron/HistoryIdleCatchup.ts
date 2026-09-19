@@ -10,8 +10,6 @@ import type { BrowserWindow } from 'electron';
 import type { HistoryManager } from './HistoryManager';
 import { isContentBackfillRunning, indexHiddenHistoryRow } from './HistoryContentBackfill';
 import {
-  isNoisyForEmbedding,
-  pickIdleCatchupPages,
   shouldRunIdleCatchup,
   IDLE_CATCHUP_START_DELAY_MS,
   IDLE_CATCHUP_TICK_MS,
@@ -61,13 +59,7 @@ async function runCatchup(opts: {
 
   const history = opts.history();
   const now = Date.now();
-  const pages = pickIdleCatchupPages(
-    history.getHistoryWithoutContent().map((row) => ({
-      ...row,
-      noisy: isNoisyForEmbedding(row.url, row.title),
-    })),
-    now,
-  );
+  const pages = history.getIdleCatchupPages(now);
   if (pages.length === 0) return;
 
   catchupRunning = true;

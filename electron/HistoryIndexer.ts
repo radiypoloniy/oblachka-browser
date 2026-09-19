@@ -35,9 +35,22 @@ import {
 // заново непроиндексированным. Источник истины — чанки в БД, но только если текст не скелетон
 // («Загружается... (собрано 74%)»): иначе повторный визит должен извлечь снова, а не no-op.
 // Set — дешёвый кэш ПОВЕРХ этой проверки. На старте он пуст, это нормально.
-const indexedHistoryIds = new Set<number>();
-const inFlight = new Map<number, Promise<void>>();
-const lastNoise = new Map<number, HistoryNoiseKind>();
+type HistoryIndexState = {
+  indexedIds: Set<number>;
+  inFlight: Map<number, Promise<void>>;
+  lastNoise: Map<number, HistoryNoiseKind>;
+};
+
+// id записи уникален только внутри одной БД: разные профили начинают нумерацию заново.
+const states = new WeakMap<HistoryManager, HistoryIndexState>();
+function stateFor(history: HistoryManager): HistoryIndexState {
+  let state = states.get(history);
+  if (!state) {
+    state = { indexedIds: new Set(), inFlight: new Map(), lastNoise: new Map() };
+    states.set(history, state);
+  }
+  return state;
+}
 const extractLimiter = createLimiter(HISTORY_INDEX_CONCURRENCY);
 
 // Сколько ждать did-finish-load, прежде чем сдаться и уйти в fallback (title+hostname) —
@@ -95,7 +108,7 @@ export function buildTextChunks(text: string): string[] {
 /** Живое извлечение этой записи ещё идёт — вкладку нельзя выгружать, снимок умрёт вместе с вью. */
 export function isHistoryIndexInFlight(history: HistoryManager, url: string): boolean {
   const id = history.getIdByUrl(url);
-  return id !== null && inFlight.has(id);
+  return id !== null && stateFor(history).inFlight.has(id);
 }
 
 // Резолвится либо по событию did-finish-load ЭТОЙ вкладки, либо по таймауту — что раньше.
@@ -204,26 +217,27 @@ export async function indexVisit(
   const historyId = history.getIdByUrl(url);
   if (historyId === null) return; // #shouldRecord отфильтровал (about:/поиск-result/…) — индексировать нечего
 
+  const state = stateFor(history);
   const noise = classifyHistoryNoise(url, title);
-  const previousNoise = lastNoise.get(historyId) ?? null;
-  const memoryDone = indexedHistoryIds.has(historyId);
+  const previousNoise = state.lastNoise.get(historyId) ?? null;
+  const memoryDone = state.indexedIds.has(historyId);
   const hasContent = hasUsableStoredContent(history, historyId);
   const decision = decideHistoryIndex({
     trigger,
     hasContent,
     memoryDone,
-    inFlight: inFlight.has(historyId),
+    inFlight: state.inFlight.has(historyId),
     noise,
     previousNoise,
   });
-  lastNoise.set(historyId, noise);
+  state.lastNoise.set(historyId, noise);
 
   if (decision === 'skip') {
-    if (hasContent) indexedHistoryIds.add(historyId);
+    if (hasContent) state.indexedIds.add(historyId);
     return;
   }
   if (decision === 'remember-url-noise') {
-    indexedHistoryIds.add(historyId);
+    state.indexedIds.add(historyId);
     return;
   }
 
@@ -246,7 +260,7 @@ export async function indexVisit(
     // Редирект на логин после settle — текст формы входа в индекс не кладём.
     const liveTitle = (!wc || wc.isDestroyed() ? title : wc.getTitle()) || title;
     if (classifyHistoryNoise(url, liveTitle) === 'url') {
-      indexedHistoryIds.add(historyId);
+      state.indexedIds.add(historyId);
       return;
     }
 
@@ -263,13 +277,14 @@ export async function indexVisit(
       vector: new Float32Array(0),
       dims: 0,
     }));
-    history.saveContentChunks(historyId, chunkInputs, TEXT_EXTRACTION_VERSION);
-    indexedHistoryIds.add(historyId); // помечаем ТОЛЬКО после реально успешной записи
+    if (history.saveContentChunks(historyId, chunkInputs, TEXT_EXTRACTION_VERSION)) {
+      state.indexedIds.add(historyId); // помечаем ТОЛЬКО после реально успешной записи
+    }
   });
-  inFlight.set(historyId, job);
+  state.inFlight.set(historyId, job);
   try {
     await job;
   } finally {
-    inFlight.delete(historyId);
+    state.inFlight.delete(historyId);
   }
 }

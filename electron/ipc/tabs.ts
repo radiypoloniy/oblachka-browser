@@ -8,7 +8,6 @@ import { getPageChanges } from '../PageChanges';
 import { findRelatedPages } from '../RelatedHistory';
 import { searchStuff } from '../StuffSearch';
 import { searchTabsByMeaning } from '../TabSearch';
-import { isModelWarm } from '../TranslationService';
 import { applyUiLanguage as applySkillsLanguage } from '../SkillsStore';
 import { allContexts, broadcastToChrome, contextFromSender } from '../WindowRegistry';
 import { ipcMain } from 'electron';
@@ -76,11 +75,8 @@ export function registerTabsIpc(d: IpcDeps): void {
   // бы в хвост, заняв модель на десятки секунд ради подсказки, которая давно устарела.
   ipcMain.handle(IPC.TABS_SEARCH_SMART, async (e, query: string): Promise<SmartTabHit[]> => {
     const from = contextFromSender(e.sender);
-    // ⚠️ Только на ТЁПЛОЙ модели. Замерено: холодная загрузка 9B — 31 секунда и ~6 ГБ VRAM.
-    // Человек, печатающий фразу в омнибоксе, этого не заказывал; подсказка не стоит того, чтобы
-    // поднимать модель. Пока она холодная, фича просто молчит — а после первого явного обращения
-    // к AI (перевод, панель, правка текста) начинает работать сама собой.
-    if (!from || smartTabSearchBusy || !isModelWarm()) return [];
+    // FTS сохранённого текста отвечает и при холодной модели; Qwen при этом не поднимаем.
+    if (!from || smartTabSearchBusy) return [];
     smartTabSearchBusy = true;
     try {
       // ⚠️ Кандидаты — со ВСЕХ окон (AI-IDEAS.md №8). Своё окно идёт первым: при равной
@@ -91,7 +87,7 @@ export function registerTabsIpc(d: IpcDeps): void {
       const candidates = [...own, ...others].flatMap((ctx) =>
         ctx.tabs.snapshot().map((tab) => ({ tab, windowId: ctx.win.id })),
       );
-      const picked = await searchTabsByMeaning(query, candidates);
+      const picked = await searchTabsByMeaning(query, candidates, history());
       return picked.map((c) => ({
         tabId: c.tab.id,
         windowId: c.windowId,

@@ -19,6 +19,7 @@ import { modelFor, type JsonSchema, type AiRole, type ChatVia, type Provider, ty
 import * as FileStore from './ai/FileStore'
 import { isQwenBusy, withQwenQueue, withQwenQueueBackground } from './QwenQueue'
 import { buildRelatedRerankPrompt } from '../shared/relatedHistory'
+import { parseRerankIndices } from '../shared/rerankOutput'
 export { withQwenQueueBackground }
 import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
 
@@ -423,9 +424,8 @@ function buildRerankPrompt(query: string, candidates: RerankCandidate[], related
 
 // Возвращает индексы candidates (0-based) в порядке релевантности по мнению модели — может быть
 // короче/длиннее/в любом порядке относительно исходного cosine-ранжирования, может быть пустым
-// массивом (не нашла релевантных). Не бросает по формату ответа — нераспознанные токены просто
-// не попадают в результат (см. регэксп ниже); полный провал модели (исключение runPrompt) уходит
-// наверх вызывающей стороне, которая уже решает про fallback (см. searchHistorySmart).
+// массивом (не нашла релевантных). Неверный формат ответа бросает исключение: вызывающая
+// сторона отдаёт честно помеченный запасной результат, а не принимает цифры из пояснения.
 export async function rerankHistoryCandidates(
   query: string,
   candidates: RerankCandidate[],
@@ -442,13 +442,7 @@ export async function rerankHistoryCandidates(
   // моделью.
   await ensureLoaded()
   const { out } = await runPrompt(buildRerankPrompt(query, candidates, opts?.related), RERANK_MAX_TOKENS, undefined, { ...opts, role: 'search' })
-  const seen = new Set<number>()
-  const result: number[] = []
-  for (const raw of out.match(/\d+/g) ?? []) {
-    const i = Number(raw)
-    if (i >= 0 && i < candidates.length && !seen.has(i)) { seen.add(i); result.push(i) }
-  }
-  return result
+  return parseRerankIndices(out, candidates.length)
 }
 
 // Лимит вывода для группировки вкладок (TabOrganizer.ts) — на живом замере (20 вкладок) валидный

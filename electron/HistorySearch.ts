@@ -37,8 +37,10 @@ const SMART_LEXICAL_CANDIDATE_LIMIT = 8;
 // несколькими чанками ОДНОЙ страницы (живая проверка на "apple": 4 из 12 строк — один и тот же
 // историId). SMART_FTS_SQL_LIMIT — запас по чанкам, из которого дедуп по historyId ниже
 // (dedupChunksByHistoryId) достаёт уже SMART_FTS_CANDIDATE_LIMIT РАЗНЫХ страниц.
-const SMART_FTS_SQL_LIMIT = 60;
 const SMART_FTS_CANDIDATE_LIMIT = 12;
+// До восьми чанков одной страницы могут подряд занять выдачу FTS. Бюджет строк
+// гарантирует место для 12 разных страниц даже при таком худшем порядке.
+const SMART_FTS_SQL_LIMIT = SMART_FTS_CANDIDATE_LIMIT * 8;
 
 // Строки уже отсортированы по bm25 (searchContentChunksFts::ORDER BY rank ASC) — первое
 // вхождение historyId в порядке обхода и есть лучший по релевантности чанк этой страницы.
