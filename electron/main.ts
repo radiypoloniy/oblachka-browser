@@ -56,6 +56,7 @@ import { verifyUser } from './osAuth';
 import { PasswordManager } from './PasswordManager';
 import { AutofillManager } from './AutofillManager';
 import { DownloadManager } from './DownloadManager';
+import { fileContentIndexFor } from './FileContentIndex';
 import { PermissionManager } from './PermissionManager';
 import { SettingsManager } from './SettingsManager'; import { bindUiLanguage, t, tf } from './uiText';
 import * as ModelRegistry from './ModelRegistry';
@@ -102,6 +103,8 @@ import { suggestFolderForBookmark } from './BookmarkFolderPick';
 import { detectProduct } from './ProductDetector';
 import { TrackingStore } from './TrackingStore';
 import { initTrackingChecker, setTrackingEventHandler } from './TrackingChecker';
+import { flightMenuTemplate, refreshFlightForWebContents } from './FlightWatch';
+import * as travelpayoutsKeyStore from './TravelpayoutsKeyStore';
 import { initTimer } from './TimerService';
 import { findMatchFor } from './ProductMatcher';
 import * as clipboardBuffer from './ClipboardBuffer';
@@ -345,18 +348,6 @@ async function refreshProductForWebContents(wc: Electron.WebContents): Promise<v
 }
 
 /**
- * Меню у индикатора товара. Нативное, как у звезды закладки: поповер здесь не нужен, а нативное
- * меню рисуется поверх нативной вью страницы без всяких ухищрений.
- */
-/**
- * Тост об изменении цены. Вынесен функцией, потому что его зовёт и показ примеров
- * (OBLAKO_NOTIFY_PREVIEW): примерка обязана идти тем же путём, что настоящее уведомление, иначе
- * она показывала бы не то, что человек получит.
- *
- * ⚠️ Клик открывает страницу товара: уведомление, сообщающее новость, с которой ничего нельзя
- * сделать, — это просто помеха.
- */
-/**
  * Тост таймера.
  *
  * ⚠️ Клик ВОЗВРАЩАЕТ В БРАУЗЕР, а не открывает страницу: таймер человек ставил, уже находясь
@@ -376,6 +367,7 @@ function showTimerToast(): void {
   n.show();
 }
 
+/** Тост об изменении цены. Клик открывает страницу товара или поиска билета. */
 function showTrackingToast(title: string, url: string, text: string): void {
   if (!Notification.isSupported()) return;
   const n = new Notification({ title: title.slice(0, 80), body: text });
@@ -734,7 +726,10 @@ function wireSharedSessions(): void {
     // Отдельным пушем — в открытый поповер: broadcastToChrome доходит только до слоёв хрома,
     // а поповер живёт своей WebContentsView и иначе показывал бы замерший прогресс.
     broadcastDownloads(entries);
+    fileContentIndexFor(getActiveProfile().id).schedule(downloads.getIndexableCompleted());
   });
+  // Старые загрузки нужно проиндексировать и после обычного старта без новых событий.
+  fileContentIndexFor(getActiveProfile().id).schedule(downloads.getIndexableCompleted());
 
   // Разрешения: хендлер на дефолтной сессии + на инкогнито-сессии (ниже) — обе через один колбэк.
   // ⚠️ Запрос приходит от вкладки, но PermissionManager не сообщает, от какой именно, — поэтому
@@ -1255,7 +1250,7 @@ export function makeWindowDeps() {
   return {
     PRODUCT_DETECT_DELAY_MS,
     downloads, hubChat, permissions, searchTargets,
-    pushProductState, refreshProductForWebContents,
+    pushProductState, refreshProductForWebContents, refreshFlightForWebContents,
     adblock, bangs, bookmarks, graphs, history, rules, settings,
     createWindow, ensureVpnOnForRules, maybeLazyWarmupOnDemand,
     moveTabToExistingWindow, notifyGraphChanged,
@@ -1302,6 +1297,7 @@ export function makeIpcDeps() {
     // Пункты отслеживания цены отдельно от их показа: меню «⋯» в адресной строке вкладывает их
     // подменю, а не строит второй такой же список (см. productMenuTemplate).
     productMenuTemplate,
+    flightMenuTemplate,
     // ⚠️ Изменяемое состояние main — только доступом. Положить его в объект по значению значило бы
     // раздать обработчикам копию: запись ушла бы в никуда, а чтение отдавало бы значение на момент
     // сборки контекста.
@@ -1501,6 +1497,7 @@ app.whenReady().then(async () => {
     onChange: (state) => broadcastToChrome(IPC.TIMER_CHANGED, state),
   });
   searxngKeyStore.loadFromDisk();
+  travelpayoutsKeyStore.loadFromDisk();
   vpnKeyStore.loadFromDisk();
   skillsStore.loadFromDisk();
   // Закреплённое в буфере — единственное, что буфер вообще держит на диске (см. ClipboardPins.ts).

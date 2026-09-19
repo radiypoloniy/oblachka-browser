@@ -27,7 +27,7 @@ import type { IpcDeps } from './deps';
 import { t as tr } from '../uiText';
 
 export function registerMenusIpc(d: IpcDeps): void {
-  const { buildMoveToWindowItems, chromeOf, collectGroups, escapeHtml, escapeHtmlAttr, graphs, moveTabToNewWindow, notifyGraphChanged, productMenuTemplate, renameTabSmart, sendTo, settings, tabsOf, winOf } = d;
+  const { buildMoveToWindowItems, chromeOf, collectGroups, escapeHtml, escapeHtmlAttr, graphs, moveTabToNewWindow, notifyGraphChanged, productMenuTemplate, flightMenuTemplate, renameTabSmart, sendTo, settings, tabsOf, winOf } = d;
 
   // AI-группировка вкладок (Phase 4)
   ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (e, clusters: OrganizeCluster[]) => tabsOf(e)?.applyOrganize(clusters));
@@ -105,7 +105,7 @@ export function registerMenusIpc(d: IpcDeps): void {
   // «переведено»), которого из закрытого меню не видно. Поэтому само «⋯» подсвечивается акцентом,
   // пока перевод активен (см. Toolbar.tsx): состояние остаётся на виду, а ширина полосы не пляшет.
   // Плата честная и осознанная — «показать оригинал» стало в два клика вместо одного.
-  ipcMain.handle(IPC.OMNIBOX_MORE_MENU, (e) => {
+  ipcMain.handle(IPC.OMNIBOX_MORE_MENU, async (e) => {
     const w = winOf(e);
     if (!w) return;
     const state = getPageTranslateActiveState();
@@ -121,10 +121,9 @@ export function registerMenusIpc(d: IpcDeps): void {
     // Цены на странице нет — и пунктов про неё нет. Обещать отслеживание там, где оно не
     // сработает, нельзя (тот же принцип, что у самого индикатора товара, см. PRICE-TRACKING.md).
     const product = productMenuTemplate(w);
-    if (product) {
-      items.push({ type: 'separator' });
-      items.push({ label: tr('Отслеживание цены'), submenu: product });
-    }
+    if (product) items.push({ type: 'separator' }, { label: tr('Отслеживание цены'), submenu: product });
+    const flight = await flightMenuTemplate(w);
+    if (flight) items.push({ type: 'separator' }, { label: tr('Билеты Aviasales'), submenu: flight });
     Menu.buildFromTemplate(items).popup({ window: w });
   });
 

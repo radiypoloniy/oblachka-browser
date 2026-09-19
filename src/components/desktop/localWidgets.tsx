@@ -6,7 +6,7 @@ import { CalendarFace, TimerLayout } from './clockFaces'; import { useLanguage }
 export { CardsWidget } from './cardsWidget';
 import { TIMER_PRESETS, timerLeftMs, timerResume, timerRunning } from '../../newtab/timerStore';
 import type { TimerState } from '../../../shared/ipc';
-import type { TrackedProduct } from '../../../shared/ipc';
+import type { TrackedProduct, TrackedFlight } from '../../../shared/ipc';
 import type { DayDigestState } from '../../../shared/ipc';
 
 // Виджеты, которым НЕ НУЖНА СЕТЬ. Отдельным файлом не только ради объёма widgets.tsx: это
@@ -343,8 +343,12 @@ export function DownloadsWidget({ box, fill, overImage, hero: isHero }: WidgetPr
 // в первую очередь читателя, а не компилятор.
 export function TrackingWidget({ box, fill, onActivate, overImage, hero: isHero }: WidgetProps) {
   const [items, setItems] = useState<TrackedProduct[]>([]);
+  const [flights, setFlights] = useState<TrackedFlight[]>([]);
 
-  const load = () => { void window.oblako.listTracked().then(setItems); };
+  const load = () => {
+    void window.oblako.listTracked().then(setItems);
+    void window.oblako.listFlightWatches().then(setFlights);
+  };
   useEffect(() => { load(); }, []);
   useEffect(() => window.oblako.onTrackingChanged(load), []);
 
@@ -356,26 +360,36 @@ export function TrackingWidget({ box, fill, onActivate, overImage, hero: isHero 
     groups.set(key, [...(groups.get(key) ?? []), it]);
   }
 
-  // Герой — тот, чья цена сильнее всего сдвинулась с добавления (в любую сторону: подорожание
-  // человеку тоже новость). Если не двигалась ни одна — самый дешёвый из отслеживаемых: показать
-  // хоть что-то живое лучше, чем пустую плитку.
-  let hero: TrackedProduct | null = null;
-  let heroMove = -1;
+  type Hero = { title: string; currency: string; points: TrackedProduct['points']; subtitle: string };
+  // Объект, а не let: присвоение внутри consider TS иначе не видит, и после проверки hero
+  // сужается до never.
+  const pick: { hero: Hero | null; move: number } = { hero: null, move: -1 };
+  const consider = (cand: Hero) => {
+    const first = cand.points[0]?.price ?? 0;
+    const last = cand.points[cand.points.length - 1]?.price ?? 0;
+    if (!last) return;
+    const move = first ? Math.abs(last - first) : 0;
+    if (move > pick.move) { pick.move = move; pick.hero = cand; }
+  };
   for (const offers of groups.values()) {
-    // Внутри группы берём предложение с лучшей ценой — к нему человек и пойдёт.
     const best = [...offers].sort((a, b) => (a.points[a.points.length - 1]?.price ?? Infinity)
                                           - (b.points[b.points.length - 1]?.price ?? Infinity))[0];
-    if (!best) continue;
-    const first = best.points[0]?.price ?? 0;
-    const last = best.points[best.points.length - 1]?.price ?? 0;
-    if (!last) continue;
-    const move = first ? Math.abs(last - first) : 0;
-    if (move > heroMove) { heroMove = move; hero = best; }
+    if (best) consider({ title: best.title, currency: best.currency, points: best.points, subtitle: best.host });
+  }
+  for (const f of flights) {
+    consider({
+      title: f.title,
+      currency: f.currency,
+      points: f.points,
+      subtitle: f.airline ? `${f.airline} ${f.flightNumber}` : 'Aviasales',
+    });
   }
 
   const money = (v: number, cur: string) => `${Math.round(v).toLocaleString('ru-RU')} ${cur === 'RUB' || !cur ? '₽' : cur}`;
+  const watchCount = groups.size + flights.length;
+  const hero = pick.hero;
 
-  if (groups.size === 0 || !hero) {
+  if (watchCount === 0 || !hero) {
     return (
       <Tile surface toned overImage={overImage} hero={isHero} fill={fill} onActivate={onActivate}>
         <TileCaption>Отслеживание</TileCaption>
@@ -383,7 +397,7 @@ export function TrackingWidget({ box, fill, onActivate, overImage, hero: isHero 
           Ничего не отслеживается
         </div>
         <div style={{ flex: 'none', fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
-          Значок в адресной строке на карточке товара
+          Товар в строке адреса или поиск Aviasales в «⋯»
         </div>
       </Tile>
     );
@@ -394,9 +408,8 @@ export function TrackingWidget({ box, fill, onActivate, overImage, hero: isHero 
   const last = prices[prices.length - 1] ?? 0;
   const diff = first ? last - first : 0;
   const down = diff < 0;
-  // Тесная плитка (2×1): график и название не помещаются, остаётся цена с изменением.
   const tight = box.height < 120;
-  const others = groups.size - 1;
+  const others = watchCount - 1;
 
   // ⚠️ Кегль цены СЧИТАЕТСЯ от плитки, а не задан константой. Прежние 18/22 не зависели ни от
   // ширины плитки, ни от длины самой цены: на крупной плитке ключевое число выглядело мельче
@@ -444,7 +457,7 @@ export function TrackingWidget({ box, fill, onActivate, overImage, hero: isHero 
 
       <div style={{ flex: 1 }} />
       <div style={{ flex: 'none', fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
-        {hero.host}{others > 0 ? ` · ещё ${others} ${others === 1 ? 'товар' : 'товара'}` : ''}
+        {hero.subtitle}{others > 0 ? ` · ещё ${others}` : ''}
       </div>
     </Tile>
   );

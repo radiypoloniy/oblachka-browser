@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle, Bell, BellOff, Link2, Unlink, Store } from 'lucide-react';
-import type { TrackedProduct, TrackingEvent, MatchSuggestion } from '../../shared/ipc';
+import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle, Bell, BellOff, Link2, Unlink, Store, Plane } from 'lucide-react';
+import type { TrackedProduct, TrackedFlight, TrackingEvent, MatchSuggestion } from '../../shared/ipc';
 import { CAPS, RADIUS, TEXT, sp } from '../styles/system';
 import { EmptyState } from './EmptyState';
 import type { LibrarySummary } from './library/kit';
@@ -110,6 +110,7 @@ function toCards(items: TrackedProduct[]): ProductCardData[] {
 // ⚠️ Последний показанный список — переживает размонтирование раздела и ЗАБЫВАЕТСЯ при смене
 // профиля (разбор — в шапке library/sectionCache.ts).
 const cachedItems = sectionCache<TrackedProduct[] | null>(null);
+const cachedFlights = sectionCache<TrackedFlight[]>([]);
 const cachedEvents = sectionCache<TrackingEvent[]>([]);
 const cachedSuggestions = sectionCache<MatchSuggestion[]>([]);
 
@@ -118,6 +119,7 @@ export default function Tracking({ query, onSummary }: {
   onSummary: (s: LibrarySummary) => void;
 }) {
   const { t } = useLanguage(); const [items, setItems] = useState<TrackedProduct[] | null>(cachedItems.get);
+  const [flights, setFlights] = useState<TrackedFlight[]>(cachedFlights.get);
   const [checking, setChecking] = useState(false);
   const [checkNote, setCheckNote] = useState('');
   const [events, setEvents] = useState<TrackingEvent[]>(cachedEvents.get);
@@ -126,6 +128,7 @@ export default function Tracking({ query, onSummary }: {
 
   const reload = () => {
     void window.oblako.listTracked().then((v) => { cachedItems.set(v); setItems(v); });
+    void window.oblako.listFlightWatches().then((v) => { cachedFlights.set(v); setFlights(v); });
     void window.oblako.listTrackingEvents().then((v) => { cachedEvents.set(v); setEvents(v); });
     void window.oblako.listTrackingSuggestions().then((v) => { cachedSuggestions.set(v); setSuggestions(v); });
   };
@@ -149,28 +152,28 @@ export default function Tracking({ query, onSummary }: {
   // ⚠️ ГЕРОЙ — ДЕНЬГИ, а не количество: ради этого числа отслеживание и включают. Считается
   // ЧЕСТНО — по каждому предложению от первой увиденной цены к последней, и подорожавшее
   // ВЫЧИТАЕТСЯ. Иначе число превратилось бы в рекламный баннер, который всегда показывает выгоду.
-  const totalDiff = (items ?? []).reduce((sum, it) => {
+  const totalDiff = [...(items ?? []), ...flights].reduce((sum, it) => {
     const prices = it.points.map((pt) => pt.price);
     if (prices.length < 2) return sum;
     return sum + (prices[prices.length - 1]! - prices[0]!);
   }, 0);
-  const lastCheck = (items ?? []).reduce((max, it) => Math.max(max, it.lastCheckedAt), 0);
-  const cardCount = items === null ? 0 : toCards(items).length;
+  const lastCheck = [...(items ?? []), ...flights].reduce((max, it) => Math.max(max, it.lastCheckedAt), 0);
+  const cardCount = items === null ? 0 : toCards(items).length + flights.length;
   useEffect(() => {
     const money = Math.abs(totalDiff).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
     onSummary({
       hero: items === null ? '…' : cardCount === 0 ? '—' : `${totalDiff <= 0 ? '−' : '+'}${money} ₽`,
       heroLabel: cardCount === 0
         ? t('вы пока ничего не отслеживаете')
-        : t(`${totalDiff <= 0 ? 'подешевело' : 'подорожало'} с тех пор, как вы добавили · {n} ${plural(cardCount, 'товар', 'товара', 'товаров')}`, { n: cardCount }),
+        : t(`${totalDiff <= 0 ? 'подешевело' : 'подорожало'} с тех пор, как вы добавили · {n} ${plural(cardCount, 'позиция', 'позиции', 'позиций')}`, { n: cardCount }),
       facts: [
-        { label: 'Товаров', hint: 'под наблюдением', value: String(cardCount), active: cardCount > 0 },
+        { label: 'Позиций', hint: 'товары и билеты', value: String(cardCount), active: cardCount > 0 },
         { label: 'Изменилось', hint: 'по всем наблюдениям', value: cardCount === 0 ? '—' : `${totalDiff <= 0 ? '−' : '+'}${money} ₽`, active: cardCount > 0 && totalDiff < 0 },
         { label: 'Проверка', hint: 'пока браузер открыт', value: lastCheck ? checkedAgo(lastCheck, t).replace(/^проверено /, '') : '—', active: lastCheck > 0 },
         { label: 'Уведомления', hint: 'когда цена упала', value: notify ? 'Включены' : 'Молча', active: notify },
       ],
     });
-  }, [onSummary, items, cardCount, totalDiff, lastCheck, notify, t]);
+  }, [onSummary, items, flights, cardCount, totalDiff, lastCheck, notify, t]);
 
   if (items === null) {
     return <div style={{ ...TEXT.body, color: 'var(--text-faint)', padding: sp(4) }}>Загрузка…</div>;
@@ -181,6 +184,11 @@ export default function Tracking({ query, onSummary }: {
   const cards = toCards(items).filter((c) => !q
     || c.title.toLowerCase().includes(q)
     || c.offers.some((o) => o.host.toLowerCase().includes(q)));
+  const flightCards = flights.filter((f) => !q
+    || f.title.toLowerCase().includes(q)
+    || f.origin.toLowerCase().includes(q)
+    || f.destination.toLowerCase().includes(q)
+    || f.airline.toLowerCase().includes(q));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
@@ -262,7 +270,7 @@ export default function Tracking({ query, onSummary }: {
             <div style={{ ...CAPS, padding: '0 2px 6px' }}>Что произошло</div>
             {events.slice(0, 8).map((ev) => (
               <button
-                key={ev.id}
+                key={`${ev.source}-${ev.id}`}
                 onClick={() => { void window.oblako.createTab(ev.url); }}
                 style={{
                   display: 'flex', alignItems: 'baseline', gap: 8, width: '100%',
@@ -287,17 +295,83 @@ export default function Tracking({ query, onSummary }: {
           </div>
         )}
 
-        {cards.length === 0 && (
+        {cards.length === 0 && flightCards.length === 0 && (
           <EmptyState
             icon={<TrendingDown size={22} />}
-            title={query.trim() ? 'Ничего не нашлось' : 'Пока ничего не отслеживается'}
+            title={query.trim() ? t('Ничего не нашлось') : t('Пока ничего не отслеживается')}
             hint={query.trim()
-              ? 'Поиск смотрит по названию товара и по магазину.'
-              : 'Откройте карточку товара и нажмите значок в адресной строке — браузер начнёт следить за ценой.'}
+              ? t('Поиск смотрит по названию товара, магазину и маршруту билета.')
+              : t('Карточка товара — значок в адресной строке. Поиск Aviasales — меню «⋯», пункт «Билеты Aviasales».')}
           />
         )}
 
+        {flightCards.map((flight) => <FlightCard key={`f${flight.id}`} flight={flight} onChanged={reload} />)}
         {cards.map((card) => <ProductCard key={card.key} card={card} onChanged={reload} />)}
+      </div>
+    </div>
+  );
+}
+
+function FlightCard({ flight, onChanged }: { flight: TrackedFlight; onChanged: () => void }) {
+  const { t } = useLanguage();
+  const prices = flight.points.map((p) => p.price);
+  const last = prices[prices.length - 1] ?? 0;
+  const first = prices[0] ?? 0;
+  const min = prices.length ? Math.min(...prices) : 0;
+  const max = prices.length ? Math.max(...prices) : 0;
+  const diff = last - first;
+  const kind = flight.airline
+    ? `${flight.airline} ${flight.flightNumber}`
+    : t('самый дешёвый на эти даты');
+  const notes: string[] = [];
+  if (prices.length >= 2 && last === min && min !== max) notes.push(t('минимум за всё время наблюдений'));
+  if (prices.length >= 2 && last === max && min !== max) notes.push(t('максимум за всё время наблюдений'));
+
+  return (
+    <div style={{
+      marginBottom: 12, padding: '16px 18px',
+      border: '1px solid var(--divider)', borderRadius: 'var(--radius-card)',
+      background: 'var(--surface)', boxShadow: 'var(--shadow-card)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Plane size={16} style={{ color: 'var(--text-faint)', flex: 'none' }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)', lineHeight: 1.3 }}>
+            {flight.title}
+          </div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4 }}>
+            {[kind, notes.join(', '), checkedAgo(flight.lastCheckedAt, t)].filter(Boolean).join(' · ')}
+          </div>
+        </div>
+        {flight.lastCheckedAt > 0 && !flight.lastCheckOk && (
+          <span title={t('Кэш не ответил на последнюю проверку — цена может быть устаревшей')}
+                style={{ color: 'var(--tone-warm)', display: 'inline-flex', flex: 'none' }}>
+            <AlertTriangle size={15} />
+          </span>
+        )}
+        <PriceLine values={prices} />
+        <div style={{ textAlign: 'right', flex: 'none', minWidth: 104 }}>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--text-strong)' }}>
+            {formatPrice(last, flight.currency)}
+          </div>
+          {prices.length >= 2 && diff !== 0 ? (
+            <div style={{ fontSize: 'var(--fs-xs)', color: diff < 0 ? 'var(--tone-green)' : 'var(--tone-warm)' }}>
+              {diff < 0 ? '−' : '+'}{formatPrice(Math.abs(diff), flight.currency)}
+            </div>
+          ) : (
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{t('одно наблюдение')}</div>
+          )}
+        </div>
+        <button
+          title={t('Открыть поиск Aviasales')}
+          onClick={() => { void window.oblako.createTab(flight.openUrl); }}
+          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 5, display: 'inline-flex', color: 'var(--text-muted)' }}
+        ><ExternalLink size={15} /></button>
+        <button
+          title={t('Не отслеживать')}
+          onClick={() => { void window.oblako.untrackFlight(flight.id).then(onChanged); }}
+          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 5, display: 'inline-flex', color: 'var(--text-muted)' }}
+        ><Trash2 size={15} /></button>
       </div>
     </div>
   );

@@ -113,7 +113,7 @@ export const HELP: Record<string, string> = {
   'Раскладка по ярусам «сегодня / раньше», метка происхождения файла из интернета и безопасное имя файла без сюрпризов с путями.': 'Rows for today / earlier, a mark that the file came from the internet, and a safe file name with no path tricks.',
   'Библиотека → Загрузки': 'Library → Downloads',
   'Отслеживание цен': 'Price tracking',
-  'Один товар — одна карточка, даже если он найден в нескольких магазинах. Показываются факты из собственных наблюдений, а не советы, когда покупать.': 'One product, one card, even across shops. Facts from your own observations, not advice on when to buy.',
+  'Один товар — одна карточка, даже если он найден в нескольких магазинах. Поиск Aviasales — в меню «⋯»: самый дешёвый билет или конкретный рейс. Показываются факты из собственных наблюдений, а не советы, когда покупать.': 'One product, one card, even across shops. An Aviasales search is in the ⋯ menu: the cheapest ticket or a specific flight. Facts from your own observations, not advice on when to buy.',
   'Библиотека → Отслеживание': 'Library → Tracking',
   '«Куда я это дел»': '“Where did I put that”',
   'Один вопрос сразу по истории, закладкам и загрузкам — когда не помнишь, была это статья, закладка или скачанный файл.': 'One question across history, bookmarks and downloads — when you cannot remember whether it was an article, a bookmark or a file.',

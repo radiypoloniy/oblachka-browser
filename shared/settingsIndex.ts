@@ -52,6 +52,8 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
     keywords: ['бэнг', 'bang', 'быстрый переход', 'сокращения поиска', 'восклицательный знак'] },
   { section: 'general', block: 'Цели быстрого поиска', label: 'Цели быстрого поиска', sectionLabel: 'Браузер',
     keywords: ['ctrl+e', 'быстрый поиск', 'поповер поиска', 'полоса целей'] },
+  { section: 'general', block: 'Билеты Aviasales', label: 'Билеты Aviasales', sectionLabel: 'Браузер',
+    keywords: ['aviasales', 'авиасейлс', 'авиабилеты', 'билеты', 'travelpayouts', 'токен авиа', 'следить за билетом', 'цена билета'] },
   { section: 'general', block: 'Импорт данных', label: 'Импорт данных из другого браузера', sectionLabel: 'Браузер',
     keywords: ['импорт', 'перенести', 'перенос', 'chrome', 'edge', 'закладки из другого браузера', 'пароли из другого браузера', 'история из другого браузера', 'миграция'] },
 

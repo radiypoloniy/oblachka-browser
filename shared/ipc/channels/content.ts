@@ -200,6 +200,12 @@ export const CONTENT = {
   TRACKING_MERGE: 'tracking:merge',               // renderer → main: объединить (aId, bId)
   TRACKING_MERGE_DISMISS: 'tracking:merge-dismiss', // renderer → main: не объединять
   TRACKING_UNGROUP: 'tracking:ungroup',           // renderer → main: вынуть из группы (id)
+  TRACKING_FLIGHTS: 'tracking:flights',           // renderer → main: список часов на билеты
+  TRACKING_FLIGHT_UNTRACK: 'tracking:flight-untrack', // renderer → main: снять рейс (id)
+  TRAVELPAYOUTS_GET_STATUS: 'travelpayouts:get-status',     // renderer → main: токен задан?
+  TRAVELPAYOUTS_SAVE_TOKEN: 'travelpayouts:save-token',     // renderer → main: (token) → boolean
+  TRAVELPAYOUTS_DELETE_TOKEN: 'travelpayouts:delete-token', // renderer → main: удалить токен
+  TRAVELPAYOUTS_STATUS_CHANGED: 'travelpayouts:status-changed', // main → chrome: configured
   // Буфер скопированного со страниц (см. electron/ClipboardBuffer.ts). ⚠️ Только в памяти и
   // только на сеанс: источник — событие copy на странице, системный буфер мы не опрашиваем.
   CLIPBOARD_COPIED:   'clipboard:copied',      // гостевая страница → TabManager: { text, title }

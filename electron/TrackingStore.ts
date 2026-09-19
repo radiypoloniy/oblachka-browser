@@ -5,10 +5,27 @@
 // (очистка истории не должна задевать то, что человек поставил на отслеживание).
 import { app } from 'electron';
 import path from 'node:path';
-import type { TrackedProduct, TrackedPricePoint, TrackingEvent, MatchSuggestion } from '../shared/ipc';
+import type { TrackedProduct, TrackedPricePoint, TrackingEvent, MatchSuggestion, TrackedFlight } from '../shared/ipc';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
+
+interface FlightWatchRow {
+  id: number;
+  origin: string;
+  destination: string;
+  depart: string;
+  returnDate: string;
+  adults: number;
+  children: number;
+  infants: number;
+  cabin: string;
+  airline: string;
+  flightNumber: string;
+  title: string;
+  openUrl: string;
+  currency: string;
+}
 
 // Сколько точек истории отдаём наружу на график. Больше на спарклайне всё равно не различить.
 const MAX_POINTS = 180;
@@ -76,6 +93,43 @@ export class TrackingStore {
           b_id   INTEGER NOT NULL REFERENCES tracked(id) ON DELETE CASCADE,
           at     INTEGER NOT NULL,
           UNIQUE(a_id, b_id)
+        );
+        -- Часы на билет. Свой ключ (маршрут+даты+рейс), не url UNIQUE товаров: на одном поиске
+        -- можно следить и за самым дешёвым, и за конкретным SU 1234.
+        CREATE TABLE IF NOT EXISTS flight_watch (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          origin        TEXT    NOT NULL,
+          destination   TEXT    NOT NULL,
+          depart        TEXT    NOT NULL,
+          return_date   TEXT    NOT NULL DEFAULT '',
+          adults        INTEGER NOT NULL DEFAULT 1,
+          children      INTEGER NOT NULL DEFAULT 0,
+          infants       INTEGER NOT NULL DEFAULT 0,
+          cabin         TEXT    NOT NULL DEFAULT 'Y',
+          airline       TEXT    NOT NULL DEFAULT '',
+          flight_number TEXT    NOT NULL DEFAULT '',
+          title         TEXT    NOT NULL DEFAULT '',
+          open_url      TEXT    NOT NULL DEFAULT '',
+          currency      TEXT    NOT NULL DEFAULT 'RUB',
+          created_at    INTEGER NOT NULL,
+          last_checked_at INTEGER NOT NULL DEFAULT 0,
+          last_check_ok   INTEGER NOT NULL DEFAULT 1,
+          UNIQUE(origin, destination, depart, return_date, adults, cabin, airline, flight_number)
+        );
+        CREATE TABLE IF NOT EXISTS flight_price_point (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          watch_id     INTEGER NOT NULL REFERENCES flight_watch(id) ON DELETE CASCADE,
+          price        REAL    NOT NULL,
+          availability TEXT    NOT NULL DEFAULT '',
+          seen_at      INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_flight_price_point ON flight_price_point(watch_id, seen_at);
+        CREATE TABLE IF NOT EXISTS flight_event (
+          id       INTEGER PRIMARY KEY AUTOINCREMENT,
+          watch_id INTEGER NOT NULL REFERENCES flight_watch(id) ON DELETE CASCADE,
+          kind     TEXT    NOT NULL,
+          text     TEXT    NOT NULL,
+          at       INTEGER NOT NULL
         );
       `);
       // ⚠️ Миграция ТОЛЬКО добавлением колонок и по одной, каждая в своём try: база уже лежит у
@@ -317,9 +371,14 @@ export class TrackingStore {
     if (!this.#db) return [];
     try {
       return this.#db.prepare(`
-        SELECT e.id, e.kind, e.text, e.at, t.title, t.url
-        FROM event e JOIN tracked t ON t.id = e.tracked_id
-        ORDER BY e.at DESC LIMIT ?
+        SELECT id, kind, text, at, title, url, source FROM (
+          SELECT e.id, e.kind, e.text, e.at, t.title, t.url, 'product' AS source
+          FROM event e JOIN tracked t ON t.id = e.tracked_id
+          UNION ALL
+          SELECT e.id, e.kind, e.text, e.at, w.title, w.open_url AS url, 'flight' AS source
+          FROM flight_event e JOIN flight_watch w ON w.id = e.watch_id
+        )
+        ORDER BY at DESC LIMIT ?
       `).all(limit) as TrackingEvent[];
     } catch { return []; }
   }
@@ -358,6 +417,174 @@ export class TrackingStore {
       return rows.map((r) => ({ ...r, points: stmt.all(r.id) as TrackedPricePoint[] }));
     } catch (e) {
       console.warn('[Tracking] список не прочитался:', (e as Error).message);
+      return [];
+    }
+  }
+
+  // ── Часы на билеты ─────────────────────────────────────────────────────────
+
+  idForFlight(p: {
+    origin: string; destination: string; depart: string; returnDate: string;
+    adults: number; cabin: string; airline: string; flightNumber: string;
+  }): number | null {
+    if (!this.#db) return null;
+    try {
+      const row = this.#db.prepare(`
+        SELECT id FROM flight_watch
+        WHERE origin = ? AND destination = ? AND depart = ? AND return_date = ?
+          AND adults = ? AND cabin = ? AND airline = ? AND flight_number = ?
+      `).get(
+        p.origin, p.destination, p.depart, p.returnDate,
+        p.adults, p.cabin, p.airline, p.flightNumber,
+      ) as { id: number } | undefined;
+      return row?.id ?? null;
+    } catch { return null; }
+  }
+
+  trackFlight(p: {
+    origin: string; destination: string; depart: string; returnDate: string;
+    adults: number; children: number; infants: number; cabin: string;
+    airline: string; flightNumber: string; title: string; openUrl: string;
+    currency: string; price: number;
+  }): number | null {
+    if (!this.#db) return null;
+    try {
+      const existing = this.idForFlight(p);
+      if (existing !== null) {
+        this.addFlightPoint(existing, p.price, '');
+        return existing;
+      }
+      const info = this.#db.prepare(`
+        INSERT INTO flight_watch (
+          origin, destination, depart, return_date, adults, children, infants, cabin,
+          airline, flight_number, title, open_url, currency, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        p.origin, p.destination, p.depart, p.returnDate, p.adults, p.children, p.infants, p.cabin,
+        p.airline, p.flightNumber, p.title, p.openUrl, p.currency || 'RUB', Date.now(),
+      );
+      const id = Number(info.lastInsertRowid);
+      this.addFlightPoint(id, p.price, '');
+      return id;
+    } catch (e) {
+      console.warn('[Tracking] не удалось поставить рейс на отслеживание:', (e as Error).message);
+      return null;
+    }
+  }
+
+  untrackFlight(id: number): void {
+    if (!this.#db) return;
+    try { this.#db.prepare(`DELETE FROM flight_watch WHERE id = ?`).run(id); } catch { /* нечего */ }
+  }
+
+  addFlightPoint(watchId: number, price: number, availability: string): void {
+    if (!this.#db || !(price > 0)) return;
+    try {
+      const last = this.#db.prepare(`
+        SELECT price, availability FROM flight_price_point WHERE watch_id = ? ORDER BY seen_at DESC LIMIT 1
+      `).get(watchId) as { price: number; availability: string } | undefined;
+      if (last && last.price === price && last.availability === availability) return;
+      this.#db.prepare(`
+        INSERT INTO flight_price_point (watch_id, price, availability, seen_at) VALUES (?, ?, ?, ?)
+      `).run(watchId, price, availability, Date.now());
+    } catch (e) {
+      console.warn('[Tracking] точка цены рейса не записалась:', (e as Error).message);
+    }
+  }
+
+  markFlightChecked(id: number, ok: boolean): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`UPDATE flight_watch SET last_checked_at = ?, last_check_ok = ? WHERE id = ?`)
+        .run(Date.now(), ok ? 1 : 0, id);
+    } catch { /* не критично */ }
+  }
+
+  dueFlights(rawMs: number, failMs: number, limit: number): Array<{ id: number }> {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT id FROM flight_watch
+        WHERE last_checked_at < (? - CASE WHEN last_check_ok = 0 THEN ? ELSE ? END)
+        ORDER BY last_checked_at ASC LIMIT ?
+      `).all(Date.now(), failMs, rawMs, limit) as Array<{ id: number }>;
+    } catch { return []; }
+  }
+
+  allFlightsForCheck(): Array<{ id: number }> {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`SELECT id FROM flight_watch ORDER BY created_at DESC`).all() as Array<{ id: number }>;
+    } catch { return []; }
+  }
+
+  flightById(id: number): FlightWatchRow | null {
+    if (!this.#db) return null;
+    try {
+      return (this.#db.prepare(`
+        SELECT id, origin, destination, depart, return_date AS returnDate,
+               adults, children, infants, cabin, airline,
+               flight_number AS flightNumber, title, open_url AS openUrl, currency
+        FROM flight_watch WHERE id = ?
+      `).get(id) ?? null) as FlightWatchRow | null;
+    } catch { return null; }
+  }
+
+  lastFlightPoint(watchId: number): { price: number; availability: string } | null {
+    if (!this.#db) return null;
+    try {
+      const row = this.#db.prepare(`
+        SELECT price, availability FROM flight_price_point WHERE watch_id = ? ORDER BY seen_at DESC LIMIT 1
+      `).get(watchId) as { price: number; availability: string } | undefined;
+      return row ?? null;
+    } catch { return null; }
+  }
+
+  addFlightEvent(watchId: number, kind: string, text: string): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`INSERT INTO flight_event (watch_id, kind, text, at) VALUES (?, ?, ?, ?)`)
+        .run(watchId, kind, text, Date.now());
+    } catch (e) {
+      console.warn('[Tracking] событие рейса не записалось:', (e as Error).message);
+    }
+  }
+
+  lastFlightEventKind(watchId: number): string | null {
+    if (!this.#db) return null;
+    try {
+      const row = this.#db.prepare(`
+        SELECT kind FROM flight_event WHERE watch_id = ? ORDER BY at DESC LIMIT 1
+      `).get(watchId) as { kind: string } | undefined;
+      return row?.kind ?? null;
+    } catch { return null; }
+  }
+
+  /** Билет в прошлом не следят: дата вылета уже прошла. */
+  expirePastFlights(todayIso: string): number {
+    if (!this.#db) return 0;
+    try {
+      const info = this.#db.prepare(`DELETE FROM flight_watch WHERE depart < ?`).run(todayIso);
+      return info.changes;
+    } catch { return 0; }
+  }
+
+  listFlights(): TrackedFlight[] {
+    if (!this.#db) return [];
+    try {
+      const rows = this.#db.prepare(`
+        SELECT id, origin, destination, depart, return_date AS returnDate, adults, cabin,
+               airline, flight_number AS flightNumber, title, open_url AS openUrl, currency,
+               created_at AS createdAt, last_checked_at AS lastCheckedAt, last_check_ok AS lastCheckOk
+        FROM flight_watch ORDER BY created_at DESC
+      `).all() as Array<Omit<TrackedFlight, 'points'>>;
+      const stmt = this.#db.prepare(`
+        SELECT price, availability, seen_at AS seenAt FROM flight_price_point
+        WHERE watch_id = ? ORDER BY seen_at ASC LIMIT ${MAX_POINTS}
+      `);
+      return rows.map((r) => ({ ...r, points: stmt.all(r.id) as TrackedPricePoint[] }));
+    } catch (e) {
+      console.warn('[Tracking] список рейсов не прочитался:', (e as Error).message);
       return [];
     }
   }

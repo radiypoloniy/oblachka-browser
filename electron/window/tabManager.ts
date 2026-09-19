@@ -60,7 +60,7 @@ export function createWindowTabManager(
   const { win, chromeView, isMain, sess } = shell;
   const {
     PRODUCT_DETECT_DELAY_MS, downloads, hubChat, incognitoSession, isShuttingDown,
-    permissions, pushProductState, refreshProductForWebContents, searchTargets, startedAt,
+    permissions, pushProductState, refreshProductForWebContents, refreshFlightForWebContents, searchTargets, startedAt,
   } = deps;
   let tabs: TabManager | null = null;
 
@@ -145,6 +145,7 @@ export function createWindowTabManager(
       // дорисовывается скриптом уже после did-navigate. Ничего не показываем и не пишем — только
       // запоминаем, чтобы индикатор в тулбаре знал, есть ли тут что отслеживать.
       setTimeout(() => { void refreshProductForWebContents(wc); }, PRODUCT_DETECT_DELAY_MS);
+      void refreshFlightForWebContents(wc);
     },
     // ⚠️ Тоже по профилю ВКЛАДКИ, а не активного: page-title-updated стреляет у любой вкладки,
     // включая фоновую чужого профиля (SPA обновляют заголовок постоянно).

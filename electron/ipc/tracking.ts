@@ -3,7 +3,7 @@
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
 import { IPC } from '../../shared/ipc';
-import type { ClipboardRevealResult, ContentBounds, TrackedProduct } from '../../shared/ipc';
+import type { ClipboardRevealResult, ContentBounds, TrackedFlight, TrackedProduct } from '../../shared/ipc';
 import * as clipboardBuffer from '../ClipboardBuffer';
 import { closeClipboardPopover, syncClipboardPopoverAnchor, toggleClipboardPopover, windowOfClipboardPopover, prewarmClipboardPopover } from '../ClipboardPopoverManager';
 import { sendFindResult, showFindBar } from '../FindBarManager';
@@ -12,6 +12,7 @@ import { checkAllNow } from '../TrackingChecker';
 import { broadcastToChrome, contextForWindow, contextFromSender } from '../WindowRegistry';
 import { clipboard, ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
+import * as travelpayoutsKeyStore from '../TravelpayoutsKeyStore';
 
 export function registerTrackingIpc(d: IpcDeps): void {
   const { pushProductState, showProductMenu, tracking } = d;
@@ -164,5 +165,16 @@ export function registerTrackingIpc(d: IpcDeps): void {
     broadcastToChrome(IPC.TRACKING_CHANGED);
     const ctx = contextFromSender(e.sender);
     if (ctx) pushProductState(ctx.win);
+  });
+  ipcMain.handle(IPC.TRACKING_FLIGHTS, (): TrackedFlight[] => tracking().listFlights());
+  ipcMain.handle(IPC.TRACKING_FLIGHT_UNTRACK, (_e, id: number) => {
+    tracking().untrackFlight(id);
+    broadcastToChrome(IPC.TRACKING_CHANGED);
+  });
+  ipcMain.handle(IPC.TRAVELPAYOUTS_GET_STATUS, () => travelpayoutsKeyStore.getStatus());
+  ipcMain.handle(IPC.TRAVELPAYOUTS_SAVE_TOKEN, (_e, token: string) => travelpayoutsKeyStore.saveToken(typeof token === 'string' ? token : ''));
+  ipcMain.handle(IPC.TRAVELPAYOUTS_DELETE_TOKEN, () => travelpayoutsKeyStore.deleteToken());
+  travelpayoutsKeyStore.onStatusChanged((configured) => {
+    broadcastToChrome(IPC.TRAVELPAYOUTS_STATUS_CHANGED, configured);
   });
 }

@@ -254,6 +254,8 @@ export interface TrackingEvent {
   at: number;
   title: string;
   url: string;
+  /** Откуда событие. Нужен, потому что id товара и рейса живут в разных таблицах и могут совпасть. */
+  source: 'product' | 'flight';
 }
 
 export interface TrackedPricePoint {
@@ -277,6 +279,27 @@ export interface TrackedProduct {
   lastCheckOk: number;
   /** Одна группа = один товар в разных магазинах. 0 — сам по себе. */
   groupId: number;
+  points: TrackedPricePoint[];
+}
+
+/** Часы на авиабилет — отдельная сущность, не товар: другой ключ и другой источник цены. */
+export interface TrackedFlight {
+  id: number;
+  origin: string;
+  destination: string;
+  depart: string;
+  returnDate: string;
+  adults: number;
+  cabin: string;
+  /** Пустая строка — следим за самым дешёвым на эти даты, а не за конкретным рейсом. */
+  airline: string;
+  flightNumber: string;
+  title: string;
+  openUrl: string;
+  currency: string;
+  createdAt: number;
+  lastCheckedAt: number;
+  lastCheckOk: number;
   points: TrackedPricePoint[];
 }
 

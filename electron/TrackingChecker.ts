@@ -16,6 +16,9 @@ import { jsonLdBlocksFromHtml, productFromJsonLd, type ProductSignal } from '../
 import { allContexts } from './WindowRegistry';
 import { detectEvent, describeEvent } from '../shared/priceEvents';
 import { profileSession } from './ProfileSession';
+import { fetchPricesForDates } from './TravelpayoutsClient';
+import { cheapestOffer, findOffer } from '../shared/travelpayouts';
+import { t, tf } from './uiText';
 
 // Как часто просыпаемся посмотреть, не пора ли кого проверить.
 const TICK_MS = 30 * 60 * 1000;          // полчаса
@@ -159,18 +162,92 @@ async function runBatch(store: TrackingStore, items: Array<{ id: number; url: st
   return ok;
 }
 
+function todayIso(): string {
+  const n = new Date();
+  const p = (x: number) => (x < 10 ? `0${x}` : String(x));
+  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
+}
+
+async function checkOneFlight(store: TrackingStore, id: number): Promise<boolean> {
+  const row = store.flightById(id);
+  if (!row) return false;
+  const cabin = row.cabin === 'C' || row.cabin === 'W' || row.cabin === 'F' ? row.cabin : 'Y';
+  const offers = await fetchPricesForDates({
+    origin: row.origin,
+    destination: row.destination,
+    depart: row.depart,
+    returnDate: row.returnDate,
+    adults: row.adults,
+    children: row.children,
+    infants: row.infants,
+    cabin,
+    openUrl: row.openUrl,
+  });
+  if (!offers) {
+    store.markFlightChecked(id, false);
+    return false;
+  }
+  const offer = row.airline
+    ? findOffer(offers, row.airline, row.flightNumber)
+    : cheapestOffer(offers);
+  if (!offer) {
+    // Кэш ответил, рейса в нём нет. Это не «магазин молчит» и не «билет кончился»:
+    // Data API — чужие поиски за ~48 часов, промах кэша честнее записать как «не нашли».
+    store.markFlightChecked(id, true);
+    if (row.airline && store.lastFlightPoint(id) && store.lastFlightEventKind(id) !== 'gone') {
+      const text = t('Не нашли этот рейс в кэше Aviasales');
+      store.addFlightEvent(id, 'gone', text);
+      if (store.notificationsEnabled()) onEvent?.({ id, title: row.title, url: row.openUrl, text });
+    }
+    return true;
+  }
+  const prev = store.lastFlightPoint(id);
+  store.addFlightPoint(id, offer.price, '');
+  store.markFlightChecked(id, true);
+  const event = detectEvent(prev, { price: offer.price, availability: '' });
+  if (event) {
+    const text = describeEvent(event, offer.currency || row.currency);
+    store.addFlightEvent(id, event.kind, text);
+    if (store.notificationsEnabled()) onEvent?.({ id, title: row.title, url: row.openUrl, text });
+  } else if (row.airline && store.lastFlightEventKind(id) === 'gone') {
+    const text = tf('Снова нашли — {price}', {
+      price: `${Math.round(offer.price).toLocaleString('ru-RU')} ₽`,
+    });
+    store.addFlightEvent(id, 'back', text);
+    if (store.notificationsEnabled()) onEvent?.({ id, title: row.title, url: row.openUrl, text });
+  }
+  return true;
+}
+
+async function runFlightBatch(store: TrackingStore, ids: number[], gapMs: number): Promise<number> {
+  let ok = 0;
+  for (const id of ids) {
+    if (stopped) break;
+    if (allContexts().length === 0) break;
+    if (await checkOneFlight(store, id)) ok++;
+    if (gapMs > 0) await new Promise((r) => setTimeout(r, gapMs));
+  }
+  return ok;
+}
+
 async function tick(startup = false): Promise<void> {
   if (running || stopped) return;
   const store = storeOf?.() ?? null;
   if (!store) return;
+  const expired = store.expirePastFlights(todayIso());
+  if (expired > 0) console.log(`[tracking] сняты рейсы с прошедшей датой: ${expired}`);
   const due = startup
     ? store.dueForCheck(STARTUP_RAW_MS, STARTUP_VIEW_MS, STARTUP_FAIL_MS, STARTUP_BATCH)
     : store.dueForCheck(RAW_INTERVAL_MS, VIEW_INTERVAL_MS, FAIL_INTERVAL_MS, BATCH);
-  if (due.length === 0) return;
+  const dueFlights = startup
+    ? store.dueFlights(STARTUP_RAW_MS, STARTUP_FAIL_MS, STARTUP_BATCH)
+    : store.dueFlights(RAW_INTERVAL_MS, FAIL_INTERVAL_MS, BATCH);
+  if (due.length === 0 && dueFlights.length === 0) return;
   running = true;
   try {
-    const ok = await runBatch(store, due, GAP_MS);
-    console.log(`[tracking] ${startup ? 'проверка при запуске' : 'фоновая проверка'}: ${ok} из ${due.length}`);
+    const ok = due.length ? await runBatch(store, due, GAP_MS) : 0;
+    const okF = dueFlights.length ? await runFlightBatch(store, dueFlights.map((x) => x.id), 1000) : 0;
+    console.log(`[tracking] ${startup ? 'проверка при запуске' : 'фоновая проверка'}: товары ${ok} из ${due.length}, рейсы ${okF} из ${dueFlights.length}`);
   } finally {
     running = false;
   }
@@ -187,11 +264,15 @@ export async function checkAllNow(): Promise<{ ok: number; total: number }> {
   if (!store) return { ok: 0, total: 0 };
   if (running) return { ok: 0, total: 0 };
   const items = store.allForCheck();
+  const flights = store.allFlightsForCheck();
   running = true;
   try {
+    store.expirePastFlights(todayIso());
     const ok = await runBatch(store, items, 0);
-    console.log(`[tracking] проверка по кнопке: ${ok} из ${items.length}`);
-    return { ok, total: items.length };
+    const okF = await runFlightBatch(store, flights.map((x) => x.id), 0);
+    const total = items.length + flights.length;
+    console.log(`[tracking] проверка по кнопке: ${ok + okF} из ${total}`);
+    return { ok: ok + okF, total };
   } finally {
     running = false;
   }

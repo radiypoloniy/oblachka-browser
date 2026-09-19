@@ -10,7 +10,7 @@
 // про программу.
 import type { ContentBounds, FindResult, SidebarNode, SpecialTabKind, SyncState, TabState } from './core';
 import type { BookmarkEntry, DayDigestState, HistoryClearPeriod, HistoryEntry, RelatedPagesResult, SmartSearchResponse } from './history';
-import type { AdBlockState, MatchSuggestion, OmniboxResume, PageChangesResult, ParsedAddressPart, ProductState, SmartTabHit, StuffHit, TrackedProduct, TrackingEvent } from './omnibox';
+import type { AdBlockState, MatchSuggestion, OmniboxResume, PageChangesResult, ParsedAddressPart, ProductState, SmartTabHit, StuffHit, TrackedFlight, TrackedProduct, TrackingEvent } from './omnibox';
 import type { AiActivityState } from './ai';
 import type { CryptoRatesInfo, CurrencyRatesInfo, DragCard, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, WeatherInfo, WindowRole } from './app';
 import type { UiLanguage } from '../uiLanguage';
@@ -57,6 +57,12 @@ export interface CoreApi {
   mergeTracked(aId: number, bId: number): Promise<void>;
   dismissTrackedMerge(aId: number, bId: number): Promise<void>;
   ungroupTracked(id: number): Promise<void>;
+  listFlightWatches(): Promise<TrackedFlight[]>;
+  untrackFlight(id: number): Promise<void>;
+  getTravelpayoutsStatus(): Promise<boolean>;
+  saveTravelpayoutsToken(token: string): Promise<boolean>;
+  deleteTravelpayoutsToken(): Promise<void>;
+  onTravelpayoutsStatusChanged(cb: (configured: boolean) => void): () => void;
   /** Сколько записей в буфере — для индикатора в тулбаре (0 означает «кнопки нет»). */
   // Начальный счётчик буфера: подписка ниже приходит только на ИЗМЕНЕНИЯ, а закреплённое
   // поднимается с диска ещё до неё.

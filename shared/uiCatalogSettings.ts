@@ -285,4 +285,12 @@ export const SETTINGS: Record<string, string> = {
   'Ссылка подписки и серверы хранятся зашифрованными на этом устройстве и никуда, кроме вашего провайдера, не отправляются.': 'The subscription URL and servers stay encrypted on this device and go only to your provider.',
   'Нажмите на сервер, чтобы подключиться.': 'Click a server to connect.',
   'Серверы ({n})': 'Servers ({n})',
+  'Билеты Aviasales': 'Aviasales tickets',
+  'Браузер следит за ценой поиска, пока открыт. Это кэш Aviasales за сутки-двое, не живая выдача со вкладки. Токен — из кабинета партнёра Travelpayouts, в репозиторий он не попадает.': 'The browser watches the fare while it is open. This is the Aviasales cache from the last day or two, not the live results on the tab. The token comes from a Travelpayouts partner account and is never committed.',
+  'Токен сохранён': 'Token saved',
+  'Токена нет': 'No token',
+  'На поиске Aviasales в меню «⋯» можно следить за самым дешёвым билетом или за конкретным рейсом.': 'On an Aviasales search the ⋯ menu can watch the cheapest ticket or a specific flight.',
+  'Без токена часы не заводятся: API не отвечает.': 'Without a token the watch cannot start: the API will not reply.',
+  'Вставьте токен из кабинета Travelpayouts': 'Paste the token from the Travelpayouts account',
+  'Не удалось сохранить токен': 'Could not save the token',
 };

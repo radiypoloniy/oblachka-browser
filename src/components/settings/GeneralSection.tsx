@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Download } from 'lucide-react';
-import { SectionHeader, Subsection, StatusCard, btnPrimary, FactGrid, Fact, Segmented } from './kit';
+import { Download, Check, Trash2, Plane } from 'lucide-react';
+import { SectionHeader, Subsection, StatusCard, btnPrimary, btnGhost, FactGrid, Fact, Segmented, TextField } from './kit';
 import UpdatesBlock from './UpdatesBlock';
 import BangsBlock from './BangsBlock';
 import SearchChipsBlock from './SearchChipsBlock';
@@ -111,6 +111,8 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
       >
         <SearchChipsBlock />
       </Subsection>
+
+      <AviasalesTokenBlock />
     </div>
   );
 }
@@ -163,5 +165,76 @@ function BrowserOverview() {
       />
       <Fact label="Ctrl+E" hint={t('Поповер быстрого поиска')} value={t('Цели')} />
     </FactGrid>
+  );
+}
+
+function AviasalesTokenBlock() {
+  const { t } = useLanguage();
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [tokenInput, setTokenInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    void window.oblako.getTravelpayoutsStatus().then((v) => { if (mounted) setConfigured(v); });
+    const unsub = window.oblako.onTravelpayoutsStatusChanged((v) => { if (mounted) setConfigured(v); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
+  async function handleSave() {
+    const token = tokenInput.trim();
+    if (!token) { setSaveError(t('Вставьте токен из кабинета Travelpayouts')); return; }
+    setSaving(true);
+    setSaveError('');
+    const ok = await window.oblako.saveTravelpayoutsToken(token);
+    setSaving(false);
+    if (ok) setTokenInput('');
+    else setSaveError(t('Не удалось сохранить токен'));
+  }
+
+  return (
+    <Subsection
+      blockId="Билеты Aviasales"
+      title={t('Билеты Aviasales')}
+      description={t('Браузер следит за ценой поиска, пока открыт. Это кэш Aviasales за сутки-двое, не живая выдача со вкладки. Токен — из кабинета партнёра Travelpayouts, в репозиторий он не попадает.')}
+    >
+      {configured === null ? null : (
+        <StatusCard
+          icon={configured
+            ? <Check size={20} style={{ color: 'var(--success-500)' }} />
+            : <Plane size={20} style={{ color: 'var(--text-muted)' }} />}
+          title={configured ? t('Токен сохранён') : t('Токена нет')}
+          subtitle={configured
+            ? t('На поиске Aviasales в меню «⋯» можно следить за самым дешёвым билетом или за конкретным рейсом.')
+            : t('Без токена часы не заводятся: API не отвечает.')}
+          actions={configured ? (
+            <button style={btnGhost} onClick={() => { void window.oblako.deleteTravelpayoutsToken(); }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Trash2 size={14} /> {t('Удалить')}
+              </span>
+            </button>
+          ) : undefined}
+        />
+      )}
+      {configured === false && (
+        <div style={{ marginTop: 12 }}>
+          <TextField
+            value={tokenInput}
+            placeholder="Travelpayouts token"
+            mono
+            type="password"
+            onChange={(v) => { setTokenInput(v); setSaveError(''); }}
+            error={saveError || undefined}
+            onEnter={() => { void handleSave(); }}
+          />
+          <div style={{ marginTop: 8 }}>
+            <button style={btnPrimary} disabled={saving} onClick={() => { void handleSave(); }}>
+              {saving ? t('Сохранение…') : t('Сохранить')}
+            </button>
+          </div>
+        </div>
+      )}
+    </Subsection>
   );
 }
