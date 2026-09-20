@@ -246,6 +246,7 @@ const hostOf = (url: string): string => {
 // а поповер лежит поверх чужого сайта, где плакатному тону места нет.
 function HeroCopy({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => void }) {
   const [copied, setCopied] = useState(false); const { t } = useLanguage();
+  const [pinFull, setPinFull] = useState(false);
   const take = () => {
     void window.clipboardPopover.put(entry.id).then(() => {
       setCopied(true);
@@ -260,7 +261,25 @@ function HeroCopy({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () =
           {t('последнее')}{entry.host ? ` · ${entry.host}` : ''}
         </span>
         <span style={{ ...TEXT.caption, color: 'var(--text-faint)' }}>{timeAgo(entry.at, t)}</span>
+        {/* ⚠️ Закреп здесь, а не только в строке списка: герой — это последнее скопированное,
+            и прятать кнопку «пока не скопируешь ещё что-то» означало бы отнять главный жест. */}
+        <button
+          title={t('Закрепить — переживёт перезапуск')}
+          onClick={() => {
+            void window.clipboardPopover.pin(entry.id, true).then((ok) => {
+              if (!ok) setPinFull(true);
+              setTimeout(() => setPinFull(false), 2000);
+              onChanged();
+            });
+          }}
+          style={iconBtn}
+        ><Pin size={13} /></button>
       </div>
+      {pinFull && (
+        <div style={{ ...TEXT.caption, color: 'var(--text-muted)', padding: `0 ${sp(1)}px ${sp(1)}px` }}>
+          Закреплённых уже максимум — открепите что-нибудь
+        </div>
+      )}
       <button
         onClick={take}
         title={t('Скопировать снова')}
