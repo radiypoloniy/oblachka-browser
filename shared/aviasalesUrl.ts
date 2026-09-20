@@ -173,25 +173,26 @@ export function parseAviasalesUrl(url: string, now: Date = new Date()): Aviasale
   let parsed: URL;
   try { parsed = new URL(url); } catch { return null; }
 
-  const paramsSig = parsed.searchParams.get('params');
+  const hashQ = queryFromHash(parsed.hash);
+  const paramsSig = parsed.searchParams.get('params') || hashQ.get('params');
   const pathMatch = /^\/search\/([A-Za-z0-9]+)/.exec(parsed.pathname);
-  const sig = pathMatch?.[1] || paramsSig || '';
+  const sig = pathMatch?.[1] || paramsSig || hashSearchSignature(parsed.hash) || '';
   if (sig) {
     const fromSig = parseSignature(sig, now, url);
     if (fromSig) return fromSig;
   }
 
-  const origin = (parsed.searchParams.get('origin_iata') || '').toUpperCase();
-  const destination = (parsed.searchParams.get('destination_iata') || '').toUpperCase();
-  const depart = parsed.searchParams.get('depart_date') || '';
+  const origin = (parsed.searchParams.get('origin_iata') || hashQ.get('origin_iata') || '').toUpperCase();
+  const destination = (parsed.searchParams.get('destination_iata') || hashQ.get('destination_iata') || '').toUpperCase();
+  const depart = parsed.searchParams.get('depart_date') || hashQ.get('depart_date') || '';
   if (!/^[A-Z]{3}$/.test(origin) || !/^[A-Z]{3}$/.test(destination)) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(depart)) return null;
-  const returnRaw = parsed.searchParams.get('return_date') || '';
+  const returnRaw = parsed.searchParams.get('return_date') || hashQ.get('return_date') || '';
   const returnDate = /^\d{4}-\d{2}-\d{2}$/.test(returnRaw) ? returnRaw : '';
-  const adults = Math.max(1, Math.min(9, Number(parsed.searchParams.get('adults') || '1') || 1));
-  const children = Math.max(0, Math.min(9, Number(parsed.searchParams.get('children') || '0') || 0));
-  const infants = Math.max(0, Math.min(9, Number(parsed.searchParams.get('infants') || '0') || 0));
-  const cabinRaw = (parsed.searchParams.get('trip_class') || 'Y').toUpperCase();
+  const adults = Math.max(1, Math.min(9, Number(parsed.searchParams.get('adults') || hashQ.get('adults') || '1') || 1));
+  const children = Math.max(0, Math.min(9, Number(parsed.searchParams.get('children') || hashQ.get('children') || '0') || 0));
+  const infants = Math.max(0, Math.min(9, Number(parsed.searchParams.get('infants') || hashQ.get('infants') || '0') || 0));
+  const cabinRaw = (parsed.searchParams.get('trip_class') || hashQ.get('trip_class') || 'Y').toUpperCase();
   const cabin: FlightCabin = CABINS.has(cabinRaw) ? cabinRaw as FlightCabin : 'Y';
   const search: AviasalesSearch = {
     origin, destination, depart, returnDate, adults, children, infants, cabin, openUrl: '',
@@ -206,6 +207,67 @@ export function parseAviasalesUrl(url: string, now: Date = new Date()): Aviasale
     search.openUrl = `https://www.aviasales.ru/search/${buildAviasalesSignature(search)}`;
   }
   return search;
+}
+
+/**
+ * Открытый в адресе конкретный билет. Aviasales кладёт его в `t=` — это не селектор карточки,
+ * а та же подпись, что Travelpayouts отдаёт в поле `link`. Без неё меню видело только поиск
+ * целиком и предлагало кэш самых дешёвых, а выбранный рейс молчал.
+ */
+export interface AviasalesTicket {
+  airline: string;
+  flightNumber: string;
+}
+
+/** Сегмент подписи: unix вылета (10) + прилёта (10) + номер рейса (6) + аэропорты (6). */
+const TICKET_SEGMENT = 32;
+
+function queryFromHash(hash: string): URLSearchParams {
+  const h = hash.replace(/^#/, '');
+  if (!h) return new URLSearchParams();
+  const q = h.includes('?') ? h.slice(h.indexOf('?') + 1) : h;
+  return new URLSearchParams(q);
+}
+
+function hashSearchSignature(hash: string): string {
+  const m = /(?:^|\/)search\/([A-Za-z0-9]+)/i.exec(hash.replace(/^#/, ''));
+  return m?.[1] || '';
+}
+
+function ticketTokenOf(parsed: URL): string {
+  return parsed.searchParams.get('t') || queryFromHash(parsed.hash).get('t') || '';
+}
+
+export function parseAviasalesTicket(url: string): AviasalesTicket | null {
+  if (!url || !HOSTS.has(hostOf(url))) return null;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return null; }
+  const raw = ticketTokenOf(parsed);
+  if (!raw) return null;
+  const body = raw.split('_')[0]!.toUpperCase();
+  const m = /^([A-Z]{2})(.*)$/.exec(body);
+  if (!m) return null;
+  const rest = m[2]!;
+  if (rest.length < TICKET_SEGMENT || rest.length % TICKET_SEGMENT !== 0) return null;
+  const flightRaw = rest.slice(20, 26);
+  if (!/^\d{6}$/.test(flightRaw)) return null;
+  const n = Number(flightRaw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return { airline: m[1]!, flightNumber: String(n) };
+}
+
+/** Цена из шаринга/открытого билета (`expected_price_value`). 0 в адресе не считаем ценой. */
+export function parseAviasalesExpectedPrice(url: string): { price: number; currency: string } | null {
+  if (!url || !HOSTS.has(hostOf(url))) return null;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return null; }
+  const hashQ = queryFromHash(parsed.hash);
+  const raw = parsed.searchParams.get('expected_price_value') || hashQ.get('expected_price_value') || '';
+  const price = Number.parseFloat(raw.replace(',', '.'));
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const currency = (parsed.searchParams.get('expected_price_currency')
+    || hashQ.get('expected_price_currency') || 'RUB').toUpperCase();
+  return { price, currency: currency || 'RUB' };
 }
 
 function shortDate(iso: string): string {

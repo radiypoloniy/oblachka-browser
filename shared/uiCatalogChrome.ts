@@ -35,6 +35,7 @@ export const CHROME: Record<string, string> = {
   'Самый дешёвый на эти даты — {price}': 'Cheapest on these dates — {price}',
   'Кэш Aviasales пока без цен': 'Aviasales cache has no fares yet',
   'Не отслеживать {flight}': 'Stop watching {flight}',
+  'Этот рейс — {flight}, {price}': 'This flight — {flight}, {price}',
   'Открепить вкладку': 'Unpin tab',
   'Закрепить вкладку': 'Pin tab',
   'Включить звук': 'Unmute',

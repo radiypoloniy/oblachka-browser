@@ -27,6 +27,9 @@ export async function fetchPricesForDates(search: AviasalesSearch): Promise<Flig
   }
   url.searchParams.set('sorting', 'price');
   url.searchParams.set('limit', '30');
+  // ⚠️ unique=true — по одному самому дешёвому на авиакомпанию. Без него на конкретные даты
+  // кэш часто отдаёт ОДИН оффер, и меню дублирует его как «самый дешёвый» и «конкретный рейс».
+  url.searchParams.set('unique', 'true');
   url.searchParams.set('currency', 'RUB');
   url.searchParams.set('token', token);
   try {

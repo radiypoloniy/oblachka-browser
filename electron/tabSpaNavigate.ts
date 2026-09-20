@@ -2,6 +2,7 @@
 // сверх храповика: якорь не страница, pathname/search — да.
 import type { WebContents } from 'electron';
 import { isSpaRouteChange } from '../shared/historyIndex';
+import { refreshFlightForWebContents } from './FlightWatch';
 
 const lastUrl = new WeakMap<WebContents, string>();
 
@@ -23,6 +24,11 @@ export function handleSpaInPageNavigate(
   const prev = lastUrl.get(wc) ?? '';
   lastUrl.set(wc, url);
   if (!isMainFrame || incognito) return;
-  if (!isSpaRouteChange(prev, url)) return;
+  // ⚠️ Якорь и тот же pathname+search — не визит, но на Aviasales там живёт открытый билет
+  // (`t=` / `#search/…`). Часы обязаны это увидеть; история — нет.
+  if (!isSpaRouteChange(prev, url)) {
+    void refreshFlightForWebContents(wc);
+    return;
+  }
   onNavigate?.(url, wc.getTitle() || url, wc);
 }
