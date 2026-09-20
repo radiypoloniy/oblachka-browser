@@ -128,26 +128,6 @@ function ColorGlyph({ size, color }: GlyphProps) {
   );
 }
 
-/** Котёнок: мордочка с ушами, глазами и усами. */
-function KittenGlyph({ size, color }: GlyphProps) {
-  return (
-    <svg {...box(size)}>
-      <path d="M5.2 8.4 4.4 3.6l4.3 2.5M18.8 8.4l.8-4.8-4.3 2.5" fill={color} opacity="0.9" />
-      <circle cx="12" cy="13" r="7.6" fill={color} opacity="0.22" />
-      <circle cx="12" cy="13" r="7.6" stroke={color} strokeWidth="1.5" />
-      <circle cx="9.4" cy="12.2" r="1.05" fill={color} />
-      <circle cx="14.6" cy="12.2" r="1.05" fill={color} />
-      <path d="M11 15.4c.6.5 1.4.5 2 0" stroke={color} strokeWidth="1.4" strokeLinecap="round" />
-      {[[4.6, 12.6], [4.6, 14.4]].map(([x, y]) => (
-        <line key={y} x1={x} y1={y} x2={x + 3} y2={y - 0.4} stroke={color} strokeWidth="1.1" strokeLinecap="round" opacity="0.6" />
-      ))}
-      {[[19.4, 12.6], [19.4, 14.4]].map(([x, y]) => (
-        <line key={y} x1={x} y1={y} x2={x - 3} y2={y - 0.4} stroke={color} strokeWidth="1.1" strokeLinecap="round" opacity="0.6" />
-      ))}
-    </svg>
-  );
-}
-
 /** Глобус для веб-приложений: сфера с меридианами. */
 function WebGlyph({ size, color }: GlyphProps) {
   return (
@@ -189,7 +169,6 @@ const GLYPHS: Record<string, (p: GlyphProps) => React.ReactElement> = {
   convert: ConvertGlyph,
   counter: CounterGlyph,
   color: ColorGlyph,
-  kitten: KittenGlyph,
   web: WebGlyph,
   zones: ZonesGlyph,
 };

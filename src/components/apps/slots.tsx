@@ -11,7 +11,6 @@ import TimerApp from './TimerApp'
 import ConverterApp from './ConverterApp'
 import ColorApp from './ColorApp'
 import CounterApp from './CounterApp'
-import KittenApp from './KittenApp'
 import ZonesApp from '../ZonesApp'
 
 // ── Слот открытого приложения ────────────────────────────────────────────────────────────────
@@ -172,7 +171,6 @@ export function AppSlot({ app, grow, active, showRing, onActivate, onSwap, onClo
         {app.id === 'zones' && <ZonesApp />}
         {app.id === 'timer' && <TimerApp />}
         {app.id === 'color' && <ColorApp />}
-        {app.id === 'kitten' && <KittenApp />}
         {app.id === 'counter' && <CounterApp />}
       </div>
     </SlotFrame>

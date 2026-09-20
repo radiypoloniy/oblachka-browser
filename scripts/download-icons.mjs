@@ -36,7 +36,6 @@ const APP_ICONS = {
   convert: 'arrows-clockwise-bold',
   timer: 'timer-fill',
   color: 'eyedropper-sample-fill',
-  kitten: 'cat-fill',
   counter: 'text-aa-fill',
   web: 'globe-hemisphere-west-fill',
   translate: 'translate-fill',

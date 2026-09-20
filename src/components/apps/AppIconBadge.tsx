@@ -25,14 +25,13 @@ const SQUIRCLE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' v
 // прежняя буквенная подпись.
 // Свои составные глифы (см. src/components/appGlyphs.tsx) — они рисуют сам предмет, а не его
 // силуэт. Маски Phosphor остались только запасным путём для приложений без своего глифа.
-const PHOSPHOR_APPS = new Set(['calc', 'convert', 'timer', 'color', 'kitten', 'counter'])
+const PHOSPHOR_APPS = new Set(['calc', 'convert', 'timer', 'color', 'counter'])
 
 // Краска глифа там, где светлая не годится. ⚠️ Ходит ПАРОЙ к плитке, как и везде в системе:
 // на горчице, небе и бумаге белый силуэт даёт меньше 3:1 — то же правило, что у fillInk на
 // плитках стола и у краски погоды.
 const GLYPH_TINT: Record<string, string> = {
   counter: 'var(--appicon-glyph-dark)',
-  kitten: 'var(--appicon-glyph-dark)',
   webcustom: 'var(--appicon-glyph-dark)',
   // Бумажная плитка: цвет целиком берёт на себя глиф. Страсть из плакатного набора —
   // фиолетового в системе нет, см. --tile-* в colors.css.

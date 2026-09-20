@@ -18,7 +18,7 @@ import { CAPS } from '../styles/system'
 import { WALLPAPER_PRESETS } from '../newtab/settings'
 import { allMeshes, subscribeMeshes, meshCss } from '../newtab/gradients'
 import {
-  Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Cat, Type,
+  Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Type,
   Check, Globe, Plus,
 } from 'lucide-react'
 export { AppIconBadge } from './apps/AppIconBadge'
@@ -69,8 +69,6 @@ export const APPS: AppDef[] = [
   { id: 'zones', label: 'Пояса', kind: 'local', icon: Globe, gradient: 'var(--appicon-zones)' },
   { id: 'timer', label: 'Таймер', kind: 'local', icon: Timer, gradient: 'var(--appicon-timer)' },
   { id: 'color', label: 'Пипетка', kind: 'local', icon: Pipette, gradient: 'var(--appicon-color)' },
-  // Котёнок-тамагочи — основа будущего маскота (см. KittenApp).
-  { id: 'kitten', label: 'Котёнок', kind: 'local', icon: Cat, gradient: 'var(--appicon-kitten)' },
   { id: 'counter', label: 'Счётчик', kind: 'local', icon: Type, gradient: 'var(--appicon-counter)' },
   // Переводчик — «как обычный сайт», намеренно НЕ через API (см. задачу): полный Яндекс.Переводчик
   // со всеми его фичами, логином и т.п.

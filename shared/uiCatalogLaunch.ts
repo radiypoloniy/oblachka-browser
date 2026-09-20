@@ -33,7 +33,6 @@ export const LAUNCH: Record<string, string> = {
   'Конвертер': 'Converter',
   'Пояса': 'Time zones',
   'Пипетка': 'Eyedropper',
-  'Котёнок': 'Kitten',
   'Счётчик': 'Counter',
   'Переводчик': 'Translator',
   'Фон': 'Wallpaper',

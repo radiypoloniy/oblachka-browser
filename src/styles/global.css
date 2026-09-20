@@ -138,19 +138,6 @@ button, input, textarea, select { font-family: inherit; }
   0%, 100% { transform: translateX(0); }
   50%      { transform: translateX(5px); }
 }
-/* Котёнок-тамагочи в AI-панели (aiApps.tsx::KittenApp): дыхание в покое + прыжок-реакция
-   на действие. Основа под будущего маскота — новые анимации добавлять сюда же. */
-@keyframes oblako-kitten-idle {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
-}
-@keyframes oblako-kitten-hop {
-  0% { transform: translateY(0); }
-  30% { transform: translateY(-12px) scale(1.08); }
-  60% { transform: translateY(0); }
-  80% { transform: translateY(-5px); }
-  100% { transform: translateY(0); }
-}
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
   background: rgba(60,50,90,0.22); border-radius: 6px;

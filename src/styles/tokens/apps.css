@@ -36,7 +36,6 @@
   --appicon-zones:     #17293E;
 
   /* Светлые — тёмный глиф. */
-  --appicon-kitten:    var(--poster-mustard);
   --appicon-counter:   var(--poster-sky);
   /* Бумага — земля дизайн-системы: на ней цвет берёт на себя сам глиф. */
   --appicon-color:     var(--wallpaper-paper);
