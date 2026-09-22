@@ -384,6 +384,35 @@ export const MCP_TOOLS: readonly McpTool[] = [
       required: ['id'],
     },
   },
+  {
+    // ⚠️ Хаб локальной модели: общие очередь и GGUF в VRAM; первый чужой промпт требует подтверждения.
+    name: 'model_generate',
+    mode: 'read',
+    sensitive: true,
+    title: 'Сгенерировать текст моделью',
+    description: 'Run a prompt on the browser\'s already-loaded local model (same queue as '
+      + 'translate/chat). Prefer this over a second local runner: one shared GGUF in VRAM. '
+      + 'Returns the full completion text. The user is asked to confirm the first time.',
+    input: {
+      type: 'object',
+      properties: { prompt: { type: 'string', description: 'User prompt / task text.' }, system: { type: 'string', description: 'Optional system instructions prepended to the prompt.' }, maxTokens: { type: 'number', description: 'Max completion tokens, 1..8192. Default 2048.' } },
+      required: ['prompt'],
+    },
+  }, {
+    // ⚠️ Тот же SearXNG, что у чата: один конфиг и сетевой путь; внешний запрос sensitive.
+    name: 'web_search',
+    mode: 'read',
+    sensitive: true,
+    title: 'Поиск в вебе',
+    description: 'Search the web through the browser\'s configured SearXNG instance (same as '
+      + 'Oblako chat grounding: VPN profile, endpoint, credentials). Returns titles, URLs and '
+      + 'snippets. Prefer this over another search engine in a sibling app. Confirm the first time.',
+    input: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Search query.' }, limit: { type: 'number', description: 'How many hits, 1..10. Default 6.' } },
+      required: ['query'],
+    },
+  },
 ];
 
 /**

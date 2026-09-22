@@ -13,6 +13,8 @@ import {
 import {
   activateTab, addBookmarks, closeTab, groupTabs, openTab, trackProducts,
 } from './McpActions';
+import { generateText } from './McpModel';
+import { webSearch } from './McpSearch';
 import {
   MCP_PROMPTS, findPrompt, missingArgs, promptArgs,
 } from '../../shared/mcpPrompts';
@@ -440,6 +442,14 @@ async function run(
       if (!res.ok) throw new Error(res.note);
       return { closed: true, note: res.note };
     }
+    case 'model_generate': {
+      const prompt = typeof args.prompt === 'string' ? args.prompt : '';
+      const system = typeof args.system === 'string' ? args.system : undefined;
+      const maxTokens = typeof args.maxTokens === 'number' ? args.maxTokens : undefined;
+      return generateText({ prompt, system, maxTokens });
+    }
+    case 'web_search':
+      return webSearch(args);
     default:
       // Недостижимо: имя уже прошло decide(). Оставлено как явный отказ, а не молчание.
       throw new Error(`Tool ${name} has no implementation.`);

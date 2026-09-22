@@ -339,6 +339,8 @@ export function trackTargets(args: Record<string, unknown>): OpenTargets {
 export function confirmTitle(tool: McpTool): string {
   switch (tool.name) {
     case 'page_read_url': return 'Прочитать страницу?';
+    case 'model_generate': return 'Посчитать запрос локальной моделью?';
+    case 'web_search': return 'Искать в вебе через SearXNG?';
     case 'tabs_open': return 'Открыть вкладку?';
     case 'tabs_activate': return 'Переключить вкладку?';
     case 'tabs_close': return 'Закрыть вкладку?';
@@ -358,6 +360,18 @@ export function confirmTitle(tool: McpTool): string {
  */
 export function confirmSubject(tool: McpTool, args: Record<string, unknown>): string {
   switch (tool.name) {
+    case 'model_generate': {
+      const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : '';
+      if (!prompt) return 'Программа не передала текст запроса.';
+      const preview = prompt.replace(/\s+/g, ' ').slice(0, 280);
+      const more = prompt.length > 280 ? '…' : '';
+      return `Запрос встанет в очередь локальной модели (рядом с переводом и чатом):\n${preview}${more}`;
+    }
+    case 'web_search': {
+      const q = typeof args.query === 'string' ? args.query.trim() : '';
+      if (!q) return 'Программа не назвала поисковый запрос.';
+      return `Запрос уйдёт на ваш SearXNG (как в чате Oblako):\n${q.slice(0, 200)}`;
+    }
     case 'page_read_url': {
       const targets = readUrlTargets(args);
       if (!targets.ok) return 'Программа не назвала пригодный адрес.';

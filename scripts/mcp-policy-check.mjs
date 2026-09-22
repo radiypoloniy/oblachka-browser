@@ -33,7 +33,7 @@ check('состав каталога', MCP_TOOLS.map((t) => t.name),
   ['tabs_list', 'page_text', 'page_selection', 'page_screenshot', 'page_links', 'history_search',
     'bookmarks_search',
     'page_read_url', 'tracking_list', 'tracking_add', 'bookmarks_add', 'tabs_open', 'tabs_group',
-    'tabs_activate', 'tabs_close']);
+    'tabs_activate', 'tabs_close', 'model_generate', 'web_search']);
 // ⚠️ Выделение — то, на что человек показывает пальцем: «объясни это». Читается молча, как и
 // остальное чтение активной вкладки.
 check('выделение — чтение', findTool('page_selection').mode, 'read');
@@ -102,8 +102,15 @@ check('и составной префикс в обоих видах',
 check('чтение чужого адреса спрашивает', defaultStance(findTool('page_read_url')), 'ask');
 check('и его можно разрешить навсегда', canRemember(findTool('page_read_url')), true);
 check('«прочитать по адресу» помечено чувствительным', findTool('page_read_url').sensitive, true);
-check('у остальных чтений пометки нет',
-  MCP_TOOLS.filter((t) => t.mode === 'read' && t.sensitive).map((t) => t.name), ['page_read_url']);
+check('генерация моделью спрашивает', defaultStance(findTool('model_generate')), 'ask');
+check('и её тоже можно разрешить навсегда', canRemember(findTool('model_generate')), true);
+check('«генерация моделью» помечена чувствительной', findTool('model_generate').sensitive, true);
+check('prompt обязателен', findTool('model_generate').input.required, ['prompt']);
+check('чувствительные чтения — ровно три',
+  MCP_TOOLS.filter((t) => t.mode === 'read' && t.sensitive).map((t) => t.name),
+  ['page_read_url', 'model_generate', 'web_search']);
+check('веб-поиск спрашивает', defaultStance(findTool('web_search')), 'ask');
+check('query обязателен у поиска', findTool('web_search').input.required, ['query']);
 // ⚠️ Заголовок карточки — ВОПРОС: названием действия она читается как сообщение, которое можно
 // не заметить (тот же закон, что у карточки разрешений сайта).
 check('у каждой записи заголовок — вопрос',
