@@ -29,7 +29,9 @@
   `tracking.sqlite`. ⚠️ Это две сущности, не «ещё один магазин»: у билета другой ключ
   (маршрут + даты + опционально рейс), JSON-LD Product на Aviasales нет. Цена рейса —
   Travelpayouts Data API через `electron/TravelpayoutsClient.ts` и сессию профиля; токен —
-  `TravelpayoutsKeyStore.ts`, не в репозитории. Разбор адреса поиска — `shared/aviasalesUrl.ts`.
+  `TravelpayoutsKeyStore.ts`, не в репозитории. Разбор адреса поиска и открытого билета (`t=`) —
+  `shared/aviasalesUrl.ts`. Запрос кэша с `unique=true`, чтобы в меню были рейсы разных компаний,
+  а не один самый дешёвый дважды.
   Проверки — `TrackingChecker.ts` тем же тиком, что товары, пока браузер открыт. Подробности и
   отказ от селекторов карточек — PRICE-TRACKING.md.
 - **Закладки в сайдбаре** — `src/components/SidebarBookmarks.tsx` + переключатель
