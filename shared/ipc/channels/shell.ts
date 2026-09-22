@@ -64,8 +64,10 @@ export const SHELL = {
   SYNC_GET:     'sync:get',         // renderer → main: начальный атомарный запрос
 
   // Поиск по странице. Панель findbar живёт своей WebContentsView (см. FindBarManager) — открывает
-  // и закрывает её main напрямую, поэтому каналов «открой/закрой панель» тут нет.
+  // и закрывает её main напрямую, поэтому каналов «открой/закрой панель» тут нет, кроме FIND_REVEAL:
+  // омнибокс нашёл текст во вкладке и обязан показать панель, иначе подсветку не снять.
   FIND_START:  'find:start',        // renderer → main: начать/обновить поиск
+  FIND_REVEAL: 'find:reveal',       // renderer → main: открыть панель и подсветить запрос на активной
   FIND_NEXT:   'find:next',         // renderer → main: следующее/предыдущее совпадение
   FIND_STOP:   'find:stop',         // renderer → main: остановить поиск
   FIND_RESULT: 'find:result',       // main → renderer: результат (activeMatch, count)

@@ -22,8 +22,9 @@ import { closeClipboardPopover, toggleClipboardPopover } from '../ClipboardPopov
 import { closeDownloadsPopover } from '../DownloadsPopoverManager';
 import { openExternalWithConsent } from '../ExternalProtocol';
 import { closeFindBar, sendFindResult, showFindBar } from '../FindBarManager';
-import { indexVisit, isHistoryIndexInFlight } from '../HistoryIndexer';
+import { indexVisit, isHistoryIndexInFlight, scheduleOpenTabIndexCatchup } from '../HistoryIndexer';
 import { forgetMediaTab, handleMediaReport } from '../MediaSessionManager';
+import { forgetOpenTabContent } from '../TabContentMemory';
 import { onTabsSynced as onPageTranslateTabsSynced } from '../PageTranslateManager';
 import * as passwordAutofill from '../PasswordAutofillManager';
 import { closePasswordPopover, showPasswordPopover, syncPasswordPopoverAnchorBounds } from '../PasswordPopoverManager';
@@ -181,6 +182,7 @@ export function createWindowTabManager(
       pushProductState(win);
     },
     (wc, tabId) => {
+      forgetOpenTabContent(wc.id);
       closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); passwordAutofill.onTabClosed(tabId); forgetMediaTab(tabId);
       // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
       // хранилище), Chrome-подобно. takeIncognitoClearIfDone сам знает, когда это уместно (работает
@@ -261,6 +263,7 @@ export function createWindowTabManager(
     const sleepHistory = historyFor(tabs?.profileOfWebContents(wc.id) ?? DEFAULT_PROFILE_ID);
     if (isHistoryIndexInFlight(sleepHistory, url)) return false;
     await indexVisit(sleepHistory, url, title, wc, { trigger: 'sleep' });
+    forgetOpenTabContent(wc.id);
     return true;
   });
   tabs.setOnPasswordDismiss(() => closePasswordPopover(win));
@@ -302,6 +305,8 @@ export function createWindowTabManager(
   tabs.setOnExternalOpen((url, fromPageUrl, wcId) => {
     void openExternalWithConsent(win, url, fromPageUrl, wcId);
   });
+
+  scheduleOpenTabIndexCatchup(tabs, historyFor);
 
   // Регистрируем окно в реестре — с этого момента его находят по отправителю IPC. Владелец
   // сессии ставится тут же: дерево вкладок принадлежит полному окну, и только его снимок имеет

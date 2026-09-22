@@ -4,3 +4,4 @@ export { aiBridge } from './aiBridge';
 export { updatesBridge } from './updatesBridge';
 export { mcpBridge } from './mcpBridge';
 export { flightBridge } from './flightBridge';
+export { tabSearchBridge } from './tabSearchBridge';

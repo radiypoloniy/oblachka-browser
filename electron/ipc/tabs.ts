@@ -7,7 +7,7 @@ import type { OmniboxResume, PageChangesResult, RelatedPagesResult, SmartTabHit,
 import { getPageChanges } from '../PageChanges';
 import { findRelatedPages } from '../RelatedHistory';
 import { searchStuff } from '../StuffSearch';
-import { searchTabsByMeaning } from '../TabSearch';
+import { searchTabsByContent, searchTabsByMeaning } from '../TabSearch';
 import { applyUiLanguage as applySkillsLanguage } from '../SkillsStore';
 import { allContexts, broadcastToChrome, contextFromSender } from '../WindowRegistry';
 import { ipcMain } from 'electron';
@@ -102,6 +102,23 @@ export function registerTabsIpc(d: IpcDeps): void {
     } finally {
       smartTabSearchBusy = false;
     }
+  });
+  ipcMain.handle(IPC.TABS_SEARCH_CONTENT, (e, query: string): SmartTabHit[] => {
+    const from = contextFromSender(e.sender);
+    if (!from || typeof query !== 'string') return [];
+    const own = allContexts().filter((c) => c.win.id === from.win.id);
+    const others = allContexts().filter((c) => c.win.id !== from.win.id);
+    const candidates = [...own, ...others].flatMap((ctx) =>
+      ctx.tabs.snapshot().map((tab) => ({ tab, windowId: ctx.win.id })),
+    );
+    return searchTabsByContent(query, candidates, history()).map((c) => ({
+      tabId: c.tab.id,
+      windowId: c.windowId,
+      title: c.tab.title,
+      url: c.tab.url,
+      otherWindow: c.windowId !== from.win.id,
+      snippet: c.snippet,
+    }));
   });
   // Переход к вкладке в ДРУГОМ окне: поднимаем то окно и делаем вкладку активной в нём.
   // ⚠️ Окно ищем в реестре по id, а не доверяем присланному числу как индексу: окно могли

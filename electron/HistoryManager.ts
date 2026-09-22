@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { HistoryEntry, HistoryClearPeriod, HistoryContentCoverage } from '../shared/ipc';
 import { isSearchResultUrl } from '../shared/searchEngines';
 import { normalizeForOmnibox } from '../shared/frecency';
-import { coverageFromCounts, isNoisyForEmbedding, IDLE_CATCHUP_MAX_AGE_MS, IDLE_CATCHUP_MAX_PAGES } from '../shared/historyIndex';
+import { coverageFromCounts, isIdleCatchupRow, isNoisyForEmbedding, IDLE_CATCHUP_MAX_AGE_MS, IDLE_CATCHUP_MAX_PAGES } from '../shared/historyIndex';
 import { stemText, stemQuery, STEM_VERSION } from './textStemming';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
 
@@ -275,7 +275,7 @@ export class HistoryManager {
         ORDER BY h.last_visit DESC
       `).iterate(nowMs - IDLE_CATCHUP_MAX_AGE_MS) as IterableIterator<{ id: number; url: string; title: string; lastVisit: number }>;
       for (const row of rows) {
-        if (isNoisyForEmbedding(row.url, row.title)) continue;
+        if (!isIdleCatchupRow({ lastVisit: row.lastVisit, noisy: isNoisyForEmbedding(row.url, row.title), url: row.url }, nowMs)) continue;
         pages.push(row);
         if (pages.length >= IDLE_CATCHUP_MAX_PAGES) break;
       }

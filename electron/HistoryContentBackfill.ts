@@ -13,6 +13,9 @@
 // - permission-запросы и загрузки файлов с таких страниц должны молча отклоняться, не всплывать
 //   в UI как будто это сделал пользователь — см. BackgroundWebContents.ts + PermissionManager.ts/
 //   DownloadManager.ts.
+// - звук всегда выключен (markBackground + autoplayPolicy): иначе YouTube в тихом доборе
+//   играет рекламу, хотя вкладки на экране нет. Ролики сюда вообще не грузим — текста с
+//   document.hidden всё равно нет.
 import { WebContentsView } from 'electron';
 import type { BrowserWindow } from 'electron';
 import type { HistoryManager } from './HistoryManager';
@@ -20,7 +23,8 @@ import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
 import type { BackfillProgress } from '../shared/ipc';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
 import { extractEnrichedText, buildTextChunks } from './HistoryIndexer';
-import { markBackground, unmarkBackground } from './BackgroundWebContents';
+import { BACKGROUND_WEB_PREFERENCES, markBackground, unmarkBackground } from './BackgroundWebContents';
+import { isVideoPage } from '../shared/historyIndex';
 
 // Заметно консервативнее лёгкого бэкфилла (HistoryBackfill.ts::PAUSE_BETWEEN_CHUNKS_MS): там
 // один embed()-вызов на строку, здесь — полная загрузка страницы (сеть + JS) на каждую. Пауза
@@ -65,9 +69,9 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
 async function openHidden(win: BrowserWindow, url: string): Promise<WebContentsView | null> {
   if (win.isDestroyed()) return null;
   const view = new WebContentsView({
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    webPreferences: { ...BACKGROUND_WEB_PREFERENCES },
   });
-  markBackground(view.webContents.id);
+  markBackground(view.webContents);
   win.contentView.addChildView(view);
   // Нулевые bounds — тот же приём, что уже используется для скрытия WebContentsView (см.
   // App.tsx::pushBounds про Загрузки): вьюха живая (грузит/исполняет JS), просто невидима.
@@ -95,7 +99,7 @@ export async function indexHiddenHistoryRow(
   win: BrowserWindow,
   row: { id: number; url: string; title: string },
 ): Promise<'saved' | 'skipped' | 'failed'> {
-  if (isNoisyForEmbedding(row.url, row.title) || SKIP_URL_EXT_RE.test(row.url)) return 'skipped';
+  if (isNoisyForEmbedding(row.url, row.title) || SKIP_URL_EXT_RE.test(row.url) || isVideoPage(row.url)) return 'skipped';
   if (win.isDestroyed()) return 'failed';
   const view = await openHidden(win, row.url);
   if (!view) return 'failed';

@@ -8,10 +8,11 @@ import { showSplitStackPopover } from '../SplitStackPopoverManager';
 import { endTabDrag, setSwapCursor, setSwapHint, setSwapThumb, startTabDrag } from '../DropZoneManager';
 import { parsePhraseToRule } from '../RuleParser';
 import { highlightCandidates, pickFragmentByMeaning } from '../SmartFind';
-import { broadcastToChrome, contextFromSender } from '../WindowRegistry';
+import { broadcastToChrome, contextFromSender, allContexts } from '../WindowRegistry';
 import type { WindowRole } from '../WindowRegistry';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
+import { sendFindResult, showFindBar } from '../FindBarManager';
 
 // И для смыслового Ctrl+F (см. SmartFind.ts). Второй Enter, пока идёт первый поиск, не должен
 // вставать в очередь генерации: человек получил бы ответ на позапрошлый вопрос.
@@ -51,6 +52,22 @@ export function registerWindowsIpc(d: IpcDeps): void {
     return from ? moveTabToExistingWindow(from, tabId, windowId) : false;
   });
   ipcMain.handle(IPC.FIND_START, (e, q: string, fwd: boolean) => tabsOf(e)?.findInPage(q, fwd));
+  // Находка по тексту вкладки в омнибоксе: вкладку уже активировали, здесь — панель и подсветка.
+  // ⚠️ Счётчик шлём сами после findQuoteInPage: found-in-page может прийти до того, как вью
+  // панели прикреплена, и sendFindResult из TabManager тогда молчит.
+  ipcMain.handle(IPC.FIND_REVEAL, async (e, query: string, windowId?: number) => {
+    const q = typeof query === 'string' ? query.trim() : '';
+    if (!q) return;
+    const from = contextFromSender(e.sender);
+    const ctx = typeof windowId === 'number'
+      ? allContexts().find((c) => c.win.id === windowId)
+      : from;
+    if (!ctx || ctx.win.isDestroyed()) return;
+    const matches = await ctx.tabs.findQuoteInPage([q]);
+    showFindBar(ctx.win, q);
+    ctx.tabs.markFindBarOpen();
+    if (matches > 0) sendFindResult(ctx.win, { activeMatch: 1, count: matches });
+  });
   ipcMain.handle(IPC.FIND_NEXT,  (e, fwd: boolean)            => tabsOf(e)?.findNext(fwd));
   ipcMain.handle(IPC.FIND_STOP,  (e)                            => tabsOf(e)?.stopFind());
   // Смысловой Ctrl+F: модель выбирает НОМЕР фрагмента страницы, цитату берём из своего массива и

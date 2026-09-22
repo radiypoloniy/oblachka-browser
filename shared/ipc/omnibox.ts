@@ -20,6 +20,8 @@ export interface SuggestDropdownItem {
   // не решает сама, просто рисует подпись, если она есть — источник группировки остаётся в
   // Toolbar.tsx, не размазывается по двум местам.
   sectionHeader?: string;
+  // Находка по тексту вкладки: после переключения открыть Ctrl+F с этим запросом.
+  findQuery?: string;
   /** Подпись справа в строке панели («2 мин назад», «окно 2»). Только нейтральная панель. */
   meta?: string;
   /** true — meta это метка окна, рисуется тегом, а не временем. */
@@ -158,6 +160,8 @@ export interface SmartTabHit {
   title: string;
   url: string;
   otherWindow: boolean;
+  /** Кусок страницы, где нашлось — для строки «Во вкладках». */
+  snippet?: string;
 }
 
 // Одна разобранная часть адреса (см. shared/addressParts.ts). Наружу отдаём и ключ поля, и

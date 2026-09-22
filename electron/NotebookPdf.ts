@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app } from 'electron';
-import { markBackground, unmarkBackground } from './BackgroundWebContents';
+import { BACKGROUND_WEB_PREFERENCES, markBackground, unmarkBackground } from './BackgroundWebContents';
 
 // Выгрузка страницы Студии в PDF.
 //
@@ -53,9 +53,9 @@ export async function savePageAsPdf(win: BrowserWindow, name: string, html: stri
   // работает и заодно даёт странице нормальный origin для шрифтов.
   const tmp = path.join(app.getPath('temp'), `oblako-pdf-${Date.now()}.html`);
   const view = new WebContentsView({
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    webPreferences: { ...BACKGROUND_WEB_PREFERENCES },
   });
-  markBackground(view.webContents.id);
+  markBackground(view.webContents);
   win.contentView.addChildView(view);
   view.setBounds({ x: -PRINT_VIEWPORT.width - 100, y: 0, ...PRINT_VIEWPORT });
 

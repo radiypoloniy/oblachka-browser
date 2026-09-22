@@ -1,7 +1,7 @@
 import { WebContentsView } from 'electron';
 import type { BrowserWindow } from 'electron';
 import type { TabManager } from './TabManager';
-import { markBackground, unmarkBackground } from './BackgroundWebContents';
+import { BACKGROUND_WEB_PREFERENCES, markBackground, unmarkBackground } from './BackgroundWebContents';
 import { extractEnrichedText } from './HistoryIndexer';
 
 // Извлечение читаемого текста источника-URL для блокнота (NotebookLM-хаб). Тот же приём, что
@@ -46,9 +46,9 @@ export async function extractUrlText(win: BrowserWindow, url: string): Promise<{
   }
 
   const view = new WebContentsView({
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    webPreferences: { ...BACKGROUND_WEB_PREFERENCES },
   });
-  markBackground(view.webContents.id);
+  markBackground(view.webContents);
   win.contentView.addChildView(view);
   // ⚠️ Размер НАСТОЯЩИЙ, вью просто уведена за левый край окна. С нулевыми bounds у страницы
   // нет раскладки: innerText пуст, ленивые блоки не рисуются, и SPA магазинов отдавали пустоту.

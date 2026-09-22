@@ -17,8 +17,11 @@ import {
   formatOnboardingIndexLead,
   pickIdleCatchupPages,
   shouldRunIdleCatchup,
+  isVideoPage,
   isUnusableHistoryText,
   isSpaRouteChange,
+  stripIndexBoilerplate,
+  splitOverlappingChunks,
   HISTORY_INDEX_CONCURRENCY,
   SLEEP_INDEX_BUDGET_MS,
   IDLE_CATCHUP_MAX_PAGES,
@@ -63,6 +66,14 @@ check('заглушка Document — title', classifyHistoryNoise('https://examp
 check('Sign in — title', classifyHistoryNoise('https://shop.test/account', 'Sign in'), 'title');
 check('совместимость: isNoisy совпадает с classify', isNoisyForEmbedding(YT_WATCH, 'YouTube'), true);
 check('совместимость: осмысленный title не шум', isNoisyForEmbedding(YT_WATCH, 'Never Gonna Give You Up'), false);
+
+console.log('\n— ролик в скрытую вью не грузим: автоплей, расшифровки всё равно нет —');
+check('watch — ролик', isVideoPage(YT_WATCH), true);
+check('shorts — ролик', isVideoPage('https://www.youtube.com/shorts/abc'), true);
+check('youtu.be — ролик', isVideoPage('https://youtu.be/dQw4w9WgXcQ'), true);
+check('главная YouTube — не ролик', isVideoPage(YT_HOME), false);
+check('статья — не ролик', isVideoPage(GH_REPO), false);
+check('битый адрес — не ролик', isVideoPage('not a url'), false);
 
 console.log('\n— навигация: title-шум не запоминать, url-шум запоминать —');
 check('навигация, уже есть чанк — skip',
@@ -117,6 +128,23 @@ check('сон, идёт живое извлечение — skip (вкладку
 check('сон на логине — не открывать',
   decideHistoryIndex({ trigger: 'sleep', hasContent: false, memoryDone: false, inFlight: false, noise: 'url', previousNoise: null }),
   'remember-url-noise');
+check('сон, память считает готовым, чанка нет — extract',
+  decideHistoryIndex({ trigger: 'sleep', hasContent: false, memoryDone: true, inFlight: false, noise: 'none', previousNoise: 'none' }),
+  'extract');
+
+console.log('\n— чистка обвязки UI и overlap чанков —');
+{
+  const cleaned = stripIndexBoilerplate('Hello unverified world. Skip to content. Camera permissions on this site.');
+  check('unverified вырезан', cleaned.includes('unverified'), false);
+  check('skip to content вырезан', /skip to content/i.test(cleaned), false);
+  check('permissions в статье на месте', cleaned.includes('permissions'), true);
+  const word = 'сверхпроводимость';
+  const text = `${'x'.repeat(1390)}${word}${'y'.repeat(1390)}`;
+  const chunks = splitOverlappingChunks(text, {
+    maxChars: 12_000, chunkChars: 1400, overlapChars: 220, maxChunks: 8,
+  });
+  check('overlap держит слово на срезе целиком', chunks.some((c) => c.includes(word)), true);
+}
 
 console.log('\n— бюджеты, литералы рядом с инвариантом —');
 check('не больше двух извлечений разом', HISTORY_INDEX_CONCURRENCY, 2);
@@ -155,22 +183,35 @@ check('окно давности 36 часов', IDLE_CATCHUP_MAX_AGE_MS, 129600
 check('компьютер простаивает полторы минуты', IDLE_CATCHUP_IDLE_SECONDS, 90);
 const NOW = 1_700_000_000_000;
 const HOUR = 3_600_000;
+const ARTICLE = 'https://example.com/post';
 check('вчерашний визит берём, визит 2019 — нет',
   pickIdleCatchupPages([
-    { lastVisit: NOW - 20 * HOUR, noisy: false, id: 'recent' },
-    { lastVisit: NOW - 40 * HOUR, noisy: false, id: 'old' },
-    { lastVisit: Date.UTC(2019, 0, 1), noisy: false, id: 'archive' },
+    { lastVisit: NOW - 20 * HOUR, noisy: false, url: ARTICLE, id: 'recent' },
+    { lastVisit: NOW - 40 * HOUR, noisy: false, url: ARTICLE, id: 'old' },
+    { lastVisit: Date.UTC(2019, 0, 1), noisy: false, url: ARTICLE, id: 'archive' },
   ], NOW).map((r) => r.id),
   ['recent']);
 check('шумный недавний не берём',
-  pickIdleCatchupPages([{ lastVisit: NOW - HOUR, noisy: true, id: 'login' }], NOW).length,
+  pickIdleCatchupPages([{ lastVisit: NOW - HOUR, noisy: true, url: ARTICLE, id: 'login' }], NOW).length,
   0);
 check('девятый недавний не берём',
   pickIdleCatchupPages(
-    Array.from({ length: 9 }, (_, i) => ({ lastVisit: NOW - i * 60_000, noisy: false, id: String(i) })),
+    Array.from({ length: 9 }, (_, i) => ({ lastVisit: NOW - i * 60_000, noisy: false, url: ARTICLE, id: String(i) })),
     NOW,
   ).map((r) => r.id),
   ['0', '1', '2', '3', '4', '5', '6', '7']);
+check('ролик youtube в простое не переоткрываем',
+  pickIdleCatchupPages([{ lastVisit: NOW - HOUR, noisy: false, url: YT_WATCH, id: 'yt' }], NOW).length,
+  0);
+check('статья рядом с роликом — берём статью, не ролик',
+  pickIdleCatchupPages([
+    { lastVisit: NOW - 60_000, noisy: false, url: YT_WATCH, id: 'yt' },
+    { lastVisit: NOW - 120_000, noisy: false, url: ARTICLE, id: 'post' },
+  ], NOW).map((r) => r.id),
+  ['post']);
+check('главная youtube не ролик — в добор идёт',
+  pickIdleCatchupPages([{ lastVisit: NOW - HOUR, noisy: false, url: YT_HOME, id: 'home' }], NOW).map((r) => r.id),
+  ['home']);
 check('в простое можно', shouldRunIdleCatchup({ backfillRunning: false, catchupRunning: false, idleSeconds: 90 }), true);
 check('89 секунд ещё рано', shouldRunIdleCatchup({ backfillRunning: false, catchupRunning: false, idleSeconds: 89 }), false);
 check('полная индексация важнее тихого добора',

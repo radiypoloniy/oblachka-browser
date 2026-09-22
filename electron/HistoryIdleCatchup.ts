@@ -5,6 +5,7 @@
 // СВОИХ визитов за 36 часов: last_visit свежий, импорт 2019 года не проходит по давности.
 // ⚠️ Стоп, как только человек вернулся: каждый шаг смотрит powerMonitor.getSystemIdleTime.
 // ⚠️ Сеть всё равно идёт — поэтому бюджет крошечный (8 страниц) и пауза между ними.
+// ⚠️ Ролики YouTube сюда не попадают: скрытая вью живая, и без mute играла рекламу.
 import { powerMonitor } from 'electron';
 import type { BrowserWindow } from 'electron';
 import type { HistoryManager } from './HistoryManager';

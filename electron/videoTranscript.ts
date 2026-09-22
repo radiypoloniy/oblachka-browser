@@ -19,25 +19,15 @@
 // ⚠️ Селекторы YouTube гниют. Поэтому кнопку ищем по подписи (несколько языков), а
 // сегменты — по имени элемента с запасным путём через контейнер целиком.
 
+import { isVideoPage } from '../shared/historyIndex';
+
+export { isVideoPage };
+
 export interface TranscriptLine { t: string; text: string }
 export interface VideoTranscript {
   title: string;
   channel: string;
   lines: TranscriptLine[];
-}
-
-// Страница ролика YouTube. Shorts тоже watch-страница, но субтитры там бывают редко —
-// проверку не сужаем, просто не найдём панель и уйдём в обычное извлечение.
-export function isVideoPage(url: string): boolean {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\.|^m\./, '');
-    if (host === 'youtu.be') return true;
-    if (host !== 'youtube.com') return false;
-    return u.pathname === '/watch' || u.pathname.startsWith('/shorts/');
-  } catch {
-    return false;
-  }
 }
 
 // Скрипт исполняется В КОНТЕКСТЕ СТРАНИЦЫ. Никакого доступа к Node — это чужая страница.

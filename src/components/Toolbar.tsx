@@ -94,6 +94,22 @@ interface ToolbarProps {
 
 // ── Компонент ─────────────────────────────────────────────────────────────────
 
+function pickTabOrUrl(item: SuggestItem, submit: (url: string) => void, closeDropdownFully: (reason: string) => void) {
+  if (item.kind === 'tab' && item.tabId) {
+    // Вкладка чужого окна переключается своим каналом: TAB_ACTIVATE адресуется окну-отправителю
+    // и такой вкладки у себя не найдёт (см. AI-IDEAS.md №8).
+    const go = item.windowId !== undefined
+      ? window.oblako.activateTabInWindow(item.windowId, item.tabId)
+      : window.oblako.activateTab(item.tabId);
+    void Promise.resolve(go).then(() => {
+      if (item.findQuery) void window.oblako.revealFind(item.findQuery, item.windowId);
+    });
+    closeDropdownFully('pick-tab');
+    return;
+  }
+  submit(item.url);
+}
+
 export default function Toolbar({
   // dark/onToggleDark из пропсов убраны совсем: кнопку темы отсюда сняли ещё раньше, а теперь у
   // темы есть настоящий дом — раздел «Интерфейс» (см. AppearanceSection.tsx). Держать мёртвую
@@ -388,17 +404,7 @@ export default function Toolbar({
     } catch { /* noop */ }
   };
 
-  const pickSuggestion = (item: SuggestItem) => {
-    if (item.kind === 'tab' && item.tabId) {
-      // Вкладка чужого окна переключается своим каналом: TAB_ACTIVATE адресуется окну-отправителю
-      // и такой вкладки у себя не найдёт (см. AI-IDEAS.md №8).
-      if (item.windowId !== undefined) void window.oblako.activateTabInWindow(item.windowId, item.tabId);
-      else void window.oblako.activateTab(item.tabId);
-      closeDropdownFully('pick-tab');
-    } else {
-      submit(item.url);
-    }
-  };
+  const pickSuggestion = (item: SuggestItem) => pickTabOrUrl(item, submit, closeDropdownFully);
 
   // Клик по строке ВО вью нативного дропдауна (другой webContents, заход 3/5) — main пересылает
   // выбор сюда, вызываем тот же pickSuggestion(), что и старый chrome-DOM дропдаун (не дублируем

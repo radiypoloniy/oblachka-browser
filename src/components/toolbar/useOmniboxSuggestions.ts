@@ -303,6 +303,27 @@ async function appendSmartTabs(
   }
 }
 
+async function loadContentTabItems(
+  query: string, ranked: SuggestItem[], seq: number,
+  seqRef: React.MutableRefObject<number>,
+): Promise<SuggestItem[] | null> {
+  if (query.trim().length < 3 || looksLikeAddress(query)) return [];
+  const hits = await window.oblako.searchTabsContent(query).catch(() => [] as SmartTabHit[]);
+  if (seq !== seqRef.current) return null;
+  const shown = new Set(ranked.map((item) => item.tabId).filter((id): id is string => Boolean(id)));
+  return hits.filter((hit) => !shown.has(hit.tabId)).map((hit) => ({
+    kind: 'tab' as SuggestKind,
+    label: hit.url,
+    sub: hit.otherWindow
+      ? `${hit.title} — в другом окне${hit.snippet ? ` · ${hit.snippet}` : ''}`
+      : (hit.snippet || hit.title),
+    url: hit.url,
+    tabId: hit.tabId,
+    windowId: hit.otherWindow ? hit.windowId : undefined,
+    findQuery: query.trim(),
+  }));
+}
+
 export interface OmniboxSuggestions {
   /** Собрать список по набранному тексту. Историю рисует сразу, сеть догоняет. */
   triggerSuggest: (q: string) => void;
@@ -436,6 +457,8 @@ export function useOmniboxSuggestions(d: OmniboxSuggestionsDeps): OmniboxSuggest
       url: getSearchEngine(searchEngineId).buildUrl(query),
     };
 
+    const contentItems = await loadContentTabItems(query, [topItem, ...restItems].filter(Boolean) as SuggestItem[], seq, seqRef);
+    if (contentItems === null) return;
 
     // Порядок секций, подписи и правило «набран адрес → не переключай на вкладку, открывай» —
     // чистая логика под проверкой (shared/suggestList.ts, npm test -- suggest-list).
@@ -443,6 +466,7 @@ export function useOmniboxSuggestions(d: OmniboxSuggestionsDeps): OmniboxSuggest
       topItem,
       searchItem,
       restItems,
+      contentItems,
       suggestItems,
       query,
       engineName: getSearchEngine(searchEngineId).name,

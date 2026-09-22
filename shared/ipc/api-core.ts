@@ -33,6 +33,8 @@ export interface CoreApi {
   activateTab(id: string): Promise<void>;
   /** Вкладки, подходящие запросу по смыслу (локальная модель). Пусто — не нашлось или модели нет. */
   searchTabsSmart(query: string): Promise<SmartTabHit[]>;
+  /** Открытые вкладки, в тексте которых есть запрос (FTS, без модели). */
+  searchTabsContent(query: string): Promise<SmartTabHit[]>;
   /** Перейти к вкладке в ДРУГОМ окне: поднять то окно и сделать вкладку активной в нём. */
   activateTabInWindow(windowId: number, tabId: string): Promise<void>;
   /** Разобрать адрес, вставленный строкой в настройках. Пусто — не разобралось (см. AddressParser). */
@@ -144,6 +146,8 @@ export interface CoreApi {
   findStart(query: string, forward: boolean): Promise<void>;
   findNext(forward: boolean): Promise<void>;
   findStop(): Promise<void>;
+  /** После перехода на вкладку из омнибокса: открыть Ctrl+F и подсветить запрос. */
+  revealFind(query: string, windowId?: number): Promise<void>;
   onFindResult(cb: (r: FindResult) => void): () => void;
 
   // Омнибокс

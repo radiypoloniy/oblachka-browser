@@ -15,18 +15,23 @@
 // ⚠️ Политика «извлекать / ждать load / шум» — shared/historyIndex.ts, под npm test -- history-index.
 import type { WebContents } from 'electron';
 import type { HistoryManager } from './HistoryManager';
+import type { TabManager } from './TabManager';
 import { extractPageText } from './AiPanelManager';
 import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
 import { createLimiter } from '../shared/limitConcurrency';
+import { DEFAULT_PROFILE_ID } from '../shared/profiles';
 import {
   classifyHistoryNoise,
   decideHistoryIndex,
   isUnusableHistoryText,
   shouldWaitForPageLoad,
+  splitOverlappingChunks,
+  stripIndexBoilerplate,
   HISTORY_INDEX_CONCURRENCY,
   type HistoryIndexTrigger,
   type HistoryNoiseKind,
 } from '../shared/historyIndex';
+import { rememberOpenTabContent } from './TabContentMemory';
 
 // Живой замер (диагностика "переиндексация при рестарте"): 750-850% CPU на 40с при рестарте
 // с 10 закреплёнными вкладками — каждая переиндексировалась заново при том, что содержимое не
@@ -83,26 +88,12 @@ export type IndexVisitOpts = {
 // Экспортирована для HistoryContentBackfill.ts — тот же пайплайн чанкинга для тихого
 // переоткрытия старых страниц, дублировать логику незачем.
 export function buildTextChunks(text: string): string[] {
-  const normalized = text.replace(/\s+/g, ' ').trim().slice(0, HISTORY_CHUNK_SOURCE_MAX_CHARS);
-  if (!normalized) return [];
-  if (normalized.length <= HISTORY_CHUNK_TARGET_CHARS) return [normalized];
-
-  const chunks: string[] = [];
-  let start = 0;
-  while (start < normalized.length && chunks.length < HISTORY_CHUNK_MAX) {
-    const hardEnd = Math.min(normalized.length, start + HISTORY_CHUNK_TARGET_CHARS);
-    let end = hardEnd;
-    if (hardEnd < normalized.length) {
-      const punctuation = normalized.lastIndexOf('.', hardEnd);
-      const boundary = punctuation > start + 500 ? punctuation + 1 : normalized.lastIndexOf(' ', hardEnd);
-      if (boundary > start + 500) end = boundary;
-    }
-    const chunk = normalized.slice(start, end).trim();
-    if (chunk) chunks.push(chunk);
-    if (end >= normalized.length) break;
-    start = Math.max(end - HISTORY_CHUNK_OVERLAP_CHARS, start + 1);
-  }
-  return chunks;
+  return splitOverlappingChunks(stripIndexBoilerplate(text), {
+    maxChars: HISTORY_CHUNK_SOURCE_MAX_CHARS,
+    chunkChars: HISTORY_CHUNK_TARGET_CHARS,
+    overlapChars: HISTORY_CHUNK_OVERLAP_CHARS,
+    maxChunks: HISTORY_CHUNK_MAX,
+  });
 }
 
 /** Живое извлечение этой записи ещё идёт — вкладку нельзя выгружать, снимок умрёт вместе с вью. */
@@ -162,7 +153,8 @@ function stillOnPage(wc: WebContents, url: string): boolean {
 // loadWait — слушатель, повешенный ДО очереди извлечения (indexVisit), иначе did-finish-load
 // пролетает, пока мы ждём слот, и внутри снова ждали бы 8 с.
 function acceptExtractedText(text: string): string | null {
-  return isUnusableHistoryText(text) ? null : text;
+  const cleaned = stripIndexBoilerplate(text);
+  return isUnusableHistoryText(cleaned) ? null : cleaned;
 }
 
 function hasUsableStoredContent(history: HistoryManager, historyId: number): boolean {
@@ -264,6 +256,8 @@ export async function indexVisit(
       return;
     }
 
+    if (wc && !wc.isDestroyed()) rememberOpenTabContent(wc.id, url, liveTitle, enrichedText);
+
     const chunks = buildTextChunks(enrichedText);
     if (chunks.length === 0) return;
     // Векторные колонки history_content_chunks (vector/dims) — NOT NULL, но мёртвые: эмбеддинги
@@ -287,4 +281,26 @@ export async function indexVisit(
   } finally {
     state.inFlight.delete(historyId);
   }
+}
+
+// После restore вкладки рождаются спящими, а активная могла не получить чанк (обвязка Claude,
+// SPA-гард «уже пробовали»). Сон — единственный триггер, который обходит memoryDone.
+const OPEN_TAB_CATCHUP_DELAY_MS = 4000;
+
+export function scheduleOpenTabIndexCatchup(
+  tabs: TabManager,
+  historyFor: (profileId: string) => HistoryManager,
+): void {
+  setTimeout(() => {
+    for (const tab of tabs.snapshot()) {
+      if (tab.isHub || tab.incognito || tab.isSleeping) continue;
+      if (!/^https?:/i.test(tab.url)) continue;
+      const wc = tabs.getActiveWebContents(tab.id);
+      if (!wc || wc.isDestroyed()) continue;
+      const history = historyFor(tabs.profileOfWebContents(wc.id) ?? DEFAULT_PROFILE_ID);
+      void indexVisit(history, tab.url, tab.title, wc, { trigger: 'sleep' }).catch((e: unknown) =>
+        console.warn('[HistoryIndexer] досъём открытой вкладки:', e),
+      );
+    }
+  }, OPEN_TAB_CATCHUP_DELAY_MS);
 }

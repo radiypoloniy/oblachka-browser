@@ -32,6 +32,8 @@ export interface ComposeInput {
   searchItem: SuggestItem;
   /** Остальные совпадения из истории и открытых вкладок. */
   restItems: SuggestItem[];
+  /** Находки по тексту открытых вкладок (FTS). Идут даже без героя истории. */
+  contentItems?: SuggestItem[];
   /** Живые подсказки поисковика. */
   suggestItems: SuggestItem[];
   /** Что человек набрал — от этого зависит правило вкладок ниже. */
@@ -54,23 +56,28 @@ export interface ComposeInput {
  * и так выделен отдельной карточкой, подпись над одной строкой была бы шумом.
  */
 export function composeSuggestions(input: ComposeInput): SuggestItem[] {
-  const { topItem, searchItem, restItems, suggestItems, query, engineName } = input;
+  const { topItem, searchItem, restItems, contentItems = [], suggestItems, query, engineName } = input;
 
   const rest = [...restItems];
   if (rest[0]) rest[0] = { ...rest[0], sectionHeader: 'История и вкладки' };
+
+  const content = [...contentItems];
+  if (content[0] && !content[0].sectionHeader) {
+    content[0] = { ...content[0], sectionHeader: 'Во вкладках' };
+  }
 
   const suggests = [...suggestItems];
   if (suggests[0]) suggests[0] = { ...suggests[0], sectionHeader: `Предложения ${engineName}` };
 
   const addressTyped = looksLikeAddress(query);
   const asNav = (i: SuggestItem): SuggestItem => (
-    addressTyped && i.kind === 'tab'
+    addressTyped && i.kind === 'tab' && !i.findQuery
       ? { ...i, kind: 'history', tabId: undefined, windowId: undefined }
       : i
   );
 
   return (topItem
-    ? [topItem, searchItem, ...rest, ...suggests]
-    : [searchItem, ...suggests]
+    ? [topItem, searchItem, ...rest, ...content, ...suggests]
+    : [searchItem, ...content, ...suggests]
   ).map(asNav);
 }

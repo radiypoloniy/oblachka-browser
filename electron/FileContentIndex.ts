@@ -8,6 +8,7 @@ import { stemText, stemQuery, STEM_VERSION } from './textStemming';
 import { profileDataPath } from './ProfilePaths';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
 import { makeSearchSnippet } from './SearchSnippet';
+import { splitOverlappingChunks, stripIndexBoilerplate } from '../shared/historyIndex';
 
 type Database = import('better-sqlite3').Database;
 type FileRow = { id: string; filename: string; save_path: string; size: number; mtime_ms: number };
@@ -18,15 +19,16 @@ const MAX_FILE_BYTES = 64 * 1024 * 1024;
 // Совпадает с лимитом FileExtract: не теряем вторую половину уже извлечённого документа.
 const MAX_INDEX_CHARS = 200_000;
 const CHUNK_CHARS = 1400;
-const MAX_CHUNKS = Math.ceil(MAX_INDEX_CHARS / CHUNK_CHARS);
+const CHUNK_OVERLAP = 220;
+const MAX_CHUNKS = Math.ceil(MAX_INDEX_CHARS / Math.max(1, CHUNK_CHARS - CHUNK_OVERLAP));
 
 function chunksOf(text: string): string[] {
-  const normalized = text.replace(/\s+/g, ' ').trim().slice(0, MAX_INDEX_CHARS);
-  const chunks: string[] = [];
-  for (let start = 0; start < normalized.length && chunks.length < MAX_CHUNKS; start += CHUNK_CHARS) {
-    chunks.push(normalized.slice(start, start + CHUNK_CHARS));
-  }
-  return chunks;
+  return splitOverlappingChunks(stripIndexBoilerplate(text), {
+    maxChars: MAX_INDEX_CHARS,
+    chunkChars: CHUNK_CHARS,
+    overlapChars: CHUNK_OVERLAP,
+    maxChunks: MAX_CHUNKS,
+  });
 }
 
 function ftsQuery(query: string): string {

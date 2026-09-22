@@ -37,6 +37,11 @@ console.log('\n— порядок секций —');
     composeSuggestions({ ...base, suggestItems: [phrase] }).map((i) => i.kind), ['search', 'suggest']);
   check('без героя остальные совпадения не показываются вовсе',
     composeSuggestions({ ...base, restItems: [tabItem] }).map((i) => i.kind), ['search']);
+  const contentHit = { ...tabItem, findQuery: 'налоги', sub: '…НДФЛ…' };
+  check('без героя находка по тексту вкладки всё равно видна',
+    composeSuggestions({ ...base, contentItems: [contentHit] }).map((i) => i.kind), ['search', 'tab']);
+  check('подпись «Во вкладках» на первой находке',
+    composeSuggestions({ ...base, contentItems: [contentHit] })[1].sectionHeader, 'Во вкладках');
 }
 
 console.log('\n— подписи секций —');
@@ -66,6 +71,12 @@ console.log('\n— тот самый случай: адрес против им�
   const stillTab = typedName.find((i) => i.url === 'https://github.com');
   check('набрано имя — переключение на вкладку остаётся', stillTab.kind, 'tab');
   check('привязка цела', stillTab.tabId, 't1');
+
+  const contentOnAddress = composeSuggestions({
+    ...base, query: 'github.com', contentItems: [{ ...tabItem, findQuery: 'налоги' }],
+  });
+  check('находка по тексту не превращается в навигацию, даже если запрос похож на адрес',
+    contentOnAddress.find((i) => i.findQuery === 'налоги').kind, 'tab');
 
   check('двоеточие тоже адрес (localhost:3000)', looksLikeAddress('localhost:3000'), true);
   check('точка в конце фразы — увы, тоже адрес', looksLikeAddress('что это.'), true);

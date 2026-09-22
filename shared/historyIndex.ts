@@ -114,7 +114,10 @@ export function decideHistoryIndex(s: {
   noise: HistoryNoiseKind;
   previousNoise: HistoryNoiseKind | null;
 }): HistoryIndexDecision {
-  if (s.hasContent || s.memoryDone || s.inFlight) return 'skip';
+  if (s.inFlight) return 'skip';
+  if (s.hasContent) return 'skip';
+  // Сон — последний шанс для открытой вкладки без чанка, даже если навигация уже «запоминала» шум.
+  if (s.memoryDone && s.trigger !== 'sleep') return 'skip';
   if (s.noise === 'url') return 'remember-url-noise';
   if (s.trigger === 'title') {
     if (s.noise !== 'none') return 'skip';
@@ -189,13 +192,33 @@ export function shouldRunIdleCatchup(s: {
   return s.idleSeconds >= IDLE_CATCHUP_IDLE_SECONDS;
 }
 
-export function pickIdleCatchupPages<T extends { lastVisit: number; noisy: boolean }>(
+// Ролик YouTube в скрытой вью: страница живая, автоплей включён, расшифровку всё равно
+// не взять (document.hidden — см. videoTranscript.ts). Живой визит индексируем как обычно.
+export function isVideoPage(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\.|^m\./, '');
+    if (host === 'youtu.be') return true;
+    if (host !== 'youtube.com') return false;
+    return u.pathname === '/watch' || u.pathname.startsWith('/shorts/');
+  } catch {
+    return false;
+  }
+}
+
+export function isIdleCatchupRow(row: { lastVisit: number; noisy: boolean; url: string }, now: number): boolean {
+  if (row.noisy) return false;
+  if (row.lastVisit < now - IDLE_CATCHUP_MAX_AGE_MS) return false;
+  if (isVideoPage(row.url)) return false;
+  return true;
+}
+
+export function pickIdleCatchupPages<T extends { lastVisit: number; noisy: boolean; url: string }>(
   rows: readonly T[],
   now: number,
 ): T[] {
-  const minVisit = now - IDLE_CATCHUP_MAX_AGE_MS;
   return rows
-    .filter((row) => !row.noisy && row.lastVisit >= minVisit)
+    .filter((row) => isIdleCatchupRow(row, now))
     .sort((a, b) => b.lastVisit - a.lastVisit)
     .slice(0, IDLE_CATCHUP_MAX_PAGES);
 }
@@ -212,6 +235,42 @@ export function isUnusableHistoryText(text: string): boolean {
   if (normalized.length < HISTORY_TEXT_MIN_CHARS) return true;
   if (normalized.length <= HISTORY_SKELETON_MAX_CHARS && SKELETON_RE.test(normalized)) return true;
   return false;
+}
+
+// Обвязка веб-приложений (Claude, ChatGPT, cookie-баннеры) попадает в Readability как «страница»
+// и занимает выдачу FTS словами вроде unverified. Режем ЦЕЛЫЕ шаблонные фразы, не слово
+// «permissions» внутри настоящей статьи.
+const BOILERPLATE_RE = /\b(unverified|skip to(?: main)? content|enable accessibility|cookie settings|accept all cookies|we value your privacy)\b/gi;
+
+export function stripIndexBoilerplate(text: string): string {
+  return text.replace(BOILERPLATE_RE, ' ').replace(/\s+/g, ' ').trim();
+}
+
+export function splitOverlappingChunks(text: string, opts: {
+  maxChars: number;
+  chunkChars: number;
+  overlapChars: number;
+  maxChunks: number;
+}): string[] {
+  const normalized = text.replace(/\s+/g, ' ').trim().slice(0, opts.maxChars);
+  if (!normalized) return [];
+  if (normalized.length <= opts.chunkChars) return [normalized];
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < normalized.length && chunks.length < opts.maxChunks) {
+    const hardEnd = Math.min(normalized.length, start + opts.chunkChars);
+    let end = hardEnd;
+    if (hardEnd < normalized.length) {
+      const punctuation = normalized.lastIndexOf('.', hardEnd);
+      const boundary = punctuation > start + 500 ? punctuation + 1 : normalized.lastIndexOf(' ', hardEnd);
+      if (boundary > start + 500) end = boundary;
+    }
+    const chunk = normalized.slice(start, end).trim();
+    if (chunk) chunks.push(chunk);
+    if (end >= normalized.length) break;
+    start = Math.max(end - opts.overlapChars, start + 1);
+  }
+  return chunks;
 }
 
 /** SPA: новый маршрут, не якорь. Hash-only не страница. Пустой from — ещё не было did-navigate. */
