@@ -8,14 +8,23 @@
   стемминг через `textStemming.ts`/`snowball-stemmers`), `HistorySearch.ts`
   (умный поиск — FTS5 + Qwen-реранк, без эмбеддингов, см. «Стек» выше),
   `HistoryContentBackfill.ts` (докачка контента старых визитов; только по кнопке),
-  `HistoryIdleCatchup.ts` (в простое — не больше 8 своих визитов за 36 часов, не импорт 2019),
+  `HistoryIdleCatchup.ts` (в простое — не больше 8 своих визитов за 36 часов, не импорт 2019;
+  ролики YouTube не переоткрывает: скрытая вью живая и без mute играла рекламу;
+  фоновые вью всегда `setAudioMuted(true)` + `autoplayPolicy`, см. `BackgroundWebContents.ts`),
   `shared/historyIndex.ts` (когда снимать текст: не ждать load, если страница уже
   готова; title-шум на did-navigate не запоминать — «YouTube» до имени ролика;
   повтор на page-title-updated; очередь из двух; снимок перед усыплением;
   охват withContent/noisy/missing; выбор страниц для тихого добора;
+  ролики YouTube в скрытую вью не грузим — автоплей и пустая расшифровка;
   скелетон «Загружается... (собрано 74%)» — не успех, извлечь снова;
-  SPA: pathname/search — визит, якорь — нет).
+  SPA: pathname/search — визит, якорь — нет;
+  `stripIndexBoilerplate` режет шаблонные фразы обвязки вроде unverified,
+  не слово permissions внутри статьи; сон обходит «уже пробовали», чтобы
+  доснять открытую вкладку без чанка; чанки истории и файлов режутся одним
+  `splitOverlappingChunks` с overlap 220).
   Прогон — `npm test -- history-index`. `HistoryNoiseFilter.ts` реэкспортирует фильтр.
+  Снимок открытой вкладки до чанка в истории — `electron/TabContentMemory.ts` (ключ — `wc.id`,
+  забывается при закрытии). Досъём бодрствующих после restore — `scheduleOpenTabIndexCatchup`.
 - `electron/TrackingStore.ts` — товары (`tracked`) и часы на билеты (`flight_watch`) в одном
   `tracking.sqlite`. ⚠️ Это две сущности, не «ещё один магазин»: у билета другой ключ
   (маршрут + даты + опционально рейс), JSON-LD Product на Aviasales нет. Цена рейса —
@@ -342,6 +351,9 @@
   сохранил и он никуда не денется, а вот ссылка в постоянном файле — уже след приватной вкладки.
   `fileMissing` в `DownloadEntry` — файла по savePath уже нет; считается при чтении файла и
   перепроверяется в момент клика, иначе «Открыть» на записи месячной давности молча не работало бы.
+  Текст pdf/docx/txt — отдельный профильный FTS `electron/FileContentIndex.ts`
+  (`file-content.sqlite`), не схема истории. Чанки с тем же overlap 220, что у страниц.
+  Прогон — `npm test -- file-content-index`.
 - Поповер загрузок у кнопки тулбара — `electron/DownloadsPopoverManager.ts` +
   `preload-downloadspopover.ts` + `src/downloadspopover.tsx`, техника SitePopoverManager (своя
   прозрачная `WebContentsView`). Не архив (архив — Ctrl+J): один герой с кольцом прогресса,
