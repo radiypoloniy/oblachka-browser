@@ -162,7 +162,9 @@ await withStand(async (ctx) => {
 
   const list = await c.send('tools/list', {});
   const tools = list?.result?.tools ?? [];
-  check('инструменты отдаются', tools.length === 15, `их ${tools.length}`);
+  check('инструменты отдаются', tools.length === 17, `их ${tools.length}`);
+  check('локальная модель отдаётся наружу', tools.some((t) => t.name === 'model_generate'));
+  check('веб-поиск отдаётся наружу', tools.some((t) => t.name === 'web_search'));
   check('у каждого есть схема и аннотации',
     tools.every((t) => t.inputSchema?.type === 'object' && typeof t.annotations?.readOnlyHint === 'boolean'));
   check('чтение помечено чтением',

@@ -15,11 +15,15 @@ import { getTargetLang } from './TranslationConfig'
 import * as ModelRegistry from './ModelRegistry'
 import * as Inference from './inference/InferenceHost'
 import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
-import { modelFor, type JsonSchema, type AiRole, type ChatVia, type Provider, type AiFileMeta } from './ai/registry'
+import {
+  init as initAiRegistry, modelFor, providerById,
+  type JsonSchema, type AiRole, type ChatVia, type Provider, type AiFileMeta,
+} from './ai/registry'
 import * as FileStore from './ai/FileStore'
 import { isQwenBusy, withQwenQueue, withQwenQueueBackground } from './QwenQueue'
 import { buildRelatedRerankPrompt } from '../shared/relatedHistory'
 import { parseRerankIndices } from '../shared/rerankOutput'
+import { LOCAL_CONNECTION_ID } from '../shared/aiProviders'
 export { withQwenQueueBackground }
 import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
 
@@ -297,6 +301,18 @@ async function ensureLoaded(): Promise<number> {
     })
   })
   return loadPromise
+}
+
+/**
+ * Встроенная модель для внутренних клиентов браузера, которым нужен именно локальный GGUF.
+ *
+ * ⚠️ Сборка живёт здесь, рядом с ensureLoaded(): только TranslationService знает, как поднять
+ * общий inference-процесс. Прямой providerById(LOCAL_CONNECTION_ID) из MCP обходил эту склейку
+ * и падал на первом запросе, если до него человек ещё не запускал другую AI-функцию браузера.
+ */
+export function builtInLocalProvider(): Provider {
+  initAiRegistry({ ensureLoaded, modelId: getLoadedModelId })
+  return providerById(LOCAL_CONNECTION_ID)
 }
 
 // Фоновый прогрев — main.ts зовёт это один раз вскоре после показа окна (см.

@@ -9,9 +9,8 @@
 // облако — и тогда «поделиться моделью» тихо уехало бы наружу. Этот инструмент существует ровно
 // ради процесса с GGUF; облако клиент пусть зовёт сам, своим ключом.
 
-import * as Registry from '../ai/registry';
 import { withQwenQueue } from '../QwenQueue';
-import { LOCAL_CONNECTION_ID } from '../../shared/aiProviders';
+import { builtInLocalProvider } from '../TranslationService';
 
 const MAX_TOKENS_CEILING = 8192;
 const MAX_TOKENS_DEFAULT = 2048;
@@ -42,7 +41,7 @@ export async function generateText(args: GenerateArgs): Promise<{
   const maxTokens = clampMaxTokens(args.maxTokens);
   const full = system ? `${system}\n\n${prompt}` : prompt;
 
-  const provider = Registry.providerById(LOCAL_CONNECTION_ID);
+  const provider = builtInLocalProvider();
   const { out, tokens } = await withQwenQueue(() =>
     provider.generate(full, { maxTokens }),
   );
