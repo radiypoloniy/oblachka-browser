@@ -50,6 +50,7 @@ export const CHROME: Record<string, string> = {
   'Без названия': 'Untitled',
   'Копировать': 'Copy',
   'Дублировать вкладку': 'Duplicate tab',
+  'Инструменты': 'Tools',
   'Открыть в новом окне': 'Open in new window',
   'Вернуть заголовок страницы': 'Restore page title',
   'Не выгружать из памяти': 'Keep in memory',

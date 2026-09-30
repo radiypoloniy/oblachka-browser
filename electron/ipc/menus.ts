@@ -9,6 +9,7 @@ import { listUserTrusted, removeUserTrusted } from '../CertTrustStore';
 import { refreshCertificateTrust } from '../CertificateTrust';
 import { relayoutFindBar } from '../FindBarManager';
 import { buildAddToGraphMenuItem } from '../GraphInbox';
+import { menuIcon } from '../MenuIcons';
 import * as HardwareInfo from '../HardwareInfo';
 import * as ModelCatalog from '../ModelCatalog';
 import * as ModelDownloader from '../ModelDownloader';
@@ -149,63 +150,25 @@ export function registerMenusIpc(d: IpcDeps): void {
     const items: MenuItemConstructorOptions[] = [
       {
         label: isPinned ? tr('Открепить вкладку') : tr('Закрепить вкладку'),
+        icon: menuIcon('Pin'),
         click: () => t.togglePin(id),
       },
-      // Копия вкладки рядом с исходной, с её историей и приватностью (см. TabManager.duplicateTab).
-      // Тот же признак «есть сайт», что и у пункта «Не выгружать из памяти» ниже: у хаба и
-      // псевдо-вкладок (История/Настройки) host пуст, дублировать там нечего.
-      {
-        label: tr('Дублировать вкладку'),
-        enabled: host !== '',
-        click: () => { t.duplicateTab(id); },
-      },
-      // Звук вкладки. ⚠️ Пункт появляется, ТОЛЬКО когда звук вообще есть о чём говорить —
-      // вкладка звучит либо уже приглушена. Постоянный пункт про звук у тихой страницы был бы
-      // шумом в и без того длинном меню.
+      // Звук можно выключить заранее: тихая сейчас вкладка позже может подать уведомление.
+      // Пункт нужен любой странице, включая спящую, но не хабу и псевдо-вкладкам без звука.
       // ⚠️ Это единственная дверь к звуку при СВЁРНУТОЙ панели вкладок: там у ячейки нет места
       // ни на что, кроме значка сайта, — живая жалоба «в свёрнутом сайдбаре звук не выключить».
-      ...(state && (state.audible || state.muted) ? [{
+      ...(state?.kind === 'page' ? [{
         label: state.muted ? tr('Включить звук') : tr('Выключить звук'),
+        icon: menuIcon(state.muted ? 'Volume2' : 'VolumeX'),
         click: () => t.setTabMuted(id, !state.muted),
       } as MenuItemConstructorOptions] : []),
-      // Перезагрузка мимо кэша. ⚠️ Для СПЯЩЕЙ вкладки пункт неактивен намеренно: живого
-      // WebContents у неё нет, сбрасывать нечего, а пробуждение и так грузит страницу заново
-      // (см. TabManager.reloadHard). Молча ничего не делающий пункт читался бы как поломка.
-      {
-        label: tr('Обновить без кэша'),
-        accelerator: 'Ctrl+F5',
-        enabled: host !== '' && t.getWebContentsForTab(id) !== null,
-        click: () => t.reloadHard(id),
-      },
-      // Перенос страницы в своё окно. Живая уезжает вью (с историей и введённым в форму),
-      // спящая — своим описанием. Неактивен только для участника split: тот увёл бы за собой
-      // половину пары (см. TabManager.detachTabForMove).
-      {
-        label: tr('Открыть в новом окне'),
-        enabled: state !== undefined && state.splitSide === null,
-        click: () => { void moveTabToNewWindow(t, id); },
-      },
-      // Обратный жест. Пункт появляется, только когда есть куда переносить: в единственном окне
-      // он был бы вечно серым и лишь занимал место. Пока окон два (обычный случай) — это прямая
-      // команда без подменю, потому что выбирать не из чего.
-      ...buildMoveToWindowItems(w, t, id, state !== undefined && state.splitSide === null),
-      // Умное имя. Живой странице есть что читать; у спящей и псевдо-вкладок содержимого нет.
-      {
-        label: t.getAiTitle(id) ? tr('Придумать название заново') : tr('Придумать название по смыслу'),
-        enabled: t.getWebContentsForTab(id) !== null,
-        click: () => { void renameTabSmart(t, id); },
-      },
-      ...(t.getAiTitle(id) ? [{
-        label: tr('Вернуть заголовок страницы'),
-        click: () => t.setAiTitle(id, null),
-      }] : []),
-      ...(toGraph ? [toGraph] : []),
       // «Не выгружать из памяти» — решение ПРО САЙТ, а не про эту вкладку: закрыл вкладку —
       // правило осталось, открыл ту же почту завтра — она снова под защитой. Отменяется тем же
       // пунктом или в настройках («Браузер» → «Выгрузка вкладок из памяти»). Пункта нет у
       // псевдо-вкладок и хаба: у них нет сайта, которому это правило можно приписать.
       ...(host ? [{
         label: tr('Не выгружать из памяти'),
+        icon: menuIcon('Moon'),
         type: 'checkbox' as const,
         checked: settings.isNeverSleepHost(host),
         click: () => {
@@ -221,11 +184,13 @@ export function registerMenusIpc(d: IpcDeps): void {
       if (groupId) {
         items.push({
           label: tr('Убрать из группы'),
+          icon: menuIcon('FolderMinus'),
           click: () => t.removeTabFromGroup(groupId, id),
         });
       } else {
         items.push({
           label: tr('Создать группу'),
+          icon: menuIcon('FolderPlus'),
           click: () => createGroupSuggesting(t, chromeOf(e), id),
         });
       }
@@ -236,18 +201,55 @@ export function registerMenusIpc(d: IpcDeps): void {
       if (otherGroups.length > 0) {
         items.push({
           label: tr('Добавить в группу'),
+          icon: menuIcon('FolderInput'),
           submenu: otherGroups.map((g) => ({
             label: tr(g.label || 'Группа'),
             click: () => addToGroupSuggesting(t, chromeOf(e), g.id, id),
           })),
         });
       }
-
-      items.push({ type: 'separator' });
     }
+    // Перенос живой вкладки сохраняет WebContents, историю и введённое в форму. Для split-пары
+    // пункт выключен: увод одного участника нарушил бы её состав.
+    items.push({
+      label: tr('Открыть в новом окне'),
+      icon: menuIcon('SquareArrowOutUpRight'),
+      enabled: state !== undefined && state.splitSide === null,
+      click: () => { void moveTabToNewWindow(t, id); },
+    });
+    items.push(...buildMoveToWindowItems(w, t, id, state !== undefined && state.splitSide === null));
+
+    // Редкие действия лежат в одном подменю, чтобы основное ПКМ оставалось коротким.
+    // Сами колбэки и условия доступности прежние.
+    const tools: MenuItemConstructorOptions[] = [{
+      label: tr('Обновить без кэша'),
+      icon: menuIcon('RefreshCw'),
+      accelerator: 'Ctrl+F5',
+      enabled: host !== '' && t.getWebContentsForTab(id) !== null,
+      click: () => t.reloadHard(id),
+    }, {
+      label: t.getAiTitle(id) ? tr('Придумать название заново') : tr('Придумать название по смыслу'),
+      icon: menuIcon('Sparkles'),
+      enabled: t.getWebContentsForTab(id) !== null,
+      click: () => { void renameTabSmart(t, id); },
+    }];
+    if (t.getAiTitle(id)) tools.push({
+      label: tr('Вернуть заголовок страницы'),
+      icon: menuIcon('Undo2'),
+      click: () => t.setAiTitle(id, null),
+    });
+    if (toGraph) tools.push({ ...toGraph, icon: menuIcon('Workflow') });
+    items.push(
+      { type: 'separator' },
+      // Копия рядом с исходной, с историей и приватностью; хабу и псевдо-вкладке нечего копировать.
+      { label: tr('Дублировать вкладку'), icon: menuIcon('Copy'), enabled: host !== '', click: () => { t.duplicateTab(id); } },
+      { label: tr('Инструменты'), icon: menuIcon('Ellipsis'), submenu: tools },
+      { type: 'separator' },
+    );
 
     items.push({
       label: tr('Закрыть вкладку'),
+      icon: menuIcon('X'),
       enabled: !isPinned,
       click: () => t.closeTab(id),
     });

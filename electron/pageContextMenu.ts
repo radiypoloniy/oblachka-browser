@@ -7,6 +7,7 @@ import { TRANSLATE_TARGETS } from '../shared/translateLangs';
 import type { AiAction } from '../shared/ipc';
 import type { SelectionRect } from './TabManager';
 import { t as tr, tf } from './uiText';
+import { menuIcon } from './MenuIcons';
 
 // ── Нативное контекстное меню страницы (ПКМ) ─────────────────────────────────
 //
@@ -280,9 +281,10 @@ function editableSection(host: PageContextMenuHost, wc: WebContents, view: WebCo
 function selectionSection(host: PageContextMenuHost, wc: WebContents, view: WebContentsView, p: ContextMenuParams, priv: boolean, engine: Engine, hasPrev: boolean): MenuItemConstructorOptions[] {
   const out: MenuItemConstructorOptions[] = hasPrev ? [{ type: 'separator' }] : [];
   out.push(
-    { role: 'copy' },
+    { role: 'copy', icon: menuIcon('Copy') },
     {
       label: tf('Поиск «{q}» в {engine}', { q: truncate(p.selectionText), engine: engine.name }),
+      icon: menuIcon('Search'),
       click: () => host.openTab(engine.buildUrl(p.selectionText), false, priv),
     },
   );
@@ -313,12 +315,13 @@ function selectionSection(host: PageContextMenuHost, wc: WebContents, view: WebC
     })();
   };
 
-  out.push({ label: tr('Перевести'), click: () => dispatchAiAction('translate') });
-  out.push({ label: tr('Пересказать проще'), click: () => dispatchAiAction('simplify') });
-  out.push({ label: tr('Объяснить'), click: () => dispatchAiAction('explain') });
+  out.push({ type: 'separator' });
+  out.push({ label: tr('Перевести'), icon: menuIcon('Languages'), click: () => dispatchAiAction('translate') });
+  out.push({ label: tr('Пересказать проще'), icon: menuIcon('ListFilter'), click: () => dispatchAiAction('simplify') });
+  out.push({ label: tr('Объяснить'), icon: menuIcon('CircleHelp'), click: () => dispatchAiAction('explain') });
   // «Краткая выжимка» — только для достаточно длинного выделения (см. SUMMARIZE_MIN_CHARS).
   if (p.selectionText.trim().length >= SUMMARIZE_MIN_CHARS) {
-    out.push({ label: tr('Краткая выжимка'), click: () => dispatchAiAction('summarize') });
+    out.push({ label: tr('Краткая выжимка'), icon: menuIcon('FileText'), click: () => dispatchAiAction('summarize') });
   }
   return out;
 }
@@ -363,6 +366,7 @@ export function wirePageContextMenu(host: PageContextMenuHost, id: string, view:
     // Инспектор — всегда в конце; inspectElement подсвечивает элемент под курсором.
     items.push({ type: 'separator' }, {
       label: tr('Просмотреть код'),
+      icon: menuIcon('Code2'),
       click: () => {
         if (!wc.isDevToolsOpened()) wc.openDevTools({ mode: 'detach' });
         wc.inspectElement(p.x, p.y);
