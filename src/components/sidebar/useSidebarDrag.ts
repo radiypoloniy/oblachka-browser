@@ -136,10 +136,11 @@ export function useSidebarDrag({
   // замороженный. Пересоздание объекта на каждый рендер безвредно: он живёт только внутри
   // обработчиков и ни в один список зависимостей не входит.
   const childDragZone: ChildDragZone = {
-    start: (id: string) => { void window.oblako.tabDragStart(dragCardFor(id)); },
+    // У детей свой DndContext: регистрируем жест для общей отмены из main.
+    start: (id: string) => { dragActiveIdRef.current = id; void window.oblako.tabDragStart(dragCardFor(id)); },
     finish: (e: DragEndEvent) => finishDrag().then((res) => applyZoneDrop(e.active.id as string, res)),
     // Отмена (Esc, потеря указателя): зоны надо погасить, но исход не применять.
-    cancel: () => { void window.oblako.tabDragEnd().catch(() => {}); },
+    cancel: () => { void finishDrag(); },
   };
 
   // Что нести в руке над страницей: имя и значок. Карточку рисует оверлей (чром над областью

@@ -106,10 +106,9 @@ let drag: ActiveDrag | null = null;
 // пути, не успел — гасим сами. 400 мс — с большим запасом: путь mouseUp → dnd-kit → invoke
 // укладывается в единицы миллисекунд.
 const FINISH_GRACE_MS = 400;
-// Нажатие мыши, случившееся ЗАМЕТНО позже старта жеста, — тоже доказательство, что прошлый жест
-// давно закончился (человек уже кликает по чему-то другому). Порог нужен, чтобы не поймать
-// нажатие, которым сам жест и начался.
-const NEW_PRESS_MS = 300;
+// Подписки на ввод ставятся уже после активации PointerSensor движением мыши. Поэтому
+// стартовый mouseDown прошёл раньше, а любой следующий — новый жест, который обязан погасить
+// старый немедленно.
 // Последний рубеж. Настоящее перетаскивание вкладки столько не длится; сработало — значит оба
 // сигнала выше прошли мимо, и об этом надо узнать из лога, а не от пользователя.
 const MAX_DRAG_MS = 60_000;
@@ -128,32 +127,58 @@ const MAX_DRAG_MS = 60_000;
  */
 function armFinish(reason: string, dropped: boolean): void {
   if (!drag || drag.finishTimer) return;
-  drag.finishTimer = setTimeout(() => {
-    if (!drag) return;
+  // Точку отпускания фиксируем сейчас. За время ожидания штатного tabDragEnd курсор может
+  // уйти в другую зону — страховка не должна превращать дроп в неожиданный split.
+  const result: TabDropResult = dropped ? snapshotDrop() : { zone: null };
+  const pending = drag;
+  if (!pending) return;
+  pending.finishTimer = setTimeout(() => {
+    if (drag !== pending) return;
     console.warn(`[dropzones] жест не закрылся сам (${reason}) — закрываю страховкой`);
-    const chrome = contextForWindow(drag.source.win)?.chromeView;
-    const result: TabDropResult = dropped ? resolveDrop() : { zone: null };
-    // resolveDrop уже мог погасить жест (он зовёт stopDrag) — второй вызов ниже безвреден.
-    if (drag) stopDrag(`страховка: ${reason}`);
+    const chrome = contextForWindow(pending.source.win)?.chromeView;
+    stopDrag(`страховка: ${reason}`);
     if (chrome && !chrome.webContents.isDestroyed()) {
       chrome.webContents.send(IPC.TAB_DRAG_FINISHED, result);
     }
   }, FINISH_GRACE_MS);
 }
 
+// Новое нажатие означает, что прежнюю кнопку уже отпустили. Ждать здесь ещё 400 мс нельзя:
+// следующий pointerup успеет завершить старый dnd-kit жест над новой зоной и создаст ложный split.
+function cancelStaleDrag(reason: string): void {
+  if (!drag) return;
+  const chrome = contextForWindow(drag.source.win)?.chromeView;
+  stopDrag(reason);
+  if (chrome && !chrome.webContents.isDestroyed()) {
+    chrome.webContents.send(IPC.TAB_DRAG_FINISHED, { zone: null } satisfies TabDropResult);
+  }
+}
+
 // Слушаем ввод там, куда события мыши реально попадают во время жеста: оверлей окна (он лежит
-// поверх страницы) и слой хрома (сайдбар, тулбар). Подписка живёт ровно столько, сколько жест.
+// поверх страницы), слой хрома и сами страницы. Chromium может сохранить захват за исходной
+// WebContentsView даже после появления оверлея; без подписки на неё mouseUp пропадает.
+// Подписка живёт ровно столько, сколько жест.
 function watchInput(st: WindowDropZones | null): void {
   if (!drag || !st) return;
-  const targets = [st.view?.webContents, contextForWindow(st.win)?.chromeView?.webContents];
+  const targets = [
+    st.view?.webContents,
+    contextForWindow(st.win)?.chromeView?.webContents,
+    ...st.win.contentView.children
+      .filter((view): view is WebContentsView => view instanceof WebContentsView)
+      .map((view) => view.webContents),
+  ];
   for (const wc of targets) {
     if (!wc || wc.isDestroyed() || drag.watched.has(wc.id)) continue;
     drag.watched.add(wc.id);
     const onInput = (_e: Electron.Event, input: Electron.InputEvent): void => {
       if (!drag) return;
+      if (input.type === 'mouseUp' || input.type === 'mouseDown') {
+        const button = (input as Electron.MouseInputEvent).button;
+        if (button && button !== 'left') return;
+      }
       if (input.type === 'mouseUp') armFinish('отпустили кнопку мыши', true);
-      else if (input.type === 'mouseDown' && Date.now() - drag.startedAt > NEW_PRESS_MS) {
-        armFinish('новое нажатие мыши', false);
+      else if (input.type === 'mouseDown') {
+        cancelStaleDrag('новое нажатие мыши');
       }
     };
     wc.on('input-event', onInput);
@@ -450,6 +475,10 @@ function otherWindowUnderCursor(source: WindowDropZones): WindowDropZones | null
 // Один тик слежения: где курсор, что из этого следует и в каком окне это рисовать.
 function updateDrag(): void {
   if (!drag) return;
+  // Состав видимых страниц может измениться посреди жеста. Подхватываем новую вью, не
+  // переподписывая старые (drag.watched), чтобы отпускание снова не потерялось.
+  watchInput(drag.source);
+  watchInput(drag.shown);
   // Последний рубеж: оба честных сигнала конца (mouseUp, потеря фокуса) прошли мимо. Настоящее
   // перетаскивание столько не длится — значит это залипший жест, и лучше погасить его самим.
   if (Date.now() - drag.startedAt > MAX_DRAG_MS) {
@@ -593,9 +622,16 @@ export function endTabDrag(win: BrowserWindow): TabDropResult {
  * человек отпустил вкладку.
  */
 function resolveDrop(): TabDropResult {
+  const result = snapshotDrop();
+  stopDrag('endTabDrag');
+  return result;
+}
+
+function snapshotDrop(): TabDropResult {
   if (!drag) return { zone: null };
   // Пересчитываем на месте: последний тик мог быть до 30 мс назад, а решает именно точка отпускания.
   updateDrag();
+  if (!drag) return { zone: null };
   const zone = toAction(drag.zone);
   // Сторона теряется в toAction (наружу уходит действие, а не картинка) — достаём её из той же
   // ZoneVisual, пока она ещё под рукой: сплит обязан открыться там, куда тянули.
@@ -609,7 +645,6 @@ function resolveDrop(): TabDropResult {
   const panels = zone === 'replace' ? contextForWindow(drag.source.win)?.tabs.splitPanelRects() : null;
   const replaceId = panels ? (side === 'left' ? panels.leftId : panels.rightId) : undefined;
   const windowId = drag.target?.win.id;
-  stopDrag('endTabDrag');
   // 'adopt' без живого приёмника — не исход, а полпути: лучше ничего не делать, чем унести
   // вкладку неизвестно куда.
   if (zone === 'adopt' && windowId === undefined) return { zone: null };
