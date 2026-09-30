@@ -30,6 +30,9 @@ export function usePasswordIndicator(
   useEffect(() => {
     return window.oblako.onPasswordIndicatorChanged((next) => {
       setState(next);
+      // Save/Update — тот редкий момент, когда браузер обязан проявить инициативу. Раньше после
+      // submit появлялся только крошечный ключ, и предложение почти никто не замечал.
+      if (next?.kind === 'offer-save' || next?.kind === 'offer-update') setOpen(true);
       if (!next) {
         setOpen(false);
         void window.oblako.closePasswordPopover();

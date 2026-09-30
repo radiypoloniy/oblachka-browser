@@ -10,6 +10,7 @@ export const SERVICES = {
   // вычисляет его из wc.getURL() (доверенный источник), см. PasswordAutofillManager.ts.
   PASSWORDS_FORM_DETECTED:       'passwords:form-detected',       // гостевая страница → TabManager: { hasLoginForm, hasUsernameField }
   PASSWORDS_CREDENTIAL_SUBMITTED: 'passwords:credential-submitted', // гостевая страница → TabManager: { username, password }
+  PASSWORDS_USERNAME_CAPTURED:    'passwords:username-captured',    // первый шаг многошагового входа: { username }
   PASSWORDS_FILL:                'passwords:fill',                // TabManager → конкретная гостевая вкладка: { username?, password }, только fill, без submit. username отсутствует — не трогать поле логина (см. генератор пароля).
   // Иконка в самом поле пароля (не в тулбаре) — см. electron/preload-content.ts (closed Shadow DOM,
   // проверка event.isTrusted перед отправкой) + electron/PasswordPopoverManager.ts (тот же поповер,

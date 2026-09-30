@@ -17,7 +17,7 @@ import { wireTabPageLifecycle } from './tabPageLifecycle';
 import { wireTabCrashEvents } from './tabCrashEvents';
 import { startTabSleepTimer } from './tabSleepController';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
-import { showOpenedOnOtherPane } from './tabSplitPark';
+import { parkOpenedInOtherStack, showOpenedOnOtherPane } from './tabSplitPark';
 
 // Разметка и ссылки скопированного куска — то, что страница присылает вместе с текстом, чтобы
 // повторная копия из буфера не теряла ссылки (см. ClipboardBuffer.ts и preload-content.ts).
@@ -255,12 +255,13 @@ export class TabManager {
   // wc.ipc.on выше). url — уже вычисленный main'ом wc.getURL(), не из payload preload'а.
   private onPasswordFormCb?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void;
   private onPasswordSubmitCb?: (tabId: string, username: string, password: string, url: string) => void;
+  private onPasswordUsernameCb?: (tabId: string, username: string, url: string) => void;
   // Поповер паролей, заякоренный на поле (не на тулбар) — rect в координатах вьюпорта СТРАНИЦЫ,
   // main сам транслирует в оконные через getTabViewBounds() (см. PasswordAutofillManager.ts).
   // ⚠️ Поводов два — значок-ключ и клик в само пустое поле, — но права у них ОДИНАКОВЫЕ:
   // подставить сохранённое либо придумать новый пароль. Разными каналами они приезжают потому,
   // что у клика в поле свои гейты на стороне страницы (жест, пустое поле, isTrusted).
-  private onPasswordFieldAnchorCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void;
+  private onPasswordFieldAnchorCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string, trigger: import('../shared/ipc').PasswordFieldTrigger, context: import('../shared/ipc').PasswordFieldContext) => void;
   // Автозаполнение форм — фокус на поле адреса/карты (см. wirePageEvents). url — из wc.getURL().
   private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
   private onAutofillPasteBlobCb?: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void;
@@ -316,7 +317,8 @@ export class TabManager {
     onContentFocus?: () => void,
     onPasswordForm?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void,
     onPasswordSubmit?: (tabId: string, username: string, password: string, url: string) => void,
-    onPasswordFieldAnchor?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void,
+    onPasswordUsername?: (tabId: string, username: string, url: string) => void,
+    onPasswordFieldAnchor?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string, trigger: import('../shared/ipc').PasswordFieldTrigger, context: import('../shared/ipc').PasswordFieldContext) => void,
     onAutofillFieldFocus?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void,
     onAutofillSubmit?: (tabId: string, kind: 'address' | 'card', fields: Record<string, string>, url: string) => void,
   ) {
@@ -337,6 +339,7 @@ export class TabManager {
     this.onContentFocusCb = onContentFocus;
     this.onPasswordFormCb = onPasswordForm;
     this.onPasswordSubmitCb = onPasswordSubmit;
+    this.onPasswordUsernameCb = onPasswordUsername;
     this.onPasswordFieldAnchorCb = onPasswordFieldAnchor;
     this.onAutofillFieldFocusCb = onAutofillFieldFocus;
     this.onAutofillSubmitCb = onAutofillSubmit;
@@ -1254,7 +1257,8 @@ export class TabManager {
       isIncognito: () => !!this.tabMap.get(id)?.incognito,
       onPasswordForm: (hasLoginForm, hasUsernameField, url) => this.onPasswordFormCb?.(id, hasLoginForm, hasUsernameField, url),
       onPasswordSubmit: (username, password, url) => this.onPasswordSubmitCb?.(id, username, password, url),
-      onPasswordFieldAnchor: (rect, url) => this.onPasswordFieldAnchorCb?.(id, rect, url),
+      onPasswordUsername: (username, url) => this.onPasswordUsernameCb?.(id, username, url),
+      onPasswordFieldAnchor: (rect, url, trigger, context) => this.onPasswordFieldAnchorCb?.(id, rect, url, trigger, context),
       onMediaReport: (report, url) => this.onMediaReportCb?.(id, report, url),
       onPasswordDismiss: () => this.onPasswordDismissCb?.(),
       onAutofillFieldFocus: (rect, kind, url) => this.onAutofillFieldFocusCb?.(id, rect, kind, url),
@@ -1341,7 +1345,7 @@ export class TabManager {
       this.#navFrom.set(openedId, fromHost);
       this.#openerOf.set(openedId, openerId);
     },
-    didOpenBackgroundTab: (openedId, openerId) => showOpenedOnOtherPane({ activePair: () => this.#activePair(), tab: (id) => this.tabMap.get(id), isPinned: (id) => this.isTabPinned(id), pairContaining: (id) => this.#pairContaining(id), splitPairs: this.splitPairs, replacePanel: (panelId, newId) => this.replaceSplitPanel(panelId, newId), onChange: () => this.onChange() }, openerId, openedId),
+    didOpenBackgroundTab: (openedId, openerId) => parkOpenedInOtherStack({ activePair: () => this.#activePair(), tab: (id) => this.tabMap.get(id), isPinned: (id) => this.isTabPinned(id), pairContaining: (id) => this.#pairContaining(id), splitPairs: this.splitPairs, replacePanel: (panelId, newId) => this.replaceSplitPanel(panelId, newId), onChange: () => this.onChange() }, openerId, openedId),
   };
 
   /**
@@ -1361,6 +1365,7 @@ export class TabManager {
       this.#openerOf.set(openedId, openerId);
     },
     didOpenBackgroundTab: (openedId, openerId) => this.#windowOpenHost.didOpenBackgroundTab(openedId, openerId),
+    showOnOtherPane: (openedId, openerId) => showOpenedOnOtherPane({ activePair: () => this.#activePair(), tab: (id) => this.tabMap.get(id), isPinned: (id) => this.isTabPinned(id), pairContaining: (id) => this.#pairContaining(id), splitPairs: this.splitPairs, replacePanel: (panelId, newId) => this.replaceSplitPanel(panelId, newId), onChange: () => this.onChange() }, openerId, openedId),
     splitShown: () => this.#activePair() !== undefined,
     enterSplit: (tabId) => this.enterSplit(tabId),
     openInNewWindow: (url) => this.onOpenInNewWindowCb?.(url),
@@ -2749,7 +2754,7 @@ export class TabManager {
   // пользователь уже успел ввести в поле логина.
   // onlyIfEmpty — автозаполнение без клика (PasswordAutofillManager.handleFormDetected): страница
   // НЕ должна затирать уже введённое пользователем, preload-content пропустит непустые поля.
-  sendPasswordFill(tabId: string, payload: { username?: string; password: string; onlyIfEmpty?: boolean }): boolean {
+  sendPasswordFill(tabId: string, payload: { username?: string; password: string; onlyIfEmpty?: boolean; mode?: import('../shared/ipc').PasswordFillMode }): boolean {
     const tab = this.tabMap.get(tabId);
     const wc = tab?.view?.webContents;
     if (!wc || wc.isDestroyed()) return false;

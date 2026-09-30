@@ -10,7 +10,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import * as VaultCrypto from './VaultCrypto';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
-import type { PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions } from '../shared/ipc';
+import type { PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordHealthItem } from '../shared/ipc';
+import { createSecretClipboard } from './platform/secretClipboardFactory';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
@@ -25,6 +26,8 @@ export class PasswordManager {
   #db: Database | null = null;
   #dbPath: string;
   #dek: Buffer | null = null; // ключ шифрования записей, в памяти на сессию, никогда не логируется
+  #secretClipboard = createSecretClipboard();
+  #clipboardGeneration = 0;
 
   constructor() {
     this.#dbPath = path.join(app.getPath('userData'), 'passwords.sqlite');
@@ -96,6 +99,39 @@ export class PasswordManager {
     }
   }
 
+  revealNotes(id: number): string | null {
+    if (!this.#db || !this.#dek) return null;
+    try {
+      const row = this.#db.prepare(`SELECT notes FROM credentials WHERE id = ?`).get(id) as { notes: Buffer | null } | undefined;
+      if (!row) return null;
+      return row.notes ? VaultCrypto.decryptField(this.#dek, row.notes) : '';
+    } catch (e) {
+      console.warn('[Passwords] revealNotes error:', (e as Error).message);
+      return null;
+    }
+  }
+
+  health(): PasswordHealthItem[] {
+    if (!this.#db || !this.#dek) return [];
+    try {
+      const rows = this.#db.prepare(`SELECT id, secret FROM credentials`).all() as Array<{ id: number; secret: Buffer }>;
+      const passwords = rows.map((row) => ({ id: row.id, value: VaultCrypto.decryptField(this.#dek!, row.secret) }));
+      const counts = new Map<string, number>();
+      for (const item of passwords) counts.set(item.value, (counts.get(item.value) ?? 0) + 1);
+      return passwords.map(({ id, value }) => {
+        const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((re) => re.test(value)).length;
+        return {
+          id,
+          weak: value.length < 12 || (value.length < 16 && classes < 3),
+          reused: (counts.get(value) ?? 0) > 1,
+        };
+      });
+    } catch (e) {
+      console.warn('[Passwords] health error:', (e as Error).message);
+      return [];
+    }
+  }
+
   // Менеджер паролей, шаг 2 — сверка перехваченного при submit пароля с сейфом (см.
   // PasswordAutofillManager.ts::handleCredentialSubmitted). 'match' → ничего не предлагаем
   // (никогда не сохраняем молча, но и не спамим уже известным); 'differs' → matchId для
@@ -104,7 +140,10 @@ export class PasswordManager {
   checkCredential(origin: string, username: string, password: string): { status: 'new' | 'match' | 'differs'; matchId?: number } {
     if (!this.#db || !this.#dek) return { status: 'new' };
     try {
-      const row = this.#db.prepare(`SELECT id, secret FROM credentials WHERE origin = ? AND username = ?`).get(origin, username) as
+      const row = this.#db.prepare(`
+        SELECT id, secret FROM credentials WHERE origin = ? AND username = ?
+        ORDER BY updated_at DESC LIMIT 1
+      `).get(origin, username) as
         | { id: number; secret: Buffer } | undefined;
       if (!row) return { status: 'new' };
       const existing = VaultCrypto.decryptField(this.#dek, row.secret);
@@ -118,7 +157,7 @@ export class PasswordManager {
   // Копирует значение в буфер сам — плейнтекст в ответ вызывающей стороне никогда не возвращается
   // (см. бриф). Пароль (не логин) автоочищается через 30с, но только если буфер всё ещё содержит
   // именно это значение — не затираем более позднее копирование пользователя чем-то другим.
-  copyField(id: number, field: PasswordCopyField): boolean {
+  async copyField(id: number, field: PasswordCopyField, ownerHandle?: Buffer): Promise<boolean> {
     if (!this.#db || !this.#dek) return false;
     try {
       if (field === 'username') {
@@ -129,9 +168,13 @@ export class PasswordManager {
       }
       const value = this.reveal(id);
       if (value === null) return false;
-      clipboard.writeText(value);
+      const result = await this.#secretClipboard.writeSecret(value, ownerHandle);
+      if (!result.ok) return false;
+      const generation = ++this.#clipboardGeneration;
       setTimeout(() => {
-        if (clipboard.readText() === value) clipboard.writeText('');
+        // Новая копия из Oblako продлевает срок именно новой записи. Чужой текст не стираем.
+        if (this.#clipboardGeneration !== generation) return;
+        if (this.#secretClipboard.readText() === value) this.#secretClipboard.clear();
       }, CLIPBOARD_CLEAR_MS);
       return true;
     } catch (e) {
@@ -143,13 +186,21 @@ export class PasswordManager {
   add(input: PasswordAddInput): boolean {
     if (!this.#db || !this.#dek) return false;
     try {
+      // Пустой username бывает у незавершённой генерации и может повторяться. Обычную пару
+      // origin+username не дублируем: неоднозначный SELECT позже мог бы обновить не ту запись.
+      const origin = originOf(input.url);
+      if (input.username !== '') {
+        const duplicate = this.#db.prepare(`SELECT 1 FROM credentials WHERE origin = ? AND username = ? LIMIT 1`)
+          .get(origin, input.username);
+        if (duplicate !== undefined) return false;
+      }
       const now = Date.now();
       const secret = VaultCrypto.encryptField(this.#dek, input.password);
       const notes = input.notes ? VaultCrypto.encryptField(this.#dek, input.notes) : null;
       this.#db.prepare(`
         INSERT INTO credentials (origin, url, username, secret, title, notes, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(originOf(input.url), input.url, input.username, secret, input.title, notes, now, now);
+      `).run(origin, input.url, input.username, secret, input.title, notes, now, now);
       return true;
     } catch (e) {
       console.warn('[Passwords] add error:', (e as Error).message);
@@ -205,6 +256,11 @@ export class PasswordManager {
       const username = input.username ?? existing.username;
       const title = input.title ?? existing.title;
       const now = Date.now();
+      if (username !== '') {
+        const duplicate = db.prepare(`SELECT 1 FROM credentials WHERE origin = ? AND username = ? AND id <> ? LIMIT 1`)
+          .get(originOf(url), username, input.id);
+        if (duplicate !== undefined) return false;
+      }
 
       const run = db.transaction(() => {
         if (input.password !== undefined) {
@@ -246,16 +302,24 @@ export class PasswordManager {
   // crypto.randomInt — без modulo bias (в отличие от % на randomBytes), не Math.random() —
   // явное требование брифа для генератора паролей.
   generate(opts: PasswordGenerateOptions): string {
-    let charset = '';
-    if (opts.lower) charset += LOWER;
-    if (opts.upper) charset += UPPER;
-    if (opts.digits) charset += DIGITS;
-    if (opts.symbols) charset += SYMBOLS;
-    if (!charset) charset = LOWER + UPPER + DIGITS; // защита от пустого набора символов
+    let pools: string[] = [];
+    if (opts.lower) pools.push(LOWER);
+    if (opts.upper) pools.push(UPPER);
+    if (opts.digits) pools.push(DIGITS);
+    if (opts.symbols) pools.push(SYMBOLS);
+    if (pools.length === 0) pools = [LOWER, UPPER, DIGITS]; // защита от пустого набора символов
+    const charset = pools.join('');
     const length = Math.max(4, Math.min(128, opts.length || 16));
-    let out = '';
-    for (let i = 0; i < length; i++) out += charset[crypto.randomInt(charset.length)];
-    return out;
+    // Хотя выбор из общего алфавита криптографически случаен, он не гарантирует цифру/символ:
+    // сайт отклонял такой «сгенерированный» пароль уже после автосохранения. Берём по одному из
+    // каждого включённого класса, остаток — из общего, затем криптографически перемешиваем.
+    const chars = pools.map((pool) => pool[crypto.randomInt(pool.length)]!);
+    while (chars.length < length) chars.push(charset[crypto.randomInt(charset.length)]!);
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(i + 1);
+      [chars[i], chars[j]] = [chars[j]!, chars[i]!];
+    }
+    return chars.join('');
   }
 
   // Расшифровывает все секреты через DEK, собирает JSON в памяти, шифрует целиком под

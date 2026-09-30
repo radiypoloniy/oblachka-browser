@@ -32,6 +32,7 @@ import { fetchGenWeb } from '../GenWebSource';
 import { getWeather } from '../WeatherService';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
+import { checkPasswordBreaches } from '../PasswordBreachService';
 
 export function registerWidgetsIpc(d: IpcDeps): void {
   const { ensurePasswordAuth, passwords, settings, winOf, tabsOf } = d;
@@ -43,16 +44,29 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   // 'unavailable' (механизм не сработал) трактуем как разрешение — не лочим доступ к своим паролям.
   ipcMain.handle(IPC.PASSWORDS_REVEAL,   async (_e, id: number) =>
     (await ensurePasswordAuth('Показать сохранённый пароль')) ? passwords.reveal(id) : null);
-  ipcMain.handle(IPC.PASSWORDS_COPY,     async (_e, id: number, field: PasswordCopyField) => {
+  ipcMain.handle(IPC.PASSWORDS_COPY,     async (e, id: number, field: PasswordCopyField) => {
     // Логин копировать можно без подтверждения — под гейтом только сам пароль.
     if (field === 'password' && !(await ensurePasswordAuth('Скопировать сохранённый пароль'))) return false;
-    return passwords.copyField(id, field);
+    return passwords.copyField(id, field, winOf(e)?.getNativeWindowHandle());
+  });
+  ipcMain.handle(IPC.PASSWORDS_NOTES, async (_e, id: number) =>
+    (await ensurePasswordAuth('Показать заметки к паролю')) ? passwords.revealNotes(id) : null);
+  ipcMain.handle(IPC.PASSWORDS_HEALTH, () => passwords.health());
+  ipcMain.handle(IPC.PASSWORDS_BREACH_CHECK, async () => {
+    if (!(await ensurePasswordAuth('Проверить сохранённые пароли по базе утечек'))) {
+      return { status: 'denied', items: [] };
+    }
+    return checkPasswordBreaches(passwords);
   });
   ipcMain.handle(IPC.PASSWORDS_AUTH_GET, () => settings.getPasswordAuthEnabled());
   ipcMain.handle(IPC.PASSWORDS_AUTH_SET, (_e, enabled: boolean) => {
     settings.setPasswordAuthEnabled(enabled);
     return settings.getPasswordAuthEnabled();
   });
+  ipcMain.handle(IPC.PASSWORDS_PREFS_GET, () => settings.getPasswordPreferences());
+  ipcMain.handle(IPC.PASSWORDS_PREFS_SET, (_e, prefs) => settings.setPasswordPreferences(
+    typeof prefs === 'object' && prefs !== null ? prefs : {},
+  ));
   ipcMain.handle(IPC.FAVICON_GET,        (_e, host: string) => faviconService.get(host));
   // Погода для виджета новой вкладки (тот же WeatherService, что у AI-панели; отдельный typed-канал
   // для главного рендерера — preload-aipanel до него не относится).

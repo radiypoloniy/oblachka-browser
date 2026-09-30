@@ -72,6 +72,10 @@ const LAZY = {
   'password-popover:close': 'ensureIpcRegistered() в PasswordPopoverManager — при первом появлении карточки пароля',
   'suggest-dropdown:recommend': 'ensureIpcRegistered() в SuggestDropdownManager — при первом показе подсказок омнибокса',
   'suggest-dropdown:site-info': 'там же',
+  'split:stack-select': 'registerIpc() в SplitStackPopoverManager — при первом открытии меню стопки',
+  'split:stack-forget': 'там же',
+  'split:stack-data': 'там же',
+  'split:stack-close': 'там же',
 };
 
 // ⚠️ Каналы AI-панели живут МИМО shared/ipc: строка зашита руками с обеих сторон
@@ -114,7 +118,7 @@ await withStand(async (ctx) => {
 
   console.log('— каждый объявленный обработчик поднялся —');
   list('все ipcMain.handle зарегистрированы',
-    contract.handle.filter((c) => !gotHandle.has(c)),
+    contract.handle.filter((c) => !gotHandle.has(c) && !(c in LAZY)),
     'в рантайме это «No handler registered», tsc и npm test такого не видят');
   list('все ipcMain.on зарегистрированы',
     contract.on.filter((c) => !gotOn.has(c) && !(c in LAZY)),

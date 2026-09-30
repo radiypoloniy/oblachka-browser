@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyRound, ChevronRight, Sparkles } from 'lucide-react';
 import type { PasswordIndicatorState } from '../../shared/ipc';
 import {
@@ -9,10 +9,10 @@ import {
 // Менеджер паролей, шаг 2 — карточка поповера. Рисуется в отдельной WebContentsView поверх
 // страницы (см. PasswordPopoverManager.ts), по тому же слою, что FindBar/SuggestDropdown.
 interface PasswordActions {
-  savePendingPassword(): Promise<boolean>;
-  updatePendingPassword(): Promise<boolean>;
+  savePendingPassword(username?: string): Promise<boolean>;
+  updatePendingPassword(username?: string): Promise<boolean>;
   fillSavedPassword(id: number): Promise<boolean>;
-  dismissPendingPassword(): Promise<void>;
+  dismissPendingPassword(permanent?: boolean): Promise<void>;
   generatePendingPassword(): Promise<boolean>;
 }
 
@@ -24,7 +24,12 @@ interface Props {
 
 export default function PasswordIndicatorPopover({ state, onClose, actions }: Props) {
   const [busy, setBusy] = useState(false);
+  const [username, setUsername] = useState('username' in state ? state.username : '');
   const api = actions ?? window.oblako;
+
+  useEffect(() => {
+    setUsername('username' in state ? state.username : '');
+  }, [state]);
 
   async function act(fn: () => Promise<boolean>) {
     setBusy(true);
@@ -53,15 +58,26 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
           <PopoverIcon><KeyRound size={18} /></PopoverIcon>
           <PopoverTitle>Сохранить пароль?</PopoverTitle>
           <PopoverHint>{hostLabel(state.origin)} — вход будет подставляться сам при следующем визите.</PopoverHint>
-          <PopoverRow icon={<SiteIcon host={state.origin} />} title={state.username || 'Без логина'} />
+          <PopoverRow icon={<SiteIcon host={state.origin} />} title={username || 'Без логина'} />
+          <input
+            aria-label="Логин"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Логин или e-mail"
+            style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', color: 'var(--text-body)', padding: '8px 10px', font: 'inherit' }}
+          />
           <PopoverActions>
-            <PrimaryButton onClick={() => void act(() => api.savePendingPassword())} disabled={busy}>
+            <PrimaryButton onClick={() => void act(() => api.savePendingPassword(username))} disabled={busy}>
               Сохранить
             </PrimaryButton>
             <QuietButton
               onClick={() => void act(async () => { await api.dismissPendingPassword(); return true; })}
               disabled={busy}
             >Не сейчас</QuietButton>
+            <QuietButton
+              onClick={() => void act(async () => { await api.dismissPendingPassword(true); return true; })}
+              disabled={busy}
+            >Никогда</QuietButton>
           </PopoverActions>
         </>
       )}
@@ -71,15 +87,26 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
           <PopoverIcon><KeyRound size={18} /></PopoverIcon>
           <PopoverTitle>Обновить пароль?</PopoverTitle>
           <PopoverHint>Для {hostLabel(state.origin)} сохранён другой пароль.</PopoverHint>
-          <PopoverRow icon={<SiteIcon host={state.origin} />} title={state.username || 'Без логина'} />
+          <PopoverRow icon={<SiteIcon host={state.origin} />} title={username || 'Без логина'} />
+          <input
+            aria-label="Логин"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Логин или e-mail"
+            style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', color: 'var(--text-body)', padding: '8px 10px', font: 'inherit' }}
+          />
           <PopoverActions>
-            <PrimaryButton onClick={() => void act(() => api.updatePendingPassword())} disabled={busy}>
+            <PrimaryButton onClick={() => void act(() => api.updatePendingPassword(username))} disabled={busy}>
               Обновить
             </PrimaryButton>
             <QuietButton
               onClick={() => void act(async () => { await api.dismissPendingPassword(); return true; })}
               disabled={busy}
             >Не сейчас</QuietButton>
+            <QuietButton
+              onClick={() => void act(async () => { await api.dismissPendingPassword(true); return true; })}
+              disabled={busy}
+            >Никогда</QuietButton>
           </PopoverActions>
         </>
       )}
@@ -103,7 +130,7 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
               title={m.username || 'Без логина'}
               // ⚠️ Маска фиксированной длины, а не настоящая длина пароля: длина — это подсказка
               // тому, кто заглянул через плечо, и ради неё расширять контракт незачем.
-              hint="••••••••••" 
+              hint={`${m.path ? `${m.path}  ·  ` : ''}••••••••••`}
               trailing={<ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />}
               onClick={() => void fill(m.id)}
               disabled={busy}
@@ -111,11 +138,13 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
           ))}
           {/* Смена пароля начинается ровно здесь: сохранённый вход для сайта есть, а нужен новый
               пароль — раньше за ним приходилось идти в настройки. */}
-          <PopoverActions>
-            <QuietButton onClick={() => void act(() => api.generatePendingPassword())} disabled={busy}>
-              Придумать новый
-            </QuietButton>
-          </PopoverActions>
+          {state.allowGenerate && (
+            <PopoverActions>
+              <QuietButton onClick={() => void act(() => api.generatePendingPassword())} disabled={busy}>
+                Придумать новый
+              </QuietButton>
+            </PopoverActions>
+          )}
         </>
       )}
 

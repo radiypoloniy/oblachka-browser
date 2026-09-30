@@ -102,6 +102,8 @@ export interface PageContextMenuHost {
    * Фон («в новой вкладке»). Main сам решает, класть ли вкладку в стопку соседней половины.
    */
   didOpenBackgroundTab(openedId: string, openerId: string): void;
+  /** Явно показать новую вкладку на соседней панели текущего split. */
+  showOnOtherPane(openedId: string, openerId: string): void;
   /** Показывается ли сейчас split-пара. */
   splitShown(): boolean;
   enterSplit(tabId: string): void;
@@ -178,7 +180,7 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
       click: () => {
         const openedId = host.openTab(p.linkURL, true, priv, p.referrerPolicy);
         host.noteOpened(openedId, hostOfUrl(wc.getURL()), id);
-        host.didOpenBackgroundTab(openedId, id);
+        host.showOnOtherPane(openedId, id);
       },
     });
   }

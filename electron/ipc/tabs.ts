@@ -60,7 +60,23 @@ export function registerTabsIpc(d: IpcDeps): void {
     settings.setTheme(mode, palette);
     broadcastToChrome(IPC.THEME_CHANGED, currentThemePrefs());
   });
-  ipcMain.handle(IPC.TAB_CREATE, (e, url?: string) => tabsOf(e)?.createTab(url));
+  // ⚠️ Один жест иногда приходит двумя TAB_CREATE. Живой прогон: один await createTab,
+  // а в дереве уже две вкладки с одним адресом и разными id — вторая не была
+  // возвращена вызывающему. Пока main занят созданием вью, второй вызов ждёт в очереди
+  // и стартует сразу после первого, поэтому окно считаем от КОНЦА создания, не от начала.
+  // Двойной клик по одной ссылке за это время схлопывается в одну вкладку; следующий
+  // осознанный заход на тот же адрес уже позже и проходит.
+  const recentCreate = new Map<number, { url: string; id: string; at: number }>();
+  ipcMain.handle(IPC.TAB_CREATE, (e, url?: string) => {
+    const tabs = tabsOf(e);
+    if (!tabs) return;
+    const key = url ?? '';
+    const prev = recentCreate.get(e.sender.id);
+    if (prev && prev.url === key && Date.now() - prev.at < 250) return prev.id;
+    const id = tabs.createTab(url);
+    recentCreate.set(e.sender.id, { url: key, id, at: Date.now() });
+    return id;
+  });
   ipcMain.handle(IPC.TAB_CREATE_INCOGNITO, (e, url?: string) => tabsOf(e)?.createTab(url, false, false, true));
   ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (e, kind: SpecialTabKind, section?: string) => tabsOf(e)?.createSpecialTab(kind, section));
   ipcMain.handle(IPC.TAB_CLOSE, (e, id: string) => tabsOf(e)?.closeTab(id));

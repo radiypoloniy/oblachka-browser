@@ -156,13 +156,20 @@ export function onRecommend(cb: (win: BrowserWindow, edit: OmniboxRecommendEdit)
 function computeBounds(st: WindowDropdown): { x: number; y: number; width: number; height: number } {
   const ob = st.omniboxBounds
   const base = st.win.isDestroyed() ? { x: 0, y: 0 } : st.win.getContentBounds()
-  return {
+  const bounds = {
     x: Math.round(base.x + ob.x - SHADOW_MARGIN),
     // GAP - SHADOW_TOP === 0: верх окна ровно на низе адресной строки, ни пикселя выше.
     y: Math.round(base.y + ob.y + ob.height + GAP - SHADOW_TOP),
     width: Math.round(Math.min(ob.width, MAX_CARD_WIDTH) + SHADOW_MARGIN * 2),
     height: Math.round(st.height + SHADOW_TOP + SHADOW_MARGIN),
   }
+  // ⚠️ Непоказанное окно на Windows не создаёт JS-контекст и не считает offsetHeight.
+  // Если ждать замер, не показав окно, первый клик оставлял список скрытым навсегда:
+  // карточка не рапортовала высоту, measured не становился true, showInactive не вызывался.
+  // Пока замера нет, окно уже показано, но выше экрана — стартовая полоска в 48px человеку
+  // не видна. Сдвиг по X опасен: соседний монитор слева её бы показал.
+  if (!st.measured) return { ...bounds, y: -20000 }
+  return bounds
 }
 
 function layoutDropdown(st: WindowDropdown): void {
@@ -294,7 +301,8 @@ export function showSuggestDropdown(win: BrowserWindow): void {
   popup.setBounds(computeBounds(st))
   // ⚠️ showInactive(), а не show(): show() просит у системы активацию. Окно и так неактивируемое,
   // но просить активацию и не получать её — лишний повод системе дёрнуть фокус главного окна.
-  if (st.measured && !popup.isVisible()) popup.showInactive()
+  // Показываем и до замера: иначе окно никогда не посчитает высоту (см. computeBounds).
+  if (!popup.isVisible()) popup.showInactive()
 }
 
 // Живой список подсказок — buildSuggestions в Toolbar.tsx шлёт его на каждый пересчёт. Лениво

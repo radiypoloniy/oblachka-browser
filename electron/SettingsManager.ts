@@ -4,7 +4,7 @@ import path from 'node:path';
 import { DEFAULT_SEARCH_ENGINE_ID, isSearchEngineId } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 import { THEME_PALETTE_IDS } from '../shared/ipc';
-import type { HubMode, ModelLoadMode, PageLength, RecommendedSite, SearchChipsConfig, ThemeMode, ThemePaletteId } from '../shared/ipc';
+import type { HubMode, ModelLoadMode, PageLength, PasswordPreferences, RecommendedSite, SearchChipsConfig, ThemeMode, ThemePaletteId } from '../shared/ipc';
 import type { EngineId } from './TranslationEngine';
 import { initialUiLanguage, isUiLanguage, type UiLanguage } from '../shared/uiLanguage';
 
@@ -65,6 +65,7 @@ interface PersistedSettings {
   // копированием пароля. Тумблер в настройках паролей; он же — страховка от лок-аута, если
   // проверка на конкретной машине не срабатывает.
   passwordAuthEnabled: boolean;
+  passwordPreferences: PasswordPreferences;
   // Отдавать ли браузер наружу как MCP-сервер (electron/mcp/). ⚠️ По умолчанию ВЫКЛЮЧЕНО и
   // включается только руками: это доступ внешнего агента к живому профилю человека, и
   // «включилось само после обновления» здесь недопустимо.
@@ -101,6 +102,22 @@ function normalizeHosts(v: unknown): string[] {
 }
 // Потолок списка — защита от бесконечного роста файла настроек, не продуктовое ограничение.
 const NEVER_SLEEP_MAX = 200;
+const PASSWORD_BLOCKED_MAX = 500;
+
+function normalizePasswordOrigins(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const raw of v) {
+    if (typeof raw !== 'string') continue;
+    try {
+      const origin = new URL(raw).origin;
+      if (!/^https?:/.test(origin) || out.includes(origin)) continue;
+      out.push(origin);
+      if (out.length >= PASSWORD_BLOCKED_MAX) break;
+    } catch { /* битая запись из settings.json не должна ломать запуск */ }
+  }
+  return out;
+}
 
 // Приходит из renderer и читается с диска — оба источника недоверенные, нормализатор один на обе
 // двери (тот же приём, что у полосы целей выше).
@@ -175,6 +192,13 @@ export class SettingsManager {
   // Спрашивать папку для каждого файла. По умолчанию НЕТ — см. DownloadManager.
   #askDownloadLocation = false;
   #passwordAuthEnabled = true; // доп. защита по умолчанию включена (см. PersistedSettings)
+  #passwordPreferences: PasswordPreferences = {
+    offerToSave: true,
+    autofill: true,
+    suggestStrong: true,
+    fillAuthMode: 'never',
+    blockedOrigins: [],
+  };
   #mcpEnabled = false;         // ⚠️ выключено по умолчанию — см. PersistedSettings
   #searchChips: SearchChipsConfig = { ...DEFAULT_SEARCH_CHIPS };
   // Светлая по умолчанию, а не 'system': тёмной темы в браузере до сих пор не было вовсе, и
@@ -321,6 +345,28 @@ export class SettingsManager {
     this.#write();
   }
 
+  getPasswordPreferences(): PasswordPreferences {
+    return { ...this.#passwordPreferences, blockedOrigins: [...this.#passwordPreferences.blockedOrigins] };
+  }
+
+  setPasswordPreferences(input: Partial<PasswordPreferences>): PasswordPreferences {
+    const next = { ...this.#passwordPreferences };
+    if (typeof input.offerToSave === 'boolean') next.offerToSave = input.offerToSave;
+    if (typeof input.autofill === 'boolean') next.autofill = input.autofill;
+    if (typeof input.suggestStrong === 'boolean') next.suggestStrong = input.suggestStrong;
+    if (input.fillAuthMode === 'never' || input.fillAuthMode === 'session' || input.fillAuthMode === 'always') {
+      next.fillAuthMode = input.fillAuthMode;
+    }
+    if (input.blockedOrigins !== undefined) next.blockedOrigins = normalizePasswordOrigins(input.blockedOrigins);
+    this.#passwordPreferences = next;
+    this.#write();
+    return this.getPasswordPreferences();
+  }
+
+  blockPasswordOrigin(origin: string): void {
+    this.setPasswordPreferences({ blockedOrigins: [...this.#passwordPreferences.blockedOrigins, origin] });
+  }
+
   getSearchChips(): SearchChipsConfig {
     return { ...this.#searchChips, pinned: [...this.#searchChips.pinned] };
   }
@@ -424,6 +470,17 @@ export class SettingsManager {
         if (typeof dl === 'boolean') this.#askDownloadLocation = dl;
         const pa = (data as Record<string, unknown>)['passwordAuthEnabled'];
         if (typeof pa === 'boolean') this.#passwordAuthEnabled = pa;
+        const pp = (data as Record<string, unknown>)['passwordPreferences'];
+        if (typeof pp === 'object' && pp !== null) {
+          const p = pp as Record<string, unknown>;
+          this.#passwordPreferences = {
+            offerToSave: typeof p.offerToSave === 'boolean' ? p.offerToSave : true,
+            autofill: typeof p.autofill === 'boolean' ? p.autofill : true,
+            suggestStrong: typeof p.suggestStrong === 'boolean' ? p.suggestStrong : true,
+            fillAuthMode: p.fillAuthMode === 'session' || p.fillAuthMode === 'always' ? p.fillAuthMode : 'never',
+            blockedOrigins: normalizePasswordOrigins(p.blockedOrigins),
+          };
+        }
         const mcp = (data as Record<string, unknown>)['mcpEnabled'];
         if (typeof mcp === 'boolean') this.#mcpEnabled = mcp;
         // Раньше полоса целей не сохранялась вовсе (в #write её просто не было) — режим и
@@ -460,6 +517,7 @@ export class SettingsManager {
       importOffered: this.#importOffered,
       askDownloadLocation: this.#askDownloadLocation,
       passwordAuthEnabled: this.#passwordAuthEnabled,
+      passwordPreferences: this.#passwordPreferences,
       mcpEnabled: this.#mcpEnabled,
       searchChips: this.#searchChips,
       themeMode: this.#themeMode,

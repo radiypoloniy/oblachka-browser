@@ -7,9 +7,13 @@ import type { BrowserWindow } from 'electron';
 import type { TabManager } from './TabManager';
 import type { PasswordManager } from './PasswordManager';
 import { originOf } from './PasswordManager';
-import type { PasswordIndicatorState } from '../shared/ipc';
+import type { PasswordIndicatorState, PasswordPreferences } from '../shared/ipc';
+import type { PasswordFieldContext, PasswordFieldTrigger } from '../shared/ipc';
 import { nextIndicatorState, shouldAutofill } from '../shared/passwordIndicator';
 import { contextForWindow } from './WindowRegistry';
+import {
+  dedupeAnonymousPasswordMatches, passwordMatchesForOrigin, passwordOriginMatch,
+} from './passwordOriginMatching';
 
 // ⚠️ Менеджер вкладок здесь НЕ хранится: каждая точка входа получает окно, а вкладки берутся из
 // реестра по нему. Прежняя единственная ссылка означала бы, что форма входа в одном окне ищет
@@ -18,6 +22,9 @@ import { contextForWindow } from './WindowRegistry';
 let passwordManagerRef: PasswordManager | null = null;
 let onIndicatorChangedCb: ((win: BrowserWindow, state: PasswordIndicatorState | null) => void) | null = null;
 let onListChangedCb: (() => void) | null = null;
+let getPreferencesCb: (() => PasswordPreferences) | null = null;
+let authorizeFillCb: (() => Promise<boolean>) | null = null;
+let blockOriginCb: ((origin: string) => void) | null = null;
 
 function tabsOf(win: BrowserWindow): TabManager | null {
   return contextForWindow(win)?.tabs ?? null;
@@ -35,15 +42,28 @@ const pendingGenerated = new Map<string, { origin: string; password: string; id:
 // Автозаполнение без кликов: origin, уже заполненный в этой вкладке, — чтобы не перезаполнять
 // на каждый пересчёт формы (SPA держит форму в DOM постоянно). Сбрасывается, когда форма ушла.
 const autofilledTabs = new Map<string, string>();
+const usernameCandidates = new Map<string, { origin: string; username: string }>();
 
 export function init(
   pm: PasswordManager,
   onIndicatorChanged: (win: BrowserWindow, state: PasswordIndicatorState | null) => void,
   onListChanged: () => void,
+  getPreferences: () => PasswordPreferences,
+  authorizeFill: () => Promise<boolean>,
+  blockOrigin: (origin: string) => void,
 ): void {
   passwordManagerRef = pm;
   onIndicatorChangedCb = onIndicatorChanged;
   onListChangedCb = onListChanged;
+  getPreferencesCb = getPreferences;
+  authorizeFillCb = authorizeFill;
+  blockOriginCb = blockOrigin;
+}
+
+function preferences(): PasswordPreferences {
+  return getPreferencesCb?.() ?? {
+    offerToSave: true, autofill: true, suggestStrong: true, fillAuthMode: 'never', blockedOrigins: [],
+  };
 }
 
 // Индикатор-«ключ» показывает состояние АКТИВНОЙ вкладки — и активной именно в том окне, откуда
@@ -53,10 +73,12 @@ function pushIfActive(win: BrowserWindow, tabId: string, state: PasswordIndicato
   onIndicatorChangedCb?.(win, state);
 }
 
-function computeHasSavedState(pm: PasswordManager, origin: string): PasswordIndicatorState | null {
-  const matches = pm.list()
-    .filter((e) => e.origin === origin)
-    .map((e) => ({ id: e.id, username: e.username }));
+function computeHasSavedState(
+  pm: PasswordManager,
+  origin: string,
+): Extract<PasswordIndicatorState, { kind: 'has-saved' }> | null {
+  const entries = dedupeAnonymousPasswordMatches(passwordMatchesForOrigin(pm.list(), origin), (id) => pm.reveal(id));
+  const matches = entries.map((e) => ({ id: e.id, username: e.username, path: pathOf(e.url) }));
   return matches.length > 0 ? { kind: 'has-saved', origin, matches } : null;
 }
 
@@ -68,21 +90,37 @@ function computeHasSavedState(pm: PasswordManager, origin: string): PasswordIndi
 // ничего не сохранено, offer-generate (похоже на регистрацию — предложить сгенерировать).
 // Позиция поповера (заякорен на поле, не на тулбар) считается вызывающей стороной (main.ts) —
 // этот модуль ничего не знает про геометрию окна.
-export function handleFieldIconClick(_win: BrowserWindow, tabId: string, url: string): PasswordIndicatorState | null {
+export function handleFieldInteraction(
+  _win: BrowserWindow,
+  tabId: string,
+  url: string,
+  trigger: PasswordFieldTrigger,
+  context: PasswordFieldContext,
+): PasswordIndicatorState | null {
   try {
     const pm = passwordManagerRef;
     if (!pm) return null;
     const origin = originOf(url);
+    const prefs = preferences();
     const saved = computeHasSavedState(pm, origin);
     if (saved) {
-      tabStates.set(tabId, saved);
-      return saved;
+      if (!prefs.autofill && trigger === 'focus') return null;
+      const allowGenerate = prefs.suggestStrong
+        && (context.role === 'new' || context.formKind === 'signup' || context.formKind === 'change');
+      const state: PasswordIndicatorState = { ...saved, allowGenerate };
+      tabStates.set(tabId, state);
+      return state;
     }
-    // ⚠️ Предложение придумать пароль поднимают ОБА повода — и значок, и клик в поле. Сначала
-    // клику в поле его не давали (боялись навязчивости), но на форме регистрации это ровно то,
-    // что человеку нужно в этот момент, а тянуться за ним к значку в углу поля — лишнее движение.
-    // От навязчивости здесь держат другие гейты: только пустое поле, только жест человека, и
-    // карточка убирается кликом мимо.
+    // Автоматически предлагаем генерацию только там, где страница обозначила новый пароль или
+    // форма похожа на регистрацию/смену. Иконка остаётся явным аварийным входом для кривых сайтов.
+    const mayGenerate = prefs.suggestStrong && (trigger === 'icon'
+      || context.role === 'new'
+      || context.formKind === 'signup'
+      || context.formKind === 'change');
+    if (!mayGenerate) {
+      tabStates.delete(tabId);
+      return null;
+    }
     const state: PasswordIndicatorState = { kind: 'offer-generate', origin };
     tabStates.set(tabId, state);
     return state;
@@ -101,6 +139,7 @@ const INLINE_GENERATE_OPTS = { length: 20, lower: true, upper: true, digits: tru
 export async function handleGenerateAndFill(win: BrowserWindow): Promise<boolean> {
   try {
     const pm = passwordManagerRef;
+    if (!preferences().suggestStrong) return false;
     const tm = tabsOf(win);
     const tabId = tm?.getActiveId();
     if (!pm || !tm || !tabId) return false;
@@ -109,7 +148,8 @@ export async function handleGenerateAndFill(win: BrowserWindow): Promise<boolean
     // ⚠️ Не только 'offer-generate': на форме СМЕНЫ пароля сохранённый вход для сайта есть, то
     // есть карточка показывает список аккаунтов, — а нужен как раз новый пароль. Оба состояния
     // несут origin, и он ниже сверяется с адресом активной вкладки, так что прав не прибавляется.
-    if (!state || (state.kind !== 'offer-generate' && state.kind !== 'has-saved')) return false;
+    if (!state || (state.kind !== 'offer-generate'
+      && !(state.kind === 'has-saved' && state.allowGenerate === true))) return false;
 
     const activeUrl = tm.getActiveWebContents()?.getURL() ?? '';
     if (originOf(activeUrl) !== state.origin) return false;
@@ -117,7 +157,7 @@ export async function handleGenerateAndFill(win: BrowserWindow): Promise<boolean
     const password = pm.generate(INLINE_GENERATE_OPTS);
     // Только пароль (username отсутствует в payload) — не трогаем поле логина, пользователь
     // мог его уже начать заполнять.
-    const filled = tm.sendPasswordFill(tabId, { password });
+    const filled = tm.sendPasswordFill(tabId, { password, mode: 'generated' });
     if (!filled) return false;
 
     // Фикс дыры «сгенерировали и потеряли»: пароль сохраняется в сейф НЕМЕДЛЕННО (с пустым
@@ -132,7 +172,13 @@ export async function handleGenerateAndFill(win: BrowserWindow): Promise<boolean
       const entry = pm.list()
         .filter((e) => e.origin === state.origin && e.username === '')
         .sort((a, b) => b.createdAt - a.createdAt)[0];
-      if (entry) pendingGenerated.set(tabId, { origin: state.origin, password, id: entry.id });
+      if (entry) {
+        const candidate = usernameCandidates.get(tabId);
+        if (candidate?.origin === state.origin && pm.update({ id: entry.id, username: candidate.username })) {
+          entry.username = candidate.username;
+        }
+        pendingGenerated.set(tabId, { origin: state.origin, password, id: entry.id });
+      }
       onListChangedCb?.();
     }
     return true;
@@ -153,7 +199,8 @@ export function handleFormDetected(win: BrowserWindow, tabId: string, hasLoginFo
 
     // Само правило перехода — в shared/passwordIndicator.ts (чистая логика под тестом): там же
     // разобрано, почему незакрытое предложение обязано пережить пересчёт формы.
-    const saved = pm.list().filter((e) => e.origin === origin).map((e) => ({ id: e.id, username: e.username }));
+    const entries = dedupeAnonymousPasswordMatches(passwordMatchesForOrigin(pm.list(), origin), (id) => pm.reveal(id));
+    const saved = entries.map((e) => ({ id: e.id, username: e.username, path: pathOf(e.url) }));
     const decision = nextIndicatorState(tabStates.get(tabId) ?? null, hasLoginForm, origin, saved);
     if (decision.keep) {
       if (!hasLoginForm) autofilledTabs.delete(tabId);
@@ -171,13 +218,7 @@ export function handleFormDetected(win: BrowserWindow, tabId: string, hasLoginFo
     // Автозаполнение без кликов (как у Яндекса). onlyIfEmpty — не затирать уже введённое руками
     // (preload-content пропустит непустые поля).
     const match = shouldAutofill(state, origin, autofilledTabs.get(tabId));
-    if (match) {
-      const password = pm.reveal(match.id);
-      if (password !== null
-        && tabsOf(win)?.sendPasswordFill(tabId, { username: match.username, password, onlyIfEmpty: true })) {
-        autofilledTabs.set(tabId, origin);
-      }
-    }
+    if (match && preferences().autofill) void fillMatch(win, tabId, origin, match, true);
   } catch (e) {
     console.warn('[PasswordAutofill] handleFormDetected error:', (e as Error).message);
   }
@@ -188,14 +229,40 @@ export function handleCredentialSubmitted(win: BrowserWindow, tabId: string, use
     const pm = passwordManagerRef;
     if (!pm) return;
     const origin = originOf(url);
+    if (username === '') {
+      const candidate = usernameCandidates.get(tabId);
+      if (candidate?.origin === origin) username = candidate.username;
+    }
+    const prefs = preferences();
+    if (!prefs.offerToSave || prefs.blockedOrigins.includes(origin)) {
+      pendingSecrets.delete(tabId);
+      tabStates.delete(tabId);
+      pushIfActive(win, tabId, null);
+      return;
+    }
 
     // Сгенерированный из поля пароль уже лежит в сейфе с пустым username (handleGenerateAndFill):
     // первый submit тем же паролем дописывает логин в ТУ ЖЕ запись молча — без offer-save,
     // который создал бы дубликат. Если пароль успели сменить руками — обычный путь ниже.
     const generated = pendingGenerated.get(tabId);
     if (generated !== undefined && generated.origin === origin && generated.password === password) {
-      if (username !== '' && pm.update({ id: generated.id, username })) {
-        onListChangedCb?.();
+      if (username !== '') {
+        if (pm.update({ id: generated.id, username })) {
+          onListChangedCb?.();
+        } else {
+          // Такой origin+username уже есть: это смена пароля существующего аккаунта. Обновляем
+          // именно его и удаляем временную безымянную запись — иначе новый пароль остался бы
+          // сиротой, а старый продолжил бы автозаполняться.
+          const existing = pm.checkCredential(origin, username, password);
+          if (existing.status === 'differs' && existing.matchId !== undefined
+            && pm.update({ id: existing.matchId, password })) {
+            pm.delete(generated.id);
+            onListChangedCb?.();
+          } else if (existing.status === 'match') {
+            pm.delete(generated.id);
+            onListChangedCb?.();
+          }
+        }
       }
       pendingGenerated.delete(tabId);
       tabStates.delete(tabId);
@@ -243,6 +310,18 @@ export function handleCredentialSubmitted(win: BrowserWindow, tabId: string, use
   }
 }
 
+export function handleUsernameCaptured(tabId: string, username: string, url: string): void {
+  const value = username.trim();
+  if (!value) return;
+  const origin = originOf(url);
+  usernameCandidates.set(tabId, { origin, username: value });
+  const generated = pendingGenerated.get(tabId);
+  const pm = passwordManagerRef;
+  if (pm && generated?.origin === origin && pm.update({ id: generated.id, username: value })) {
+    onListChangedCb?.();
+  }
+}
+
 // ── Реакция на смену активной вкладки / закрытие (main.ts подключает к уже существующим
 // колбэкам TabManager — onActiveTabChangedCb/onTabClosedCb, без новых параметров конструктора) ──
 
@@ -261,12 +340,13 @@ export function onTabClosed(tabId: string): void {
   pendingSecrets.delete(tabId);
   pendingGenerated.delete(tabId);
   autofilledTabs.delete(tabId);
+  usernameCandidates.delete(tabId);
 }
 
 // ── Действия из поповера (см. main.ts::registerIpc, PASSWORDS_INDICATOR_*) — всегда про
 // ТЕКУЩУЮ активную вкладку (поповер анкерится к omnibox, не к конкретной вкладке в стороне) ──
 
-export function handleSave(win: BrowserWindow): boolean {
+export function handleSave(win: BrowserWindow, usernameOverride?: string): boolean {
   try {
     const pm = passwordManagerRef;
     const tabId = tabsOf(win)?.getActiveId();
@@ -276,7 +356,8 @@ export function handleSave(win: BrowserWindow): boolean {
     if (!pending || !state || state.kind !== 'offer-save') return false;
 
     const title = hostnameOf(state.origin);
-    const ok = pm.add({ url: state.origin, username: pending.username, password: pending.password, title });
+    const username = typeof usernameOverride === 'string' ? usernameOverride.trim().slice(0, 320) : pending.username;
+    const ok = pm.add({ url: state.origin, username, password: pending.password, title });
     if (ok) {
       pendingSecrets.delete(tabId);
       tabStates.delete(tabId);
@@ -290,7 +371,7 @@ export function handleSave(win: BrowserWindow): boolean {
   }
 }
 
-export function handleUpdate(win: BrowserWindow): boolean {
+export function handleUpdate(win: BrowserWindow, usernameOverride?: string): boolean {
   try {
     const pm = passwordManagerRef;
     const tabId = tabsOf(win)?.getActiveId();
@@ -299,7 +380,8 @@ export function handleUpdate(win: BrowserWindow): boolean {
     const state = tabStates.get(tabId);
     if (!pending || !state || state.kind !== 'offer-update' || pending.matchId === undefined) return false;
 
-    const ok = pm.update({ id: pending.matchId, password: pending.password });
+    const username = typeof usernameOverride === 'string' ? usernameOverride.trim().slice(0, 320) : undefined;
+    const ok = pm.update({ id: pending.matchId, password: pending.password, username });
     if (ok) {
       pendingSecrets.delete(tabId);
       tabStates.delete(tabId);
@@ -313,7 +395,7 @@ export function handleUpdate(win: BrowserWindow): boolean {
   }
 }
 
-export function handleFill(win: BrowserWindow, id: number): boolean {
+export async function handleFill(win: BrowserWindow, id: number): Promise<boolean> {
   try {
     const pm = passwordManagerRef;
     const tm = tabsOf(win);
@@ -328,24 +410,32 @@ export function handleFill(win: BrowserWindow, id: number): boolean {
     const activeUrl = tm.getActiveWebContents()?.getURL() ?? '';
     if (originOf(activeUrl) !== state.origin) return false;
 
-    // Перед расшифровкой ещё раз сверяем запись с сейфом: id должен всё ещё принадлежать тому
-    // же origin. Только после этого один секрет попадает в гостевой preload конкретной вкладки.
-    const meta = pm.list().find((e) => e.id === id && e.origin === state.origin);
+    // Точный origin можно подставлять автоматически; соседний поддомен — только после этого
+    // явного клика человека. Public Suffix List не даёт смешать разных арендаторов вроде
+    // a.github.io и b.github.io.
+    const meta = pm.list().find((e) => e.id === id && passwordOriginMatch(state.origin, e.origin) !== null);
     if (!meta) return false;
+    if (!(await (authorizeFillCb?.() ?? Promise.resolve(true)))) return false;
+    // Пока был открыт системный диалог, вкладка или origin могли смениться.
+    if (tm.getActiveId() !== tabId || originOf(tm.getActiveWebContents()?.getURL() ?? '') !== state.origin) return false;
     const password = pm.reveal(id);
     if (password === null) return false;
 
-    return tm.sendPasswordFill(tabId, { username: match.username, password });
+    return tm.sendPasswordFill(tabId, { username: match.username, password, mode: 'login' });
   } catch (e) {
     console.warn('[PasswordAutofill] handleFill error:', (e as Error).message);
     return false;
   }
 }
 
-export function handleDismiss(win: BrowserWindow): void {
+export function handleDismiss(win: BrowserWindow, permanent = false): void {
   try {
     const tabId = tabsOf(win)?.getActiveId();
     if (!tabId) return;
+    const state = tabStates.get(tabId);
+    if (permanent && state && (state.kind === 'offer-save' || state.kind === 'offer-update')) {
+      blockOriginCb?.(state.origin);
+    }
     pendingSecrets.delete(tabId);
     tabStates.delete(tabId);
     pushIfActive(win, tabId, null);
@@ -354,10 +444,43 @@ export function handleDismiss(win: BrowserWindow): void {
   }
 }
 
+async function fillMatch(
+  win: BrowserWindow,
+  tabId: string,
+  origin: string,
+  match: { id: number; username: string },
+  onlyIfEmpty: boolean,
+): Promise<boolean> {
+  const pm = passwordManagerRef;
+  const tm = tabsOf(win);
+  if (!pm || !tm) return false;
+  // Фоновая подстановка строже явного выбора: только запись ровно этого origin.
+  const meta = pm.list().find((e) => e.id === match.id && e.origin === origin);
+  if (!meta) return false;
+  if (!(await (authorizeFillCb?.() ?? Promise.resolve(true)))) return false;
+  if (tm.getActiveId() !== tabId || originOf(tm.getActiveWebContents()?.getURL() ?? '') !== origin) return false;
+  const password = pm.reveal(match.id);
+  if (password === null) return false;
+  const filled = tm.sendPasswordFill(tabId, {
+    username: match.username, password, onlyIfEmpty, mode: 'login',
+  });
+  if (filled) autofilledTabs.set(tabId, origin);
+  return filled;
+}
+
 function hostnameOf(origin: string): string {
   try {
     return new URL(origin).hostname;
   } catch {
     return origin;
+  }
+}
+
+function pathOf(url: string): string | undefined {
+  try {
+    const path = new URL(url).pathname;
+    return path && path !== '/' ? path.slice(0, 120) : undefined;
+  } catch {
+    return undefined;
   }
 }

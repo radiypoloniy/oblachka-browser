@@ -207,11 +207,13 @@ export function createWindowTabManager(
     (tabId, hasLoginForm, hasUsernameField, url) => passwordAutofill.handleFormDetected(win, tabId, hasLoginForm, hasUsernameField, url),
     // В инкогнито не предлагаем СОХРАНИТЬ пароль (заполнение уже сохранённым — работает, как Chrome).
     (tabId, username, password, url) => { if (!tabs?.isIncognito(tabId)) passwordAutofill.handleCredentialSubmitted(win, tabId, username, password, url); },
+    // Первый экран многошагового входа (только email/username) — держим кандидат в памяти вкладки.
+    (tabId, username, url) => passwordAutofill.handleUsernameCaptured(tabId, username, url),
     // Иконка в поле пароля — та же карточка, что у тулбарной иконки-ключа (PasswordPopoverManager),
     // просто заякорена на позицию поля. rect приходит в координатах вьюпорта СТРАНИЦЫ —
     // прибавляем bounds именно ЭТОЙ вкладки (не активной вообще — split может показывать другую).
-    (tabId, rect, url) => {
-      const state = passwordAutofill.handleFieldIconClick(win, tabId, url);
+    (tabId, rect, url, trigger, context) => {
+      const state = passwordAutofill.handleFieldInteraction(win, tabId, url, trigger, context);
       if (!state || !tabs) return;
       const viewBounds = tabs.getTabViewBounds(tabId);
       syncPasswordPopoverAnchorBounds(win, {

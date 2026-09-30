@@ -173,6 +173,9 @@ export const PANELS = {
   PASSWORDS_LIST:     'passwords:list',     // renderer → main: PasswordMeta[] (без секретов)
   PASSWORDS_REVEAL:   'passwords:reveal',   // renderer → main: id → расшифрованный пароль | null
   PASSWORDS_COPY:     'passwords:copy',     // renderer → main: id, field → main сам кладёт в буфер
+  PASSWORDS_NOTES:    'passwords:notes',    // renderer → main: id → расшифрованные заметки | null
+  PASSWORDS_HEALTH:   'passwords:health',   // renderer → main: PasswordHealthItem[] без секретов
+  PASSWORDS_BREACH_CHECK: 'passwords:breach-check', // renderer → main: k-anonymity проверка → PasswordBreachCheckResult
   PASSWORDS_ADD:      'passwords:add',      // renderer → main: PasswordAddInput → boolean
   PASSWORDS_UPDATE:   'passwords:update',   // renderer → main: PasswordUpdateInput → boolean
   PASSWORDS_DELETE:   'passwords:delete',   // renderer → main: id
@@ -182,6 +185,8 @@ export const PANELS = {
   PASSWORDS_CHANGED:  'passwords:changed',  // main → renderer: push после любой мутации (тот же приём, что ADBLOCK_STATE_CHANGED)
   PASSWORDS_AUTH_GET: 'passwords:auth-get', // renderer → main: включена ли OS-проверка перед показом пароля
   PASSWORDS_AUTH_SET: 'passwords:auth-set', // renderer → main: включить/выключить, возвращает актуальное значение
+  PASSWORDS_PREFS_GET: 'passwords:prefs-get', // renderer → main: PasswordPreferences
+  PASSWORDS_PREFS_SET: 'passwords:prefs-set', // renderer → main: Partial<PasswordPreferences> → PasswordPreferences
 
   // Favicon для адресов (список паролей и т.п.) — качается ТОЛЬКО с самого сайта, кэш в main.
   FAVICON_GET:        'favicon:get',        // renderer → main: host → data-URL иконки | null

@@ -16,7 +16,7 @@ import type { ImagePreset } from '../imagePresets';
 import type { AutomationRule } from '../rules';
 import type { ProfilesState, ProfileSettings, ProfileAvatar, ProfileLook } from '../profiles';
 import type { ContentBounds, GenProgress, GenWebResult, McpCallLog, McpClientTarget, McpInstallResult, McpServerState, OrganizeCluster, OrganizeProposal, RuleParseOutcome, GenSpecOutcome, SearchChipCandidate, SearchChipsConfig } from './core';
-import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
+import type { PasswordAddInput, PasswordBreachCheckResult, PasswordCopyField, PasswordGenerateOptions, PasswordHealthItem, PasswordIndicatorState, PasswordMeta, PasswordPreferences, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
 import type { OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, SuggestDropdownItem } from './omnibox';
 import type { BangDefWire, BangsSnapshot, BergamotStatus, CatalogEntry, DeleteModelResult, DerivedBangCandidate, DownloadProgress, HardwareSnapshot, HubChatMessage, HubChatOutcome, HubChatSessionMeta, HubMode, ImportBangsResult, InstalledModel, ModelDownloadSpec, ModelLoadMode, PageTranslateProgress, PageTranslateState, SetDefaultModelResult, Skill, TranslationEngineId, UpdateStatus } from './ai';
 import type { AddressInput, AddressProfile, AddressUpdate, CardInput, CardMeta, CardUpdate, MediaCommand, MediaNowPlaying } from './app';
@@ -267,6 +267,9 @@ export interface AiApi {
   listPasswords(): Promise<PasswordMeta[]>;
   revealPassword(id: number): Promise<string | null>;
   copyPasswordField(id: number, field: PasswordCopyField): Promise<boolean>;
+  revealPasswordNotes(id: number): Promise<string | null>;
+  getPasswordHealth(): Promise<PasswordHealthItem[]>;
+  checkPasswordBreaches(): Promise<PasswordBreachCheckResult>;
 
   // Favicon сайта (data-URL) или null — тянется только с самого домена, кэш в main (FaviconService).
   getFavicon(host: string): Promise<string | null>;
@@ -274,6 +277,8 @@ export interface AiApi {
   // OS-проверка (нативный диалог Windows) перед показом/копированием пароля — тумблер в настройках.
   getPasswordAuthEnabled(): Promise<boolean>;
   setPasswordAuthEnabled(enabled: boolean): Promise<boolean>;
+  getPasswordPreferences(): Promise<PasswordPreferences>;
+  setPasswordPreferences(prefs: Partial<PasswordPreferences>): Promise<PasswordPreferences>;
 
   // Автозаполнение форм — адреса и карты (electron/AutofillManager.ts). Полный номер карты наружу
   // массово не отдаётся: list — только маска, полный номер — revealCardNumber под Windows Hello.
@@ -299,10 +304,10 @@ export interface AiApi {
 
   // Менеджер паролей, шаг 2 — индикатор-«ключ» + поповер (см. shared/ipc.ts::PasswordIndicatorState).
   onPasswordIndicatorChanged(cb: (state: PasswordIndicatorState | null) => void): () => void;
-  savePendingPassword(): Promise<boolean>;
-  updatePendingPassword(): Promise<boolean>;
+  savePendingPassword(username?: string): Promise<boolean>;
+  updatePendingPassword(username?: string): Promise<boolean>;
   fillSavedPassword(id: number): Promise<boolean>;
-  dismissPendingPassword(): Promise<void>;
+  dismissPendingPassword(permanent?: boolean): Promise<void>;
   // Иконка на пустом поле пароля (offer-generate) — генерирует и сразу пишет в поле, без буфера.
   generatePendingPassword(): Promise<boolean>;
   setPasswordPopoverAnchorBounds(bounds: ContentBounds): Promise<void>;

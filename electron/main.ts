@@ -504,6 +504,18 @@ async function ensurePasswordAuth(message: string): Promise<boolean> {
   if (res === 'ok') lastPasswordAuthOk = Date.now();
   return true;
 }
+let passwordFillAuthGranted = false;
+async function ensurePasswordFillAuth(): Promise<boolean> {
+  const mode = settings.getPasswordPreferences().fillAuthMode;
+  if (mode === 'never') return true;
+  if (mode === 'session' && passwordFillAuthGranted) return true;
+  // Для режима «каждый раз» не используем пятиминутное окно просмотра/копирования.
+  // Это отдельная настройка от показа/копирования: выключенный гейт списка не должен молча
+  // отключать явно включённый Hello перед заполнением.
+  const ok = (await verifyUser('Oblako — пароли', 'Заполнить сохранённый пароль')) !== 'denied';
+  if (ok && mode === 'session') passwordFillAuthGranted = true;
+  return ok;
+}
 const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
 // ⚠️ Щит обязан знать про молчаливый отказ. Без этого запомненный запрет отвечает сайту `false`
@@ -839,6 +851,9 @@ function wireSharedSessions(): void {
     (w, state) => chromeOfWin(w)?.send(IPC.PASSWORDS_INDICATOR_CHANGED, state),
     // А сам сейф один на приложение — список паролей обязан обновиться во всех окнах.
     () => broadcastToChrome(IPC.PASSWORDS_CHANGED),
+    () => settings.getPasswordPreferences(),
+    ensurePasswordFillAuth,
+    (origin) => settings.blockPasswordOrigin(origin),
   );
 }
 

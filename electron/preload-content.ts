@@ -107,6 +107,7 @@ try {
 
 const CH_FORM_DETECTED = 'passwords:form-detected';
 const CH_CREDENTIAL_SUBMITTED = 'passwords:credential-submitted';
+const CH_USERNAME_CAPTURED = 'passwords:username-captured';
 const CH_FILL = 'passwords:fill';
 const CH_FIELD_ICON_CLICK = 'passwords:field-icon-click';
 const CH_FIELD_FOCUS = 'passwords:field-focus';
@@ -196,7 +197,16 @@ function findUsernameField(passwordField: HTMLInputElement): HTMLInputElement | 
   const scope: ParentNode = passwordField.form ?? (passwordField.getRootNode() as ParentNode);
   const candidates = Array.from(scope.querySelectorAll('input')) as HTMLInputElement[];
   const idx = candidates.indexOf(passwordField);
-  const isUsernameType = (el: HTMLInputElement) => ['text', 'email', 'tel'].includes((el.type || 'text').toLowerCase());
+  const isUsernameType = (el: HTMLInputElement) => {
+    const type = (el.type || 'text').toLowerCase();
+    const ac = (el.getAttribute('autocomplete') || '').toLowerCase();
+    return ['text', 'email', 'tel'].includes(type) && !ac.includes('one-time-code') && isRendered(el);
+  };
+  const explicit = candidates.find((c) => /(?:^|\s)username(?:\s|$)/i.test(c.getAttribute('autocomplete') || '') && isUsernameType(c));
+  if (explicit) return explicit;
+  const email = candidates.find((c) => ((c.type || '').toLowerCase() === 'email'
+    || /(?:^|\s)email(?:\s|$)/i.test(c.getAttribute('autocomplete') || '')) && isUsernameType(c));
+  if (email) return email;
   for (let i = idx - 1; i >= 0; i--) {
     if (isUsernameType(candidates[i]!)) return candidates[i]!;
   }
@@ -242,15 +252,15 @@ function scanForms(pwFields: HTMLInputElement[]): { hasLoginForm: boolean; hasUs
 // (electron/PasswordPopoverManager.ts, тот же compositор, что у тулбарной иконки-ключа) —
 // просто заякоренной на позицию этого значка вместо позиции тулбара. Секреты через эту
 // границу не проходят вообще: клик шлёт наружу только координаты поля (rect), ничего больше.
-const ICON_SIZE = 20;
+const ICON_SIZE = 22;
 const ICON_MARGIN = 4;
 // Меньше этого — поле физически не вместит значок без визуального мусора, не показываем.
 const MIN_FIELD_WIDTH_FOR_ICON = ICON_SIZE + ICON_MARGIN * 2;
 const MIN_FIELD_HEIGHT_FOR_ICON = 14;
 
 const KEY_ICON_SVG = `
-  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none"
-       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
     <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/>
     <path d="m21 2-9.6 9.6"/>
     <circle cx="7.5" cy="15.5" r="5.5"/>
@@ -272,9 +282,17 @@ function createIconHost(field: HTMLInputElement): { host: HTMLDivElement; btn: H
   btn.style.cssText = `
     all: initial; position: fixed; width: ${ICON_SIZE}px; height: ${ICON_SIZE}px;
     display: flex; align-items: center; justify-content: center; pointer-events: auto;
-    border: none; border-radius: 5px; background: rgba(120,120,140,0.16); color: rgba(90,90,110,0.9);
-    cursor: pointer; box-sizing: border-box;
+    border: none; border-radius: 50%; background: transparent; color: CanvasText; opacity: .58;
+    cursor: pointer; box-sizing: border-box; transition: opacity 120ms ease, transform 120ms ease;
   `;
+  const style = document.createElement('style');
+  style.textContent = `
+    button:hover { opacity: .92 !important; transform: scale(1.08); }
+    button:active { opacity: 1 !important; transform: scale(.96); }
+    button:focus-visible { opacity: 1 !important; outline: 2px solid Highlight; outline-offset: 1px; }
+    @media (prefers-reduced-motion: reduce) { button { transition: none !important; } }
+  `;
+  shadow.appendChild(style);
   shadow.appendChild(btn);
 
   // ⚠️ event.isTrusted — обязательная проверка: без неё скрипт страницы мог бы программно
@@ -286,8 +304,13 @@ function createIconHost(field: HTMLInputElement): { host: HTMLDivElement; btn: H
       e.preventDefault();
       e.stopPropagation();
       const r = field.getBoundingClientRect();
+      const context = passwordContextFor(field);
       if (isTopFrame()) {
-        ipcRenderer.send(CH_FIELD_ICON_CLICK, { rect: { x: r.left, y: r.top, width: r.width, height: r.height } });
+        ipcRenderer.send(CH_FIELD_ICON_CLICK, {
+          rect: { x: r.left, y: r.top, width: r.width, height: r.height },
+          role: context.role,
+          formKind: context.formKind,
+        });
       }
     } catch {
       // клик не должен ронять страницу
@@ -437,8 +460,8 @@ try {
 }
 scheduleScan(); // на случай, если preload выполнился уже после DOMContentLoaded
 
-// Клик в само поле пароля — тот же поповер выбора аккаунта, что по значку-ключу: тянуться к
-// значку в углу поля, чтобы подставить пароль, человек не должен.
+// Клик в поле пароля ИЛИ связанное поле логина — тот же поповер выбора аккаунта, что по
+// значку-ключу: тянуться к значку в углу поля, чтобы подставить вход, человек не должен.
 //
 // ⚠️ Гейты те же, что у поповера адреса (см. focusFromUserGesture ниже), и по той же причине:
 // сайты сами фокусируют поле пароля при открытии формы, и без проверки жеста карточка всплывала бы
@@ -460,18 +483,43 @@ function dismissPasswordPopover(): void {
   try { if (isTopFrame()) ipcRenderer.send(CH_PASSWORDS_DISMISS); } catch { /* фрейм умер */ }
 }
 
+function showPasswordPopoverForField(t: HTMLInputElement): void {
+  const isPassword = (t.getAttribute('type') || '').toLowerCase() === 'password';
+  const context = isPassword ? passwordContextFor(t) : passwordContextForUsername(t);
+  if (!context) return;
+  // В заполненном password input не всплываем: человек уже ввёл пароль или получил его от
+  // нас. Поле логина может быть заполнено — клик по нему как раз часто означает смену аккаунта.
+  if (isPassword && t.value !== '') return;
+  const r = t.getBoundingClientRect();
+  pwAnchorEl = t;
+  pwShownAt = performance.now();
+  ipcRenderer.send(CH_FIELD_FOCUS, {
+    rect: { x: r.left, y: r.top, width: r.width, height: r.height },
+    role: context.role,
+    formKind: context.formKind,
+  });
+}
+
 window.addEventListener('focusin', (e) => {
   try {
     if (!isTopFrame() || !e.isTrusted) return;
     const t = e.target;
     if (!(t instanceof HTMLInputElement)) return;
-    if ((t.getAttribute('type') || '').toLowerCase() !== 'password') return;
-    if (t.value !== '') return;
     if (!focusFromUserGesture(t)) return;
-    const r = t.getBoundingClientRect();
-    pwAnchorEl = t;
-    pwShownAt = performance.now();
-    ipcRenderer.send(CH_FIELD_FOCUS, { rect: { x: r.left, y: r.top, width: r.width, height: r.height } });
+    showPasswordPopoverForField(t);
+  } catch {
+    // noop
+  }
+}, true);
+
+// Повторный клик по уже сфокусированному логину тоже открывает список. Первый клик уже обработан
+// focusin выше, поэтому короткое окно не даёт послать два одинаковых IPC подряд.
+window.addEventListener('click', (e) => {
+  try {
+    if (!isTopFrame() || !e.isTrusted || performance.now() - pwShownAt < 180) return;
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement) || document.activeElement !== t) return;
+    showPasswordPopoverForField(t);
   } catch {
     // noop
   }
@@ -533,7 +581,27 @@ document.addEventListener('submit', (e) => {
   try {
     const form = e.target;
     if (!(form instanceof HTMLFormElement)) return;
-    const pf = form.querySelector('input[type="password"]') as HTMLInputElement | null;
+    const passwordFields = Array.from(form.querySelectorAll('input[type="password"]'))
+      .filter((el): el is HTMLInputElement => el instanceof HTMLInputElement && isRendered(el));
+    if (passwordFields.length === 0) {
+      // Многошаговый вход: на первом экране есть только email/username. Передаём его в main,
+      // чтобы следующий документ той же вкладки смог связать пароль с логином.
+      const candidates = Array.from(form.querySelectorAll('input'))
+        .filter((el): el is HTMLInputElement => el instanceof HTMLInputElement && isRendered(el));
+      const username = candidates.find((el) => /(?:^|\s)username(?:\s|$)/i.test(el.autocomplete))
+        ?? candidates.find((el) => el.type === 'email' || /(?:^|\s)email(?:\s|$)/i.test(el.autocomplete));
+      if (username?.value && isTopFrame()) ipcRenderer.send(CH_USERNAME_CAPTURED, { username: username.value });
+      return;
+    }
+    const roles = passwordFields.map((el) => passwordFieldRole({
+      autocomplete: el.getAttribute('autocomplete') || '',
+      name: el.getAttribute('name') || '', id: el.id,
+      placeholder: el.getAttribute('placeholder') || '', label: labelTextFor(el),
+    }));
+    // На форме смены сохраняем НОВЫЙ пароль, а не первое поле (обычно «текущий пароль»).
+    // Если сайт не разметил три поля autocomplete, распространённый порядок — current/new/confirm.
+    const dirtyIndex = dirty ? passwordFields.indexOf(dirty) : -1;
+    const pf = passwordFields[submittedPasswordIndex(roles, dirtyIndex)] ?? null;
     if (!pf || !pf.value) return;
     reportSubmit(findUsernameField(pf)?.value ?? '', pf.value);
   } catch {
@@ -601,13 +669,65 @@ function passwordFillTargets(roles: readonly ('current' | 'new' | 'unknown')[]):
   if (roles.length >= 3 && unknowns.length === roles.length) return roles.map((_, i) => i).slice(1);
   return roles.map((_, i) => i);
 }
+function passwordFormKind(roles: readonly ('current' | 'new' | 'unknown')[]): 'login' | 'signup' | 'change' | 'unknown' {
+  const hasCurrent = roles.includes('current');
+  const hasNew = roles.includes('new');
+  if ((hasCurrent && hasNew) || (roles.length >= 3 && roles.every((r) => r === 'unknown'))) return 'change';
+  if (hasNew || (roles.length === 2 && roles.every((r) => r === 'unknown'))) return 'signup';
+  if (hasCurrent || roles.length === 1) return 'login';
+  return 'unknown';
+}
+function loginFillTargets(roles: readonly ('current' | 'new' | 'unknown')[], focusedIndex = -1): number[] {
+  const current = roles.indexOf('current');
+  if (current >= 0) return [current];
+  if (focusedIndex >= 0 && focusedIndex < roles.length) return [focusedIndex];
+  return roles.length > 0 ? [0] : [];
+}
+function submittedPasswordIndex(roles: readonly ('current' | 'new' | 'unknown')[], dirtyIndex = -1): number {
+  const firstNew = roles.indexOf('new');
+  if (firstNew >= 0) return firstNew;
+  if (dirtyIndex >= 0 && dirtyIndex < roles.length) return dirtyIndex;
+  if (roles.length >= 3 && roles.every((r) => r === 'unknown')) return 1;
+  return roles.length > 0 ? 0 : -1;
+}
+
+function passwordContextFor(field: HTMLInputElement): {
+  role: 'current' | 'new' | 'unknown';
+  formKind: 'login' | 'signup' | 'change' | 'unknown';
+} {
+  const all = renderedPasswordFields();
+  const scoped = field.form ? all.filter((f) => f.form === field.form) : [field];
+  const roles = scoped.map((el) => passwordFieldRole({
+    autocomplete: el.getAttribute('autocomplete') || '',
+    name: el.getAttribute('name') || '', id: el.id,
+    placeholder: el.getAttribute('placeholder') || '', label: labelTextFor(el),
+  }));
+  const role = roles[scoped.indexOf(field)] ?? 'unknown';
+  return { role, formKind: passwordFormKind(roles) };
+}
+
+// Поле логина той же формы — такой же естественный вход в выбор аккаунта, как поле пароля.
+// Возвращаем контекст связанного password input, чтобы main не гадал по одному email-полю,
+// является ли это входом, регистрацией или обычной подпиской на рассылку.
+function passwordContextForUsername(field: HTMLInputElement): ReturnType<typeof passwordContextFor> | null {
+  const passwordField = renderedPasswordFields().find((candidate) => {
+    if (candidate.form !== field.form) return false;
+    return findUsernameField(candidate) === field;
+  });
+  return passwordField ? passwordContextFor(passwordField) : null;
+}
 
 // username: undefined (поле ОТСУТСТВУЕТ в payload, не пустая строка) — не трогать поле логина.
 // Нужно генератору пароля: пользователь мог уже начать вводить логин, затирать его нельзя.
 // Пустая строка — легитимное значение сохранённого логина (сайт без поля логина вообще).
 // onlyIfEmpty — автозаполнение без клика (main шлёт его при обнаружении формы): непустые поля
 // не трогаем вовсе — то, что пользователь уже ввёл руками, важнее сохранённого.
-function fillCredential(username: string | undefined, password: string, onlyIfEmpty?: boolean): boolean {
+function fillCredential(
+  username: string | undefined,
+  password: string,
+  onlyIfEmpty?: boolean,
+  mode: 'login' | 'generated' = 'login',
+): boolean {
   try {
     if (!isTopFrame()) return false;
     const fields = renderedPasswordFields();
@@ -623,9 +743,13 @@ function fillCredential(username: string | undefined, password: string, onlyIfEm
       placeholder: el.getAttribute('placeholder') || '',
       label: labelTextFor(el),
     }));
-    // ⚠️ Не одно поле: иначе «повторить пароль» пустой, и человек ищет пароль в настройках.
+    // Вход и генерация — разные намерения. Сохранённый пароль нельзя писать в new/confirm,
+    // а сгенерированный, наоборот, обязан попасть в оба поля регистрации.
+    const targets = mode === 'generated'
+      ? passwordFillTargets(roles)
+      : loginFillTargets(roles, focused ? scoped.indexOf(focused) : -1);
     let wrote = false;
-    for (const i of passwordFillTargets(roles)) {
+    for (const i of targets) {
       const field = scoped[i];
       if (!field || (onlyIfEmpty && field.value)) continue;
       setNativeValue(field, password);
@@ -653,10 +777,10 @@ function fillCredential(username: string | undefined, password: string, onlyIfEm
 }
 
 try {
-  ipcRenderer.on(CH_FILL, (_e, payload: { username?: string; password?: string; onlyIfEmpty?: boolean }) => {
+  ipcRenderer.on(CH_FILL, (_e, payload: { username?: string; password?: string; onlyIfEmpty?: boolean; mode?: 'login' | 'generated' }) => {
     try {
       if (typeof payload?.password !== 'string') return;
-      fillCredential(payload.username, payload.password, payload.onlyIfEmpty === true);
+      fillCredential(payload.username, payload.password, payload.onlyIfEmpty === true, payload.mode ?? 'login');
     } catch {
       // исполнитель не должен ронять страницу
     }
@@ -1099,6 +1223,9 @@ window.addEventListener('focusin', (e) => {
     const t = e.target;
     if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
     if (!focusFromUserGesture(t)) return;
+    // Email/username внутри формы входа принадлежит менеджеру паролей. Иначе второй агент
+    // автозаполнения тут же откроет поверх него карточку адресов и спрячет список аккаунтов.
+    if (t instanceof HTMLInputElement && passwordContextForUsername(t)) return;
     if (detectFieldKey(t)) { reportAutofillFocus(t); return; }
     // Поле не узнали — это и есть повод спросить модель.
     if (!isAskableField(t)) return;

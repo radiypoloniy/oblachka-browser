@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TEXT, motion, pad, sp, well } from '../../styles/system';
-import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, ChevronRight, FileUp, Loader2 } from 'lucide-react';
-import type { PasswordMeta, PasswordCopyField } from '../../../shared/ipc';
+import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, ChevronRight, ChevronDown, FileUp, Loader2, ShieldAlert, KeyRound } from 'lucide-react';
+import type { PasswordBreachItem, PasswordMeta, PasswordCopyField, PasswordHealthItem, PasswordPreferences } from '../../../shared/ipc';
 import Toggle from '../Toggle';
+import { passwordChangeUrl } from '../../../shared/passwordChange';
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote, MasterSwitch,
   FactGrid, Fact, Subsection, StatusCard, Panel, Read,
@@ -28,7 +29,17 @@ export default function PasswordsSection() {
   const [revealed, setRevealed] = useState<Record<number, string>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [breachOnly, setBreachOnly] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(true);
+  const [prefs, setPrefs] = useState<PasswordPreferences>({
+    offerToSave: true, autofill: true, suggestStrong: true, fillAuthMode: 'never', blockedOrigins: [],
+  });
+  const [health, setHealth] = useState<PasswordHealthItem[]>([]);
+  const [breaches, setBreaches] = useState<PasswordBreachItem[]>([]);
+  const [breachBusy, setBreachBusy] = useState(false);
+  const [breachCheckedAt, setBreachCheckedAt] = useState<number | null>(null);
+  const [breachMessage, setBreachMessage] = useState('Проверка ещё не запускалась');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   // Список свёрнут по умолчанию. Две причины, и вторая важнее косметической:
   // (1) при десятках записей секция превращалась в простыню, и до экспорта/импорта и подключения
   //     внешнего менеджера внизу приходилось листать весь сейф;
@@ -69,14 +80,22 @@ export default function PasswordsSection() {
 
   function refresh() {
     window.oblako.listPasswords().then(setEntries);
+    window.oblako.getPasswordHealth().then(setHealth);
   }
 
   useEffect(() => {
     let mounted = true;
     window.oblako.listPasswords().then((list) => { if (mounted) setEntries(list); });
+    window.oblako.getPasswordHealth().then((list) => { if (mounted) setHealth(list); });
     window.oblako.getPasswordAuthEnabled().then((v) => { if (mounted) setAuthEnabled(v); });
+    window.oblako.getPasswordPreferences().then((v) => { if (mounted) setPrefs(v); });
     const unsub = window.oblako.onPasswordsChanged(() => {
       window.oblako.listPasswords().then((list) => { if (mounted) setEntries(list); });
+      // После изменения секрета старый результат больше ничего не доказывает.
+      if (mounted) {
+        setBreaches([]); setBreachOnly(false); setBreachCheckedAt(null);
+        setBreachMessage('Пароли изменились — запустите проверку снова');
+      }
     });
     return () => { mounted = false; unsub(); };
   }, []);
@@ -86,6 +105,45 @@ export default function PasswordsSection() {
     setAuthEnabled(next);
   }
 
+  async function patchPrefs(patch: Partial<PasswordPreferences>) {
+    setPrefs(await window.oblako.setPasswordPreferences(patch));
+  }
+
+  async function handleBreachCheck() {
+    setBreachBusy(true);
+    setBreachMessage('Проверяю анонимные диапазоны…');
+    try {
+      const result = await window.oblako.checkPasswordBreaches();
+      if (result.status === 'ok') {
+        setBreaches(result.items);
+        setBreachCheckedAt(result.checkedAt ?? Date.now());
+        const affected = result.items.filter((item) => item.count > 0).length;
+        if (affected === 0) setBreachOnly(false);
+        setBreachMessage(affected === 0
+          ? 'Совпадений в известных утечках не найдено'
+          : `${affected} ${plural(affected, 'пароль найден', 'пароля найдены', 'паролей найдены')} в известных утечках`);
+      } else if (result.status === 'denied') {
+        setBreachMessage('Проверка отменена');
+      } else if (result.status === 'unavailable') {
+        setBreachMessage('Сейф паролей сейчас недоступен');
+      } else {
+        setBreachMessage('Не удалось связаться с базой утечек. Попробуйте позже.');
+      }
+    } finally {
+      setBreachBusy(false);
+    }
+  }
+
+  function showCompromisedPasswords() {
+    setBreachOnly(true);
+    setListOpen(true);
+    setQuery('');
+  }
+
+  function changePassword(entry: PasswordMeta) {
+    void window.oblako.createTab(passwordChangeUrl(entry.origin, entry.url));
+  }
+
   function openAddForm() {
     setListOpen(true); // форма живёт внутри свёрнутого блока — иначе кнопка «Добавить» ничего не даёт
     setEditingId(null);
@@ -93,12 +151,14 @@ export default function PasswordsSection() {
     setFormError(''); setGeneratorOpen(false); setFormOpen(true);
   }
 
-  function openEditForm(entry: PasswordMeta) {
+  async function openEditForm(entry: PasswordMeta) {
+    const notes = await window.oblako.revealPasswordNotes(entry.id);
+    if (notes === null) return;
     setEditingId(entry.id);
     setUrlInput(entry.url); setUsernameInput(entry.username);
     // Пароль не подгружаем автоматически при открытии формы — не тянем secret без явного
     // reveal-действия пользователя. Пустое поле здесь значит «не менять».
-    setPasswordInput(''); setNotesInput('');
+    setPasswordInput(''); setNotesInput(notes);
     setFormError(''); setGeneratorOpen(false); setFormOpen(true);
   }
 
@@ -122,14 +182,21 @@ export default function PasswordsSection() {
       : await window.oblako.updatePassword({
           id: editingId, url: normalizedUrl, username, title,
           password: passwordInput || undefined,
-          notes: notesInput.trim() || undefined,
+          // В режиме редактирования пустая строка — явное «очистить заметки», а не «не менять».
+          notes: notesInput.trim(),
         });
     setSaving(false);
     if (ok) { setFormOpen(false); refresh(); } else { setFormError('Не удалось сохранить'); }
   }
 
   async function handleDelete(id: number) {
+    if (deleteConfirmId !== id) {
+      setDeleteConfirmId(id);
+      setTimeout(() => setDeleteConfirmId((current) => current === id ? null : current), 5_000);
+      return;
+    }
     await window.oblako.deletePassword(id);
+    setDeleteConfirmId(null);
     setRevealed((r) => { if (!(id in r)) return r; const next = { ...r }; delete next[id]; return next; });
   }
 
@@ -198,14 +265,17 @@ export default function PasswordsSection() {
 
   // Клиентский фильтр по сайту/логину — список может быть на десятки записей, без поиска нужную
   // не найти. entries === null (ещё грузим) обрабатывается ниже, здесь уже массив либо null.
+  const compromisedIds = useMemo(() => new Set(breaches.filter((item) => item.count > 0).map((item) => item.id)), [breaches]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q || !entries) return entries ?? [];
-    return entries.filter((e) =>
-      e.title.toLowerCase().includes(q) ||
-      e.origin.toLowerCase().includes(q) ||
-      e.username.toLowerCase().includes(q));
-  }, [entries, query]);
+    if (!entries) return [];
+    return entries.filter((e) => {
+      if (breachOnly && !compromisedIds.has(e.id)) return false;
+      return !q || e.title.toLowerCase().includes(q)
+        || e.origin.toLowerCase().includes(q)
+        || e.username.toLowerCase().includes(q);
+    });
+  }, [breachOnly, compromisedIds, entries, query]);
 
   // ── Оконный список ──
   // Шаг строки меряется по ЖИВОЙ первой строке, а не задан числом: высота зависит от кегля и
@@ -238,6 +308,12 @@ export default function PasswordsSection() {
   // Разных сайтов в сейфе — не то же самое, что число записей: у одного домена бывает два
   // аккаунта. Считаем по origin, а не по заголовку: заголовок человек правит руками.
   const siteCount = entries === null ? null : new Set(entries.map((e) => e.origin)).size;
+  const healthById = useMemo(() => new Map(health.map((item) => [item.id, item])), [health]);
+  const breachById = useMemo(() => new Map(breaches.map((item) => [item.id, item])), [breaches]);
+  const attentionCount = new Set([
+    ...health.filter((item) => item.weak || item.reused).map((item) => item.id),
+    ...compromisedIds,
+  ]).size;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
@@ -249,8 +325,8 @@ export default function PasswordsSection() {
         hero={count === null ? '…' : String(count)}
         heroLabel="записей в сейфе на этом устройстве · ключ привязан к учётной записи Windows"
       >
-        Сейф зашифрован и никуда не отправляется. Автозаполнение в веб-формы появится
-        отдельным шагом.
+        Сейф зашифрован и никуда не отправляется. Oblako подставляет сохранённые входы,
+        предлагает сильные пароли и спрашивает о сохранении после отправки формы.
       </SectionHeader>
 
       {/* ⚠️ Подтверждение Windows — ГЛАВНЫЙ ПЕРЕКЛЮЧАТЕЛЬ раздела, а не строка наравне с
@@ -263,6 +339,81 @@ export default function PasswordsSection() {
         description="Перед тем как показать или скопировать сохранённый пароль"
         control={<Toggle checked={authEnabled} onChange={() => void handleToggleAuth()} />}
       />
+
+      <Subsection
+        title="Поведение на сайтах"
+        description="Oblako различает вход, регистрацию и смену пароля. Здесь можно убрать любую автоматическую часть, не отключая сам сейф."
+      >
+        <Panel>
+          <CompactToggleRow
+            title="Предлагать сохранить и обновить"
+            description="После отправки нового или изменённого пароля"
+            checked={prefs.offerToSave}
+            onChange={() => void patchPrefs({ offerToSave: !prefs.offerToSave })}
+          />
+          <div style={{ height: 1, background: 'var(--divider)' }} />
+          <CompactToggleRow
+            title="Автоматически подставлять"
+            description="Когда найден ровно один сохранённый аккаунт"
+            checked={prefs.autofill}
+            onChange={() => void patchPrefs({ autofill: !prefs.autofill })}
+          />
+          <div style={{ height: 1, background: 'var(--divider)' }} />
+          <CompactToggleRow
+            title="Предлагать надёжные пароли"
+            description="В формах регистрации и смены пароля"
+            checked={prefs.suggestStrong}
+            onChange={() => void patchPrefs({ suggestStrong: !prefs.suggestStrong })}
+          />
+        </Panel>
+        <div style={{ ...settingsBox, padding: pad(3, 4), display: 'flex', alignItems: 'center', gap: sp(4) }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ ...TEXT.body, color: 'var(--text-strong)', fontWeight: 650 }}>Windows Hello перед заполнением</div>
+            <div style={{ ...TEXT.caption, color: 'var(--text-muted)', marginTop: sp(1) }}>Защищает от использования паролей человеком, получившим доступ к открытому браузеру</div>
+          </div>
+          <div style={{ position: 'relative', flex: 'none' }}>
+            <select
+              value={prefs.fillAuthMode}
+              onChange={(e) => void patchPrefs({ fillAuthMode: e.target.value as PasswordPreferences['fillAuthMode'] })}
+              style={{
+                appearance: 'none', WebkitAppearance: 'none', minWidth: 166,
+                border: '1px solid var(--divider)', borderRadius: 'var(--radius-pill)',
+                background: 'var(--surface)', color: 'var(--text-body)',
+                padding: pad(2, 3), paddingRight: sp(8), font: 'inherit', lineHeight: 1.35, cursor: 'default',
+              }}
+            >
+              <option value="never">Не спрашивать</option>
+              <option value="session">Раз за сессию</option>
+              <option value="always">Каждый раз</option>
+            </select>
+            <ChevronDown
+              size={14}
+              aria-hidden
+              style={{
+                position: 'absolute', right: sp(3), top: '50%', transform: 'translateY(-50%)',
+                color: 'var(--text-muted)', pointerEvents: 'none',
+              }}
+            />
+          </div>
+        </div>
+
+        {prefs.blockedOrigins.length > 0 && (
+          <Panel>
+            <div style={{ padding: pad(3, 4), ...TEXT.caption, color: 'var(--text-muted)' }}>
+              Не предлагать сохранение на этих сайтах
+            </div>
+            {prefs.blockedOrigins.map((origin) => (
+              <div key={origin} style={{ display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(2, 4), boxShadow: 'inset 0 1px 0 var(--divider)' }}>
+                <span style={{ flex: 1, ...TEXT.body, color: 'var(--text-body)', fontFamily: 'var(--font-mono)' }}>{hostOf(origin)}</span>
+                <button
+                  style={btnGhost}
+                  onClick={() => void patchPrefs({ blockedOrigins: prefs.blockedOrigins.filter((x) => x !== origin) })}
+                >Снова спрашивать</button>
+              </div>
+            ))}
+          </Panel>
+        )}
+      </Subsection>
 
       <FactGrid>
         <Fact
@@ -284,11 +435,56 @@ export default function PasswordsSection() {
           active
         />
         <Fact
+          label="Буфер пароля"
+          hint="без истории и облачной синхронизации Windows"
+          value="30 секунд"
+          active
+        />
+        <Fact
+          label="Требуют внимания"
+          hint="слабые, повторяющиеся или найденные в утечках"
+          value={String(attentionCount)}
+          active={attentionCount > 0}
+        />
+        <Fact
           label="Внешний менеджер"
           hint="Bitwarden и другие"
           value="Скоро"
         />
       </FactGrid>
+
+      <Subsection
+        title="Проверка утечек"
+        description="Oblako вычисляет SHA‑1 локально и отправляет Have I Been Pwned только первые 5 символов хеша. Полный пароль и полный хеш компьютер не покидают."
+      >
+        <StatusCard
+          icon={<ShieldAlert size={20} style={{ color: compromisedIds.size > 0 ? 'var(--accent)' : 'var(--text-muted)' }} />}
+          title={breachMessage}
+          subtitle={breachCheckedAt
+            ? `Последняя проверка: ${new Date(breachCheckedAt).toLocaleString()}`
+            : 'Запускается вручную; системное подтверждение действует по настройке выше'}
+          actions={(
+            <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
+              {compromisedIds.size > 0 && (
+                <button onClick={showCompromisedPasswords} style={{ ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}>
+                  <ShieldAlert size={14} /> Показать и исправить
+                </button>
+              )}
+              <button
+                onClick={() => void handleBreachCheck()}
+                disabled={breachBusy || count === null || count === 0}
+                style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2), opacity: breachBusy || count === null || count === 0 ? 0.5 : 1 }}
+              >
+                {breachBusy
+                  ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+                  : <RefreshCw size={14} />}
+                {breachCheckedAt ? 'Проверить снова' : 'Проверить пароли'}
+              </button>
+            </div>
+          )}
+        />
+        <Read><InlineHint>Используется приватный k-anonymity API с дополнением ответа случайными строками. Проверка адресов электронной почты не выполняется.</InlineHint></Read>
+      </Subsection>
 
       <Subsection
         title="Сохранённые пароли"
@@ -351,6 +547,7 @@ export default function PasswordsSection() {
                   style={fieldFlex}
                 />
                 {query && <button onClick={() => setQuery('')} style={btnGhost}>Сбросить</button>}
+                {breachOnly && <button onClick={() => setBreachOnly(false)} style={btnGhost}>Показать все</button>}
               </InputRow>
             )}
 
@@ -375,9 +572,13 @@ export default function PasswordsSection() {
                         entry={entry}
                         revealedValue={revealed[entry.id]}
                         copiedKey={copiedKey}
+                        health={healthById.get(entry.id)}
+                        breach={breachById.get(entry.id)}
+                        deleteArmed={deleteConfirmId === entry.id}
                         onToggleReveal={() => void handleReveal(entry.id)}
                         onCopy={(field) => void handleCopy(entry.id, field)}
-                        onEdit={() => openEditForm(entry)}
+                        onEdit={() => void openEditForm(entry)}
+                        onChangePassword={() => changePassword(entry)}
                         onDelete={() => void handleDelete(entry.id)}
                       />
                     </div>
@@ -479,6 +680,23 @@ export default function PasswordsSection() {
   );
 }
 
+function CompactToggleRow({ title, description, checked, onChange }: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: sp(4), padding: pad(2, 4) }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ ...TEXT.body, color: 'var(--text-strong)', fontWeight: 650 }}>{title}</div>
+        <div style={{ ...TEXT.caption, color: 'var(--text-muted)', marginTop: sp(1) }}>{description}</div>
+      </div>
+      <Toggle checked={checked} onChange={onChange} />
+    </div>
+  );
+}
+
 /** Русское склонение числительного: 1 запись, 2 записи, 5 записей. */
 function plural(n: number, one: string, few: string, many: string): string {
   const mod100 = n % 100;
@@ -494,9 +712,13 @@ interface PasswordRowProps {
   entry: PasswordMeta;
   revealedValue: string | undefined;
   copiedKey: string | null;
+  health: PasswordHealthItem | undefined;
+  breach: PasswordBreachItem | undefined;
+  deleteArmed: boolean;
   onToggleReveal: () => void;
   onCopy: (field: PasswordCopyField) => void;
   onEdit: () => void;
+  onChangePassword: () => void;
   onDelete: () => void;
 }
 
@@ -504,7 +726,7 @@ function hostOf(origin: string): string {
   try { return new URL(origin).hostname.replace(/^www\./, ''); } catch { return origin; }
 }
 
-function PasswordRow({ entry, revealedValue, copiedKey, onToggleReveal, onCopy, onEdit, onDelete }: PasswordRowProps) {
+function PasswordRow({ entry, revealedValue, copiedKey, health, breach, deleteArmed, onToggleReveal, onCopy, onEdit, onChangePassword, onDelete }: PasswordRowProps) {
   const revealed = revealedValue !== undefined;
   return (
     // ⚠️ Список ОКОННЫЙ: высоту строки он измеряет и считает сам, поэтому обычную рамку
@@ -527,8 +749,17 @@ function PasswordRow({ entry, revealedValue, copiedKey, onToggleReveal, onCopy, 
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)',
         }}>
           {entry.username || '—'}{revealed ? `  ·  ${revealedValue}` : ''}
+          {health?.weak ? '  ·  слабый' : ''}{health?.reused ? '  ·  повторяется' : ''}
+          {breach && breach.count > 0 ? `  ·  в утечках: ${breach.count.toLocaleString()}` : ''}
         </div>
       </div>
+      {breach && breach.count > 0 && (
+        <button
+          title="Открыть страницу смены пароля"
+          onClick={onChangePassword}
+          style={{ ...btnGhost, flex: 'none', display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
+        ><KeyRound size={14} /> Сменить</button>
+      )}
       <IconBtn title="Копировать логин" active={copiedKey === `${entry.id}:username`} onClick={() => onCopy('username')}>
         {copiedKey === `${entry.id}:username` ? <Check size={14} /> : <Copy size={14} />}
       </IconBtn>
@@ -539,7 +770,9 @@ function PasswordRow({ entry, revealedValue, copiedKey, onToggleReveal, onCopy, 
         {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
       </IconBtn>
       <IconBtn title="Изменить" onClick={onEdit}><Pencil size={14} /></IconBtn>
-      <IconBtn title="Удалить" onClick={onDelete}><Trash2 size={14} /></IconBtn>
+      <IconBtn title={deleteArmed ? 'Нажмите ещё раз, чтобы удалить' : 'Удалить'} active={deleteArmed} onClick={onDelete}>
+        {deleteArmed ? <Check size={14} /> : <Trash2 size={14} />}
+      </IconBtn>
     </div>
   );
 }

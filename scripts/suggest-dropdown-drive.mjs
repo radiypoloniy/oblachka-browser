@@ -36,23 +36,32 @@ await withStand(async (ctx) => {
   await popup.ready;
   try {
     let state = null;
+    let win = null;
     for (let i = 0; i < 40; i++) {
       state = await popup.evaluate(`(() => ({
-        visible: document.visibilityState === 'visible',
         height: document.querySelector('#root > div > div')?.getBoundingClientRect().height ?? 0,
         text: document.body?.innerText.length ?? 0,
         viewport: window.innerHeight,
       }))()`);
-      if (state.visible && state.height >= 32 && state.viewport >= state.height + 48 && state.text > 0) break;
+      win = await ctx.evalMain(`(() => {
+        const { BrowserWindow } = process.mainModule.require('electron');
+        const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('suggestdropdown'));
+        if (!w) return null;
+        const b = w.getBounds();
+        return { vis: w.isVisible(), x: b.x, y: b.y, width: b.width, height: b.height };
+      })()`);
+      // showInactive не переводит document.visibilityState в visible, хотя окно уже на экране.
+      // Поэтому «видно» — это isVisible и координаты, а не Page Visibility.
+      if (state && win?.vis && win.y > -1000 && state.height >= 32 && state.viewport >= state.height + 48 && state.text > 0) break;
       await wait(150);
     }
-    if (!state?.visible || state.height < 32 || state.viewport < state.height + 48 || state.text === 0) {
-      throw new Error(`первый показ не раскрыл карточку: ${JSON.stringify(state)}`);
+    if (!state || !win?.vis || win.y <= -1000 || state.height < 32 || state.viewport < state.height + 48 || state.text === 0) {
+      throw new Error(`первый показ не раскрыл карточку: ${JSON.stringify({ state, win })}`);
     }
     console.log(`  ok   первый клик: карточка видна, высота ${Math.round(state.height)}px, окно ${state.viewport}px`);
   } finally {
     popup.close();
   }
-});
+}, { main: true });
 
 console.log('\nИтого: 1 прошло, 0 не прошло\n');

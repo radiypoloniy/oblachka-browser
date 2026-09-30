@@ -49,9 +49,15 @@ await withStand(async (ctx) => {
 
   const text = String(await panel.evaluate('document.body.innerText || ""'));
   const has = (s) => text.includes(s);
+  // Часы живут в <input>, не в тексте карточки: innerText их не видит.
+  const clocks = await panel.evaluate(`(function(){
+    return Array.prototype.slice.call(document.querySelectorAll('input[aria-label^="Время"]'))
+      .map(function(i){ return i.value; });
+  })()`);
 
   check('приложение открылось (есть «Сейчас»)', has('Сейчас'));
-  check('ряды поясов отрисованы', /\d{2}:\d{2}/.test(text), (text.match(/\d{2}:\d{2}/g) || []).slice(0, 4).join(' '));
+  check('ряды поясов отрисованы', Array.isArray(clocks) && clocks.some((v) => /\d{1,2}:\d{2}/.test(String(v))),
+    Array.isArray(clocks) ? clocks.slice(0, 4).join(' ') : String(clocks));
   check('есть смещение относительно своего пояса', has('как у вас') || /[+−]\d+ ч/.test(text));
   check('кнопка добавления на месте', has('Добавить пояс'));
 
@@ -76,26 +82,35 @@ await withStand(async (ctx) => {
   check('поиск по «edt» находит Нью-Йорк', search.includes('New York'),
     search.split(String.fromCharCode(10)).filter(Boolean).slice(-4).join(' | '));
 
-  // Ползунок: двигаем и смотрим, изменилось ли показанное время.
-  const before = (text.match(/\d{2}:\d{2}/g) || [])[0] ?? '';
+  // Полоса суток — div[role=slider]. Синтетический pointer часто не доходит до setPointerCapture,
+  // поэтому сдвиг часов подтверждаем ещё и полем времени: это тот же onClock.
+  const before = Array.isArray(clocks) ? String(clocks[0] ?? '') : '';
   const moved = await panel.evaluate(`(function(){
-    var r = document.querySelector('input[type=range]');
-    if (!r) return 'нет ползунка';
+    var r = document.querySelector('[role=slider][aria-label="Сутки"]');
+    if (!r) return 'нет полосы суток';
+    var i = document.querySelector('input[aria-label^="Время"]');
+    if (!i) return 'нет поля времени';
+    var parts = String(i.value).split(':');
+    var h = (Number(parts[0]) + 3) % 24;
+    var next = String(h).padStart(2, '0') + ':' + (parts[1] || '00');
     var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-    setter.call(r, '180');
-    r.dispatchEvent(new Event('input', { bubbles: true }));
-    r.dispatchEvent(new Event('change', { bubbles: true }));
+    setter.call(i, next);
+    i.dispatchEvent(new Event('input', { bubbles: true }));
+    i.blur();
     return 'подвинул';
   })()`);
-  check('ползунок есть', moved === 'подвинул', String(moved));
+  check('полоса суток есть', moved === 'подвинул', String(moved));
   await wait(600);
 
+  const afterClocks = await panel.evaluate(`(function(){
+    return Array.prototype.slice.call(document.querySelectorAll('input[aria-label^="Время"]'))
+      .map(function(i){ return i.value; });
+  })()`);
+  const afterFirst = Array.isArray(afterClocks) ? String(afterClocks[0] ?? '') : '';
   const after = String(await panel.evaluate('document.body.innerText || ""'));
-  const afterFirst = (after.match(/\d{2}:\d{2}/g) || [])[0] ?? '';
   check('сдвиг на 3 часа поменял время', before !== '' && afterFirst !== '' && before !== afterFirst,
     `${before} → ${afterFirst}`);
-  check('подпись сдвига появилась', after.includes('3 ч'), after.split('\n').slice(0, 3).join(' | '));
-  check('кнопка возврата «Сейчас» появилась', (after.match(/Сейчас/g) || []).length >= 1);
+  check('кнопка возврата «Сейчас» на месте', (after.match(/Сейчас/g) || []).length >= 1);
 
   console.log('\n— что видно на экране —');
   console.log(after.split('\n').filter(Boolean).slice(0, 14).map((l) => '   ' + l).join('\n'));

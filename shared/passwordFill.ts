@@ -43,3 +43,29 @@ export function passwordFillTargets(roles: readonly PasswordFieldRole[]): number
   }
   return roles.map((_, i) => i);
 }
+
+export type PasswordFormKind = 'login' | 'signup' | 'change' | 'unknown';
+
+export function passwordFormKind(roles: readonly PasswordFieldRole[]): PasswordFormKind {
+  const hasCurrent = roles.includes('current');
+  const hasNew = roles.includes('new');
+  if ((hasCurrent && hasNew) || (roles.length >= 3 && roles.every((r) => r === 'unknown'))) return 'change';
+  if (hasNew || (roles.length === 2 && roles.every((r) => r === 'unknown'))) return 'signup';
+  if (hasCurrent || roles.length === 1) return 'login';
+  return 'unknown';
+}
+
+export function loginFillTargets(roles: readonly PasswordFieldRole[], focusedIndex = -1): number[] {
+  const current = roles.indexOf('current');
+  if (current >= 0) return [current];
+  if (focusedIndex >= 0 && focusedIndex < roles.length) return [focusedIndex];
+  return roles.length > 0 ? [0] : [];
+}
+
+export function submittedPasswordIndex(roles: readonly PasswordFieldRole[], dirtyIndex = -1): number {
+  const firstNew = roles.indexOf('new');
+  if (firstNew >= 0) return firstNew;
+  if (dirtyIndex >= 0 && dirtyIndex < roles.length) return dirtyIndex;
+  if (roles.length >= 3 && roles.every((r) => r === 'unknown')) return 1;
+  return roles.length > 0 ? 0 : -1;
+}

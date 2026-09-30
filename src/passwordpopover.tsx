@@ -10,10 +10,10 @@ import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN, OVERLAY_MIN_CONTENT_HEIGHT } fr
 declare global {
   interface Window {
     passwordPopover: {
-      savePendingPassword: () => Promise<boolean>;
-      updatePendingPassword: () => Promise<boolean>;
+      savePendingPassword: (username?: string) => Promise<boolean>;
+      updatePendingPassword: (username?: string) => Promise<boolean>;
       fillSavedPassword: (id: number) => Promise<boolean>;
-      dismissPendingPassword: () => Promise<void>;
+      dismissPendingPassword: (permanent?: boolean) => Promise<void>;
       generatePendingPassword: () => Promise<boolean>;
       close: () => void;
       reportHeight: (px: number) => void;

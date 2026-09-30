@@ -50,6 +50,23 @@ export interface PasswordMeta {
   updatedAt: number;
 }
 
+export interface PasswordHealthItem {
+  id: number;
+  weak: boolean;
+  reused: boolean;
+}
+
+export interface PasswordBreachItem {
+  id: number;
+  count: number;
+}
+
+export interface PasswordBreachCheckResult {
+  status: 'ok' | 'denied' | 'network-error' | 'unavailable';
+  items: PasswordBreachItem[];
+  checkedAt?: number;
+}
+
 export interface PasswordAddInput {
   url: string;
   username: string;
@@ -66,6 +83,15 @@ export type PasswordUpdateInput = Partial<Omit<PasswordAddInput, 'password'>> & 
 
 export type PasswordCopyField = 'username' | 'password';
 
+export type PasswordFillAuthMode = 'never' | 'session' | 'always';
+export interface PasswordPreferences {
+  offerToSave: boolean;
+  autofill: boolean;
+  suggestStrong: boolean;
+  fillAuthMode: PasswordFillAuthMode;
+  blockedOrigins: string[];
+}
+
 export interface PasswordGenerateOptions {
   length: number;
   lower: boolean;
@@ -80,9 +106,19 @@ export interface PasswordGenerateOptions {
 export interface PasswordIndicatorMatch {
   id: number;
   username: string;
+  // Для password-only форм на одном origin помогает различать записи, не раскрывая секрет.
+  path?: string;
 }
+export type PasswordFieldRole = 'current' | 'new' | 'unknown';
+export type PasswordFormKind = 'login' | 'signup' | 'change' | 'unknown';
+export type PasswordFieldTrigger = 'focus' | 'icon';
+export interface PasswordFieldContext {
+  role: PasswordFieldRole;
+  formKind: PasswordFormKind;
+}
+export type PasswordFillMode = 'login' | 'generated';
 export type PasswordIndicatorState =
-  | { kind: 'has-saved'; origin: string; matches: PasswordIndicatorMatch[] }
+  | { kind: 'has-saved'; origin: string; matches: PasswordIndicatorMatch[]; allowGenerate?: boolean }
   | { kind: 'offer-save'; origin: string; username: string }
   | { kind: 'offer-update'; origin: string; username: string; matchId: number }
   // Клик по иконке в пустом поле пароля БЕЗ сохранённого логина для origin (похоже на форму

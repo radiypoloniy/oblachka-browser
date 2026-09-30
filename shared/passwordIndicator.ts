@@ -13,6 +13,7 @@ import type { PasswordIndicatorState } from './ipc';
 export interface SavedMatch {
   id: number;
   username: string;
+  path?: string;
 }
 
 // keep: true — состояние трогать нельзя (человеку показано предложение, он на него ещё не ответил).
@@ -48,7 +49,7 @@ export function nextIndicatorState(
   return {
     keep: false,
     state: saved.length > 0
-      ? { kind: 'has-saved', origin, matches: saved.map((m) => ({ id: m.id, username: m.username })) }
+      ? { kind: 'has-saved', origin, matches: saved.map((m) => ({ id: m.id, username: m.username, path: m.path })) }
       : null,
   };
 }

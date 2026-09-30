@@ -4,10 +4,10 @@ import { exposeUiLanguage } from './preload/uiLanguage';
 import type { PasswordIndicatorState } from '../shared/ipc';
 
 contextBridge.exposeInMainWorld('passwordPopover', {
-  savePendingPassword:    () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_SAVE) as Promise<boolean>,
-  updatePendingPassword:  () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_UPDATE) as Promise<boolean>,
+  savePendingPassword:    (username?: string) => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_SAVE, username) as Promise<boolean>,
+  updatePendingPassword:  (username?: string) => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_UPDATE, username) as Promise<boolean>,
   fillSavedPassword:      (id: number) => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_FILL, id) as Promise<boolean>,
-  dismissPendingPassword: () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_DISMISS) as Promise<void>,
+  dismissPendingPassword: (permanent?: boolean) => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_DISMISS, permanent === true) as Promise<void>,
   generatePendingPassword: () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_GENERATE) as Promise<boolean>,
   close:                  () => ipcRenderer.send(IPC.PASSWORD_POPOVER_CLOSE),
   reportHeight:           (px: number) => ipcRenderer.send('password-popover:height', px),

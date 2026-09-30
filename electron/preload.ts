@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { ProfilesState, ProfileSettings, ProfileAvatar, ProfileLook } from '../shared/profiles';
 import { IPC } from '../shared/ipc';
 import { aiBridge, updatesBridge, mcpBridge, flightBridge, tabSearchBridge } from './preload/bridges';
-import type { OblakoApi, AiActivityState, PageLength, SpecialTabKind, SyncState, ContentBounds, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, OmniboxResume, RecommendedSite, PageChangesResult, RelatedPagesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, DayDigestState, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, GenSpecOutcome, GenProgress, GenWebResult } from '../shared/ipc';
+import type { OblakoApi, AiActivityState, PageLength, SpecialTabKind, SyncState, ContentBounds, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, OmniboxResume, RecommendedSite, PageChangesResult, RelatedPagesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordHealthItem, PasswordBreachCheckResult, PasswordIndicatorState, PasswordPreferences, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, DayDigestState, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, GenSpecOutcome, GenProgress, GenWebResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../shared/graph';
 import type { ImagePreset } from '../shared/imagePresets';
@@ -646,9 +646,14 @@ const api: OblakoApi = {
   listPasswords:     ()                                        => ipcRenderer.invoke(IPC.PASSWORDS_LIST) as Promise<PasswordMeta[]>,
   revealPassword:    (id: number)                               => ipcRenderer.invoke(IPC.PASSWORDS_REVEAL, id) as Promise<string | null>,
   copyPasswordField: (id: number, field: PasswordCopyField)     => ipcRenderer.invoke(IPC.PASSWORDS_COPY, id, field) as Promise<boolean>,
+  revealPasswordNotes: (id: number)                            => ipcRenderer.invoke(IPC.PASSWORDS_NOTES, id) as Promise<string | null>,
+  getPasswordHealth: ()                                       => ipcRenderer.invoke(IPC.PASSWORDS_HEALTH) as Promise<PasswordHealthItem[]>,
+  checkPasswordBreaches: ()                                   => ipcRenderer.invoke(IPC.PASSWORDS_BREACH_CHECK) as Promise<PasswordBreachCheckResult>,
   getFavicon:        (host: string)                             => ipcRenderer.invoke(IPC.FAVICON_GET, host) as Promise<string | null>,
   getPasswordAuthEnabled: ()                                     => ipcRenderer.invoke(IPC.PASSWORDS_AUTH_GET) as Promise<boolean>,
   setPasswordAuthEnabled: (enabled: boolean)                     => ipcRenderer.invoke(IPC.PASSWORDS_AUTH_SET, enabled) as Promise<boolean>,
+  getPasswordPreferences: ()                                    => ipcRenderer.invoke(IPC.PASSWORDS_PREFS_GET) as Promise<PasswordPreferences>,
+  setPasswordPreferences: (prefs: Partial<PasswordPreferences>) => ipcRenderer.invoke(IPC.PASSWORDS_PREFS_SET, prefs) as Promise<PasswordPreferences>,
 
   // Путь файла, брошенного в интерфейс. ⚠️ НЕ IPC-канал, а единственный доступный способ вообще
   // узнать путь: `File.path` из Electron убран, и остался `webUtils.getPathForFile`, который
@@ -696,10 +701,10 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.PASSWORDS_INDICATOR_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.PASSWORDS_INDICATOR_CHANGED, handler);
   },
-  savePendingPassword:    () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_SAVE) as Promise<boolean>,
-  updatePendingPassword:  () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_UPDATE) as Promise<boolean>,
+  savePendingPassword:    (username?: string) => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_SAVE, username) as Promise<boolean>,
+  updatePendingPassword:  (username?: string) => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_UPDATE, username) as Promise<boolean>,
   fillSavedPassword:      (id: number) => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_FILL, id) as Promise<boolean>,
-  dismissPendingPassword: () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_DISMISS) as Promise<void>,
+  dismissPendingPassword: (permanent?: boolean) => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_DISMISS, permanent === true) as Promise<void>,
   generatePendingPassword: () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_GENERATE) as Promise<boolean>,
   setPasswordPopoverAnchorBounds: (b: ContentBounds) => ipcRenderer.invoke(IPC.PASSWORD_POPOVER_SET_BOUNDS, b) as Promise<void>,
   showPasswordPopover:       (state: PasswordIndicatorState) => ipcRenderer.invoke(IPC.PASSWORD_POPOVER_SHOW, state) as Promise<void>,

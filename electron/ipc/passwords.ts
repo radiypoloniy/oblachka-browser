@@ -114,10 +114,10 @@ export function registerPasswordsIpc(d: IpcDeps): void {
   // см. PasswordAutofillManager.ts::handleSave/handleUpdate/handleDismiss).
   // ⚠️ «Активная вкладка» здесь — активная в окне ОТПРАВИТЕЛЯ: пароль обязан уйти на ту страницу,
   // где человек его и вводит, а не на активную вкладку соседнего окна.
-  ipcMain.handle(IPC.PASSWORDS_INDICATOR_SAVE,    (e) => { const w = winOf(e); return w ? passwordAutofill.handleSave(w) : false; });
-  ipcMain.handle(IPC.PASSWORDS_INDICATOR_UPDATE,  (e) => { const w = winOf(e); return w ? passwordAutofill.handleUpdate(w) : false; });
+  ipcMain.handle(IPC.PASSWORDS_INDICATOR_SAVE,    (e, username?: string) => { const w = winOf(e); return w ? passwordAutofill.handleSave(w, username) : false; });
+  ipcMain.handle(IPC.PASSWORDS_INDICATOR_UPDATE,  (e, username?: string) => { const w = winOf(e); return w ? passwordAutofill.handleUpdate(w, username) : false; });
   ipcMain.handle(IPC.PASSWORDS_INDICATOR_FILL,    (e, id: number) => { const w = winOf(e); return w ? passwordAutofill.handleFill(w, id) : false; });
-  ipcMain.handle(IPC.PASSWORDS_INDICATOR_DISMISS, (e) => { const w = winOf(e); if (w) passwordAutofill.handleDismiss(w); });
+  ipcMain.handle(IPC.PASSWORDS_INDICATOR_DISMISS, (e, permanent: boolean) => { const w = winOf(e); if (w) passwordAutofill.handleDismiss(w, permanent === true); });
   ipcMain.handle(IPC.PASSWORDS_INDICATOR_GENERATE, (e) => { const w = winOf(e); return w ? passwordAutofill.handleGenerateAndFill(w) : false; });
 
   // Индикатор качества индекса умного поиска (Settings.tsx) — снимок на момент запроса,

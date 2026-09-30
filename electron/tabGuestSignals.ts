@@ -1,6 +1,7 @@
 import type { WebContents } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { ClipboardLink, MediaSessionReport } from '../shared/ipc';
+import type { PasswordFieldContext, PasswordFieldTrigger } from '../shared/ipc';
 
 type Rect = { x: number; y: number; width: number; height: number };
 type FieldKind = 'address' | 'card';
@@ -12,7 +13,8 @@ export interface GuestSignalHooks {
   isIncognito(): boolean;
   onPasswordForm(hasLoginForm: boolean, hasUsernameField: boolean, url: string): void;
   onPasswordSubmit(username: string, password: string, url: string): void;
-  onPasswordFieldAnchor(rect: Rect, url: string): void;
+  onPasswordUsername(username: string, url: string): void;
+  onPasswordFieldAnchor(rect: Rect, url: string, trigger: PasswordFieldTrigger, context: PasswordFieldContext): void;
   onMediaReport(report: MediaSessionReport, url: string): void;
   onPasswordDismiss(): void;
   onAutofillFieldFocus(rect: Rect, kind: FieldKind, url: string): void;
@@ -35,9 +37,16 @@ export function wireTabGuestSignals(wc: WebContents, hooks: GuestSignalHooks): v
     try { hooks.onPasswordSubmit(payload.username, payload.password, wc.getURL()); }
     catch (e) { console.warn('[TabMgr] onPasswordSubmitCb error:', (e as Error).message); }
   });
-  wc.ipc.on(IPC.PASSWORDS_FIELD_ICON_CLICK, (_e, payload: { rect: Rect }) => {
+  wc.ipc.on(IPC.PASSWORDS_USERNAME_CAPTURED, (_e, payload: { username: string }) => {
+    if (!hooks.mine() || typeof payload?.username !== 'string') return;
+    try { hooks.onPasswordUsername(payload.username.slice(0, 320), wc.getURL()); }
+    catch (e) { console.warn('[TabMgr] onPasswordUsernameCb error:', (e as Error).message); }
+  });
+  wc.ipc.on(IPC.PASSWORDS_FIELD_ICON_CLICK, (_e, payload: { rect: Rect; role?: PasswordFieldContext['role']; formKind?: PasswordFieldContext['formKind'] }) => {
     if (!hooks.mine()) return;
-    try { hooks.onPasswordFieldAnchor(payload.rect, wc.getURL()); }
+    try { hooks.onPasswordFieldAnchor(payload.rect, wc.getURL(), 'icon', {
+      role: payload.role ?? 'unknown', formKind: payload.formKind ?? 'unknown',
+    }); }
     catch (e) { console.warn('[TabMgr] onPasswordFieldAnchorCb error:', (e as Error).message); }
   });
   wc.ipc.on(IPC.MEDIA_SESSION_REPORT, (_e, report: MediaSessionReport) => {
@@ -50,9 +59,11 @@ export function wireTabGuestSignals(wc: WebContents, hooks: GuestSignalHooks): v
     try { hooks.onPasswordDismiss(); }
     catch (e) { console.warn('[TabMgr] onPasswordDismissCb error:', (e as Error).message); }
   });
-  wc.ipc.on(IPC.PASSWORDS_FIELD_FOCUS, (_e, payload: { rect: Rect }) => {
+  wc.ipc.on(IPC.PASSWORDS_FIELD_FOCUS, (_e, payload: { rect: Rect; role?: PasswordFieldContext['role']; formKind?: PasswordFieldContext['formKind'] }) => {
     if (!hooks.mine()) return;
-    try { hooks.onPasswordFieldAnchor(payload.rect, wc.getURL()); }
+    try { hooks.onPasswordFieldAnchor(payload.rect, wc.getURL(), 'focus', {
+      role: payload.role ?? 'unknown', formKind: payload.formKind ?? 'unknown',
+    }); }
     catch (e) { console.warn('[TabMgr] onPasswordFieldAnchorCb error (field):', (e as Error).message); }
   });
   wc.ipc.on(IPC.AUTOFILL_FIELD_FOCUS, (_e, payload: { rect: Rect; kind: FieldKind }) => {
