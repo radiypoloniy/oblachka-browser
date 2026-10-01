@@ -6,7 +6,7 @@
   <title>Oblako — карточки о странице</title>
   <link rel="stylesheet" href="../src/styles/global.css">
   <style>
-    :root { color-scheme: light; --card-paper: var(--on-poster-light); --card-ink: var(--on-poster-dark); --card-muted: color-mix(in srgb, var(--card-ink) 72%, var(--card-paper)); }
+    :root { color-scheme: light; }
     [data-theme="dark"] { color-scheme: dark; }
     body { min-width: 320px; margin: 0; background: var(--app-bg); }
     button { cursor: pointer; }
@@ -77,21 +77,19 @@
     .feed-sub { margin: 0 0 16px; color: var(--text-muted); font-size: var(--fs-xs); line-height: 1.45; }
     .carousel { margin: 0 -20px 0 0; overflow: hidden; }
     .cards { display: flex; gap: 10px; padding: 2px 20px 16px 0; transition: transform 320ms cubic-bezier(.16,1,.3,1); }
-    /* Плакатная плитка и бумага внутри — тот же материал, что у виджета карточек. */
-    .insight { --slide-bg: var(--poster-mustard); --slide-fg: var(--on-poster-dark); position: relative; display: flex; flex: 0 0 calc(100% - 44px); flex-direction: column; height: 308px; padding: 12px; overflow: hidden; border-radius: var(--radius-island); background: var(--slide-bg); color: var(--slide-fg); box-shadow: var(--shadow-lvl1); touch-action: pan-y; }
+    /* Одна плакатная поверхность: иерархия создаётся набором, без вложенного листа. */
+    .insight { --slide-bg: var(--poster-mustard); --slide-fg: var(--on-poster-dark); position: relative; display: flex; flex: 0 0 calc(100% - 44px); flex-direction: column; min-height: 268px; padding: 20px; overflow: hidden; border-radius: var(--radius-island); background: var(--slide-bg); color: var(--slide-fg); touch-action: pan-y; }
     .insight[data-tone="sky"] { --slide-bg: var(--poster-sky); }
     .insight[data-tone="tangerine"] { --slide-bg: var(--poster-tangerine); }
     .insight::before { content: ''; position: absolute; inset: 0; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E"); opacity: var(--grain-op); mix-blend-mode: overlay; }
-    .card-top { position: relative; display: flex; align-items: center; gap: 8px; min-height: 32px; margin: 0 0 12px; }
-    .card-kind { padding: 0 0 0 4px; font: 600 12.5px/1.4 var(--font-sans); color: var(--slide-fg); }
+    .card-top { position: relative; display: flex; align-items: center; gap: 8px; min-height: 28px; margin: 0 0 20px; }
+    .card-kind { font: 500 11px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--slide-fg); }
     .card-top .spacer { flex: 1; }
-    .source-number { color: var(--slide-fg); font: 500 11px var(--font-mono); opacity: .75; }
     .dismiss { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--slide-fg) 10%, transparent); color: var(--slide-fg); }
     .dismiss:hover { background: color-mix(in srgb, var(--slide-fg) 20%, transparent); }
-    .card-paper { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 20px; border-radius: var(--radius-card); background: var(--card-paper); color: var(--card-ink); box-shadow: 0 1px 0 color-mix(in srgb, var(--card-paper) 65%, transparent) inset, 0 2px 4px color-mix(in srgb, var(--card-ink) 8%, transparent), 0 10px 20px color-mix(in srgb, var(--card-ink) 10%, transparent); }
-    .insight h4 { margin: 0 0 12px; color: var(--card-ink); font: 700 19px/1.25 var(--font-display); letter-spacing: -.025em; text-wrap: balance; }
-    .insight p { margin: 0 0 16px; color: var(--card-muted); font: 400 14px/1.5 var(--font-sans); }
-    .source-link { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin-top: auto; padding: 12px 0 0; border: 0; border-top: 1px solid color-mix(in srgb, var(--card-ink) 14%, transparent); background: transparent; color: var(--card-ink); font-size: 12.5px; font-weight: 600; text-align: left; }
+    .insight h4 { position: relative; margin: 0 0 12px; color: var(--slide-fg); font: 700 20px/1.25 var(--font-display); letter-spacing: -.025em; text-wrap: balance; }
+    .insight p { position: relative; margin: 0 0 20px; color: var(--slide-fg); font: 400 14px/1.5 var(--font-sans); }
+    .source-link { position: relative; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin-top: auto; padding: 12px 0 0; border: 0; border-top: 1px solid color-mix(in srgb, var(--slide-fg) 20%, transparent); background: transparent; color: var(--slide-fg); font-size: 12.5px; font-weight: 600; text-align: left; }
     .source-link:hover { text-decoration: underline; text-underline-offset: 3px; }
         .carousel-nav { display: flex; align-items: center; gap: 12px; margin: 0; }
     .carousel-nav .position { color: var(--text-muted); font: 600 11px var(--font-mono); }
@@ -237,8 +235,8 @@
     state.slide=Math.min(state.slide,Math.max(0,list.length-1));
     list.forEach((card,position)=>{
       const idx=d.cards.indexOf(card), el=document.createElement('article');el.className='insight';el.dataset.index=String(idx);el.dataset.tone=['mustard','sky','tangerine'][idx];el.dataset.serial=String(position+1).padStart(2,'0');
-      const top=document.createElement('div');top.className='card-top';const kind=document.createElement('span');kind.className='card-kind';kind.textContent=card.kind;const spacer=document.createElement('span');spacer.className='spacer';const num=document.createElement('span');num.className='source-number';num.textContent=card.quote;const dismiss=document.createElement('button');dismiss.className='dismiss';dismiss.type='button';dismiss.setAttribute('aria-label','Скрыть карточку');dismiss.append(icon('x',12));dismiss.addEventListener('click',()=>hide(idx));top.append(kind,spacer,num,dismiss);
-      const title=document.createElement('h4');title.textContent=state.scenario==='article'&&state.updated&&idx===2?'Подготовка — до 24 часов':card.title;const body=document.createElement('p');body.textContent=state.scenario==='article'&&state.updated&&idx===2?'Страница обновилась: срок подготовки архива сократился с 48 до 24 часов.':card.text;const link=document.createElement('button');link.type='button';link.className='source-link';link.append(document.createTextNode('Показать на странице'),icon('arrow',12));link.addEventListener('click',()=>source(card.source));const paper=document.createElement('div');paper.className='card-paper';paper.append(title,body,link);el.append(top,paper);$('cards').append(el);
+      const top=document.createElement('div');top.className='card-top';const kind=document.createElement('span');kind.className='card-kind';kind.textContent=card.kind;const spacer=document.createElement('span');spacer.className='spacer';const dismiss=document.createElement('button');dismiss.className='dismiss';dismiss.type='button';dismiss.setAttribute('aria-label','Скрыть карточку');dismiss.append(icon('x',12));dismiss.addEventListener('click',()=>hide(idx));top.append(kind,spacer,dismiss);
+      const title=document.createElement('h4');title.textContent=state.scenario==='article'&&state.updated&&idx===2?'Подготовка — до 24 часов':card.title;const body=document.createElement('p');body.textContent=state.scenario==='article'&&state.updated&&idx===2?'Страница обновилась: срок подготовки архива сократился с 48 до 24 часов.':card.text;const link=document.createElement('button');link.type='button';link.className='source-link';link.append(document.createTextNode('Показать на странице'),icon('arrow',12));link.addEventListener('click',()=>source(card.source));el.append(top,title,body,link);$('cards').append(el);
     });
     $('carousel-track').replaceChildren();
     list.forEach((_,i)=>{const dot=document.createElement('button');dot.type='button';dot.setAttribute('aria-label',`Карточка ${i+1}`);dot.addEventListener('click',()=>go(i));$('carousel-track').append(dot);});
