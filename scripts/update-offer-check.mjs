@@ -1,7 +1,7 @@
 // Когда карточке обновления можно появиться (shared/updateOffer.ts).
 //
 // Случаи из жизни, не из симметрии: пропущенная версия не должна спрашивать снова, следующая —
-// должна; «не сейчас» живёт до перезапуска; начатая качка не имеет права исчезнуть с экрана.
+// должна; «не сейчас» живёт до перезапуска; качка видна индикатором, а не поповером.
 //
 // Запуск: npm test -- update-offer
 import { shouldShowUpdatePrompt, updateOfferPhase } from '../shared/updateOffer.ts';
@@ -39,11 +39,13 @@ check('пропущена СТАРАЯ — новую всё равно спра
 check('«не сейчас» в этой сессии — молчим',
   shouldShowUpdatePrompt({ kind: 'available', ...base, dismissedAsk: true }), false);
 
-console.log('\n— качка и перезапуск не прячутся —');
-check('качаем даже после «не сейчас»',
-  shouldShowUpdatePrompt({ kind: 'downloading', ...base, dismissedAsk: true }), true);
-check('качаем даже пропущенную, если уже начали',
-  shouldShowUpdatePrompt({ kind: 'downloading', ...base, skippedVersion: '0.8.2' }), true);
+console.log('\n— качка без поповера, завершение с предложением —');
+check('качка не показывает поповер даже без отказа',
+  shouldShowUpdatePrompt({ kind: 'downloading', ...base }), false);
+check('качка после «не сейчас» тоже без поповера',
+  shouldShowUpdatePrompt({ kind: 'downloading', ...base, dismissedAsk: true }), false);
+check('качка пропущенной версии тоже без поповера',
+  shouldShowUpdatePrompt({ kind: 'downloading', ...base, skippedVersion: '0.8.2' }), false);
 check('перезапуск после skip всё равно предлагаем — файл уже лежит',
   shouldShowUpdatePrompt({ kind: 'downloaded', ...base, skippedVersion: '0.8.2' }), true);
 check('«позже» на готовом файле прячет карточку',

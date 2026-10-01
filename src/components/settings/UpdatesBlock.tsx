@@ -71,7 +71,7 @@ export default function UpdatesBlock() {
       actions = (
         <button style={btnPrimary} onClick={() => window.oblako.installUpdate()}>
           <RotateCcw size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
-          {t('Перезапустить')}
+          {language === 'en' ? 'Install and restart' : 'Установить и перезапустить'}
         </button>
       );
       break;

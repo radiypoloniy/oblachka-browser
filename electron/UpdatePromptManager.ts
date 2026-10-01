@@ -1,4 +1,4 @@
-import { WebContentsView } from 'electron'
+import { app, webContents, WebContentsView } from 'electron'
 import type { BrowserWindow } from 'electron'
 import path from 'node:path'
 import type { ContentBounds, UpdateStatus } from '../shared/ipc'
@@ -30,6 +30,7 @@ interface WindowUpdatePrompt {
   resizeBound: boolean
   contentBounds: ContentBounds
   height: number
+  renderedKey: string | null
 }
 
 const prompts = new Map<number, WindowUpdatePrompt>()
@@ -38,23 +39,27 @@ let getSkipVersion: () => string | null = () => null
 let setSkipVersion: (v: string) => void = () => { /* пока не подключили настройки */ }
 let download: () => void = () => { /* */ }
 let install: () => void = () => { /* */ }
-let enableInstallOnQuit: () => void = () => { /* */ }
 let dismissedAsk = false
 let postponedInstall = false
 let lastStatus: UpdateStatus | null = null
+let offerVersion: string | null = null
+let watchingInput = false
 
 export function wireUpdatePrompt(opts: {
   getSkipVersion: () => string | null
   setSkipVersion: (v: string) => void
   download: () => void
   install: () => void
-  enableInstallOnQuit: () => void
 }): void {
   getSkipVersion = opts.getSkipVersion
   setSkipVersion = opts.setSkipVersion
   download = opts.download
   install = opts.install
-  enableInstallOnQuit = opts.enableInstallOnQuit
+  if (!watchingInput) {
+    watchingInput = true
+    for (const wc of webContents.getAllWebContents()) watchOutsideInput(wc)
+    app.on('web-contents-created', (_e, wc) => watchOutsideInput(wc))
+  }
 }
 
 function stateFor(win: BrowserWindow): WindowUpdatePrompt {
@@ -64,6 +69,7 @@ function stateFor(win: BrowserWindow): WindowUpdatePrompt {
     win, view: null, resizeBound: false,
     contentBounds: { x: 0, y: 0, width: 0, height: 0 },
     height: INITIAL_HEIGHT,
+    renderedKey: null,
   }
   prompts.set(win.id, created)
   win.once('closed', () => { closeWindowView(prompts.get(win.id)?.view); prompts.delete(win.id) })
@@ -99,8 +105,12 @@ function hostWindow(): BrowserWindow | null {
 export function syncUpdatePromptBounds(win: BrowserWindow, b: ContentBounds): void {
   const st = stateFor(win)
   st.contentBounds = b
-  if (b.width === 0 && b.height === 0) { detach(st); return }
-  if (lastStatus && shouldShowOn(lastStatus) && hostWindow()?.id === win.id && !isAttached(st)) {
+  // Внутренние вкладки не имеют нативной страницы, но предложение обновления им тоже доступно.
+  if (b.width === 0 && b.height === 0) {
+    const { width, height } = win.getContentBounds()
+    st.contentBounds = { x: 12, y: 56, width: width - 24, height: height - 68 }
+  }
+  if (lastStatus && shouldShowOn(lastStatus) && hostWindow()?.id === win.id) {
     show(st)
     return
   }
@@ -130,6 +140,7 @@ function ensureView(st: WindowUpdatePrompt): WebContentsView {
 function pushCurrent(st: WindowUpdatePrompt): void {
   const wc = st.view?.webContents
   if (!wc || wc.isDestroyed()) return
+  if (st.renderedKey !== statusKey()) detach(st)
   wc.send('update-prompt:state', lastStatus)
 }
 
@@ -139,13 +150,12 @@ function show(st: WindowUpdatePrompt): void {
     st.win.on('resize', () => layout(st))
     st.resizeBound = true
   }
-  const firstTime = st.view === null
   const view = ensureView(st)
   view.setBounds(computeBounds(st))
-  if (!isAttached(st)) st.win.contentView.addChildView(view)
+  if (st.renderedKey === statusKey()) st.win.contentView.addChildView(view)
   // Разрешение сайта срочнее: если оно уже на экране, оставляем его сверху.
   restackPermissionPopover(st.win)
-  if (!firstTime) pushCurrent(st)
+  pushCurrent(st)
 }
 
 function detach(st: WindowUpdatePrompt): void {
@@ -165,6 +175,11 @@ function shouldShowOn(s: UpdateStatus): boolean {
 
 /** Статус апдейтера сменился — показать, обновить или спрятать карточку. */
 export function onUpdateStatus(s: UpdateStatus): void {
+  if (s.newVersion && s.newVersion !== offerVersion) {
+    offerVersion = s.newVersion
+    dismissedAsk = false
+    postponedInstall = false
+  }
   lastStatus = s
   const win = hostWindow()
   if (!win) return
@@ -193,7 +208,6 @@ export function updatePromptAnswered(action: UpdatePromptAction): void {
   }
   // later
   if (s.kind === 'downloaded') {
-    enableInstallOnQuit()
     postponedInstall = true
   } else {
     dismissedAsk = true
@@ -201,13 +215,52 @@ export function updatePromptAnswered(action: UpdatePromptAction): void {
   if (lastStatus) onUpdateStatus(lastStatus)
 }
 
-export function setUpdatePromptHeight(sender: Electron.WebContents, px: number): void {
+export function setUpdatePromptHeight(sender: Electron.WebContents, px: number, key: string): void {
   for (const st of prompts.values()) {
     if (st.view?.webContents !== sender) continue
+    if (key !== statusKey() || !lastStatus || !shouldShowOn(lastStatus) || !Number.isFinite(px) || px <= 0) return
     const next = Math.max(80, Math.round(px))
-    if (next === st.height) return
     st.height = next
+    st.renderedKey = key
+    st.win.contentView.addChildView(st.view!)
+    restackPermissionPopover(st.win)
     layout(st)
     return
   }
+}
+
+function statusKey(): string { return `${lastStatus?.kind}:${lastStatus?.newVersion ?? ''}` }
+
+export function syncUpdatePrompt(sender: Electron.WebContents): void {
+  for (const st of prompts.values()) if (st.view?.webContents === sender) pushCurrent(st)
+}
+
+export function restackUpdatePrompt(win: BrowserWindow): void {
+  const st = prompts.get(win.id)
+  if (!st || win.isDestroyed() || !isAttached(st)) return
+  win.contentView.addChildView(st.view!)
+  restackPermissionPopover(win)
+}
+
+function watchOutsideInput(wc: Electron.WebContents): void {
+  // Клики сайта, хрома и AI-панели принадлежат разным документам, поэтому слушаем в main.
+  wc.on('input-event', (_e, input) => {
+    if (input.type !== 'mouseDown') return
+    for (const st of prompts.values()) {
+      if (!isAttached(st) || st.view?.webContents === wc) continue
+      if (st.win.contentView.children.some(v => v instanceof WebContentsView && v.webContents === wc)) {
+        updatePromptAnswered('later')
+        return
+      }
+    }
+  })
+  wc.on('before-input-event', (_e, input) => {
+    if (input.type !== 'keyDown' || input.key !== 'Escape') return
+    for (const st of prompts.values()) {
+      if (isAttached(st) && st.win.contentView.children.some(v => v instanceof WebContentsView && v.webContents === wc)) {
+        updatePromptAnswered('later')
+        return
+      }
+    }
+  })
 }

@@ -8,7 +8,8 @@ import type { UpdateStatus } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('updatePrompt', {
   respond: (action: 'update' | 'later' | 'skip') => ipcRenderer.send('update-prompt:respond', action),
-  reportHeight: (px: number) => ipcRenderer.send('update-prompt:height', px),
+  reportHeight: (px: number, key: string) => ipcRenderer.send('update-prompt:height', px, key),
+  ready: () => ipcRenderer.send('update-prompt:ready'),
   onState: (cb: (s: UpdateStatus | null) => void) => {
     const handler = (_e: unknown, s: UpdateStatus | null) => cb(s)
     ipcRenderer.on('update-prompt:state', handler)

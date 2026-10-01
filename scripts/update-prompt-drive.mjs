@@ -1,0 +1,50 @@
+// Поповер обновления на настоящих нативных слоях, без скачивания и установки.
+import assert from 'node:assert/strict';
+import { withStand, wait, connectCdp } from './isolated-stand.mjs';
+
+const E = "process.mainModule.require('electron')";
+const mod = tail => `(() => { const c=process.mainModule.constructor._cache; const k=Object.keys(c).find(k=>k.split(String.fromCharCode(92)).join('/').endsWith(${JSON.stringify(tail)})); return c[k].exports; })()`;
+const W = `${E}.BrowserWindow.getAllWindows().find(w=>!!${mod('WindowRegistry.js')}.contextForWindow(w))`;
+await withStand(async ctx => {
+  await wait(1000);
+  const status = (kind, version = '0.8.9') => ({ kind, currentVersion: '0.8.8', newVersion: version, percent: 47, error: null, lastCheckedAt: Date.now() });
+  const publish = async s => {
+    await ctx.evalMain(`(() => { ${mod('UpdatePromptManager.js')}.onUpdateStatus(${JSON.stringify(s)}); ${mod('WindowRegistry.js')}.broadcastToChrome('update:changed',${JSON.stringify(s)}); return true; })()`);
+    await wait(400);
+  };
+  const attached = () => ctx.evalMain(`${W}.contentView.children.some(v=>v.webContents?.getURL().includes('updateprompt.html'))`);
+  await publish(status('downloading'));
+  assert.equal(await attached(), false);
+  assert.equal(await ctx.chrome.evaluate(`document.body.innerText.includes('Обновление 47%')`), true);
+  console.log('  ok   скачивание видно в тулбаре без поповера');
+  await publish(status('downloaded'));
+  assert.equal(await attached(), true);
+  const target = await ctx.findTarget(t => t.url?.includes('updateprompt.html'));
+  const popup = connectCdp(target);
+  await popup.ready;
+  assert.match(await popup.evaluate('document.body.innerText'), /Перезапустить/);
+  console.log('  ok   после загрузки карточка отрисована на внутренней вкладке');
+  await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(ctx.echo.url('/?update-probe=1'))})`);
+  await wait(900);
+  const zOrder = await ctx.evalMain(`${W}.contentView.children.map(v=>v.webContents?.getURL())`);
+  assert.ok(zOrder.findIndex(u=>u?.includes('updateprompt.html')) > zOrder.findIndex(u=>u?.includes('update-probe=1')));
+  console.log('  ok   программное открытие страницы не прячет карточку под ней');
+  const pageTarget = await ctx.findTarget(t => t.url?.includes('update-probe=1'));
+  const page = connectCdp(pageTarget);
+  await page.ready;
+  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 500, y: 350, button: 'left', clickCount: 1 });
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 500, y: 350, button: 'left', clickCount: 1 });
+  await wait(250);
+  assert.equal(await attached(), false);
+  await publish(status('downloaded'));
+  assert.equal(await attached(), false);
+  console.log('  ok   клик по странице скрывает предложение, повторный статус его не возвращает');
+  await publish(status('downloaded', '0.8.10'));
+  assert.equal(await attached(), true);
+  await ctx.evalMain(`${W}.contentView.children.find(v=>v.webContents?.getURL().includes('updateprompt.html')).webContents.focus()`);
+  await popup.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await wait(250);
+  assert.equal(await attached(), false);
+  console.log('  ok   следующая версия предлагает установку, Escape закрывает карточку');
+  page.close(); popup.close();
+}, { main: true });

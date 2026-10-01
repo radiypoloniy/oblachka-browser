@@ -14,7 +14,8 @@ declare global {
   interface Window {
     updatePrompt: {
       respond: (action: 'update' | 'later' | 'skip') => void;
-      reportHeight: (px: number) => void;
+      reportHeight: (px: number, key: string) => void;
+      ready: () => void;
       onState: (cb: (s: UpdateStatus | null) => void) => () => void;
     };
   }
@@ -26,12 +27,18 @@ function UpdatePromptApp() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => window.updatePrompt.onState(setStatus), []);
+  useEffect(() => {
+    const stop = window.updatePrompt.onState(setStatus);
+    window.updatePrompt.ready();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') window.updatePrompt.respond('later'); };
+    window.addEventListener('keydown', onKey);
+    return () => { stop(); window.removeEventListener('keydown', onKey); };
+  }, []);
 
   useEffect(() => {
     const el = cardRef.current;
-    if (!el) return;
-    const report = () => window.updatePrompt.reportHeight(el.offsetHeight);
+    if (!el || !status) return;
+    const report = () => window.updatePrompt.reportHeight(el.offsetHeight, `${status.kind}:${status.newVersion ?? ''}`);
     report();
     const raf = requestAnimationFrame(report);
     const ro = new ResizeObserver(report);
@@ -48,7 +55,8 @@ function UpdatePromptApp() {
   }, [status]);
 
   return (
-    <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box', width: CARD_WIDTH + SHADOW_MARGIN * 2 }}>
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget) window.updatePrompt.respond('later'); }}
+      style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box', width: CARD_WIDTH + SHADOW_MARGIN * 2 }}>
       <div ref={cardRef}>
         {status && (
           <UpdatePrompt

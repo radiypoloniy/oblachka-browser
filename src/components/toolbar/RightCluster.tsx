@@ -7,6 +7,7 @@ import { glyph } from '../../styles/system';
 import { ProgressRing } from './ProgressRing';
 import { useMcpAgent } from './useMcpAgent';
 import { WindowControls } from './WindowControls';
+import { UpdateIndicator } from './UpdateIndicator';
 import { useLanguage } from '../../i18n';
 
 /**
@@ -66,6 +67,7 @@ export function RightCluster(props: {
           про то, чем нельзя воспользоваться, а это — про событие. Событие, которого не было,
           показывать нечем. Своим островом слева от кластера: она не действие, нажимать её
           некуда. */}
+      <UpdateIndicator />
       {agent.active && (
         <div
           title={`${agent.client}: ${agent.tool}`}

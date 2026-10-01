@@ -28,13 +28,13 @@ export function shouldShowUpdatePrompt(args: {
   newVersion: string | null;
   skippedVersion: string | null;
   dismissedAsk: boolean;
-  /** «Позже» на готовом файле: поставим при выходе, карточку больше не держим. */
+  /** «Позже» на готовом файле скрывает карточку; установка остаётся явной командой. */
   postponedInstall: boolean;
 }): boolean {
   const phase = updateOfferPhase(args.kind);
   if (phase === 'hide') return false;
-  // Качку не прячем: человек уже согласился, осталось довести.
-  if (phase === 'progress') return true;
+  // Скачивание видно в тулбаре и настройках, большой поповер появляется после завершения.
+  if (phase === 'progress') return false;
   if (phase === 'restart') return !args.postponedInstall;
   if (!args.newVersion) return false;
   if (args.dismissedAsk) return false;

@@ -12,7 +12,7 @@ import { setActiveEngineId } from '../TranslationEngineRegistry';
 import { broadcastToChrome } from '../WindowRegistry';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
-import { setUpdatePromptHeight, updatePromptAnswered, wireUpdatePrompt, onUpdateStatus } from '../UpdatePromptManager';
+import { setUpdatePromptHeight, syncUpdatePrompt, updatePromptAnswered, wireUpdatePrompt, onUpdateStatus } from '../UpdatePromptManager';
 
 // См. комментарий у SETTINGS_GET_HUB_MODE — отличает пассивное восстановление сессии (первый
 // запрос режима хаба за процесс) от реальной навигации пользователя (все последующие).
@@ -26,7 +26,6 @@ export function registerSearchIpc(d: IpcDeps): void {
     setSkipVersion: (v) => settings.setUpdateSkipVersion(v),
     download: () => updates.download(),
     install: () => updates.install(),
-    enableInstallOnQuit: () => updates.enableInstallOnQuit(),
   });
   updates.subscribe(onUpdateStatus);
 
@@ -98,8 +97,9 @@ export function registerSearchIpc(d: IpcDeps): void {
   ipcMain.on('update-prompt:respond', (_e, action: unknown) => {
     if (action === 'update' || action === 'later' || action === 'skip') updatePromptAnswered(action);
   });
-  ipcMain.on('update-prompt:height', (e, px: number) =>
-    setUpdatePromptHeight(e.sender, Number(px) || 0));
+  ipcMain.on('update-prompt:height', (e, px: number, key: string) =>
+    setUpdatePromptHeight(e.sender, Number(px) || 0, key));
+  ipcMain.on('update-prompt:ready', (e) => syncUpdatePrompt(e.sender));
 
   // Настройки
   ipcMain.handle(IPC.SETTINGS_GET_SEARCH_ENGINE, () => settings.getSearchEngine());

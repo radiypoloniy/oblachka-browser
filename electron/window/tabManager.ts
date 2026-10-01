@@ -10,6 +10,7 @@ import { WebContentsView } from 'electron';
 import type { BrowserWindow } from 'electron';
 import { IPC } from '../../shared/ipc';
 import { TabManager } from '../TabManager';
+import { restackUpdatePrompt } from '../UpdatePromptManager';
 import type { SessionManager } from '../SessionManager';
 import type { FindResult } from '../../shared/ipc';
 import { DEFAULT_PROFILE_ID } from '../../shared/profiles';
@@ -78,6 +79,8 @@ export function createWindowTabManager(
       // защиту — .snapshot() стал звонить на tabs===null во время закрытия (часть вкладок
       // дозакрывается асинхронно уже ПОСЛЕ win.on('closed')). Явный гард вместо неявного:
       if (!tabs) return;
+      // Новая нативная страница не должна закрыть ещё не отклонённое предложение обновления.
+      queueMicrotask(() => { if (!win.isDestroyed()) restackUpdatePrompt(win); });
       // Атомарный push: tabs и nodes в одном сообщении → один рендер, нет рассинхрона.
       const tabsSnapshot = tabs.snapshot();
       const nodes = tabs.sidebarNodesSnapshot();

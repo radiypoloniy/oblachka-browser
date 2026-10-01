@@ -9,7 +9,7 @@ import type { UpdateStatus, UpdateStatusKind } from '../shared/ipc';
 // Политика намеренно консервативная (осознанный выбор, а не упущение):
 //   • autoDownload = false — трафик не тратится без ведома пользователя;
 //   • autoInstallOnAppQuit = false — приложение не подменяет себя при выходе втихую
-//     (включается только после «Позже» на уже скачанном файле);
+//     установка всегда запускается явной кнопкой;
 //   • проверка при старте отложена и не блокирует запуск; повтор раз в 4 часа.
 // Найденное обновление спрашивает карточкой поверх страницы (UpdatePromptManager),
 // а не только блоком в настройках.
@@ -27,10 +27,17 @@ import type { UpdateStatus, UpdateStatusKind } from '../shared/ipc';
 // Тип модуля берём через import type (стирается при компиляции), сам модуль подгружаем лениво:
 // в dev-режиме он не нужен вообще, и грузить его в память при каждом npm run dev незачем.
 type UpdaterModule = typeof import('electron-updater');
+type RestorableUpdater = UpdaterModule['autoUpdater'] & { restorePendingUpdate?: () => Promise<boolean> };
 
 let updaterModule: UpdaterModule | null = null;
 function loadUpdaterModule(): UpdaterModule {
-  if (updaterModule === null) updaterModule = require('electron-updater') as UpdaterModule;
+  if (updaterModule === null) {
+    const loaded = require('electron-updater') as UpdaterModule;
+    // NSIS-особенности изолированы от общего менеджера и будущего macOS-апдейтера.
+    updaterModule = process.platform === 'win32'
+      ? { ...loaded, autoUpdater: new (require('./updates/WindowsUpdater') as typeof import('./updates/WindowsUpdater')).WindowsUpdater() }
+      : loaded;
+  }
   return updaterModule;
 }
 
@@ -56,6 +63,7 @@ export class UpdateManager {
   #onChange: ((s: UpdateStatus) => void) | null = null;
   #subscribers: Array<(s: UpdateStatus) => void> = [];
   #wired = false;
+  #restoring = false;
 
   constructor() {
     this.#status = {
@@ -108,7 +116,8 @@ export class UpdateManager {
     if (!this.#ensureReady()) return;
     // Повторный вызов во время активной работы игнорируем: electron-updater на параллельные
     // checkForUpdates отвечает невнятно, а пользователь может нажать кнопку дважды.
-    if (this.#status.kind === 'checking' || this.#status.kind === 'downloading') return;
+    if (this.#restoring || this.#status.kind === 'checking' || this.#status.kind === 'downloading'
+      || this.#status.kind === 'downloaded') return;
     this.#set({ kind: 'checking', error: null });
     try {
       // catch на промисе обязателен: у electron-updater ошибка приходит И событием 'error',
@@ -146,13 +155,6 @@ export class UpdateManager {
     }
   }
 
-  // Человек сказал «позже» на уже скачанном файле: поставить при обычном выходе, не сейчас.
-  enableInstallOnQuit(): void {
-    if (!this.#ensureReady()) return;
-    if (this.#status.kind !== 'downloaded') return;
-    loadUpdaterModule().autoUpdater.autoInstallOnAppQuit = true;
-  }
-
   // ── Приватное ──────────────────────────────────────────────────────────────
 
   #ensureReady(): boolean {
@@ -184,6 +186,11 @@ export class UpdateManager {
     autoUpdater.on('error', (e: Error) => this.#fail(e));
 
     this.#wired = true;
+    const restore = (autoUpdater as RestorableUpdater).restorePendingUpdate;
+    if (restore) {
+      this.#restoring = true;
+      void restore.call(autoUpdater).finally(() => { this.#restoring = false; });
+    }
   }
 
   #fail(e: unknown): void {
