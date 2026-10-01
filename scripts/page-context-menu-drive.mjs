@@ -1,4 +1,4 @@
-// Проверка нативных ПКМ страницы и ссылки на временном профиле.
+// Проверка нативных ПКМ страницы, ссылки и картинки на временном профиле.
 import { withStand, wait } from './isolated-stand.mjs';
 
 await withStand(async (ctx) => {
@@ -28,6 +28,9 @@ await withStand(async (ctx) => {
         mediaType: 'none', isEditable: false, selectionText: '', misspelledWord: '', dictionarySuggestions: [] };
       wc.emit('context-menu', {}, params);
       wc.emit('context-menu', {}, { ...params, linkURL: ${JSON.stringify(ctx.echoUrl('/a'))}, linkText: 'Первая глава' });
+      const image = { ...params, mediaType: 'image', srcURL: ${JSON.stringify(ctx.echoUrl('/image.png'))} };
+      wc.emit('context-menu', {}, image);
+      wc.emit('context-menu', {}, { ...image, linkURL: ${JSON.stringify(ctx.echoUrl('/a'))} });
       return captured;
     } finally {
       Menu.buildFromTemplate = original;
@@ -43,7 +46,15 @@ await withStand(async (ctx) => {
     'Открыть ссылку в инкогнито', 'Открыть ссылку в split', '|',
     'Копировать адрес ссылки', '|', 'Просмотреть код',
   ];
-  const [blank, linkMenu] = menus;
+  const [blank, linkMenu, imageMenu, imageLinkMenu] = menus;
+  const expectedImage = ['Открыть картинку в новой вкладке', '|', 'Копировать картинку', '|',
+    'Сохранить картинку', 'Сохранить картинку как…', '|', 'Просмотреть код'];
+  if (JSON.stringify(labels(imageMenu ?? [])) !== JSON.stringify(expectedImage)) {
+    throw new Error(`ПКМ картинки: ${JSON.stringify(imageMenu)}`);
+  }
+  if (JSON.stringify(labels(imageLinkMenu ?? []).slice(-8)) !== JSON.stringify(expectedImage)) {
+    throw new Error(`ПКМ картинки-ссылки: ${JSON.stringify(imageLinkMenu)}`);
+  }
   if (JSON.stringify(labels(blank ?? [])) !== JSON.stringify(expectedPage)) {
     throw new Error(`ПКМ страницы: ${JSON.stringify(blank)}`);
   }
@@ -53,8 +64,11 @@ await withStand(async (ctx) => {
       JSON.stringify(linkLabels.slice(-2)) !== JSON.stringify(expectedLink.slice(-2))) {
     throw new Error(`ПКМ ссылки: ${JSON.stringify(linkMenu)}`);
   }
-  if ([...blank, ...linkMenu].some((row) => row.type !== 'separator' && !row.icon)) {
+  if (menus.flat().some((row) => row.type !== 'separator' && !row.icon)) {
     throw new Error(`Иконка не декодировалась: ${JSON.stringify(menus)}`);
   }
-  console.log(JSON.stringify({ page: blank, link: linkMenu }, null, 2));
+  if (menus.some((rows) => rows.some((row, i) => row.type === 'separator' && rows[i + 1]?.type === 'separator'))) {
+    throw new Error('Два разделителя подряд');
+  }
+  console.log(JSON.stringify({ page: blank, link: linkMenu, image: imageMenu, imageLink: imageLinkMenu }, null, 2));
 }, { main: true });

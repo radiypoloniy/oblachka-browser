@@ -199,21 +199,24 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
 function imageSection(host: PageContextMenuHost, id: string, wc: WebContents, p: ContextMenuParams, priv: boolean, hasPrev: boolean): MenuItemConstructorOptions[] {
   const out: MenuItemConstructorOptions[] = hasPrev ? [{ type: 'separator' }] : [];
   out.push(
-    { label: tr('Копировать картинку'), click: () => wc.copyImageAt(p.x, p.y) },
+    { label: tr('Открыть картинку в новой вкладке'), icon: menuIcon('SquareArrowOutUpRight'), click: () => {
+      const openedId = host.openTab(p.srcURL, true, priv);
+      host.didOpenBackgroundTab(openedId, id);
+    } },
+    { type: 'separator' },
+    { label: tr('Копировать картинку'), icon: menuIcon('Image'), click: () => wc.copyImageAt(p.x, p.y) },
+    { type: 'separator' },
     // ⚠️ Пунктов ДВА, и это прямое следствие того, что диалог «куда сохранить» у нас выключен
     // по умолчанию (см. DownloadManager: раньше система спрашивала про КАЖДЫЙ файл, включая
     // картинку с фотостока, и это выпилили). «Сохранить» кладёт в Загрузки молча — то, чего
     // хотят почти всегда; «как…» обязано спросить, иначе слово «как» в пункте — обман, и
     // выбрать место было нельзя вообще ничем (живая жалоба).
-    { label: tr('Сохранить картинку'), click: () => wc.downloadURL(p.srcURL) },
+    { label: tr('Сохранить картинку'), icon: menuIcon('Download'), click: () => wc.downloadURL(p.srcURL) },
     {
       label: tr('Сохранить картинку как…'),
+      icon: menuIcon('Save'),
       click: () => { host.saveAs(p.srcURL); wc.downloadURL(p.srcURL); },
     },
-    { label: tr('Открыть картинку в новой вкладке'), click: () => {
-      const openedId = host.openTab(p.srcURL, true, priv);
-      host.didOpenBackgroundTab(openedId, id);
-    } },
   );
   return out;
 }

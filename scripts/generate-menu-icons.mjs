@@ -16,7 +16,11 @@ const names = [
   'SquarePlus', 'AppWindow', 'VenetianMask', 'Columns2',
   'ArrowLeft', 'ArrowRight', 'RotateCw',
   'SpellCheck', 'MessageCircle', 'Redo2', 'MemoryKeep', 'MemoryKeepChecked',
+  'Image', 'Download', 'Save',
 ];
+// Точечная генерация сохраняет готовые PNG остальных меню без изменений.
+const requested = process.argv.slice(2);
+if (requested.some((name) => !names.includes(name))) throw new Error('Неизвестное имя иконки');
 const output = path.resolve('src/public/menu-icons');
 await mkdir(output, { recursive: true });
 const colors = await readFile(path.resolve('src/styles/tokens/colors.css'), 'utf8');
@@ -26,7 +30,7 @@ if (!neutral) throw new Error('Не найден токен --n10 для цве�
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 48, height: 48 }, deviceScaleFactor: 2 });
-  for (const name of names) {
+  for (const name of requested.length ? requested : names) {
     const Icon = icons[name];
     // RAM и отметка правила рисуются в одном значке: у нативного checkbox
     // галочка занимала отдельное место и сдвигала этот пункт вправо.
