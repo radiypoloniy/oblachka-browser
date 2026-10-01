@@ -505,3 +505,9 @@ export function panelIsland(): CSSProperties {
 
 /** Поле вокруг панели — чтобы тень не срезал клиппинг-родитель. */
 export const panelRoom: CSSProperties = { padding: SHADOW_ROOM, boxSizing: 'border-box' };
+
+// Контент-зона App уже оставляет внешнее поле: полноэкранный остров занимает её целиком.
+// Прокрутка живёт внутри острова, иначе внешняя оболочка обрежет общую тень панели.
+export const panelFrame: CSSProperties = {
+  height: '100%', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box',
+};

@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import { RefreshCw, Sparkles, X } from 'lucide-react';
 import { useCompare } from './useCompare';
 import { untintedPlateVars } from '../../styles/island';
-import { TEXT, DISPLAY, sp, RADIUS, PAGE_MAX, panelIsland, panelRoom, grain, glyph } from '../../styles/system';
+import { TEXT, DISPLAY, sp, RADIUS, panelIsland, panelFrame, grain, glyph } from '../../styles/system';
 import { QuietButton, PrimaryButton } from '../popoverKit';
 import { ModelChip } from '../ai/ModelChip';
 import { CompareSummary } from './CompareSummary';
@@ -16,7 +16,7 @@ export default function CompareView({ onClose }: { onClose(): void }) {
   const busy = state?.phase === 'reading', hasData = !!state?.products.length;
   const generate = () => { setError(''); if (state) void window.oblako.startTabCompare(state.products.map(p => p.tabId), 'auto').catch(e => setError(e instanceof Error ? e.message : t('Не удалось обновить сравнение'))); };
   const source = (id: string, fact: number) => { setError(''); void window.oblako.tabCompareSource(id, fact).then(ok => { if (!ok) setError(t('Источник закрыт или изменился. Обновите сравнение.')); }).catch(() => setError(t('Не удалось открыть источник'))); };
-  return <div className="compare-room" style={{ ...panelRoom, ...geometry }}><section className="compare-view" style={{ ...panelIsland(), ...untintedPlateVars, ...TEXT.body, maxWidth: PAGE_MAX.sheet, margin: '0 auto' }} aria-label={t('Сравнение товаров')}>
+  return <div className="compare-room" style={{ ...panelFrame, ...geometry }}><section className="compare-view" style={{ ...panelIsland(), ...untintedPlateVars, ...TEXT.body }} aria-label={t('Сравнение товаров')}>
     <header className="compare-hero"><div style={grain} /><div className="compare-hero-content">
       <div className="compare-hero-top"><span style={{ ...DISPLAY, fontSize: 19, fontWeight: 700, opacity: .82 }}>{t('Сравнение товаров')}</span>
         <button onClick={onClose} aria-label={t('Закрыть сравнение')} className="compare-close" style={{ width: sp(8), height: sp(8) }}><X {...glyph(16)} /></button></div>

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Clock, Star, Download, TrendingDown, Plug } from 'lucide-react';
-import { RADIUS, TEXT, motion, pad, sp } from '../styles/system';
+import { RADIUS, TEXT, motion, pad, sp, panelFrame } from '../styles/system';
 import History from './History';
 import Bookmarks from './Bookmarks';
 import Downloads from './Downloads';
@@ -124,9 +124,7 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
     // спецификации CSS, если одна ось получает значение отличное от visible, ВТОРАЯ тоже
     // перестаёт быть visible и вычисляется как auto — то есть один overflowX молча превращал
     // контейнер в прокрутку по обеим осям, а прокрутка режет всё, включая тень острова.
-    <div style={{
-      height: '100%', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box',
-    }}>
+    <div style={panelFrame}>
       <LibraryShell
         tone={TONE[shown]}
         title={TITLE[shown]}
