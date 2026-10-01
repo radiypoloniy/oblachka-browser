@@ -83,7 +83,7 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
   }
   const cacheKey = `${app.getPath('userData')}:${tab.url}:${target.id}:${hash}`;
   const hit = cache.get(cacheKey);
-  if (hit) { w.state.cards = hit.cards; w.state.via = hit.via; phase(w, 'ready', hit.cards.length ? 'По текущей версии страницы' : 'Существенных подсказок не нашлось'); return; }
+  if (hit && !explicit) { w.state.cards = hit.cards; w.state.via = hit.via; phase(w, 'ready', hit.cards.length ? 'По текущей версии страницы' : 'Существенных подсказок не нашлось'); return; }
   if (w.abort || (!explicit && Date.now() - w.stableAt < 4000)) return;
   if (!explicit && target.local && (target.id !== LOCAL_CONNECTION_ID || !insightModelWarm())) {
     phase(w, 'sleep', target.id === LOCAL_CONNECTION_ID ? 'Модель отдыхает. Автоподсказки её не загружают' :

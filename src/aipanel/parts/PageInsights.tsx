@@ -94,7 +94,7 @@ export function PageInsights({ tabId, visible }: { tabId: string | null; visible
           <button onClick={() => window.aiPanel.openSettings('ai')}>Подключить облако</button>
         </>}
       </div>}
-      {(state?.phase === 'sleep' || state?.phase === 'error' || state?.phase === 'stale') && <div className="page-insights-actions">
+      {(state?.phase === 'sleep' || state?.phase === 'error' || state?.phase === 'stale' || state?.phase === 'idle' || (state?.phase === 'ready' && !cards.length)) && <div className="page-insights-actions">
         <button onClick={() => window.aiPanel.runPageInsights()}>Разобрать страницу</button>
       </div>}
     </div>}

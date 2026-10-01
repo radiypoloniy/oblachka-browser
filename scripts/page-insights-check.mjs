@@ -8,8 +8,13 @@ const fragment = { id: 1, text: 'Важное условие: все файлы 
 const item = { title: 'Файлы отдельно', text: 'Скачайте файлы заранее.', kind: 'Условие', source: 1, quote: fragment.text };
 assert.equal(m.validateInsights({ cards: [item] }, [fragment]).length, 1);
 assert.equal(m.validateInsights({ cards: [item, item] }, [fragment]).length, 1);
-assert.equal(m.validateInsights({ cards: [{ ...item, quote: 'Несуществующая цитата длиннее двадцати символов' }] }, [fragment]).length, 0);
-assert.equal(m.validateInsights({ cards: [{ ...item, source: 2 }] }, [fragment]).length, 0);
+assert.equal(m.validateInsights({ cards: [{ ...item, quote: 'Перефразированная цитата' }] }, [fragment]).length, 1);
+assert.throws(() => m.validateInsights({ cards: [{ ...item, source: 2 }] }, [fragment]));
+assert.throws(() => m.validateInsights({ wrong: [] }, [fragment]));
+assert.equal(m.validateInsights({ cards: [] }, [fragment]).length, 0);
+assert.equal(m.validateInsights({ cards: [{ title: 'Главное', text: 'Обзор', kind: 'Тезис', source: 1 }] }, [fragment]).length, 1);
+const longArticle = Array.from({length: 100}, (_, i) => `Часть ${i}: ` + 'Содержательный материал для обзора статьи. '.repeat(20)).join(' ') + ' Заключение статьи: завершение обзора с важными выводами для читателя.';
+assert.ok(m.selectInsightFragments(longArticle).some(f => f.text.includes('Заключение статьи')));
 const fragments = Array.from({ length: 8 }, (_, i) => ({ id: i + 1, text: `Проверяемый факт номер ${i} — достаточно длинная цитата из исходной страницы.` }));
 assert.equal(m.validateInsights({ cards: fragments.map(f => ({ ...item, title: 'Факт ' + f.id, source: f.id, quote: f.text })) }, fragments).length, 5);
 assert.ok(m.selectInsightFragments(('Длинный абзац содержит 24 часа и важное условие. '.repeat(25) + '\n').repeat(40)).reduce((n, f) => n + f.text.length, 0) <= 7600);

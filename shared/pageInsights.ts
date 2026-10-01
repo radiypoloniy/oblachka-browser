@@ -43,42 +43,50 @@ export function normalizeInsights(value: unknown, base = DEFAULT_INSIGHTS): Insi
 }
 export interface InsightFragment { id: number; text: string; }
 export function selectInsightFragments(text: string): InsightFragment[] {
-  const blocks = [...new Set(text.split(/\n+/).map(s => s.replace(/\s+/g, ' ').trim()).filter(s => s.length >= 45))];
-  const ranked = blocks.map((text, i) => ({ text, i, score: (i < 3 ? 4 : 0) +
+  // Длинные абзацы делим, иначе вся статья без переносов превращалась в один обрезок.
+  const blocks = [...new Set(text.split(/\n+/).flatMap(s => {
+    const clean = s.replace(/\s+/g, ' ').trim();
+    return clean.match(/.{1,900}(?:\s|$)|.{1,900}/g)?.map(chunk => chunk.trim()) ?? [];
+  }).filter(s => s.length >= 45))];
+  const ranked = blocks.map((text, i) => ({ text, i, score: (i < 2 ? 4 : 0) +
     (/\d/.test(text) ? 2 : 0) + (/важн|исключ|не вход|отмен|срок|огранич|however|except|must|deadline|limit/i.test(text) ? 3 : 0) }));
-  ranked.sort((a, b) => b.score - a.score || a.i - b.i);
+  // Половина бюджета — равномерный обзор, половина — условия и численные факты.
   const chosen: typeof ranked = [];
   let size = 0;
-  for (const block of ranked) {
-    const clipped = block.text.slice(0, 1000);
-    if (size + clipped.length > 7600 || chosen.length >= 20) continue;
-    chosen.push({ ...block, text: clipped }); size += clipped.length;
-  }
+  const add = (block: typeof ranked[number]) => {
+    if (chosen.includes(block) || size + block.text.length > 7600 || chosen.length >= 20) return;
+    chosen.push(block); size += block.text.length;
+  };
+  for (let i = 0; i < Math.min(4, ranked.length); i++) add(ranked[Math.round(i * (ranked.length - 1) / 3)]);
+  for (const block of [...ranked].sort((a, b) => b.score - a.score || a.i - b.i)) add(block);
   return chosen.sort((a, b) => a.i - b.i).map((block, i) => ({ id: i + 1, text: block.text }));
 }
 export const INSIGHTS_SCHEMA: JsonSchema = {
   type: 'object', properties: { cards: { type: 'array', maxItems: INSIGHTS_MAX, items: {
     type: 'object', properties: {
       title: { type: 'string' }, text: { type: 'string' }, kind: { type: 'string' },
-      source: { type: 'integer' }, quote: { type: 'string' },
-    }, required: ['title', 'text', 'kind', 'source', 'quote'], additionalProperties: false,
+      source: { type: 'integer' },
+    }, required: ['title', 'text', 'kind', 'source'], additionalProperties: false,
   } } }, required: ['cards'], additionalProperties: false,
 };
 export function validateInsights(raw: unknown, fragments: InsightFragment[]): PageInsight[] {
-  if (!raw || typeof raw !== 'object' || !('cards' in raw) || !Array.isArray(raw.cards)) return [];
+  if (!raw || typeof raw !== 'object' || !('cards' in raw) || !Array.isArray(raw.cards)) throw new Error('Некорректный ответ модели');
   const cards: PageInsight[] = [];
   const seen = new Set<string>();
   for (const item of raw.cards) {
     if (!item || typeof item !== 'object') continue;
     const c = item as Record<string, unknown>;
-    if (typeof c.title !== 'string' || typeof c.text !== 'string' || typeof c.kind !== 'string' || typeof c.quote !== 'string') continue;
-    const title = c.title.trim(), text = c.text.trim(), quote = c.quote.replace(/\s+/g, ' ').trim();
+    if (typeof c.title !== 'string' || typeof c.text !== 'string' || typeof c.kind !== 'string') continue;
+    const title = c.title.trim().slice(0, 90), text = c.text.trim().slice(0, 250);
     const source = fragments.find(f => f.id === c.source);
-    if (!title || title.length > 90 || !text || text.length > 250 || quote.length < 20 || quote.length > 200 || !source?.text.includes(quote)) continue;
+    if (!title || !text || !source) continue;
+    // Источник выбирает модель, точную цитату берёт браузер: перефразирование не теряет карточку.
+    const quote = source.text.slice(0, 200).trim();
     const key = title.toLocaleLowerCase();
     if (seen.has(key) || cards.some(card => card.quote === quote)) continue;
     seen.add(key); cards.push({ title, text, quote, kind: c.kind.trim().slice(0, 28) || 'Главное' });
     if (cards.length === INSIGHTS_MAX) break;
   }
+  if (raw.cards.length && !cards.length) throw new Error('Все карточки ссылаются на неверные источники');
   return cards;
 }
