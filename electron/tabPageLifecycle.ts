@@ -81,7 +81,18 @@ export function wireTabPageLifecycle(id: string, wc: WebContents, host: PageLife
     host.win.emit('oblako:prepare-html-fullscreen');
     host.setFullscreenTabId(id);
     if (host.win.isFullScreen()) { host.repositionViews(); return; }
-    host.win.once('enter-full-screen', host.repositionViews);
+    // На Windows enter-full-screen приходит ДО изменения размеров окна: старый размер
+    // заставлял видеоплеер полностью перестраиваться дважды. resize уже содержит конечный.
+    let resized = false;
+    const reposition = () => {
+      resized = true;
+      if (!host.win.isDestroyed() && host.getFullscreenTabId() === id) host.repositionViews();
+    };
+    host.win.once('resize', reposition);
+    // При скрытой панели задач maximized и fullscreen могут иметь одинаковый размер.
+    host.win.once('enter-full-screen', () => setImmediate(() => {
+      if (!resized) { host.win.removeListener('resize', reposition); reposition(); }
+    }));
     host.win.setFullScreen(true);
   });
   wc.on('leave-html-full-screen', () => {
@@ -90,7 +101,8 @@ export function wireTabPageLifecycle(id: string, wc: WebContents, host: PageLife
     host.setFullscreenTabId(null);
     if (host.win.isDestroyed()) return;
     if (!host.win.isFullScreen()) { host.repositionViews(); return; }
-    host.win.once('leave-full-screen', host.repositionViews);
+    // Обычные bounds измеряет chrome-renderer после resize. Здесь они ещё от fullscreen;
+    // их раннее применение давало огромный промежуточный плеер и вторую тяжёлую раскладку.
     host.win.setFullScreen(false);
   });
 

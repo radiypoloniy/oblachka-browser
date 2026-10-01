@@ -102,6 +102,7 @@ export interface CoreApi {
   goForward(id: string): Promise<void>;
   reload(id: string): Promise<void>;
   setContentBounds(bounds: ContentBounds): Promise<void>;
+  onContentBoundsRefresh(cb: () => void): () => void;
   // Прямоугольник омнибокса — see IPC.OMNIBOX_SET_BOUNDS. Пока только сохраняется в main,
   // без вью-потребителя (см. shared/ipc.ts::IPC).
   setOmniboxBounds(bounds: ContentBounds): Promise<void>;

@@ -886,9 +886,7 @@ function createWindow(role: WindowRole = 'main') {
     },
   });
   win.contentView.addChildView(chromeView);
-  // ⚠️ Слой хрома AI-панели здесь БОЛЬШЕ НЕ РЕГИСТРИРУЕТСЯ: панель своя у каждого окна и берёт
-  // его у реестра окон сама (см. AiPanelManager.chromeOf). Единственная ссылка означала бы
-  // «о закрытии панели узнаёт всегда главное окно», хотя резерв ширины держит то, где её открыли.
+  // AI-панель получает chrome своего окна из реестра (AiPanelManager.chromeOf).
   // Дефолтный фон WebContentsView — белый, и он перекрывает backgroundColor окна на всю площадь.
   // Красим под --app-bg, чтобы кадры до первой отрисовки React были цветом интерфейса.
   chromeView.setBackgroundColor('#F2F2F7');
@@ -908,6 +906,8 @@ function createWindow(role: WindowRole = 'main') {
   };
   layoutChrome();
   win.on('resize', layoutChrome);
+  // Полноэкранная страница закрывает chrome целиком: его ResizeObserver может быть приостановлен.
+  win.on('leave-html-full-screen', () => chromeView.webContents.send(IPC.CONTENT_REFRESH_BOUNDS));
 
   wireSharedSessions();
 

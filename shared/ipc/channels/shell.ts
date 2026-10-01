@@ -22,6 +22,7 @@ export const SHELL = {
   TAB_GO_FORWARD: 'tab:go-forward',
   TAB_RELOAD: 'tab:reload',
   CONTENT_SET_BOUNDS: 'content:set-bounds',
+  CONTENT_REFRESH_BOUNDS: 'content:refresh-bounds',
   // Прямоугольник «таблетки» омнибокса (координаты окна, тот же формат, что CONTENT_SET_BOUNDS) —
   // фундамент под будущую нативную WebContentsView дропдауна подсказок (пока main его только
   // хранит, ничем не пользуется). Гоняется отдельно от CONTENT_SET_BOUNDS — геометрия контента

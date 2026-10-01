@@ -55,6 +55,9 @@ await withStand(async ctx => {
     await wait(600);
     assert.equal(await probe('return win.isFullScreen();'), false);
     assert.equal(await probe('return panel.existingPanel(win)?.open;'), false);
+    const restored = await probe(`const view = win.contentView.children.find(v => v.webContents === wc);
+      return { actual: view.getBounds(), expected: ctx.tabs.contentBounds };`);
+    assert.deepEqual(restored.actual, restored.expected, 'После выхода восстановлена область контента');
     console.log(`ok Fullscreen: ${mode}, панель и веб-слоты скрыты, выход работает`);
   }
   await ctx.chrome.evaluate('window.oblako.toggleAiPanel()');

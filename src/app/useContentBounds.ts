@@ -51,6 +51,11 @@ export function useContentBounds(activeId: string, isHub: boolean) {
     return () => { ro.disconnect(); window.removeEventListener('resize', pushBounds); };
   }, [pushBounds]);
 
+  // Явный замер работает и у перекрытого chrome: ждём не кадр, а команду после resize окна.
+  useEffect(() => window.oblako.onContentBoundsRefresh(() => {
+    lastContentBoundsRef.current = ''; pushBounds();
+  }), [pushBounds]);
+
   // когда переключаемся между хабом/страницей/псевдо-вкладкой (История/Настройки), геометрия
   // дырки та же, но main должен переотобразить вьюху — пушим bounds ещё раз. activeId один уже
   // покрывает переключение НА/С Истории и Настроек (это теперь обычная смена activeId, не

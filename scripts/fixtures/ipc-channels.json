@@ -106,6 +106,7 @@
   "COMPARE_SOURCE=compare:source",
   "COMPARE_START=compare:start",
   "COMPARE_STATE=compare:state",
+  "CONTENT_REFRESH_BOUNDS=content:refresh-bounds",
   "CONTENT_SET_BOUNDS=content:set-bounds",
   "CRYPTO_GET=crypto:get",
   "CRYPTO_HISTORY=crypto:history",

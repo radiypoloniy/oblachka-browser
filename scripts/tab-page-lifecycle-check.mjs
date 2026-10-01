@@ -96,10 +96,12 @@ check('показанный split-партнёр виден, инкогнито 
 wc.emit('enter-html-full-screen');
 check('оверлеи убраны до разворота окна и раскладки', calls.splice(0), [['prepare-fullscreen'], ['fullscreen-id', 'tab-a']]);
 win.emit('enter-full-screen');
-check('после разворота окна вью переставлена', calls.splice(0), [['reposition']]);
+check('сигнал fullscreen ещё не применяет прежний размер окна', calls.splice(0), []);
+win.emit('resize');
+check('после фактического resize вью переставлена', calls.splice(0), [['reposition']]);
 wc.emit('leave-html-full-screen');
 win.emit('leave-full-screen');
-check('выход из fullscreen сбрасывает вкладку и вью', calls.splice(0), [['fullscreen-id', null], ['reposition']]);
+check('выход сбрасывает вкладку и ждёт свежих bounds renderer', calls.splice(0), [['fullscreen-id', null]]);
 
 wc.emit('page-favicon-updated', {}, []);
 check('пустой favicon не стирает прежний', calls.splice(0), []);
@@ -108,6 +110,16 @@ check('favicon обновляется до кэширования', calls.splice
 wc.emit('audio-state-changed', { audible: true });
 wc.emit('found-in-page', {}, { activeMatchOrdinal: 2, matches: 5 });
 check('звук и результат поиска доставлены', calls.splice(0), [['audio'], ['notify'], ['find', { activeMatch: 2, count: 5 }]]);
+
+wc.emit('enter-html-full-screen');
+calls.splice(0);
+win.emit('enter-full-screen');
+await new Promise(resolve => setImmediate(resolve));
+check('при неизменном размере окна fallback переставляет вью', calls.splice(0), [['reposition']]);
+win.emit('resize');
+check('fallback снимает отложенную подписку resize', calls.splice(0), []);
+wc.emit('leave-html-full-screen');
+calls.splice(0);
 
 owned = false;
 wc.emit('focus');

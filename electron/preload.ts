@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { ProfilesState, ProfileSettings, ProfileAvatar, ProfileLook } from '../shared/profiles';
 import { IPC } from '../shared/ipc';
-import { aiBridge, updatesBridge, mcpBridge, flightBridge, tabSearchBridge, compareBridge } from './preload/bridges';
+import { aiBridge, updatesBridge, mcpBridge, flightBridge, tabSearchBridge, compareBridge, contentBoundsBridge } from './preload/bridges';
 import type { OblakoApi, AiActivityState, PageLength, SpecialTabKind, SyncState, ContentBounds, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, OmniboxResume, RecommendedSite, PageChangesResult, RelatedPagesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordHealthItem, PasswordBreachCheckResult, PasswordIndicatorState, PasswordPreferences, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, DayDigestState, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, GenSpecOutcome, GenProgress, GenWebResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../shared/graph';
@@ -70,7 +70,7 @@ const api: OblakoApi = {
   goBack: (id: string) => ipcRenderer.invoke(IPC.TAB_GO_BACK, id),
   goForward: (id: string) => ipcRenderer.invoke(IPC.TAB_GO_FORWARD, id),
   reload: (id: string) => ipcRenderer.invoke(IPC.TAB_RELOAD, id),
-  setContentBounds: (b: ContentBounds) => ipcRenderer.invoke(IPC.CONTENT_SET_BOUNDS, b),
+  ...contentBoundsBridge,
   setOmniboxBounds: (b: ContentBounds) => ipcRenderer.invoke(IPC.OMNIBOX_SET_BOUNDS, b),
   minimizeWindow: () => ipcRenderer.invoke(IPC.WINDOW_MINIMIZE) as Promise<void>,
   toggleMaximizeWindow: () => ipcRenderer.invoke(IPC.WINDOW_TOGGLE_MAXIMIZE) as Promise<void>,
