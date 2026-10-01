@@ -3,6 +3,7 @@ import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent, applyClientHints } from './BrowserIdentity';
 import { showSplash } from './SplashWindow';
+import { wireChromeContextMenu } from './ChromeContextMenu';
 import { showWhenReady } from './window/showWhenReady';
 import { createWindowTabManager } from './window/tabManager';
 import { wireTabs } from './window/wireTabs';
@@ -931,21 +932,16 @@ function createWindow(role: WindowRole = 'main') {
   sess?.setOwner(tabs);
   if (isMain) { mainWin = win; mainChromeView = chromeView; mainTabs = tabs; mainSess = sess; }
 
-  // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
-  // Вся остальная проводка вкладок этого окна — в window/wireTabs.ts. Границы снова по
-  // существующему разрыву: от настроек поиска до восстановления сессии.
+  // Проводка вкладок и сохранённый поисковик — в window/wireTabs.ts.
   wireTabs({ win, chromeView, isMain, tabs }, windowDeps());
 
-  // Восстановление дерева вкладок из session.json — в window/restoreSession.ts.
-  // ⚠️ Тело перенесено ДОСЛОВНО: это единственный кусок createWindow, ошибка в котором
-  // стоит человеку его открытых вкладок.
+  // Восстановление дерева — в window/restoreSession.ts; порядок здесь защищает session.json.
   if (restored) restoreSession(restored, tabs, startT0);
 
   // Только после восстановления разрешаем автосейв (у лёгкого окна сессии нет вовсе).
   sess?.enable();
 
-  // Форвардинг логов воркера эмбеддингов из renderer → stdout.
-  // Новый API Electron: событие console-message передаёт поля через Event-объект.
+  // Новый API Electron передаёт console-message через Event; форвардим только логи эмбеддингов.
   const LOG_PREFIXES = ['[embed]'];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   chromeView.webContents.on('console-message', (event: any) => {
@@ -953,17 +949,8 @@ function createWindow(role: WindowRole = 'main') {
     if (LOG_PREFIXES.some((p) => msg.startsWith(p))) process.stdout.write(msg + '\n');
   });
 
-  // ПКМ в хром-слое (омнибокс, поле чата): только редактируемые поля и выделение.
-  // Для обычных элементов управления (кнопки, сайдбар) меню НЕ показываем.
-  chromeView.webContents.on('context-menu', (_e, p) => {
-    const items: MenuItemConstructorOptions[] = [];
-    if (p.isEditable) {
-      items.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { type: 'separator' }, { role: 'selectAll' });
-    } else if (p.selectionText.trim()) {
-      items.push({ role: 'copy' });
-    }
-    if (items.length) Menu.buildFromTemplate(items).popup({ window: win! });
-  });
+  // Поля и выделение в хроме: та же группировка, что на странице; обычные кнопки без меню.
+  wireChromeContextMenu(win, chromeView.webContents, settings, () => tabs);
 
   // Хоткеи для хром-слоя (хаб, омнибокс). Вкладки получают их через wirePageEvents.
   tabs.registerHotkeyHandler(chromeView.webContents, 'chrome');

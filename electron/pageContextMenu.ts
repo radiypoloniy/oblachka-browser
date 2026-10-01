@@ -281,7 +281,7 @@ function editableSection(host: PageContextMenuHost, wc: WebContents, view: WebCo
 function selectionSection(host: PageContextMenuHost, wc: WebContents, view: WebContentsView, p: ContextMenuParams, priv: boolean, engine: Engine, hasPrev: boolean): MenuItemConstructorOptions[] {
   const out: MenuItemConstructorOptions[] = hasPrev ? [{ type: 'separator' }] : [];
   out.push(
-    { role: 'copy', icon: menuIcon('Copy') },
+    { role: 'copy', label: tr('Копировать'), icon: menuIcon('Copy') },
     {
       label: tf('Поиск «{q}» в {engine}', { q: truncate(p.selectionText), engine: engine.name }),
       icon: menuIcon('Search'),

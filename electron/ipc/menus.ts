@@ -146,7 +146,6 @@ export function registerMenusIpc(d: IpcDeps): void {
     const toGraph = state
       ? buildAddToGraphMenuItem(graphs, [{ url: state.url, title: state.title || state.url }], undefined, notifyGraphChanged)
       : null;
-
     const items: MenuItemConstructorOptions[] = [
       {
         label: isPinned ? tr('Открепить вкладку') : tr('Закрепить вкладку'),
@@ -168,7 +167,8 @@ export function registerMenusIpc(d: IpcDeps): void {
       // псевдо-вкладок и хаба: у них нет сайта, которому это правило можно приписать.
       ...(host ? [{
         label: tr('Не выгружать из памяти'),
-        icon: menuIcon('Moon'),
+        // Нативная галочка занимает тот же левый слот, что иконки соседних строк.
+        // Вторая иконка сдвигала только этот пункт вправо на Windows.
         type: 'checkbox' as const,
         checked: settings.isNeverSleepHost(host),
         click: () => {
@@ -291,24 +291,23 @@ export function registerMenusIpc(d: IpcDeps): void {
     );
     const items: MenuItemConstructorOptions[] = [
       {
-        label: tr('Переименовать'),
+        label: tr('Переименовать'), icon: menuIcon('Pencil'),
         click: () => sendTo(chromeOf(e), IPC.GROUP_RENAME_PROMPT, groupId),
       },
       {
-        label: tr('Цвет'),
+        label: tr('Цвет'), icon: menuIcon('Palette'),
         submenu: GROUP_COLORS.map(({ label, value }) => ({
           label: tr(label),
           click: () => t.setGroupColor(groupId, value || null),
         })),
       },
-      ...(groupToGraph ? [groupToGraph] : []),
       { type: 'separator' },
       {
-        label: tr('Свернуть / развернуть'),
+        label: tr('Свернуть / развернуть'), icon: menuIcon('FoldVertical'),
         click: () => t.toggleGroupCollapse(groupId),
       },
       {
-        label: tr('Скопировать содержимое'),
+        label: tr('Скопировать содержимое'), icon: menuIcon('Copy'),
         click: () => {
           const contents = t.getGroupContents(groupId);
           if (contents.length === 0) return;
@@ -327,13 +326,14 @@ export function registerMenusIpc(d: IpcDeps): void {
           clipboard.write({ text, html });
         },
       },
+      ...(groupToGraph ? [{ ...groupToGraph, icon: menuIcon('Workflow') }] : []),
       { type: 'separator' },
       {
-        label: tr('Расформировать группу'),
+        label: tr('Расформировать группу'), icon: menuIcon('FolderX'),
         click: () => t.disbandGroup(groupId),
       },
       {
-        label: tr('Закрыть группу и вкладки'),
+        label: tr('Закрыть группу и вкладки'), icon: menuIcon('Trash2'),
         click: () => t.closeGroupAndTabs(groupId),
       },
     ];

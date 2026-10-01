@@ -8,10 +8,11 @@ import path from 'node:path';
 // Иконки нужны нативному Menu как PNG: SVG Electron в этом API не декодирует.
 // Генератор запускается вручную; приложение читает уже готовые файлы и не зависит от Playwright.
 const names = [
-  'Pin', 'VolumeX', 'Volume2', 'Moon', 'FolderPlus', 'FolderMinus', 'FolderInput',
+  'Pin', 'VolumeX', 'Volume2', 'FolderPlus', 'FolderMinus', 'FolderInput',
   'SquareArrowOutUpRight', 'Copy', 'Ellipsis', 'X', 'RefreshCw',
   'Sparkles', 'Undo2', 'Workflow', 'Search', 'Languages', 'ListFilter',
-  'CircleHelp', 'FileText', 'Code2',
+  'CircleHelp', 'FileText', 'Code2', 'Scissors', 'ClipboardPaste', 'TextSelect',
+  'Pencil', 'Palette', 'FoldVertical', 'FolderX', 'Trash2',
 ];
 const output = path.resolve('src/public/menu-icons');
 await mkdir(output, { recursive: true });
