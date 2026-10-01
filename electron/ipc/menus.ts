@@ -167,10 +167,9 @@ export function registerMenusIpc(d: IpcDeps): void {
       // псевдо-вкладок и хаба: у них нет сайта, которому это правило можно приписать.
       ...(host ? [{
         label: tr('Не выгружать из памяти'),
-        // Нативная галочка занимает тот же левый слот, что иконки соседних строк.
-        // Вторая иконка сдвигала только этот пункт вправо на Windows.
-        type: 'checkbox' as const,
-        checked: settings.isNeverSleepHost(host),
+        // Галочка встроена в рисунок RAM: нативный checkbox ставил её в отдельный
+        // слот и сдвигал строку относительно остальных пунктов меню Windows.
+        icon: menuIcon(settings.isNeverSleepHost(host) ? 'MemoryKeepChecked' : 'MemoryKeep'),
         click: () => {
           settings.toggleNeverSleepHost(host);
           // Раздел настроек мог быть открыт соседней вкладкой — пусть перечитает список.

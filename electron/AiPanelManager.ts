@@ -4,7 +4,7 @@
 // ПОСЛЕДНЕЙ → native z-order (не CSS z-index), поверх уже добавленной вкладки. Bounds контентной
 // вкладки НЕ трогаем — панель просто перекрывает правый край страницы, сайт под ней геометрически
 // не меняется (как у Яндекса).
-import { WebContentsView, ipcMain } from 'electron'
+import { Menu, WebContentsView, ipcMain } from 'electron'
 import type { BrowserWindow, IpcMainEvent, WebContents } from 'electron'
 import path from 'node:path'
 import TurndownService from 'turndown'
@@ -25,6 +25,8 @@ import { IPC, type TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
 import { contextFromSender } from './WindowRegistry'
 import type { SettingsManager } from './SettingsManager'
+import { menuIcon } from './MenuIcons'
+import { t as tr } from './uiText'
 
 // html→markdown ТОЛЬКО для ветки чата (см. extractPageText/buildFirstTurnPrompt ниже) —
 // перевод (quick-translate) продолжает получать plain text, turndown его не касается.
@@ -423,6 +425,22 @@ function ensurePanelView(st: PanelInstance): WebContentsView {
 
   // Клик в панель = «мимо поповера тулбара», см. setOnPanelFocus выше.
   view.webContents.on('focus', () => { onPanelFocusCb?.() })
+
+  // Чат — отдельная WebContentsView, поэтому меню полей хрома сюда не доходит.
+  // Роли Electron сохраняют системные команды, а подписи и иконки задаём сами.
+  view.webContents.on('context-menu', (_event, p) => {
+    if (!p.isEditable) return
+    Menu.buildFromTemplate([
+      { role: 'undo', label: tr('Отменить ввод'), icon: menuIcon('Undo2') },
+      { role: 'redo', label: tr('Повторить ввод'), icon: menuIcon('Redo2') },
+      { type: 'separator' },
+      { role: 'cut', label: tr('Вырезать'), icon: menuIcon('Scissors') },
+      { role: 'copy', label: tr('Копировать'), icon: menuIcon('Copy') },
+      { role: 'paste', label: tr('Вставить'), icon: menuIcon('ClipboardPaste') },
+      { type: 'separator' },
+      { role: 'selectAll', label: tr('Выделить всё'), icon: menuIcon('TextSelect') },
+    ]).popup({ window: st.win })
+  })
 
   // Ссылки из ответа модели — обычные <a href> (react-markdown их не оборачивает, см. задачу):
   // без перехвата клик навигирует ЭТУ ЖЕ webContents на внешний сайт, затирая aipanel.html —

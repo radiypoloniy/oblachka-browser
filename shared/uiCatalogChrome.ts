@@ -217,6 +217,8 @@ export const CHROME: Record<string, string> = {
   'Скопировать': 'Copy',
   'Вставить': 'Paste',
   'Вырезать': 'Cut',
+  'Отменить ввод': 'Undo typing',
+  'Повторить ввод': 'Redo typing',
   'Выделить всё': 'Select all',
   'Очистить': 'Clear',
   'Пусто': 'Empty',

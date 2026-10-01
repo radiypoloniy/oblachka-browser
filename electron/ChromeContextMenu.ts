@@ -26,6 +26,9 @@ export function wireChromeContextMenu(
 
     if (p.isEditable) {
       items.push(
+        { role: 'undo', label: tr('Отменить ввод'), icon: menuIcon('Undo2') },
+        { role: 'redo', label: tr('Повторить ввод'), icon: menuIcon('Redo2') },
+        { type: 'separator' },
         { role: 'cut', label: tr('Вырезать'), icon: menuIcon('Scissors') },
         { role: 'copy', label: tr('Копировать'), icon: menuIcon('Copy') },
         { role: 'paste', label: tr('Вставить'), icon: menuIcon('ClipboardPaste') },

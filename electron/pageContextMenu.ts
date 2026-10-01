@@ -231,10 +231,20 @@ function editableSection(host: PageContextMenuHost, wc: WebContents, view: WebCo
     }
   }
   sep();
-  out.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' });
+  out.push(
+    { role: 'undo', label: tr('Отменить ввод'), icon: menuIcon('Undo2') },
+    { role: 'redo', label: tr('Повторить ввод'), icon: menuIcon('Redo2') },
+    { type: 'separator' },
+    { role: 'cut', label: tr('Вырезать'), icon: menuIcon('Scissors') },
+    { role: 'copy', label: tr('Копировать'), icon: menuIcon('Copy') },
+    { role: 'paste', label: tr('Вставить'), icon: menuIcon('ClipboardPaste') },
+    { type: 'separator' },
+    { role: 'selectAll', label: tr('Выделить всё'), icon: menuIcon('TextSelect') },
+  );
   if (p.selectionText.trim()) {
     out.push({ type: 'separator' }, {
       label: tf('Поиск «{q}» в {engine}', { q: truncate(p.selectionText), engine: engine.name }),
+      icon: menuIcon('Search'),
       click: () => host.openTab(engine.buildUrl(p.selectionText), false, priv),
     });
   }
@@ -260,16 +270,18 @@ function editableSection(host: PageContextMenuHost, wc: WebContents, view: WebCo
   };
   out.push({ type: 'separator' }, {
     label: tr('Править текст'),
+    icon: menuIcon('Pencil'),
     submenu: [
-      { label: tr('Исправить ошибки'), click: () => dispatchEdit('fix') },
-      { label: tr('Сделать короче'),   click: () => dispatchEdit('shorten') },
-      { label: tr('Смягчить тон'),     click: () => dispatchEdit('polite') },
+      { label: tr('Исправить ошибки'), icon: menuIcon('SpellCheck'), click: () => dispatchEdit('fix') },
+      { label: tr('Сделать короче'), icon: menuIcon('ListFilter'), click: () => dispatchEdit('shorten') },
+      { label: tr('Смягчить тон'), icon: menuIcon('MessageCircle'), click: () => dispatchEdit('polite') },
       { type: 'separator' },
       // «Перевести на …» — свой черновик на чужой язык (пишу по-русски, отправлю по-английски).
       // Именно подменю с языками, а не свой всплывающий экран: нативное меню — это уже
       // «всплывающее окошко», и городить ради выбора языка отдельную WebContentsView незачем.
       {
         label: tr('Перевести на'),
+        icon: menuIcon('Languages'),
         submenu: TRANSLATE_TARGETS.map((l) => ({
           label: l.label,
           click: () => dispatchEdit('translate', l.code),
