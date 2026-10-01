@@ -15,16 +15,21 @@
 .page-insights-track { position: relative; display: flex; align-items: stretch; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding-right: 24px; }
 .page-insights-track::-webkit-scrollbar { display: none; }
 .page-insights-track.is-stale { opacity: .55; }
-.page-insight { --insight-fill: var(--poster-mustard); position: relative; flex: 0 0 calc(100% - 24px); min-width: 0; min-height: 256px; display: flex; flex-direction: column; padding: 20px; border-radius: var(--radius-island); background: var(--insight-fill); color: var(--on-poster-dark); overflow: hidden; scroll-snap-align: start; }
-.page-insight[data-tone="1"] { --insight-fill: var(--poster-sky); }
-.page-insight[data-tone="2"] { --insight-fill: var(--poster-tangerine); }
-.page-insight::before { content: ''; position: absolute; inset: 0; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E"); opacity: var(--grain-op); mix-blend-mode: overlay; }
-.page-insight > * { position: relative; }
-.page-insight-kind { margin-bottom: 20px; font: 500 11px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; overflow-wrap: anywhere; }
-.page-insight h3 { margin: 0 0 12px; font: 700 18px/1.25 var(--font-display); letter-spacing: -.025em; overflow-wrap: anywhere; text-wrap: balance; }
-.page-insight p { margin: 0 0 20px; font: 400 14px/1.5 var(--font-sans); overflow-wrap: anywhere; }
-.page-insight > button { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding: 12px 0 0; border: 0; border-top: 1px solid color-mix(in srgb, var(--on-poster-dark) 20%, transparent); color: inherit; background: transparent; text-align: left; font-size: 12.5px; font-weight: 600; }
+.page-insight { --insight-margin: 64px; position: relative; isolation: isolate; flex: 0 0 calc(100% - 24px); min-width: 0; min-height: 290px; display: flex; flex-direction: column; padding: 22px calc(var(--insight-margin) + 28px) 22px 22px; border-radius: calc(var(--radius-sm) / 2) var(--radius-island) var(--radius-island) var(--radius-island); background: var(--card); color: var(--text-strong); overflow: hidden; scroll-snap-align: start; }
+.page-insight::before { content: ''; position: absolute; inset: 0 0 0 auto; width: var(--insight-margin); z-index: -1; pointer-events: none; background: var(--poster-tangerine); }
+.page-insight-eyebrow { margin-bottom: 22px; color: var(--text-muted); font: 500 10px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.page-insight-kind { position: absolute; right: calc((var(--insight-margin) - 16px) / 2); top: 22px; max-height: calc(100% - 90px); writing-mode: vertical-rl; color: var(--on-poster-dark); font: 500 11px/1.4 var(--font-mono); letter-spacing: .13em; text-transform: uppercase; overflow-wrap: anywhere; }
+.page-insight-number { position: absolute; right: 12px; bottom: 18px; color: var(--on-poster-dark); font: 650 24px/1.3 var(--font-display); }
+.page-insight h3 { margin: 0 0 12px; font: 650 20px/1.3 var(--font-display); letter-spacing: -.035em; overflow-wrap: anywhere; text-wrap: balance; }
+.page-insight p { margin: 0 0 20px; color: var(--text-body); font: 400 13px/1.55 var(--font-sans); overflow-wrap: anywhere; }
+.page-insight > button { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding: 12px 0 0; border: 0; border-top: 1px solid var(--divider); color: inherit; background: transparent; text-align: left; font-size: 11px; font-weight: 600; }
 .page-insight > button svg { flex: none; }
+@media (max-width: 380px) {
+  .page-insight { --insight-margin: 48px; padding: 20px calc(var(--insight-margin) + 16px) 20px 18px; }
+  .page-insight-eyebrow { margin-bottom: 18px; }
+  .page-insight h3 { font-size: 17px; }
+  .page-insight-number { right: 8px; font-size: 22px; }
+}
 .page-insights-navigation { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .page-insights-navigation > span { white-space: nowrap; font: 500 11px var(--font-mono); color: var(--text-muted); }
 .page-insights-dots { flex: 1; display: flex; gap: 4px; }

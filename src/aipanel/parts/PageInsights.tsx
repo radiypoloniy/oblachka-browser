@@ -68,8 +68,10 @@ export function PageInsights({ tabId, visible }: { tabId: string | null; visible
               setSlide(lastSlide.current);
             }
           }}>
-          {cards.map((card, i) => <article className="page-insight" data-tone={i % 3} key={`${i}:${card.title}`}>
+          {cards.map((card, i) => <article className="page-insight" key={`${i}:${card.title}`}>
+            <span className="page-insight-eyebrow" aria-hidden="true">На полях</span>
             <span className="page-insight-kind">{card.kind}</span>
+            <span className="page-insight-number" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
             <h3>{card.title}</h3><p>{card.text}</p>
             <button disabled={state?.phase !== 'ready'} onClick={() => window.aiPanel.showInsightSource(i)}>
               Показать на странице <ArrowUpRight size={14} />
