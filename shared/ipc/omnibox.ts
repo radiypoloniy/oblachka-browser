@@ -11,6 +11,8 @@ export interface SuggestDropdownItem {
   label: string;
   sub?: string;
   url: string;
+  /** Текст для продолжения ввода: поисковый запрос без декоративного «Искать:». */
+  fillIntoEdit?: string;
   tabId?: string;
   // Окно, в котором живёт вкладка, — ТОЛЬКО когда это НЕ окно-отправитель (смысловой поиск ищет
   // по всем окнам, см. SmartTabHit). Пусто — вкладка своя, переключаемся обычным TAB_ACTIVATE.

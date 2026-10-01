@@ -20,6 +20,7 @@ import { usePopoverFlags } from './toolbar/usePopoverFlags';
 import { usePermissionHint } from './toolbar/usePermissionHint';
 import { usePasswordIndicator } from './toolbar/usePasswordIndicator';
 import { useOmniboxValue } from './toolbar/useOmniboxValue';
+import { useOmniboxPreview } from './toolbar/useOmniboxPreview';
 import { useHubAutofocus } from './toolbar/useHubAutofocus';
 import { useToolbarPopovers } from './toolbar/useToolbarPopovers';
 import { OmniboxPill } from './toolbar/OmniboxPill';
@@ -141,6 +142,7 @@ export default function Toolbar({
 
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
+  const { preview, restore: restorePreview, accept: acceptPreview } = useOmniboxPreview(tab?.id, value, setValue, inputRef);
   // Поколение запроса подсказок. ⚠️ Живёт ЗДЕСЬ, а не в одном из хуков: панель нетронутой строки
   // (useOmniboxPanel) и подсказки по тексту (useOmniboxSuggestions) пишут в ОДИН список, и
   // отбрасывать протухшие ответы обязаны одним и тем же счётчиком. Заведи каждый свой — и
@@ -239,6 +241,7 @@ export default function Toolbar({
   // Esc, выбор, смена вкладки, фокус на контент и т.д.). Синхронизирует React-состояние,
   // нативную вью (setSuggestDropdownOpen) и состояние редактирования в одном месте.
   const closeDropdown = useCallback((_reason = 'unknown') => {
+    restorePreview();
     suggestSeqRef.current++;
     // Гасим и сам отложенный пересчёт. ⚠️ Через ref, а не прямым вызовом: таймер и признак
     // «список показан» переехали в useOmniboxSuggestions, а тот получает эту же closeDropdown
@@ -258,7 +261,7 @@ export default function Toolbar({
     // Снимаем клавиатурную подсветку во вью — иначе при следующем открытии на миг мелькнёт
     // подсветка строки от предыдущей сессии.
     void window.oblako.setSuggestDropdownHighlight(-1);
-  }, [onSuggestToggle]);
+  }, [onSuggestToggle, restorePreview]);
 
   // Полное закрытие дропдауна + завершение редактирования — используется когда пользователь
   // действительно закончил работу с омнибоксом (клик мимо, фокус на контент, смена вкладки).
@@ -418,6 +421,7 @@ export default function Toolbar({
 
   // Клавиатурная навигация. e.code — раскладконезависимо.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (dropdownOpen && suggestions.length > 0) {
       // ⚠️ Список ЗАКОЛЬЦОВАН, и -1 — полноправная позиция в кольце, а не край. -1 означает
       // «выбрана сама набранная строка»: Enter в этом состоянии ведёт по набранному, как вёл бы
@@ -428,11 +432,15 @@ export default function Toolbar({
       const last = suggestions.length - 1;
       // Выбор живёт в ДВУХ местах сразу: здесь (Enter выполняется отсюда) и в нативной вью, где
       // строка подсвечивается. Одной строкой на оба, чтобы они не разъехались.
-      const moveTo = (i: number) => { setSelectedIdx(i); holdSelection(i, suggestions); void window.oblako.setSuggestDropdownHighlight(i); };
+      const moveTo = (i: number) => {
+        // Замораживаем выдачу: поздний сетевой ответ не подменяет вариант под стрелками.
+        suggestSeqRef.current++; cancelPending();
+        setSelectedIdx(i); holdSelection(i, suggestions);
+        if (i >= 0) preview(suggestions[i]); else restorePreview();
+        void window.oblako.setSuggestDropdownHighlight(i);
+      };
       if (e.code === 'ArrowDown') { e.preventDefault(); moveTo(selectedIdx >= last ? -1 : selectedIdx + 1); return; }
       if (e.code === 'ArrowUp') { e.preventDefault(); moveTo(selectedIdx <= -1 ? last : selectedIdx - 1); return; }
-      if (e.code === 'Home') { e.preventDefault(); moveTo(0); return; }
-      if (e.code === 'End') { e.preventDefault(); moveTo(last); return; }
       if (e.code === 'Enter') {
         e.preventDefault();
         if (selectedIdx >= 0 && selectedIdx < suggestions.length) {
@@ -509,7 +517,7 @@ export default function Toolbar({
             passwordControlRef={passwordControlRef} draftsRef={draftsRef}
             focusTracker={focusTracker} pointerInInputRef={pointerInInputRef}
             selectAllPendingRef={selectAllPendingRef}
-            setValue={setValue} setEditing={setEditing} copyUrl={() => void copyUrl()}
+            setValue={(v) => { acceptPreview(); setSelectedIdx(-1); setValue(v); }} setEditing={setEditing} copyUrl={() => void copyUrl()}
             toggleBookmark={toggleBookmark} triggerSuggest={triggerSuggest}
             showTopSites={() => void showTopSites()} handleKeyDown={handleKeyDown}
             togglePasswordPopover={togglePasswordPopover} toggleSitePopover={toggleSitePopover}

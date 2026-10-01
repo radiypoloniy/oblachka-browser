@@ -409,6 +409,7 @@ export function useOmniboxSuggestions(d: OmniboxSuggestionsDeps): OmniboxSuggest
       const provisional: SuggestItem[] = [{
         kind: 'search',
         label: `Искать: ${query}`,
+        fillIntoEdit: query,
         url: getSearchEngine(searchEngineId).buildUrl(query),
       }];
       setSuggestions(provisional);
@@ -448,12 +449,14 @@ export function useOmniboxSuggestions(d: OmniboxSuggestionsDeps): OmniboxSuggest
       .map((phrase) => ({
         kind: 'suggest' as SuggestKind,
         label: phrase,
+        fillIntoEdit: phrase,
         url: getSearchEngine(searchEngineId).buildUrl(phrase),
       }));
 
     const searchItem: SuggestItem = {
       kind: 'search',
       label: `Искать: ${query}`,
+      fillIntoEdit: query,
       url: getSearchEngine(searchEngineId).buildUrl(query),
     };
 

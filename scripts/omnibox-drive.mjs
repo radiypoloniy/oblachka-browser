@@ -156,6 +156,8 @@ await withStand(async (ctx) => {
   await wait(250);
   state = await drop.evaluate(STATE);
   check('следующее нажатие вниз встаёт на первую строку', state.active === 0, `active=${state.active}`);
+  check('выбранная страница подставляется в поле',
+    (await ctx.chrome.evaluate(`document.querySelector('input').value`)).includes('/omni-'));
 
   // ── Кольцо вверх ──────────────────────────────────────────────────────────────────────────
   await ctx.chrome.evaluate(KEY('ArrowUp'));
@@ -172,7 +174,7 @@ await withStand(async (ctx) => {
   // ── End / Home ────────────────────────────────────────────────────────────────────────────
   await ctx.chrome.evaluate(KEY('Home'));
   await wait(250);
-  check('Home встаёт на первую строку', (await drop.evaluate(STATE)).active === 0);
+  check('Home не меняет выбранную подсказку', (await drop.evaluate(STATE)).active === first.rows - 1);
   await ctx.chrome.evaluate(KEY('End'));
   await wait(250);
   check('End встаёт на последнюю строку', (await drop.evaluate(STATE)).active === first.rows - 1);
@@ -187,6 +189,23 @@ await withStand(async (ctx) => {
     return { focused: document.activeElement === input };
   })()`);
   check('Escape не роняет строку', shown && typeof shown.focused === 'boolean');
+  check('Escape возвращает исходный ввод', await ctx.chrome.evaluate(`document.querySelector('input').value`) === 'omni');
+
+  // Пробел обязан продолжить подставленный запрос, а не отправить выбранный результат.
+  await ctx.chrome.evaluate(TYPE('zz-nebula-probe-query'));
+  await wait(650);
+  await ctx.chrome.evaluate(KEY('ArrowDown'));
+  await wait(150);
+  const preview = await ctx.chrome.evaluate(`document.querySelector('input').value`);
+  check('поисковая подсказка подставляет запрос без «Искать:»', preview === 'zz-nebula-probe-query', preview);
+  await ctx.chrome.send('Input.insertText', { text: ' дальше' });
+  await wait(300);
+  check('пробел и текст продолжают выбранный запрос',
+    await ctx.chrome.evaluate(`document.querySelector('input').value`) === 'zz-nebula-probe-query дальше');
+  await ctx.chrome.evaluate(KEY('Escape'));
+  await wait(150);
+  check('после настоящего ввода Escape не откатывает продолженный запрос',
+    await ctx.chrome.evaluate(`document.querySelector('input').value`) === 'zz-nebula-probe-query дальше');
 });
 
 console.log(`\nИтого: ${ok} прошло, ${bad} не прошло\n`);
