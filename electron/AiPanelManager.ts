@@ -411,6 +411,8 @@ function ensureIpcRegistered(): void {
 function ensurePanelView(st: PanelInstance): WebContentsView {
   if (st.view) return st.view
   ensureIpcRegistered()
+  // Полноэкранное видео занимает окно целиком; вместе с панелью убираем и нативные веб-слоты.
+  st.win.on('enter-full-screen', () => { if (st.open) closePanel(st) })
   const view = new WebContentsView({
     webPreferences: {
       preload: path.join(__dirname, 'preload-aipanel.js'),
