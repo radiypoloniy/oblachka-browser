@@ -18,6 +18,9 @@ interface Watcher {
   pageKey: string;
   hash: string;
   stableAt: number;
+  waitingAt: number;
+  text: string;
+  version: string;
   abort: AbortController | null;
   published: string;
 }
@@ -60,7 +63,7 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
   const wc = tab ? tm?.getActiveWebContents(tab.id) : null;
   const pageKey = `${app.getPath('userData')}:${tab?.id}:${tab?.url}`;
   if (pageKey !== w.pageKey) {
-    stop(w); w.pageKey = pageKey; w.hash = ''; w.stableAt = Date.now();
+    stop(w); w.pageKey = pageKey; w.hash = ''; w.stableAt = Date.now(); w.waitingAt = Date.now();
     w.state = { ...emptyState(), tabId: tab?.id ?? null }; publish(w);
   }
   if (!tab || !wc || wc.isDestroyed() || !eligibleInsightPage(tab.url)) { phase(w, 'idle', 'На этой странице нет материала для карточек'); return; }
@@ -76,22 +79,26 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
   if (w.pageKey !== pageKey || !panel.open || w.sender.isDestroyed() || watchers.get(w.sender.id) !== w ||
       !freshConfig.enabled || freshConfig.connectionId !== config.connectionId || freshConfig.allowRemote !== config.allowRemote) return;
   if (text.length < 600) { stop(w); w.state.cards = []; phase(w, 'idle', 'Здесь недостаточно текста для полезных карточек'); return; }
-  const hash = createHash('sha256').update(text).update(String(version)).digest('hex');
+  const hash = w.text === text && w.version === String(version) && w.hash ? w.hash :
+    createHash('sha256').update(text).update(String(version)).digest('hex');
+  w.text = text; w.version = String(version);
   if (w.hash !== hash) {
-    stop(w); w.hash = hash; w.stableAt = Date.now();
-    phase(w, w.state.cards.length ? 'stale' : 'idle', 'Жду, пока страница перестанет меняться');
+    w.hash = hash; w.stableAt = Date.now();
+    if (!w.waitingAt) w.waitingAt = Date.now();
+    if (!w.abort) phase(w, w.state.cards.length ? 'stale' : 'idle', 'Подготавливаю текст страницы');
   }
+  if (w.abort) return;
   const cacheKey = `${app.getPath('userData')}:${tab.url}:${target.id}:${hash}`;
   const hit = cache.get(cacheKey);
-  if (hit && !explicit) { w.state.cards = hit.cards; w.state.via = hit.via; phase(w, 'ready', hit.cards.length ? 'По текущей версии страницы' : 'Существенных подсказок не нашлось'); return; }
-  if (w.abort || (!explicit && Date.now() - w.stableAt < 4000)) return;
+  if (hit && !explicit) { w.state.cards = hit.cards; w.state.via = hit.via; phase(w, 'ready', hit.cards.length ? 'По текущей версии страницы' : 'В ответе модели нет карточек. Можно повторить разбор'); return; }
+  if (w.abort || (!explicit && (Date.now() - w.stableAt < 4000 && Date.now() - w.waitingAt < 10000))) return;
   if (!explicit && target.local && (target.id !== LOCAL_CONNECTION_ID || !insightModelWarm())) {
     phase(w, 'sleep', target.id === LOCAL_CONNECTION_ID ? 'Модель отдыхает. Автоподсказки её не загружают' :
       'Для локального API запустите разбор вручную — браузер не загружает модель в фоне'); return;
   }
   const attemptKey = `${pageKey}:${target.id}`;
   if (!explicit && Date.now() - (attempts.get(attemptKey) ?? 0) < INSIGHTS_COOLDOWN) {
-    phase(w, w.state.cards.length ? 'stale' : 'idle', 'Следующий автоматический разбор — после паузы'); return;
+    if (w.state.phase !== 'error') phase(w, w.state.cards.length ? 'stale' : 'idle', 'Следующий автоматический разбор — после паузы'); return;
   }
   // Одна задача на всё приложение: несколько окон не устраивают параллельный фоновый инференс.
   if ([...watchers.values()].some(other => other.abort !== null)) return;
@@ -100,13 +107,16 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
   const abort = new AbortController(); w.abort = abort;
   phase(w, 'reading', 'Выделяю главное на странице');
   void generateInsights(text, tab.title, target.id, explicit, abort.signal).then(async cards => {
-    if (abort.signal.aborted || w.pageKey !== pageKey || w.hash !== hash) return;
+    if (abort.signal.aborted || w.pageKey !== pageKey || wc.isDestroyed()) return;
     // Ответ может прийти между тиками проверки DOM. Перед публикацией сверяем источник ещё раз.
     const fresh = await insightPageText(wc);
-    if (abort.signal.aborted || fresh !== text || !insightsConfig().enabled) return;
+    if (abort.signal.aborted || w.pageKey !== pageKey || !insightsConfig().enabled) return;
     cache.set(cacheKey, { cards, via: w.state.via }); trim(cache, 40);
-    w.state.cards = cards; phase(w, 'ready', cards.length ? 'По текущей версии страницы' : 'Существенных подсказок не нашлось');
-  }).catch(() => {
+    w.state.cards = cards; w.waitingAt = 0;
+    phase(w, fresh !== text ? 'stale' : 'ready', fresh !== text ? 'Материал изменился во время разбора. Можно обновить карточки' :
+      cards.length ? 'По текущей версии страницы' : 'В ответе модели нет карточек. Можно повторить разбор');
+  }).catch(error => {
+    if (!abort.signal.aborted) console.warn('[page-insights] Разбор не выполнен:', error instanceof Error ? error.message : 'ошибка подключения');
     if (!abort.signal.aborted && w.pageKey === pageKey) phase(w, 'error', 'Не удалось разобрать страницу. Можно повторить вручную');
   }).finally(() => { if (w.abort === abort) w.abort = null; });
 }
@@ -136,7 +146,7 @@ export function registerPageInsightsIpc(): void {
     const existing = watchers.get(e.sender.id);
     if (!visible) { if (existing) stop(existing); watchers.delete(e.sender.id); }
     else if (!existing) {
-      watchers.set(e.sender.id, { sender: e.sender, state: emptyState(), pageKey: '', hash: '', stableAt: 0, abort: null, published: '' });
+      watchers.set(e.sender.id, { sender: e.sender, state: emptyState(), pageKey: '', hash: '', stableAt: 0, waitingAt: 0, text: '', version: '', abort: null, published: '' });
       e.sender.once('destroyed', () => { const w = watchers.get(e.sender.id); if (w) stop(w); watchers.delete(e.sender.id); });
     }
     if (watchers.size && !timer) { timer = setInterval(() => { void tick(); }, 2500); timer.unref(); }
