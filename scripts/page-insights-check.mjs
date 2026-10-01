@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import * as m from '../shared/pageInsights.ts';
+assert.equal(m.INSIGHTS_MAX, 5);
+assert.equal(m.normalizeInsights({ dailyLimit: -1 }).dailyLimit, 1);
+assert.equal(m.normalizeInsights({ dailyLimit: Infinity }).dailyLimit, 12);
+assert.equal(m.normalizeInsights({ enabled: false }).enabled, false);
+const fragment = { id: 1, text: 'Важное условие: все файлы нужно скачать отдельно перед удалением проекта.' };
+const item = { title: 'Файлы отдельно', text: 'Скачайте файлы заранее.', kind: 'Условие', source: 1, quote: fragment.text };
+assert.equal(m.validateInsights({ cards: [item] }, [fragment]).length, 1);
+assert.equal(m.validateInsights({ cards: [item, item] }, [fragment]).length, 1);
+assert.equal(m.validateInsights({ cards: [{ ...item, quote: 'Несуществующая цитата длиннее двадцати символов' }] }, [fragment]).length, 0);
+assert.equal(m.validateInsights({ cards: [{ ...item, source: 2 }] }, [fragment]).length, 0);
+const fragments = Array.from({ length: 8 }, (_, i) => ({ id: i + 1, text: `Проверяемый факт номер ${i} — достаточно длинная цитата из исходной страницы.` }));
+assert.equal(m.validateInsights({ cards: fragments.map(f => ({ ...item, title: 'Факт ' + f.id, source: f.id, quote: f.text })) }, fragments).length, 5);
+assert.ok(m.selectInsightFragments(('Длинный абзац содержит 24 часа и важное условие. '.repeat(25) + '\n').repeat(40)).reduce((n, f) => n + f.text.length, 0) <= 7600);
+console.log('Карточки: лимит, настройки, цитаты, дубликаты, объём входа — OK');

@@ -11,11 +11,13 @@
 // ⚠️ Относительный импорт тут законен: preload окна хрома НЕ песочный. У гостевых страниц
 // (preload-content.ts) он песочный, и там строки каналов дублируются руками — см. CLAUDE.md.
 import { ipcRenderer } from 'electron';
+import { insightsBridge } from './insights';
 import { IPC } from '../../shared/ipc';
 import type { AiConnection, AiConnectionsState, AiConnectionTest, AiModelList, AiRunnerFound } from '../../shared/ipc';
 import type { AiUsage } from '../../shared/aiUsage';
 
 export const aiBridge = {
+  ...insightsBridge,
   getAiKeyStatus: () => ipcRenderer.invoke(IPC.AI_GET_KEY_STATUS) as Promise<boolean>,
   saveAiKey:      (key: string) => ipcRenderer.invoke(IPC.AI_SAVE_KEY, key) as Promise<boolean>,
   deleteAiKey:    () => ipcRenderer.invoke(IPC.AI_DELETE_KEY) as Promise<void>,

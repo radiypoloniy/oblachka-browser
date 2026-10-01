@@ -5,6 +5,7 @@
 // ответов ЗЕРКАЛЯТСЯ с main вручную — сторож контракта (scripts/contract-check.mjs) сюда не
 // смотрит, и расхождение поймает только человек. Правишь форму в main — правь и здесь.
 import type { AiActivityState } from '../../shared/ipc'
+import type { InsightsApi, InsightsState } from '../../shared/pageInsights'
 import type { AiFileMeta } from '../../shared/aiAttachments'
 import type { CurrencyRatesResult, WeatherResult } from '../components/aiApps';
 
@@ -60,7 +61,11 @@ export interface TabContext {
 
 declare global {
   interface Window {
-    aiPanel: {
+    aiPanel: InsightsApi & {
+      watchPageInsights: (visible: boolean) => void
+      runPageInsights: () => void
+      showInsightSource: (index: number) => void
+      onPageInsights: (cb: (state: InsightsState) => void) => () => void
       close: () => void
       // Что ИИ делает прямо сейчас (общий реестр electron/AiActivity.ts) и его остановка.
       aiActivity: () => Promise<AiActivityState | null>

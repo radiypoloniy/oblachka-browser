@@ -3,6 +3,7 @@
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
 import * as ConnectionStore from '../ai/ConnectionStore';
+import { registerPageInsightsIpc } from '../aipanel/PageInsights';
 import * as KeyStore from '../ai/KeyStore';
 import { connectionsState, probeConnection } from '../ai/connections';
 import { discoverRunners, listModels } from '../ai/modelList';
@@ -26,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 import type { IpcDeps } from './deps';
 
 export function registerAiHubIpc(d: IpcDeps): void {
+  registerPageInsightsIpc();
   const { chromeOf, hubChat, sendTo, winOf } = d;
 
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.

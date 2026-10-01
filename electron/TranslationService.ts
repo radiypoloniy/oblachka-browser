@@ -233,7 +233,7 @@ Inference.onInferenceProcessGone(() => {
   loadedModelId = null
 })
 
-async function ensureLoaded(): Promise<number> {
+export async function ensureLoaded(): Promise<number> {
   if (loadPromise) return loadPromise
   const attempt = (async () => {
     const t0 = performance.now()
