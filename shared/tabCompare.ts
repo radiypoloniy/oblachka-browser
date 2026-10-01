@@ -5,10 +5,14 @@ export interface CompareProduct {
   facts: CompareFact[]; method: 'structured' | 'page'; note: string;
 }
 export interface CompareRow { label: string; cells: (CompareFact | null)[] }
+export interface CompareReference { product: number; fact: number }
+export interface CompareAdviceCard { scenario: string; product: number; reason: string; limitation: string; refs: CompareReference[] }
+export interface CompareAdvice { headline: string; summary: string; refs: CompareReference[]; cards: CompareAdviceCard[]; caveats: string[] }
 export interface CompareState {
   enabled: boolean; candidates: CompareProduct[]; products: CompareProduct[]; rows: CompareRow[];
   phase: 'idle' | 'reading' | 'ready' | 'error'; note: string; connectionId: string;
   models: { id: string; label: string; local: boolean }[]; via: string | null;
+  advice: CompareAdvice | null; suggestedModel: string; stale: boolean; failure: string;
 }
 export interface CompareApi {
   tabCompareState(): Promise<CompareState>;
@@ -46,12 +50,14 @@ export function productForComparison(raw: CompareCollected, tabId: string, url: 
     } catch { /* Битая SEO-разметка не мешает прочитать видимую карточку. */ }
   }
   if (!product && !raw.productUrl) return null;
+  const title = text(raw.heading || product?.name).slice(0, 180);
   const facts: CompareFact[] = [];
   const add = (label: string, value: string, quote = value) => {
     const l = text(label).slice(0, 80), v = text(value).slice(0, 220);
     if (!l || !v || facts.length >= 36 || facts.some(f => cleanLabel(f.label) === cleanLabel(l) && f.value === v)) return;
     facts.push({ id: facts.length + 1, label: l, value: v, quote: text(quote).slice(0, 250) });
   };
+  add('Вариант по названию', title);
   if (product) {
     const brand = record(product.brand);
     add('Бренд', text(brand?.name ?? product.brand));
@@ -80,8 +86,7 @@ export function productForComparison(raw: CompareCollected, tabId: string, url: 
     } else add(k, v, `${k} ${v}`);
     visibleKeys.add(key);
   });
-  const title = text(raw.heading || product?.name).slice(0, 180);
-  if (!title || !facts.length) return null;
+  if (!title || facts.length < 2) return null;
   return { tabId, url, title, facts, category: text(product?.category || raw.category).slice(0, 160), capturedAt: now,
     method: product ? 'structured' : 'page', note: facts.length < 4 ? 'Прочитана только часть данных. Откройте характеристики на сайте и обновите сравнение.' : '' };
 }

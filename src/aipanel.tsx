@@ -24,6 +24,7 @@ import { ActionsRow } from './aipanel/parts/ActionsRow'
 import { MessageList } from './aipanel/parts/MessageList'
 import { PageIsland } from './aipanel/parts/PageIsland'
 import { PageInsights } from './aipanel/parts/PageInsights'
+import { ComparePanelAction } from './components/compare/ComparePanelAction';
 import { useChipsRow } from './aipanel/useChipsRow';
 import './aipanel/contract';
 
@@ -217,7 +218,7 @@ function AiPanel() {
 
         {/* Лента сообщений — minHeight:0 обязателен, иначе flex-контейнер не даёт себе схлопнуться
             под overflowY:auto и скролл не работает (стандартная ловушка flex+scroll). */}
-      <MessageList insights={<PageInsights tabId={tabId} visible={mode === 'chat'} />}
+      <MessageList insights={<><ComparePanelAction /><PageInsights tabId={tabId} visible={mode === 'chat'} /></>}
         listRef={listRef} messages={messages} streamedText={streamedText}
         sending={sending} factChecking={factChecking} webSearching={webSearching}
         error={error} errorCode={errorCode} modelState={modelState}

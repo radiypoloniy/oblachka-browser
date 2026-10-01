@@ -12,8 +12,10 @@ import type { AiConnectionsState } from '../shared/ipc'
 import type { AiActivityState } from '../shared/ipc'
 
 import { insightsPanelBridge } from './preload/insights';
+import { compareBridge } from './preload/compare';
 contextBridge.exposeInMainWorld('aiPanel', {
   ...insightsPanelBridge,
+  ...compareBridge,
   // Иконка приложения на рабочем столе новой вкладки → панель открывается сразу на нём.
   onOpenApp: (cb: (appId: string) => void) => {
     const handler = (_e: unknown, appId: string) => cb(appId)

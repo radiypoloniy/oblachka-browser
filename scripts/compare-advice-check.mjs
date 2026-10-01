@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import { parseCompareAdvice } from '../shared/compareAdvice.ts';
+const products=['A','B'].map((title,i)=>({tabId:title,url:'https://shop.test/'+title,title,category:'',capturedAt:1,method:'page',note:'',facts:[{id:1,label:'ОЗУ',value:i?'8 ГБ':'16 ГБ',quote:i?'8 ГБ':'16 ГБ'}]}));
+const refs=[{product:0,fact:1},{product:1,fact:1}];
+const advice={headline:'Больше ОЗУ или ниже цена',summary:'У A больше оперативной памяти.',refs,cards:[{scenario:'Больше ОЗУ',product:0,reason:'У A 16 ГБ.',limitation:'Производительность по одному объёму ОЗУ не определяем.',refs}],caveats:['Нет данных о процессоре.']};
+assert.deepEqual(parseCompareAdvice({advice},products),advice);
+assert.throws(()=>parseCompareAdvice({advice:{...advice,refs:[refs[0]]}},products),/оснований/);
+assert.throws(()=>parseCompareAdvice({advice:{...advice,cards:[{...advice.cards[0],refs:[{product:0,fact:999}]}]}},products),/подтверждены/);
+assert.throws(()=>parseCompareAdvice({advice:{...advice,cards:[{...advice.cards[0],product:9}]}},products),/подтверждены/);
+assert.throws(()=>parseCompareAdvice({rows:[]},products),/не вернула/);
+assert.equal(parseCompareAdvice({advice:{...advice,cards:Array.from({length:10},(_,i)=>({...advice.cards[0],scenario:'Задача '+i})),caveats:Array(10).fill('Нет данных')}},products).cards.length,3);
+assert.equal(parseCompareAdvice({advice:{...advice,caveats:Array(10).fill('Нет данных')}},products).caveats.length,2);
+assert.equal(parseCompareAdvice({advice:{...advice,cards:Array(3).fill(advice.cards[0])}},products).cards.length,1);
+assert.throws(()=>parseCompareAdvice({advice:{...advice,headline:'ОЗУ',summary:'ОЗУ'}},products),/повторила/);
+assert.throws(()=>parseCompareAdvice({advice:{...advice,cards:[{...advice.cards[0],reason:'ОЗУ'}]}},products),/подтверждены/);
+console.log('ok Основания двух товаров, недостоверные ссылки, неполный ответ, пределы советов, повторение полей и сценариев');

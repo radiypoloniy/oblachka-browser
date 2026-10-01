@@ -6,7 +6,9 @@ import type { SettingsManager } from '../SettingsManager';
 import { getActiveProfile } from '../ProfileStore';
 import * as Connections from '../ai/ConnectionStore';
 import { readCompareProduct } from './ComparePage';
-import { alignComparison, comparisonModels } from './CompareEngine';
+import { alignComparison, comparisonModels, comparisonConnection } from './CompareEngine';
+import { panelBySender, panelViews } from '../aipanel/instances';
+import { OVERLAY_GAP } from '../../shared/overlayMetrics';
 import { readExpandedCompareProduct, revealWbDetails } from './CompareWb';
 import { closeCompareOffer, compareOfferHeight, compareOfferWindow, initCompareOfferDismissal, showCompareOffer } from './CompareOffer';
 
@@ -21,20 +23,23 @@ function forWindow(ctx: WindowContext): Work {
   if (old?.profile === profile) return old;
   old?.controller?.abort();
   const value: Work = { profile, controller: null, comparingTab: null, state: { enabled: prefs.getTabCompareEnabled(), candidates: [],
-    products: [], rows: [], phase: 'idle', note: '', connectionId: '', models: comparisonModels(), via: null } };
+    products: [], rows: [], phase: 'idle', note: '', connectionId: '', models: comparisonModels(), via: null,
+    advice: null, suggestedModel: comparisonConnection(), stale: false, failure: '' } };
   work.set(ctx.win.id, value);
   if (!old) ctx.win.once('closed', () => { work.get(ctx.win.id)?.controller?.abort(); work.delete(ctx.win.id); });
   return value;
 }
 function senderContext(sender: WebContents): WindowContext | null {
-  return contextFromSender(sender) ?? contextForWindow(compareOfferWindow(sender));
+  return contextFromSender(sender) ?? contextForWindow(compareOfferWindow(sender) ?? panelBySender(sender)?.win ?? null);
 }
 function publish(ctx: WindowContext, value: Work): void {
   if (ctx.win.isDestroyed() || work.get(ctx.win.id) !== value || value.profile !== getActiveProfile().id) return;
   value.state.enabled = prefs.getTabCompareEnabled(); value.state.models = comparisonModels();
+  value.state.suggestedModel = comparisonConnection();
   ctx.chromeView.webContents.send(IPC.COMPARE_CHANGED, value.state);
   // Поповер получает ту же копию состояния, а не ходит в ещё одну очередь извлечения.
   for (const wc of webContents.getAllWebContents()) if (compareOfferWindow(wc)?.id === ctx.win.id) wc.send(IPC.COMPARE_CHANGED, value.state);
+  for (const view of panelViews()) if (panelBySender(view.webContents)?.win.id === ctx.win.id) view.webContents.send(IPC.COMPARE_CHANGED, value.state);
 }
 export async function scanCompareCandidates(): Promise<void> {
   if (scanning || !prefs?.getTabCompareEnabled()) return;
@@ -44,6 +49,7 @@ export async function scanCompareCandidates(): Promise<void> {
     for (const ctx of allContexts()) {
       if (ctx.win.isDestroyed() || !ctx.win.isVisible() || ctx.win.isMinimized()) continue;
       const job = forWindow(ctx), tabs = ctx.tabs.snapshot().filter(t => t.kind === 'page' && !t.incognito && !t.isSleeping && /^https?:/.test(t.url));
+      if (!job.state.stale && job.state.products.some(p => !tabs.some(t => t.id === p.tabId && t.url === p.url))) { job.state.stale = true; publish(ctx, job); }
       const activeId = ctx.tabs.getActiveId();
       if (tabs.length < 2 || !tabs.some(t => t.id === activeId)) {
         if (job.state.candidates.length) { job.state.candidates = []; closeCompareOffer(ctx.win); publish(ctx, job); }
@@ -60,6 +66,8 @@ export async function scanCompareCandidates(): Promise<void> {
         const product = reused ? hit.product : await readCompareProduct(wc, tab.id);
         if (ctx.win.isDestroyed() || getActiveProfile().id !== job.profile) break;
         if (!reused) cache.set(wc.id, { url: tab.url, at: Date.now(), product });
+        const previous = job.state.products.find(p => p.tabId === tab.id);
+        if (previous && product && !job.state.stale && (previous.title !== product.title || product.facts.some(f => previous.facts.some(old => old.label === f.label && old.value !== f.value)))) { job.state.stale = true; publish(ctx, job); }
         if (product) products.push(product);
       }
       const active = products.find(p => p.tabId === activeId);
@@ -75,14 +83,15 @@ export async function scanCompareCandidates(): Promise<void> {
 async function start(ctx: WindowContext, ids: unknown, model: unknown, refresh = false): Promise<void> {
   if (!Array.isArray(ids) || ids.length < 2 || ids.length > 5 || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length) throw new Error('Выберите от двух до пяти вкладок');
   if (typeof model !== 'string' || model.length > 200) throw new Error('Некорректное подключение');
+  const modelId = model === 'auto' ? comparisonConnection() : model;
   const visible = ctx.tabs.snapshot();
   const chosen = ids.map(id => visible.find(t => t.id === id));
   if (chosen.some(t => !t || t.incognito || t.kind !== 'page' || t.isSleeping || !/^https?:/.test(t.url))) throw new Error('Вкладка закрыта, спит или недоступна для сравнения');
   const job = forWindow(ctx); job.controller?.abort(); const controller = new AbortController(); job.controller = controller;
   closeCompareOffer(ctx.win);
-  job.state = { ...job.state, phase: 'reading', note: 'Читаю открытые карточки товаров…', connectionId: model, via: null };
+  job.state = { ...job.state, phase: 'reading', note: 'Читаю открытые карточки товаров…', connectionId: modelId, failure: '' };
   if (!refresh) {
-    job.state.products = []; job.state.rows = []; job.state.via = null;
+    job.state.products = []; job.state.rows = []; job.state.via = null; job.state.advice = null; job.state.stale = false;
     if (job.comparingTab && visible.some(t => t.id === job.comparingTab)) ctx.tabs.activate(job.comparingTab);
     else job.comparingTab = ctx.tabs.createSpecialTab('compare');
   }
@@ -97,30 +106,36 @@ async function start(ctx: WindowContext, ids: unknown, model: unknown, refresh =
       products.push(product);
     }
     if (!current()) return;
-    job.state.products = products; job.state.rows = comparisonRows(products);
-    job.state.note = model ? 'Данные уже доступны. Модель сопоставляет названия характеристик…' : 'Данные из открытых страниц';
+    if (!refresh) { job.state.products = products; job.state.rows = comparisonRows(products); }
+    job.state.note = modelId ? 'Модель разбирает различия и готовит советы…' : 'Исходные данные собраны. Подключите модель для советов.';
     publish(ctx, job);
     // Не более одного запроса на сравнение. Автоматическое предложение никогда не трогает модель.
+    // На CPU первый токен измеримо приходит позже: локальному разбору даём больше времени,
+    // сохраняя конечный предел и отмену, чтобы не держать очередь бесконечно.
+    const timeout = comparisonModels().find(m => m.id === modelId)?.local ? 240_000 : 120_000;
     let timer: NodeJS.Timeout | undefined;
     try {
-      job.state.rows = await Promise.race([alignComparison(products, model, controller.signal), new Promise<never>((_, reject) => {
-        timer = setTimeout(() => { controller.abort(); reject(new Error('Модель не успела ответить. Исходные данные сохранены.')); }, 120_000);
+      const result = await Promise.race([alignComparison(products, modelId, controller.signal), new Promise<never>((_, reject) => {
+        timer = setTimeout(() => { controller.abort(); reject(new Error('Модель не успела ответить. Исходные данные сохранены.')); }, timeout);
       })]);
+      if (!current()) return;
+      job.state.products = products; job.state.rows = result.rows; job.state.advice = result.advice; job.state.stale = false;
     } finally { if (timer) clearTimeout(timer); }
     if (!current()) return;
-    job.state.phase = 'ready'; job.state.via = comparisonModels().find(c => c.id === model)?.label ?? null;
-    job.state.note = 'Снимок выбранных вариантов. Цены и условия могли измениться — обновите перед покупкой.';
+    job.state.phase = 'ready'; job.state.via = comparisonModels().find(c => c.id === modelId)?.label ?? null;
+    job.state.note = modelId ? 'Снимок выбранных вариантов. Цены и условия могли измениться.' : 'Подключите локальную или облачную модель для советов. Исходные данные уже доступны.';
   } catch (e) {
     if (ctx.win.isDestroyed() || work.get(ctx.win.id) !== job || job.profile !== getActiveProfile().id || job.controller !== controller) return;
     job.state.phase = job.state.products.length ? 'ready' : 'error';
     job.state.note = e instanceof Error ? e.message : 'Не удалось собрать сравнение';
+    job.state.failure = job.state.note;
   } finally { if (job.controller === controller) { job.controller = null; publish(ctx, job); } }
 }
 export function registerTabCompareIpc(settings: SettingsManager): void {
   prefs = settings; initCompareOfferDismissal();
   Connections.onChanged(() => { for (const ctx of allContexts()) publish(ctx, forWindow(ctx)); });
   const timer = setInterval(() => { void scanCompareCandidates().catch(() => { /* Следующий проход повторит чтение. */ }); }, 6000); timer.unref();
-  ipcMain.handle(IPC.COMPARE_STATE, e => { const ctx = senderContext(e.sender); if (!ctx) throw new Error('Окно недоступно'); const job = forWindow(ctx); job.state.models = comparisonModels(); return job.state; });
+  ipcMain.handle(IPC.COMPARE_STATE, e => { const ctx = senderContext(e.sender); if (!ctx) throw new Error('Окно недоступно'); const job = forWindow(ctx); job.state.models = comparisonModels(); job.state.suggestedModel = comparisonConnection(); return job.state; });
   ipcMain.handle(IPC.COMPARE_ENABLED, (_e, enabled: unknown) => {
     if (typeof enabled !== 'boolean') throw new Error('Некорректная настройка');
     prefs.setTabCompareEnabled(enabled);
@@ -128,7 +143,7 @@ export function registerTabCompareIpc(settings: SettingsManager): void {
     if (enabled) void scanCompareCandidates();
   });
   ipcMain.handle(IPC.COMPARE_OFFER_SHOW, async (e, anchor) => {
-    const ctx = contextFromSender(e.sender);
+    const ctx = senderContext(e.sender);
     if (ctx && anchor?.automatic) {
       if (!ctx.win.isFocused() || ctx.win.isFullScreen()) return;
       const activeId = ctx.tabs.getActiveId(), active = ctx.tabs.getActiveWebContents();
@@ -140,6 +155,8 @@ export function registerTabCompareIpc(settings: SettingsManager): void {
         new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(true), 500); }),
       ]).finally(() => { if (timer) clearTimeout(timer); }) : true;
       if (editing || ctx.win.isDestroyed() || ctx.tabs.getActiveId() !== activeId) return;
+      const bounds = ctx.tabs.getTabViewBounds(activeId);
+      anchor = { ...anchor, x: bounds.x + bounds.width - 24, y: bounds.y + 24 - OVERLAY_GAP - 1, width: 1, height: 1 };
     }
     if (ctx && prefs.getTabCompareEnabled() && forWindow(ctx).state.candidates.length >= 2 && anchor
       && ['x', 'y', 'width', 'height'].every(k => typeof anchor[k] === 'number' && Number.isFinite(anchor[k])) && anchor.width > 0 && anchor.height > 0) showCompareOffer(ctx.win, anchor);

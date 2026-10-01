@@ -1,43 +1,41 @@
-import { useState } from 'react';
-import { Columns3, RefreshCw, ArrowUpRight, X } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
+import { RefreshCw, Sparkles, X } from 'lucide-react';
 import { useCompare } from './useCompare';
-import { islandPlate } from '../../styles/island';
-import { TEXT, sp } from '../../styles/system';
-import { QuietButton } from '../popoverKit';
+import { untintedPlateVars } from '../../styles/island';
+import { TEXT, DISPLAY, sp, RADIUS, PAGE_MAX, panelIsland, panelRoom, grain, glyph } from '../../styles/system';
+import { QuietButton, PrimaryButton } from '../popoverKit';
+import { ModelChip } from '../ai/ModelChip';
+import { CompareSummary } from './CompareSummary';
+import { CompareFacts } from './CompareFacts';
 import { useLanguage } from '../../i18n';
 import './compare.css';
 
+const geometry = { '--compare-s1': `${sp(1)}px`, '--compare-s2': `${sp(2)}px`, '--compare-s3': `${sp(3)}px`, '--compare-s4': `${sp(4)}px`, '--compare-s6': `${sp(6)}px`, '--compare-s8': `${sp(8)}px`, '--compare-box': `${RADIUS.box}px`, '--compare-control': `${RADIUS.control}px` } as CSSProperties;
 export default function CompareView({ onClose }: { onClose(): void }) {
-  const state = useCompare(), [differences, setDifferences] = useState(false), [error, setError] = useState(''), { t } = useLanguage();
-  const rows = state?.rows.filter(r => !differences || new Set(r.cells.map(f => f?.value.toLocaleLowerCase().replace(/\s+/g, ' ').trim() ?? '')).size > 1) ?? [];
-  const busy = state?.phase === 'reading';
-  const refresh = () => { setError(''); void window.oblako.refreshTabCompare().catch(e => setError(e instanceof Error ? e.message : t('Не удалось обновить сравнение'))); };
-  return <section className="compare-view" style={islandPlate} aria-label={t('Сравнение товаров')}>
-    <header className="compare-header">
-      <div><span className="compare-cap"><Columns3 size={15} />{t('СРАВНЕНИЕ')}</span><h1>{t('Выберите по различиям')}</h1><p>{state?.note || t('Откройте несколько похожих товаров и нажмите кнопку сравнения в тулбаре.')}</p></div>
-      <QuietButton onClick={onClose}><span aria-label={t('Закрыть')}><X size={16} /></span></QuietButton>
-    </header>
-    <div className="compare-controls">
-      <label><input type="checkbox" checked={differences} onChange={e => setDifferences(e.target.checked)} />{t('Только различия')}</label>
-      {!!state?.products.length && <QuietButton disabled={busy} onClick={refresh}><span className="compare-action"><RefreshCw size={14} />{t('Обновить данные')}</span></QuietButton>}
-      {busy && <span role="status" style={TEXT.caption}>{t('Собираю сравнение…')}</span>}
-      {state?.via && <span style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>{state.via}</span>}
+  const state = useCompare(), [section, setSection] = useState<'summary' | 'facts'>('summary'), [error, setError] = useState(''), { t } = useLanguage();
+  const busy = state?.phase === 'reading', hasData = !!state?.products.length;
+  const generate = () => { setError(''); if (state) void window.oblako.startTabCompare(state.products.map(p => p.tabId), 'auto').catch(e => setError(e instanceof Error ? e.message : t('Не удалось обновить сравнение'))); };
+  const source = (id: string, fact: number) => { setError(''); void window.oblako.tabCompareSource(id, fact).then(ok => { if (!ok) setError(t('Источник закрыт или изменился. Обновите сравнение.')); }).catch(() => setError(t('Не удалось открыть источник'))); };
+  return <div className="compare-room" style={{ ...panelRoom, ...geometry }}><section className="compare-view" style={{ ...panelIsland(), ...untintedPlateVars, ...TEXT.body, maxWidth: PAGE_MAX.sheet, margin: '0 auto' }} aria-label={t('Сравнение товаров')}>
+    <header className="compare-hero"><div style={grain} /><div className="compare-hero-content">
+      <div className="compare-hero-top"><span style={{ ...DISPLAY, fontSize: 19, fontWeight: 700, opacity: .82 }}>{t('Сравнение товаров')}</span>
+        <button onClick={onClose} aria-label={t('Закрыть сравнение')} className="compare-close" style={{ width: sp(8), height: sp(8) }}><X {...glyph(16)} /></button></div>
+      <h1 style={{ ...DISPLAY, fontWeight: 800, color: 'inherit', letterSpacing: '-.04em', lineHeight: 1.1 }}>{state?.advice?.headline || t(busy ? 'Сравнение готовится' : 'Какие различия важны?')}</h1>
+      <p>{state?.advice?.summary || state?.note || t('Читаю выбранные варианты…')}</p>
+      {hasData && <p className="compare-snapshot">{t('Вариантов')}: {state?.products.length} · {state?.via || t('Исходные данные')} · {t('Снимок')} {new Date(state?.products[0].capturedAt ?? 0).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</p>}
+    </div></header>
+    <div className="compare-rail"><div className="compare-segments" role="tablist" aria-label={t('Разделы сравнения')}>
+      {(['summary', 'facts'] as const).map(id => <button key={id} role="tab" aria-selected={section === id} aria-controls={`compare-${id}`} id={`compare-${id}-tab`} onClick={() => setSection(id)}>{t(id === 'summary' ? 'Коротко' : 'Характеристики')}</button>)}
+    </div>{hasData && <QuietButton disabled={busy} onClick={() => { setError(''); void window.oblako.refreshTabCompare().catch(() => setError(t('Не удалось обновить сравнение'))); }}><span className="compare-action"><RefreshCw {...glyph(14)} />{t('Обновить разбор')}</span></QuietButton>}</div>
+    {(busy || state?.stale || error || state?.failure) && <div className="compare-status" role={error || state?.failure ? 'alert' : 'status'}>{error || state?.failure || (state?.stale ? t('Источники изменились или закрыты. Этот разбор устарел.') : t(state?.advice ? 'Обновляю факты и советы. Прежний разбор пока доступен.' : 'Читаю открытые варианты и готовлю разбор…'))}</div>}
+    <div className="compare-sheet" id={`compare-${section}`} role="tabpanel" aria-labelledby={`compare-${section}-tab`}>
+      {section === 'facts' && state && hasData ? <CompareFacts state={state} onSource={source} /> : section === 'summary' && state?.advice ? <CompareSummary state={state} onSource={source} /> : <div className="compare-state"><Sparkles {...glyph(22)} />
+        <h2 style={TEXT.title}>{t(busy ? 'Читаю выбранные варианты' : state?.phase === 'error' ? 'Не удалось прочитать варианты' : state?.connectionId ? 'Советы пока недоступны' : 'Подключите AI для советов')}</h2>
+        <p>{busy ? t('Можно продолжать смотреть страницы. Разбор появится после готовности.') : state?.connectionId ? state.note : t('Характеристики собраны. Чтобы объяснить различия и предложить варианты под вашу задачу, нужна локальная или облачная модель.')}</p>
+        {!busy && hasData && <><ModelChip role="page" drop="down" /><div className="compare-action"><PrimaryButton disabled={!state?.suggestedModel} onClick={generate}>Создать советы</PrimaryButton><QuietButton onClick={() => setSection('facts')}>Посмотреть данные</QuietButton></div>
+          <QuietButton onClick={() => void window.oblako.createSpecialTab('settings', 'ai')}>Настроить модель</QuietButton><p style={TEXT.caption}>{t('Модель вызывается только по нажатию. Для облака — один запрос с учётом расхода.')}</p></>}
+      </div>}
+      {hasData && <footer className="compare-footer"><span>{t('Каждый совет раскрывает основание и ведёт к источнику')}</span><span>{t('Скидки, доставка и выбранный вариант могут влиять на цену')}</span></footer>}
     </div>
-    {error && <p role="alert">{error}</p>}
-    {!!state?.products.length && <div className="compare-table-scroll"><table>
-      <caption className="compare-sr">{t('Характеристики выбранных товаров. Значение открывает источник.')}</caption>
-      <thead><tr><th scope="col">{t('Характеристика')}</th>{state.products.map(p => <th key={p.tabId} scope="col">
-        <span className="compare-host">{new URL(p.url).hostname.replace(/^www\./, '')}</span><strong>{p.title}</strong>
-        <span className="compare-time">{t('Снимок')} {new Date(p.capturedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
-        {p.note && <span className="compare-note">{p.note}</span>}
-      </th>)}</tr></thead>
-      <tbody>{rows.map((row, i) => <tr key={`${i}:${row.label}`}><th scope="row">{row.label}</th>{row.cells.map((fact, j) => <td key={state.products[j].tabId}>
-        {fact ? <button className="compare-value" title={`${fact.label}: ${fact.value}`} onClick={() => {
-          setError(''); void window.oblako.tabCompareSource(state.products[j].tabId, fact.id).then(ok => { if (!ok) setError(t('Источник закрыт или изменился. Обновите сравнение.')); }).catch(() => setError(t('Не удалось открыть источник')));
-        }}><span>{fact.value}</span><ArrowUpRight size={13} /></button> : <span className="compare-missing">{t('Не указано')}</span>}
-      </td>)}</tr>)}</tbody>
-    </table></div>}
-    {state?.products.length && !rows.length ? <p style={{ padding: sp(4) }}>{t('Все прочитанные характеристики совпадают. Выключите фильтр различий, чтобы посмотреть их.')}</p> : null}
-    <footer className="compare-footer">{t('Сравнивается выбранный на сайте вариант. Скидки, кошелёк, доставка и регион могут влиять на цену. Непрочитанные характеристики не дополняются догадками.')}</footer>
-  </section>;
+  </section></div>;
 }

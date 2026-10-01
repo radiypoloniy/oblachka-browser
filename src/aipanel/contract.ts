@@ -59,9 +59,10 @@ export interface TabContext {
   errorCode?: ModelErrorCode | null
 }
 
+import type { CompareApi } from '../../shared/tabCompare';
 declare global {
   interface Window {
-    aiPanel: InsightsApi & {
+    aiPanel: InsightsApi & CompareApi & {
       watchPageInsights: (visible: boolean) => void
       runPageInsights: () => void
       showInsightSource: (index: number) => void

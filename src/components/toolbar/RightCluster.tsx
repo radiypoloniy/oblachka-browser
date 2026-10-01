@@ -8,7 +8,7 @@ import { ProgressRing } from './ProgressRing';
 import { useMcpAgent } from './useMcpAgent';
 import { WindowControls } from './WindowControls';
 import { UpdateIndicator } from './UpdateIndicator';
-import { CompareButton } from '../compare/CompareButton';
+import { CompareSuggestions } from '../compare/CompareSuggestions';
 import { useLanguage } from '../../i18n';
 
 /**
@@ -86,7 +86,7 @@ export function RightCluster(props: {
         </div>
       )}
       <div style={chromeCluster()}>
-        <CompareButton />
+        <CompareSuggestions />
         {/* ⚠️ Тон значка означает СОСТОЯНИЕ, а не важность: в покое нейтральный, как у
             «назад/вперёд/обновить»; акцент загорается, когда панель открыта. */}
         {/* ⚠️ В лёгком окне кнопка ТА ЖЕ и на том же месте — расходится только подпись. Значок
