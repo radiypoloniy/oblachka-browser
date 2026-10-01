@@ -3,7 +3,9 @@ import { IPC } from '../../shared/ipc';
 import { comparisonRows, relatedCompareProducts, type CompareProduct, type CompareState } from '../../shared/tabCompare';
 import { allContexts, contextFromSender, contextForWindow, type WindowContext } from '../WindowRegistry';
 import type { SettingsManager } from '../SettingsManager';
-import { getActiveProfile } from '../ProfileStore';
+import { getActiveProfile, onProfilesChanged } from '../ProfileStore';
+import { compareArchive, archiveChanged, saveCompareSnapshot } from './CompareArchive';
+import { ensureCompareSource } from './CompareSources';
 import * as Connections from '../ai/ConnectionStore';
 import { readCompareProduct } from './ComparePage';
 import { alignComparison, comparisonModels, comparisonConnection } from './CompareEngine';
@@ -12,7 +14,7 @@ import { OVERLAY_GAP } from '../../shared/overlayMetrics';
 import { readExpandedCompareProduct, revealWbDetails } from './CompareWb';
 import { closeCompareOffer, compareOfferHeight, compareOfferWindow, initCompareOfferDismissal, showCompareOffer } from './CompareOffer';
 
-interface Work { state: CompareState; controller: AbortController | null; profile: string; comparingTab: string | null }
+interface Work { state: CompareState; controller: AbortController | null; profile: string; comparingTab: string | null; archiveDiscarded: boolean }
 const work = new Map<number, Work>();
 const cache = new Map<number, { url: string; at: number; product: CompareProduct | null }>();
 let prefs: SettingsManager;
@@ -22,9 +24,9 @@ function forWindow(ctx: WindowContext): Work {
   const old = work.get(ctx.win.id);
   if (old?.profile === profile) return old;
   old?.controller?.abort();
-  const value: Work = { profile, controller: null, comparingTab: null, state: { enabled: prefs.getTabCompareEnabled(), candidates: [],
+  const value: Work = { profile, controller: null, comparingTab: null, archiveDiscarded: false, state: { enabled: prefs.getTabCompareEnabled(), candidates: [],
     products: [], rows: [], phase: 'idle', note: '', connectionId: '', models: comparisonModels(), via: null,
-    advice: null, suggestedModel: comparisonConnection(), stale: false, failure: '' } };
+    advice: null, suggestedModel: comparisonConnection(), stale: false, failure: '', archiveId: null, archiveError: '' } };
   work.set(ctx.win.id, value);
   if (!old) ctx.win.once('closed', () => { work.get(ctx.win.id)?.controller?.abort(); work.delete(ctx.win.id); });
   return value;
@@ -88,10 +90,12 @@ async function start(ctx: WindowContext, ids: unknown, model: unknown, refresh =
   const chosen = ids.map(id => visible.find(t => t.id === id));
   if (chosen.some(t => !t || t.incognito || t.kind !== 'page' || t.isSleeping || !/^https?:/.test(t.url))) throw new Error('Вкладка закрыта, спит или недоступна для сравнения');
   const job = forWindow(ctx); job.controller?.abort(); const controller = new AbortController(); job.controller = controller;
+  job.archiveDiscarded = false;
   closeCompareOffer(ctx.win);
   job.state = { ...job.state, phase: 'reading', note: 'Читаю открытые карточки товаров…', connectionId: modelId, failure: '' };
   if (!refresh) {
     job.state.products = []; job.state.rows = []; job.state.via = null; job.state.advice = null; job.state.stale = false;
+    job.state.archiveId = null; job.state.archiveError = '';
     if (job.comparingTab && visible.some(t => t.id === job.comparingTab)) ctx.tabs.activate(job.comparingTab);
     else job.comparingTab = ctx.tabs.createSpecialTab('compare');
   }
@@ -106,7 +110,7 @@ async function start(ctx: WindowContext, ids: unknown, model: unknown, refresh =
       products.push(product);
     }
     if (!current()) return;
-    if (!refresh) { job.state.products = products; job.state.rows = comparisonRows(products); }
+    if (!refresh) { job.state.products = products; job.state.rows = comparisonRows(products); saveCompareSnapshot(job.state); }
     job.state.note = modelId ? 'Модель разбирает различия и готовит советы…' : 'Исходные данные собраны. Подключите модель для советов.';
     publish(ctx, job);
     // Не более одного запроса на сравнение. Автоматическое предложение никогда не трогает модель.
@@ -129,10 +133,11 @@ async function start(ctx: WindowContext, ids: unknown, model: unknown, refresh =
     job.state.phase = job.state.products.length ? 'ready' : 'error';
     job.state.note = e instanceof Error ? e.message : 'Не удалось собрать сравнение';
     job.state.failure = job.state.note;
-  } finally { if (job.controller === controller) { job.controller = null; publish(ctx, job); } }
+  } finally { if (job.controller === controller) { job.controller = null; if (!job.archiveDiscarded && work.get(ctx.win.id) === job && job.profile === getActiveProfile().id) saveCompareSnapshot(job.state); publish(ctx, job); } }
 }
 export function registerTabCompareIpc(settings: SettingsManager): void {
   prefs = settings; initCompareOfferDismissal();
+  onProfilesChanged(() => { archiveChanged(); for (const ctx of allContexts()) publish(ctx, forWindow(ctx)); });
   Connections.onChanged(() => { for (const ctx of allContexts()) publish(ctx, forWindow(ctx)); });
   const timer = setInterval(() => { void scanCompareCandidates().catch(() => { /* Следующий проход повторит чтение. */ }); }, 6000); timer.unref();
   ipcMain.handle(IPC.COMPARE_STATE, e => { const ctx = senderContext(e.sender); if (!ctx) throw new Error('Окно недоступно'); const job = forWindow(ctx); job.state.models = comparisonModels(); job.state.suggestedModel = comparisonConnection(); return job.state; });
@@ -167,14 +172,48 @@ export function registerTabCompareIpc(settings: SettingsManager): void {
     const ctx = senderContext(e.sender); if (!ctx) throw new Error('Окно недоступно');
     return start(ctx, ids, model);
   });
-  ipcMain.handle(IPC.COMPARE_REFRESH, e => { const ctx = senderContext(e.sender); if (!ctx) return; const job = forWindow(ctx); return start(ctx, job.state.products.map(p => p.tabId), job.state.connectionId, true); });
+  ipcMain.handle(IPC.COMPARE_ARCHIVE, (e, query: unknown, offset: unknown) => {
+    if (!senderContext(e.sender) || typeof query !== 'string' || !Number.isInteger(offset) || (offset as number) < 0 || (offset as number) > 1_000_000) throw new Error('Некорректный запрос архива');
+    return compareArchive().list(query, offset as number);
+  });
+  ipcMain.handle(IPC.COMPARE_ARCHIVE_OPEN, (e, id: unknown) => {
+    const ctx = senderContext(e.sender); if (!ctx || typeof id !== 'string' || id.length > 100) throw new Error('Некорректное сравнение');
+    const saved = compareArchive().get(id); if (!saved) throw new Error('Сравнение уже удалено');
+    const job = forWindow(ctx); job.controller?.abort(); job.controller = null; job.archiveDiscarded = false;
+    const tabs = ctx.tabs.snapshot();
+    saved.products = saved.products.map(p => ({ ...p, tabId: tabs.find(t => t.kind === 'page' && !t.incognito && t.url === p.url)?.id ?? p.tabId }));
+    job.state = { ...job.state, products: saved.products, rows: saved.rows, advice: saved.advice, via: saved.via,
+      connectionId: saved.connectionId, archiveId: id, archiveError: '', phase: 'ready', failure: '',
+      stale: Date.now() - saved.updatedAt > 60_000 || saved.products.some(p => !tabs.some(t => t.id === p.tabId && t.url === p.url)), note: 'Сохранённый снимок. Обновление выполняется только по нажатию.' };
+    closeCompareOffer(ctx.win);
+    if (job.comparingTab && tabs.some(t => t.id === job.comparingTab)) ctx.tabs.activate(job.comparingTab);
+    else job.comparingTab = ctx.tabs.createSpecialTab('compare');
+    publish(ctx, job);
+  });
+  ipcMain.handle(IPC.COMPARE_ARCHIVE_REMOVE, (e, id: unknown) => {
+    if (!senderContext(e.sender) || typeof id !== 'string' || id.length > 100) throw new Error('Некорректное сравнение');
+    compareArchive().remove(id);
+    // Открытый результат остаётся доступен, но его следующее обновление станет новым снимком.
+    for (const ctx of allContexts()) { const job = forWindow(ctx); if (job.state.archiveId === id) { job.archiveDiscarded = true; job.state.archiveId = null; publish(ctx, job); } }
+    archiveChanged();
+  });
+  ipcMain.handle(IPC.COMPARE_REFRESH, async e => {
+    const ctx = senderContext(e.sender); if (!ctx) return; const job = forWindow(ctx), state = job.state;
+    const ids: string[] = [];
+    for (const product of state.products) {
+      ids.push(await ensureCompareSource(ctx, product));
+      if (job.state !== state || job.profile !== getActiveProfile().id) throw new Error('Сравнение изменилось. Повторите обновление.');
+    }
+    return start(ctx, ids, state.connectionId, true);
+  });
   ipcMain.handle(IPC.COMPARE_SOURCE, async (e, id: string, factId: number) => {
     const ctx = senderContext(e.sender); if (!ctx) return false;
     const product = forWindow(ctx).state.products.find(p => p.tabId === id), fact = product?.facts.find(f => f.id === factId);
-    const tab = ctx.tabs.snapshot().find(t => t.id === id);
-    if (!fact || !product || !tab || tab.url !== product.url) return false;
-    ctx.tabs.activate(id);
-    const wc = ctx.tabs.getWebContentsForTab(id);
+    if (!fact || !product) return false;
+    const job = forWindow(ctx), state = job.state, sourceId = await ensureCompareSource(ctx, product);
+    if (job.state !== state || job.profile !== getActiveProfile().id) return false;
+    product.tabId = sourceId; ctx.tabs.activate(sourceId); publish(ctx, job);
+    const wc = ctx.tabs.getWebContentsForTab(sourceId);
     if (wc) { await revealWbDetails(wc); if (!wc.isDestroyed()) wc.findInPage(fact.value, { forward: true }); }
     return true;
   });

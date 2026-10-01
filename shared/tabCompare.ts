@@ -13,6 +13,7 @@ export interface CompareState {
   phase: 'idle' | 'reading' | 'ready' | 'error'; note: string; connectionId: string;
   models: { id: string; label: string; local: boolean }[]; via: string | null;
   advice: CompareAdvice | null; suggestedModel: string; stale: boolean; failure: string;
+  archiveId: string | null; archiveError: string;
 }
 export interface CompareApi {
   tabCompareState(): Promise<CompareState>;
@@ -23,6 +24,10 @@ export interface CompareApi {
   startTabCompare(tabIds: string[], connectionId: string): Promise<void>;
   refreshTabCompare(): Promise<void>;
   tabCompareSource(tabId: string, factId: number): Promise<boolean>;
+  tabCompareArchive(query: string, offset: number): Promise<import('./compareArchive').CompareArchivePage>;
+  onTabCompareArchiveChanged(cb: () => void): () => void;
+  openTabCompareArchive(id: string): Promise<void>;
+  removeTabCompareArchive(id: string): Promise<void>;
 }
 export interface CompareCollected {
   title: string; heading: string; category: string; blocks: string[];

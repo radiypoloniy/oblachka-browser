@@ -8,4 +8,8 @@ export const COMPARE = {
   COMPARE_START: 'compare:start',
   COMPARE_REFRESH: 'compare:refresh',
   COMPARE_SOURCE: 'compare:source',
+  COMPARE_ARCHIVE: 'compare:archive',
+  COMPARE_ARCHIVE_CHANGED: 'compare:archive-changed',
+  COMPARE_ARCHIVE_OPEN: 'compare:archive-open',
+  COMPARE_ARCHIVE_REMOVE: 'compare:archive-remove',
 } as const;

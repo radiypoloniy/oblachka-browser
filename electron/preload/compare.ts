@@ -15,4 +15,12 @@ export const compareBridge: CompareApi = {
   startTabCompare: (ids, connectionId) => ipcRenderer.invoke(IPC.COMPARE_START, ids, connectionId),
   refreshTabCompare: () => ipcRenderer.invoke(IPC.COMPARE_REFRESH),
   tabCompareSource: (id, factId) => ipcRenderer.invoke(IPC.COMPARE_SOURCE, id, factId),
+  tabCompareArchive: (query, offset) => ipcRenderer.invoke(IPC.COMPARE_ARCHIVE, query, offset),
+  onTabCompareArchiveChanged: cb => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.COMPARE_ARCHIVE_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.COMPARE_ARCHIVE_CHANGED, handler);
+  },
+  openTabCompareArchive: id => ipcRenderer.invoke(IPC.COMPARE_ARCHIVE_OPEN, id),
+  removeTabCompareArchive: id => ipcRenderer.invoke(IPC.COMPARE_ARCHIVE_REMOVE, id),
 };

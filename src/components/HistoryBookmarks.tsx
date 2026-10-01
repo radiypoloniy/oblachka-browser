@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { Clock, Star, Download, TrendingDown, Plug } from 'lucide-react';
+import { Clock, Star, Download, TrendingDown, Plug, Columns3 } from 'lucide-react';
+import CompareArchiveView from './compare/CompareArchiveView';
 import { RADIUS, TEXT, motion, pad, sp, panelFrame } from '../styles/system';
 import History from './History';
 import Bookmarks from './Bookmarks';
@@ -12,7 +13,7 @@ import { useLanguage } from '../i18n';
 import type { LibrarySummary, LibraryTone } from './library/kit';
 import type { DownloadEntry } from '../../shared/ipc';
 
-type Section = 'history' | 'bookmarks' | 'downloads' | 'search' | 'tracking' | 'agents';
+type Section = 'history' | 'bookmarks' | 'downloads' | 'search' | 'tracking' | 'agents' | 'comparisons';
 
 interface Props {
   defaultSection: Section;
@@ -25,8 +26,8 @@ interface Props {
 // БИБЛИОТЕКА — объединённая точка входа: История, Закладки, Загрузки, Отслеживание и поиск
 // сразу по всем трём архивам.
 //
-// ⚠️ Состав разделов НЕ меняется и менять его не надо: человек приходит с одним вопросом «где я
-// это видел», и разводить ответы по разным экранам значило бы требовать знать ответ заранее.
+// Человек приходит с одним вопросом «где я это видел»: сохранённые сравнения тоже живут
+// в общей библиотеке, чтобы закрытие результата не превращалось в повторный платный разбор.
 // Поиск «Везде» отдельно от четвёрки — тоже верно: это не пятый архив, а способ искать.
 //
 // ⚠️ ЧТО ИЗМЕНИЛОСЬ. Раньше каждый из пяти разделов был самостоятельным островом со своей
@@ -42,6 +43,7 @@ const TONE: Record<Section, LibraryTone> = {
   bookmarks: 'mustard',
   downloads: 'tea',
   tracking: 'tangerine',
+  comparisons: 'mustard',
   // ⚠️ Агентам достаётся ЧАЙ, а не свой пятый тон: у библиотеки их всего пять, и заводить шестой
   // ради раздела, куда заходят реже всех, значило бы размыть узнавание остальных.
   agents: 'tea',
@@ -54,6 +56,7 @@ const TITLE: Record<Section, string> = {
   bookmarks: 'Закладки',
   downloads: 'Загрузки',
   tracking: 'Отслеживание',
+  comparisons: 'Сравнения',
   agents: 'Агенты',
   search: 'Поиск везде',
 };
@@ -63,6 +66,7 @@ const PLACEHOLDER: Record<Section, string> = {
   bookmarks: 'Искать по закладкам…',
   downloads: 'Искать по загрузкам…',
   tracking: 'Искать по товарам…',
+  comparisons: 'Искать по сравнениям…',
   agents: 'Искать по обращениям…',
   search: 'Один вопрос по истории, закладкам и загрузкам — Enter',
 };
@@ -72,6 +76,7 @@ const RAIL: { id: Exclude<Section, 'search'>; label: string; icon: JSX.Element }
   { id: 'bookmarks', label: 'Закладки', icon: <Star size={14} /> },
   { id: 'downloads', label: 'Загрузки', icon: <Download size={14} /> },
   { id: 'tracking', label: 'Отслеживание', icon: <TrendingDown size={14} /> },
+  { id: 'comparisons', label: 'Сравнения', icon: <Columns3 size={14} /> },
   // ⚠️ «Кто приходил и что делал» — это библиотека, а не настройки: там отвечают на вопрос
   // «включено ли и как подключиться», здесь — показывают накопленное (см. Agents.tsx).
   { id: 'agents', label: 'Агенты', icon: <Plug size={14} /> },
@@ -92,7 +97,7 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
 
   const rail = (
     <div style={{
-      display: 'inline-flex', padding: 3, gap: 2, flex: 'none',
+      display: 'inline-flex', flexWrap: 'wrap', maxWidth: '100%', padding: 3, gap: 2, flex: '0 1 auto',
       background: 'var(--surface)', borderRadius: RADIUS.pill,
       border: '1px solid var(--divider)',
     }}>
@@ -142,6 +147,7 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
           : shown === 'history' ? <History query={query} onSummary={onSummary} />
             : shown === 'bookmarks' ? <Bookmarks query={query} onSummary={onSummary} />
               : shown === 'tracking' ? <Tracking query={query} onSummary={onSummary} />
+                : shown === 'comparisons' ? <CompareArchiveView query={query} onSummary={onSummary} />
                 : shown === 'agents' ? <Agents query={query} onSummary={onSummary} />
                 : <Downloads downloads={downloads} query={query} onSummary={onSummary} />}
       </LibraryShell>
