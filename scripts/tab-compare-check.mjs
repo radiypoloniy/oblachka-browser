@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import { productForComparison, comparisonRows, relatedCompareProducts, mergeComparisonLabels } from '../shared/tabCompare.ts';
+const raw = { title:'Ноутбук', heading:'Ноутбук A', category:'Ноутбуки', blocks:[], pairs:[], prices:[], blocked:false, productUrl:false };
+const json = { '@type':'Product', name:'Ноутбук A', category:'Ноутбуки', brand:{name:'Brand'}, offers:{price:50000,priceCurrency:'RUB'},
+  additionalProperty:[{name:'ОЗУ',value:'16 ГБ'},{name:'SSD',value:'512 ГБ'}] };
+const a = productForComparison({...raw,blocks:[JSON.stringify(json)]},'a','https://shop.test/a',1);
+assert.ok(a); assert.equal(a.facts.find(f=>f.label==='Цена по разметке').value,'50000 RUB');
+const wb = productForComparison({...raw, heading:'Ноутбук B', productUrl:true,prices:['45 000 ₽ с WB Кошельком'],pairs:[['Оперативная память','8 ГБ'],['SSD','512 ГБ']]},'b','https://www.wildberries.ru/catalog/1/detail.aspx',2);
+assert.ok(wb); assert.equal(wb.method,'page');assert.equal(wb.facts.find(f=>f.label==='Цена на странице').value,'45 000 ₽ с WB Кошельком');
+assert.equal(productForComparison({...raw,blocks:[JSON.stringify({'@type':'ItemList',itemListElement:[json]})]},'x','https://shop.test/search'),null);
+assert.equal(productForComparison({...raw, productUrl:true, blocked:true,prices:['100 ₽']},'x','https://shop.test/'),null);
+assert.equal(productForComparison({...raw, productUrl:true},'x','https://shop.test/'),null);
+const visible=productForComparison({...raw,blocks:[JSON.stringify(json)],prices:['49 000 ₽ по карте']},'x','https://shop.test/');
+assert.ok(!visible.facts.some(f=>f.label==='Цена по разметке'));
+const variant=productForComparison({...raw,heading:'Ноутбук выбранный вариант',blocks:[JSON.stringify(json)],pairs:[['Оперативная память','8 ГБ']]},'x','https://shop.test/');
+assert.equal(variant.title,'Ноутбук выбранный вариант');
+assert.equal(comparisonRows([variant])[0].cells.length,1);
+assert.equal(comparisonRows([variant]).find(r=>r.label==='Оперативная память').cells[0].value,'8 ГБ');
+const rows=comparisonRows([a,wb]); assert.equal(rows.find(r=>r.label==='SSD').cells[1].value,'512 ГБ');
+const merged=mergeComparisonLabels({rows:[{label:'Оперативная память',refs:[a.facts.find(f=>f.label==='ОЗУ').id,wb.facts.find(f=>f.label==='Оперативная память').id]}]},[a,wb],rows);
+assert.deepEqual(merged.find(r=>r.label==='Оперативная память').cells.map(f=>f.value),['16 ГБ','8 ГБ']);
+const bogus=mergeComparisonLabels({rows:[{label:'Придуманная цена',refs:[999,999]}]},[a,wb],rows);assert.deepEqual(bogus,rows);
+const priceRefs=[a.facts.find(f=>f.label==='Цена по разметке').id,wb.facts.find(f=>f.label==='Цена на странице').id];
+assert.deepEqual(mergeComparisonLabels({rows:[{label:'Цена',refs:priceRefs}]},[a,wb],rows),rows);
+assert.deepEqual(relatedCompareProducts(a,[wb,{...wb,tabId:'tv',title:'Телевизор Brand',category:'Телевизоры'}]).map(p=>p.tabId),['a','b']);
+const lots=productForComparison({...raw,productUrl:true,pairs:Array.from({length:100},(_,i)=>['Свойство '+i,'Значение '+i])},'x','https://shop.test/');assert.equal(lots.facts.length,36);
+console.log('OK: JSON-LD, WB без разметки, условная цена, выдача, блокировка, пустая карточка, источники, пределы, недостоверные ответы модели');

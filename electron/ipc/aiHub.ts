@@ -4,6 +4,7 @@
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
 import * as ConnectionStore from '../ai/ConnectionStore';
 import { registerPageInsightsIpc } from '../aipanel/PageInsights';
+import { registerTabCompareIpc } from '../compare/TabCompare';
 import * as KeyStore from '../ai/KeyStore';
 import { connectionsState, probeConnection } from '../ai/connections';
 import { discoverRunners, listModels } from '../ai/modelList';
@@ -28,6 +29,7 @@ import type { IpcDeps } from './deps';
 
 export function registerAiHubIpc(d: IpcDeps): void {
   registerPageInsightsIpc();
+  registerTabCompareIpc(d.settings);
   const { chromeOf, hubChat, sendTo, winOf } = d;
 
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.

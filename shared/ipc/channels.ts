@@ -18,6 +18,7 @@ import { CONTENT } from './channels/content';
 import { PANELS } from './channels/panels';
 import { SERVICES } from './channels/services';
 import { OMNIBOX_RESUME_CH } from './channels/omniboxResume';
+import { COMPARE } from './channels/compare';
 
 export const IPC = {
   ...SHELL,
@@ -25,4 +26,5 @@ export const IPC = {
   ...PANELS,
   ...SERVICES,
   ...OMNIBOX_RESUME_CH,
+  ...COMPARE,
 } as const;

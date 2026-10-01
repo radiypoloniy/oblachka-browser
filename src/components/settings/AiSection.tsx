@@ -9,6 +9,7 @@ import { AiUsageBlock } from './AiUsageBlock';
 import { AiRolesBlock } from './AiRolesBlock';
 import { McpBlock } from './McpBlock';
 import { PageInsightsSettings } from './PageInsightsSettings';
+import { CompareSettings } from './CompareSettings';
 import type { AiConnectionsState } from '../../../shared/ipc';
 import type { AiUsage } from '../../../shared/aiUsage';
 import {
@@ -47,6 +48,7 @@ export default function AiSection() {
       <ModelsSection />
       <AiConnectionsSection />
       <PageInsightsSettings />
+      <CompareSettings />
       <TranslationEngineSection />
       <HistoryBackfillSection />
       <SkillsSection />

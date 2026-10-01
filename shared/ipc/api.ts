@@ -6,5 +6,6 @@
 import type { CoreApi } from './api-core';
 import type { DataApi } from './api-data';
 import type { AiApi } from './api-ai';
+import type { CompareApi } from '../tabCompare';
 
-export interface OblakoApi extends CoreApi, DataApi, AiApi {}
+export interface OblakoApi extends CoreApi, DataApi, AiApi, CompareApi {}

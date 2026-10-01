@@ -84,6 +84,7 @@ interface PersistedSettings {
   neverSleepSites: string[];
   // Версия, про которую человек сказал «не спрашивать». Следующий релиз спрашивает снова.
   updateSkipVersion: string | null;
+  tabCompareEnabled: boolean;
 }
 
 // Хосты приходят и из меню, и с диска — нормализатор один. Пустые и мусорные строки выбрасываем
@@ -213,6 +214,7 @@ export class SettingsManager {
   #recommendedSites: RecommendedSite[] | null = null;
   #neverSleepSites: string[] = [];
   #updateSkipVersion: string | null = null;
+  #tabCompareEnabled = true;
   readonly #settingsPath: string;
 
   constructor() {
@@ -417,6 +419,9 @@ export class SettingsManager {
     return this.#updateSkipVersion;
   }
 
+  getTabCompareEnabled(): boolean { return this.#tabCompareEnabled; }
+  setTabCompareEnabled(enabled: boolean): void { this.#tabCompareEnabled = enabled; this.#write(); }
+
   setUpdateSkipVersion(version: string | null): void {
     const v = typeof version === 'string' ? version.trim() : '';
     this.#updateSkipVersion = v && v.length <= 32 ? v : null;
@@ -497,6 +502,8 @@ export class SettingsManager {
         if (rs !== undefined && rs !== null) this.#recommendedSites = normalizeRecommended(rs) ?? [];
         this.#neverSleepSites = normalizeHosts((data as Record<string, unknown>)['neverSleepSites']);
         const skip = (data as Record<string, unknown>)['updateSkipVersion'];
+        const compare = (data as Record<string, unknown>)['tabCompareEnabled'];
+        if (typeof compare === 'boolean') this.#tabCompareEnabled = compare;
         if (typeof skip === 'string' && skip.trim() && skip.trim().length <= 32) {
           this.#updateSkipVersion = skip.trim();
         }
@@ -525,6 +532,7 @@ export class SettingsManager {
       recommendedSites: this.#recommendedSites,
       neverSleepSites: this.#neverSleepSites,
       updateSkipVersion: this.#updateSkipVersion,
+      tabCompareEnabled: this.#tabCompareEnabled,
     };
     const tmpPath = this.#settingsPath + '.tmp';
     try {

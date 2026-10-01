@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { ProfilesState, ProfileSettings, ProfileAvatar, ProfileLook } from '../shared/profiles';
 import { IPC } from '../shared/ipc';
-import { aiBridge, updatesBridge, mcpBridge, flightBridge, tabSearchBridge } from './preload/bridges';
+import { aiBridge, updatesBridge, mcpBridge, flightBridge, tabSearchBridge, compareBridge } from './preload/bridges';
 import type { OblakoApi, AiActivityState, PageLength, SpecialTabKind, SyncState, ContentBounds, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, OmniboxResume, RecommendedSite, PageChangesResult, RelatedPagesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordHealthItem, PasswordBreachCheckResult, PasswordIndicatorState, PasswordPreferences, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, DayDigestState, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, GenSpecOutcome, GenProgress, GenWebResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../shared/graph';
@@ -37,7 +37,7 @@ const api: OblakoApi = {
   dismissTrackedMerge: (aId: number, bId: number) => ipcRenderer.invoke(IPC.TRACKING_MERGE_DISMISS, aId, bId) as Promise<void>,
   ungroupTracked: (id: number) => ipcRenderer.invoke(IPC.TRACKING_UNGROUP, id) as Promise<void>,
   ...flightBridge,
-  ...tabSearchBridge,
+  ...tabSearchBridge, ...compareBridge,
   getClipboardCount: () => ipcRenderer.invoke(IPC.CLIPBOARD_COUNT) as Promise<number>,
   onClipboardChanged: (cb: (count: number) => void) => {
     const handler = (_e: unknown, count: number) => cb(count);

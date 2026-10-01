@@ -20,6 +20,7 @@ import * as autofillOrchestrator from '../AutofillOrchestrator';
 import { closeAutofillPopover, showAutofillPopover, syncAutofillPopoverAnchorBounds } from '../AutofillPopoverManager';
 import * as clipboardBuffer from '../ClipboardBuffer';
 import { closeClipboardPopover, toggleClipboardPopover } from '../ClipboardPopoverManager';
+import { closeCompareOffer } from '../compare/CompareOffer';
 import { closeDownloadsPopover } from '../DownloadsPopoverManager';
 import { openExternalWithConsent } from '../ExternalProtocol';
 import { closeFindBar, sendFindResult, showFindBar } from '../FindBarManager';
@@ -175,7 +176,7 @@ export function createWindowTabManager(
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
       // Снимок привязан к той вкладке, которую сняли: над чужой страницей карточке не место.
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); closeClipboardPopover(win);
+      closeCompareOffer(win); closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); closeClipboardPopover(win);
       // Вопрос о разрешении привязан к конкретной странице — над чужой вкладкой ему не место.
       if (win) for (const id of dropPermissionRequests(win)) permissions.cancel(id);
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем

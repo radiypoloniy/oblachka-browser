@@ -206,7 +206,7 @@ export const INCOGNITO_PARTITION = 'oblako-incognito';
 // union по месту: копий было четыре (контракт, preload, обработчик в main, TabManager), и они
 // уже разъехались — 'downloads' знали только две из них, хотя вкладка загрузок открывается из
 // App.tsx. Рантайму это не вредило (типы стираются), но читающий main видел неправду.
-export type SpecialTabKind = 'history' | 'settings' | 'bookmarks' | 'downloads';
+export type SpecialTabKind = 'history' | 'settings' | 'bookmarks' | 'downloads' | 'compare';
 
 export interface TabState {
   id: string;

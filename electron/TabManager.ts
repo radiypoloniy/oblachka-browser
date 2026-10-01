@@ -119,7 +119,7 @@ interface ManagedTab {
   // (см. ниже) → savable()===false и isHttpView(null)===false уже естественно исключают её из
   // сессии/сна без отдельных правок в SessionManager/sleep-таймере (см. диагностику, подтверждено
   // чтением кода: serializeNodes фильтрует по savable(), sleep-таймер — по isHttpView).
-  kind?: 'history' | 'settings' | 'bookmarks' | 'downloads';
+  kind?: SpecialTabKind;
   // Начальный раздел для kind==='settings' (см. createSpecialTab ниже) — необязателен, задаётся
   // только когда вызывающая сторона просит конкретный раздел (напр. кнопка "+" в AI-панели).
   section?: string;
@@ -503,7 +503,7 @@ export class TabManager {
         tabError: null,
         url: '', title: t.kind === 'history' ? 'История посещений'
           : t.kind === 'bookmarks' ? 'Закладки'
-          : t.kind === 'downloads' ? 'Загрузки' : 'Настройки',
+          : t.kind === 'downloads' ? 'Загрузки' : t.kind === 'compare' ? 'Сравнение товаров' : 'Настройки',
         faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false,
         isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: false, audible: false, muted: false, kind: t.kind, section: t.section,
       };

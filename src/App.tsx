@@ -5,6 +5,7 @@ import { FaviconTile } from './components/sidebar/FaviconTile';
 import Toolbar from './components/Toolbar';
 import Hub from './components/Hub';
 import TabError from './components/TabError';
+import CompareView from './components/compare/CompareView';
 import Settings from './components/Settings';
 import HistoryBookmarks from './components/HistoryBookmarks';
 import ImportDialog from './components/ImportDialog';
@@ -424,7 +425,7 @@ export default function App() {
           marginTop: 'var(--gutter-shell)', marginBottom: 'var(--gutter-shell)', marginLeft: 'var(--gutter-shell)',
           marginRight: aiPanelOpen ? 0 : SHELL_MARGIN,
         }}>
-          {kind === 'history' || kind === 'bookmarks' || kind === 'downloads' ? (
+          {kind === 'compare' ? <CompareView onClose={() => void window.oblako.closeTab(activeId)} /> : kind === 'history' || kind === 'bookmarks' || kind === 'downloads' ? (
             // Загрузки теперь третья секция того же острова, а не свой экран — см. HistoryBookmarks.
             // ⚠️ section перекрывает kind: так «Что я отслеживаю» открывается существующим видом
             // вкладки ('history') с секцией 'tracking' — новый вид попал бы в session.json, а

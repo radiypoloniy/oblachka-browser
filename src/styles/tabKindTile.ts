@@ -1,4 +1,4 @@
-import { Clock, Star, Settings, Download, type LucideIcon } from 'lucide-react';
+import { Clock, Star, Settings, Download, Columns3, type LucideIcon } from 'lucide-react';
 import type { TabState } from '../../shared/ipc';
 
 // Единый маппинг kind → цветная плитка для псевдо-вкладок (История/Закладки/Настройки) в
@@ -20,4 +20,5 @@ export const TAB_KIND_TILE: Partial<Record<TabState['kind'], { Icon: LucideIcon;
   bookmarks: { Icon: Star,     color: 'var(--tile-pink)' },
   settings:  { Icon: Settings, color: 'var(--tile-grey)' },
   downloads: { Icon: Download, color: 'var(--tile-teal)' },
+  compare:   { Icon: Columns3, color: 'var(--tile-orange)' },
 };

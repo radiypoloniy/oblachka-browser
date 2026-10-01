@@ -5,3 +5,4 @@ export { updatesBridge } from './updatesBridge';
 export { mcpBridge } from './mcpBridge';
 export { flightBridge } from './flightBridge';
 export { tabSearchBridge } from './tabSearchBridge';
+export { compareBridge } from './compare';
