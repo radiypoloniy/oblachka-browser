@@ -311,14 +311,14 @@ function setOpenState(st: PanelInstance, open: boolean): void {
   chromeOf(st.win)?.send(IPC.AI_PANEL_STATE_CHANGED, open)
 }
 
-function closePanel(st: PanelInstance): void {
+function closePanel(st: PanelInstance, restoreFocus = true): void {
   webApps.setPanelVisible(st.win, false) // веб-слоты прячутся вместе с панелью (но живут в памяти)
   if (st.view) st.win.contentView.removeChildView(st.view)
   setOpenState(st, false)
   // Панель забирала фокус при открытии (см. toggleAiPanel) — отдаём его обратно странице, иначе
   // после закрытия им не владеет никто и клавиатура молчит уже на самой странице. Тот же возврат
   // делает FindBar при закрытии.
-  tabsOf(st.win)?.focusActiveView()
+  if (restoreFocus) tabsOf(st.win)?.focusActiveView()
 }
 
 // Живой ресайз — драг разделителя в App.tsx шлёт сюда каждый тик (ad-hoc ai-panel:resize,
@@ -412,6 +412,9 @@ function ensurePanelView(st: PanelInstance): WebContentsView {
   if (st.view) return st.view
   ensureIpcRegistered()
   // Полноэкранное видео занимает окно целиком; вместе с панелью убираем и нативные веб-слоты.
+  // Во время запроса видео уже владеет фокусом; лишний focus() запускает побочные оверлеи.
+  const events: import('node:events').EventEmitter = st.win
+  events.on('oblako:prepare-html-fullscreen', () => { if (st.open) closePanel(st, false) })
   st.win.on('enter-full-screen', () => { if (st.open) closePanel(st) })
   const view = new WebContentsView({
     webPreferences: {

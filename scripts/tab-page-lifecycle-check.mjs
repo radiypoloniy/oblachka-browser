@@ -31,6 +31,7 @@ class FakeWindow extends EventEmitter {
 const wc = new FakePage();
 const win = new FakeWindow();
 const calls = [];
+win.on('oblako:prepare-html-fullscreen', () => calls.push(['prepare-fullscreen']));
 let owned = true;
 let firstLoaded = false;
 let active = true;
@@ -93,7 +94,7 @@ check('показанный split-партнёр виден, инкогнито 
 ]);
 
 wc.emit('enter-html-full-screen');
-check('fullscreen ждёт событие окна перед раскладкой', calls.splice(0), [['fullscreen-id', 'tab-a']]);
+check('оверлеи убраны до разворота окна и раскладки', calls.splice(0), [['prepare-fullscreen'], ['fullscreen-id', 'tab-a']]);
 win.emit('enter-full-screen');
 check('после разворота окна вью переставлена', calls.splice(0), [['reposition']]);
 wc.emit('leave-html-full-screen');

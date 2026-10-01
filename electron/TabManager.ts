@@ -861,6 +861,7 @@ export class TabManager {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        disableHtmlFullscreenWindowResize: true, // порядок перехода задаёт tabPageLifecycle
         // Менеджер паролей, шаг 2 — сканер форм (см. CONTENT_PRELOAD_PATH выше). Без
         // nodeIntegrationInSubFrames — preload намеренно НЕ выполняется в кросс-origin iframe
         // (структурный гвард против чтения/заполнения чужого origin, см. PasswordAutofillManager.ts).
@@ -879,7 +880,6 @@ export class TabManager {
     this.tabMap.set(id, tab);
     this.nodes.push({ type: 'single', tabId: id });
     this.wirePageEvents(id, view);
-
     const target = this.resolveInput(rawUrl ?? 'about:blank');
     if (target !== 'about:blank') {
       const opts: LoadURLOptions = {};
@@ -995,7 +995,7 @@ export class TabManager {
   createPinnedTab(rawUrl: string, cachedFaviconData?: string): string {
     const id = randomUUID();
     const view = new WebContentsView({
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: CONTENT_PRELOAD_PATH },
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: CONTENT_PRELOAD_PATH, disableHtmlFullscreenWindowResize: true },
     });
     if (cachedFaviconData) {
       const w = view.webContents as unknown as { _oblakoFavicon?: string; _oblakoFaviconData?: string };
@@ -1171,7 +1171,7 @@ export class TabManager {
     if (!tab?.sleeping) return;
     const { url, faviconData, faviconUrl } = tab.sleeping;
     const view = new WebContentsView({
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: CONTENT_PRELOAD_PATH },
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: CONTENT_PRELOAD_PATH, disableHtmlFullscreenWindowResize: true },
     });
     const w = view.webContents as unknown as { _oblakoFavicon?: string; _oblakoFaviconData?: string };
     if (faviconData) w._oblakoFavicon = w._oblakoFaviconData = faviconData;

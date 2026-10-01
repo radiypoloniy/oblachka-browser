@@ -74,11 +74,12 @@ export function wireTabPageLifecycle(id: string, wc: WebContents, host: PageLife
   wc.on('did-navigate-in-page', (_e, url, isMainFrame) =>
     handleSpaInPageNavigate(wc, url, isMainFrame, host.incognito(), host.notify, host.onNavigate));
 
-  // Разворачиваем окно и вью вместе, но переставляем bounds лишь после OS-анимации окна.
+  // HTML-fullscreen не меняет окно автоматически: сначала убираем оверлеи, затем один разворот.
   wc.on('enter-html-full-screen', () => {
     if (!host.mine()) return;
-    host.setFullscreenTabId(id);
     if (host.win.isDestroyed()) return;
+    host.win.emit('oblako:prepare-html-fullscreen');
+    host.setFullscreenTabId(id);
     if (host.win.isFullScreen()) { host.repositionViews(); return; }
     host.win.once('enter-full-screen', host.repositionViews);
     host.win.setFullScreen(true);
