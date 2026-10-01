@@ -136,7 +136,7 @@ export interface ModelIdleState {
   loading: boolean;
   /** Очередь к модели не пуста либо генерация идёт. */
   busy: boolean;
-  /** Открыта AI-панель: пауза в диалоге не значит, что диалог кончился. */
+  /** Открыта AI-панель; сам показ интерфейса не продлевает время жизни модели. */
   panelOpen: boolean;
   /** Когда человек в последний раз просил модель (фоновые задачи сюда НЕ входят). */
   lastUserRequestAt: number;
@@ -162,7 +162,8 @@ export type UnloadReason = 'idle' | 'pressure';
  * тёплой, но своего времени ей не покупает.
  */
 export function shouldUnloadModel(s: ModelIdleState, now: number): UnloadReason | null {
-  if (!s.loaded || s.loading || s.busy || s.panelOpen) return null;
+  // Открытая панель может лишь показывать карточки: время жизни продлевает просьба человека.
+  if (!s.loaded || s.loading || s.busy) return null;
   const idleMs = now - s.lastUserRequestAt;
   if (s.unloadModelOnIdle && idleMs >= MODEL_IDLE_TIMEOUT) return 'idle';
   // Давление проверяем ПОСЛЕ простоя: если сработали оба, честнее назвать причиной простой —

@@ -15,6 +15,8 @@ export async function generateInsights(text: string, title: string, connectionId
   if (!fragments.length) return [];
   init({ ensureLoaded, modelId: getLoadedModelId });
   const provider = providerById(connectionId);
+  // Реестр умеет откатываться на локальную; для автоматических карточек такой откат запрещён.
+  if (provider.connection.id !== connectionId) throw new Error('Выбранное подключение недоступно');
   const prompt = `Выдели от 0 до 5 самых важных, различных выводов из материала. Отвечай по-русски.
 Приоритет: главный вывод, существенные условия и исключения, сроки, стоимость, следующий шаг.
 Не заполняй все пять мест, если полезного меньше. Не добавляй фактов, которых нет в источнике.

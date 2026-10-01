@@ -8,6 +8,7 @@ import { AiConnectionsBlock } from './AiConnectionsBlock';
 import { AiUsageBlock } from './AiUsageBlock';
 import { AiRolesBlock } from './AiRolesBlock';
 import { McpBlock } from './McpBlock';
+import { PageInsightsSettings } from './PageInsightsSettings';
 import type { AiConnectionsState } from '../../../shared/ipc';
 import type { AiUsage } from '../../../shared/aiUsage';
 import {
@@ -45,6 +46,7 @@ export default function AiSection() {
 
       <ModelsSection />
       <AiConnectionsSection />
+      <PageInsightsSettings />
       <TranslationEngineSection />
       <HistoryBackfillSection />
       <SkillsSection />

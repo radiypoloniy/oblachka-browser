@@ -14,9 +14,10 @@ import { describeChatError } from './describeChatError';
  * поле ввода за обрез панели.
  */
 export function MessageList({
-  listRef, messages, streamedText, sending, factChecking, webSearching, error, errorCode, modelState,
+  listRef, messages, streamedText, sending, factChecking, webSearching, error, errorCode, modelState, insights,
 }: {
   listRef: React.RefObject<HTMLDivElement>;
+  insights?: React.ReactNode;
   messages: ChatMessage[];
   streamedText: string;
   sending: boolean;
@@ -32,6 +33,7 @@ export function MessageList({
     display: 'flex', flexDirection: 'column', gap: 10,
     padding: `10px var(--pad-island) var(--pad-island)`,
   }}>
+    {insights}
     {/* ⚠️ Приглашение прижато К НИЗУ (marginTop:auto), а не висит вверху пустой ленты:
         иначе между ним и действиями у поля ввода зияет дыра во весь экран, и это читается
         как поломка. Оно отвечает на единственное, чего про панель не знают: страница уже

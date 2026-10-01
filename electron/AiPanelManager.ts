@@ -18,6 +18,7 @@ import {
 } from './aipanel/instances'
 import { registerWebAppChannels } from './aipanel/webAppBridge'
 import { sendCurrentContext, syncTabChat, registerTabChatIpc, wireTabChat } from './aipanel/tabChat'
+import { pausePageInsights } from './aipanel/PageInsights'
 import { getCurrencyRates } from './CurrencyRates'
 import { getWeather } from './WeatherService'
 import * as webApps from './WebAppManager'
@@ -306,6 +307,7 @@ function layoutPanel(st: PanelInstance): void {
 // ширины в App.tsx оставался висеть после закрытия панели не через тулбар.
 function setOpenState(st: PanelInstance, open: boolean): void {
   st.open = open
+  if (!open) pausePageInsights(st.win.id)
   chromeOf(st.win)?.send(IPC.AI_PANEL_STATE_CHANGED, open)
 }
 

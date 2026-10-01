@@ -10,6 +10,7 @@ import { broadcastToChrome } from '../WindowRegistry';
 import { insightsConfig, setInsightsConfig, reserveInsightRequest } from './InsightsStore';
 import { eligibleInsightPage, insightPageText, revealInsight } from './InsightsPage';
 import { generateInsights, insightModelWarm } from './InsightsGeneration';
+import { sendCurrentContext } from './tabChat';
 
 interface Watcher {
   sender: WebContents;
@@ -34,6 +35,9 @@ function publish(w: Watcher): void {
   w.published = serialized; w.sender.send(INSIGHTS.state, w.state);
 }
 function stop(w: Watcher): void { w.abort?.abort(); w.abort = null; }
+export function pausePageInsights(windowId: number): void {
+  for (const w of watchers.values()) if (panelBySender(w.sender)?.win.id === windowId) stop(w);
+}
 function trim<T>(map: Map<string, T>, max: number): void {
   while (map.size > max) { const key = map.keys().next().value; if (key !== undefined) map.delete(key); }
 }
@@ -68,7 +72,9 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
   const version = target.id === LOCAL_CONNECTION_ID ? Models.getDefault()?.id :
     JSON.stringify(connectionsState().connections.find(c => c.id === target.id));
   const text = await insightPageText(wc);
-  if (w.pageKey !== pageKey || !panel.open || w.sender.isDestroyed()) return;
+  const freshConfig = insightsConfig();
+  if (w.pageKey !== pageKey || !panel.open || w.sender.isDestroyed() || watchers.get(w.sender.id) !== w ||
+      !freshConfig.enabled || freshConfig.connectionId !== config.connectionId || freshConfig.allowRemote !== config.allowRemote) return;
   if (text.length < 600) { stop(w); w.state.cards = []; phase(w, 'idle', 'Здесь недостаточно текста для полезных карточек'); return; }
   const hash = createHash('sha256').update(text).update(String(version)).digest('hex');
   if (w.hash !== hash) {
@@ -79,7 +85,10 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
   const hit = cache.get(cacheKey);
   if (hit) { w.state.cards = hit.cards; w.state.via = hit.via; phase(w, 'ready', hit.cards.length ? 'По текущей версии страницы' : 'Существенных подсказок не нашлось'); return; }
   if (w.abort || (!explicit && Date.now() - w.stableAt < 4000)) return;
-  if (!explicit && target.id === LOCAL_CONNECTION_ID && !insightModelWarm()) { phase(w, 'sleep', 'Модель отдыхает. Автоподсказки её не загружают'); return; }
+  if (!explicit && target.local && (target.id !== LOCAL_CONNECTION_ID || !insightModelWarm())) {
+    phase(w, 'sleep', target.id === LOCAL_CONNECTION_ID ? 'Модель отдыхает. Автоподсказки её не загружают' :
+      'Для локального API запустите разбор вручную — браузер не загружает модель в фоне'); return;
+  }
   const attemptKey = `${pageKey}:${target.id}`;
   if (!explicit && Date.now() - (attempts.get(attemptKey) ?? 0) < INSIGHTS_COOLDOWN) {
     phase(w, w.state.cards.length ? 'stale' : 'idle', 'Следующий автоматический разбор — после паузы'); return;
@@ -122,6 +131,8 @@ export function registerPageInsightsIpc(): void {
   });
   ipcMain.on(INSIGHTS.watch, (e, visible: boolean) => {
     if (!panelBySender(e.sender)) return;
+    // React подписался на контекст: ранний did-finish-load мог обогнать его эффекты.
+    if (visible) sendCurrentContext();
     const existing = watchers.get(e.sender.id);
     if (!visible) { if (existing) stop(existing); watchers.delete(e.sender.id); }
     else if (!existing) {

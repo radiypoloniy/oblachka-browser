@@ -3,12 +3,14 @@ import type { WebContents } from 'electron';
 // Формы и редактируемые поля не входят ни в отпечаток страницы, ни в запрос модели.
 const SAMPLE = `(() => {
   if (!document.body) return '';
-  const root = document.querySelector('article') || document.querySelector('main') || document.body;
+  const article = document.querySelector('article');
+  const root = article || document.querySelector('main') || document.body;
+  if (!article && root.querySelector('textarea,[contenteditable="true"],[role="log"],[role="feed"]')) return '';
   const copy = root.cloneNode(true);
   copy.querySelectorAll('nav,header,footer,aside,form,input,textarea,select,script,style,[contenteditable]').forEach(n => n.remove());
   const blocks = [...copy.querySelectorAll('p,li,h1,h2,h3,h4,blockquote,pre,td')];
   const text = blocks.length ? blocks.map(n => n.textContent || '').join('\\n') : copy.textContent || '';
-  return text.slice(0,60000);
+  return text;
 })()`;
 export async function insightPageText(wc: WebContents): Promise<string> {
   const text: unknown = await wc.executeJavaScript(SAMPLE);
@@ -27,8 +29,9 @@ export async function revealInsight(wc: WebContents, quote: string): Promise<voi
   await wc.executeJavaScript(`(() => {
     const quote = ${JSON.stringify(quote)};
     const nodes = [...document.querySelectorAll('p,li,blockquote,pre,td,main,article')];
-    const node = nodes.find(n => !n.closest('form,[contenteditable]') &&
-      (n.textContent || '').replace(/\\s+/g,' ').includes(quote));
+    const node = nodes.filter(n => !n.closest('form,[contenteditable]') &&
+      (n.textContent || '').replace(/\\s+/g,' ').includes(quote))
+      .sort((a,b) => (a.textContent || '').length - (b.textContent || '').length)[0];
     if (!node) return;
     node.scrollIntoView({behavior:'smooth',block:'center'});
     const range = document.createRange(); range.selectNodeContents(node);

@@ -43,7 +43,7 @@ export function normalizeInsights(value: unknown, base = DEFAULT_INSIGHTS): Insi
 }
 export interface InsightFragment { id: number; text: string; }
 export function selectInsightFragments(text: string): InsightFragment[] {
-  const blocks = text.split(/\n+/).map(s => s.replace(/\s+/g, ' ').trim()).filter(s => s.length >= 45);
+  const blocks = [...new Set(text.split(/\n+/).map(s => s.replace(/\s+/g, ' ').trim()).filter(s => s.length >= 45))];
   const ranked = blocks.map((text, i) => ({ text, i, score: (i < 3 ? 4 : 0) +
     (/\d/.test(text) ? 2 : 0) + (/важн|исключ|не вход|отмен|срок|огранич|however|except|must|deadline|limit/i.test(text) ? 3 : 0) }));
   ranked.sort((a, b) => b.score - a.score || a.i - b.i);
