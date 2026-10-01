@@ -1,7 +1,8 @@
-import { net } from 'electron';
 import type { PasswordManager } from './PasswordManager';
 import type { PasswordBreachCheckResult, PasswordBreachItem } from '../shared/ipc';
-import { parsePasswordRange, passwordRangeHash } from '../shared/passwordBreach';
+import { parsePasswordRange } from '../shared/passwordBreach';
+import { passwordRangeHash } from './passwordRangeHash';
+import { fetchInProfile } from './ProfileSession';
 
 const RANGE_URL = 'https://api.pwnedpasswords.com/range/';
 const RANGE_CACHE_MS = 15 * 60_000;
@@ -17,9 +18,10 @@ async function fetchRange(prefix: string): Promise<Map<string, number>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await net.fetch(`${RANGE_URL}${prefix}`, {
+    const response = await fetchInProfile(`${RANGE_URL}${prefix}`, {
       method: 'GET',
       headers: { 'Add-Padding': 'true', 'User-Agent': 'Oblako-Browser/Password-Check' },
+      credentials: 'omit',
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);

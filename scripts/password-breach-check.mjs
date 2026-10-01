@@ -1,6 +1,7 @@
 // Чистая часть k-anonymity проверки: хеширование и разбор padded range-ответа без сети/Electron.
 // Запуск: node --experimental-strip-types scripts/password-breach-check.mjs
-import { parsePasswordRange, passwordRangeHash } from '../shared/passwordBreach.ts';
+import { parsePasswordRange } from '../shared/passwordBreach.ts';
+import { passwordRangeHash } from '../electron/passwordRangeHash.ts';
 import { passwordChangeUrl } from '../shared/passwordChange.ts';
 
 let passed = 0;

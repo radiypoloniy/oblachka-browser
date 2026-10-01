@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TEXT, motion, pad, sp, well } from '../../styles/system';
-import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, ChevronRight, ChevronDown, FileUp, Loader2, ShieldAlert, KeyRound } from 'lucide-react';
+import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, ChevronRight, FileUp, Loader2, ShieldAlert, KeyRound } from 'lucide-react';
 import type { PasswordBreachItem, PasswordMeta, PasswordCopyField, PasswordHealthItem, PasswordPreferences } from '../../../shared/ipc';
 import Toggle from '../Toggle';
 import { passwordChangeUrl } from '../../../shared/passwordChange';
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote, MasterSwitch,
   FactGrid, Fact, Subsection, StatusCard, Panel, Read,
-  InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex, Favicon, settingsBox, SliderRow,
+  InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex, Favicon, settingsBox, SliderRow, Segmented,
 } from './kit'; import { useLanguage } from '../../i18n';
 
 // Геометрия списка. LIST_VIEWPORT держит потолок высоты (см. комментарий у самого списка),
@@ -79,18 +79,18 @@ export default function PasswordsSection() {
   const [csvMsg, setCsvMsg] = useState('');
 
   function refresh() {
-    window.oblako.listPasswords().then(setEntries);
-    window.oblako.getPasswordHealth().then(setHealth);
+    void window.oblako.listPasswords().then(setEntries);
+    void window.oblako.getPasswordHealth().then(setHealth);
   }
 
   useEffect(() => {
     let mounted = true;
-    window.oblako.listPasswords().then((list) => { if (mounted) setEntries(list); });
-    window.oblako.getPasswordHealth().then((list) => { if (mounted) setHealth(list); });
-    window.oblako.getPasswordAuthEnabled().then((v) => { if (mounted) setAuthEnabled(v); });
-    window.oblako.getPasswordPreferences().then((v) => { if (mounted) setPrefs(v); });
+    void window.oblako.listPasswords().then((list) => { if (mounted) setEntries(list); });
+    void window.oblako.getPasswordHealth().then((list) => { if (mounted) setHealth(list); });
+    void window.oblako.getPasswordAuthEnabled().then((v) => { if (mounted) setAuthEnabled(v); });
+    void window.oblako.getPasswordPreferences().then((v) => { if (mounted) setPrefs(v); });
     const unsub = window.oblako.onPasswordsChanged(() => {
-      window.oblako.listPasswords().then((list) => { if (mounted) setEntries(list); });
+      void window.oblako.listPasswords().then((list) => { if (mounted) setEntries(list); });
       // После изменения секрета старый результат больше ничего не доказывает.
       if (mounted) {
         setBreaches([]); setBreachOnly(false); setBreachCheckedAt(null);
@@ -288,7 +288,7 @@ export default function PasswordsSection() {
   useEffect(() => {
     const h = rowProbeRef.current?.getBoundingClientRect().height;
     if (h && Math.abs(h - rowPitch) > 1) setRowPitch(h);
-  });
+  }, [rowPitch, listOpen, filtered.length]);
   // Поиск меняет набор — прокрутку возвращаем в начало, иначе окно указывало бы в пустоту.
   useEffect(() => { setScrollTop(0); if (listRef.current) listRef.current.scrollTop = 0; }, [query]);
 
@@ -366,36 +366,21 @@ export default function PasswordsSection() {
             onChange={() => void patchPrefs({ suggestStrong: !prefs.suggestStrong })}
           />
         </Panel>
-        <div style={{ ...settingsBox, padding: pad(3, 4), display: 'flex', alignItems: 'center', gap: sp(4) }}>
+        <Panel style={{ padding: pad(3, 4), display: 'flex', alignItems: 'center', gap: sp(4) }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ ...TEXT.body, color: 'var(--text-strong)', fontWeight: 650 }}>Windows Hello перед заполнением</div>
             <div style={{ ...TEXT.caption, color: 'var(--text-muted)', marginTop: sp(1) }}>Защищает от использования паролей человеком, получившим доступ к открытому браузеру</div>
           </div>
-          <div style={{ position: 'relative', flex: 'none' }}>
-            <select
-              value={prefs.fillAuthMode}
-              onChange={(e) => void patchPrefs({ fillAuthMode: e.target.value as PasswordPreferences['fillAuthMode'] })}
-              style={{
-                appearance: 'none', WebkitAppearance: 'none', minWidth: 166,
-                border: '1px solid var(--divider)', borderRadius: 'var(--radius-pill)',
-                background: 'var(--surface)', color: 'var(--text-body)',
-                padding: pad(2, 3), paddingRight: sp(8), font: 'inherit', lineHeight: 1.35, cursor: 'default',
-              }}
-            >
-              <option value="never">Не спрашивать</option>
-              <option value="session">Раз за сессию</option>
-              <option value="always">Каждый раз</option>
-            </select>
-            <ChevronDown
-              size={14}
-              aria-hidden
-              style={{
-                position: 'absolute', right: sp(3), top: '50%', transform: 'translateY(-50%)',
-                color: 'var(--text-muted)', pointerEvents: 'none',
-              }}
-            />
-          </div>
-        </div>
+          <Segmented
+            value={prefs.fillAuthMode}
+            options={[
+              { id: 'never', label: 'Не спрашивать' },
+              { id: 'session', label: 'Раз за сессию' },
+              { id: 'always', label: 'Каждый раз' },
+            ]}
+            onChange={(fillAuthMode) => void patchPrefs({ fillAuthMode })}
+          />
+        </Panel>
 
         {prefs.blockedOrigins.length > 0 && (
           <Panel>

@@ -22,6 +22,16 @@ const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const DIGITS = '0123456789';
 const SYMBOLS = '!@#$%^&*()-_=+[]{};:,.<>?';
 
+interface VaultEntry { url: string; username: string; password: string; title: string; notes: string | null }
+
+function isVaultEntry(value: unknown): value is VaultEntry {
+  if (value === null || typeof value !== 'object') return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.url === 'string' && typeof entry.username === 'string'
+    && typeof entry.password === 'string' && typeof entry.title === 'string'
+    && (entry.notes === null || typeof entry.notes === 'string');
+}
+
 export class PasswordManager {
   #db: Database | null = null;
   #dbPath: string;
@@ -216,8 +226,6 @@ export class PasswordManager {
     if (!this.#db || !this.#dek || items.length === 0) return { inserted: 0, skipped: 0 };
     const db = this.#db;
     const dek = this.#dek;
-    let inserted = 0;
-    let skipped = 0;
     try {
       const existsStmt = db.prepare(`SELECT 1 FROM credentials WHERE origin = ? AND username = ? LIMIT 1`);
       const insert = db.prepare(`
@@ -225,6 +233,8 @@ export class PasswordManager {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const run = db.transaction(() => {
+        let inserted = 0;
+        let skipped = 0;
         for (const it of items) {
           if (!it.url || !it.password) { skipped++; continue; }
           const origin = originOf(it.url);
@@ -235,12 +245,13 @@ export class PasswordManager {
           insert.run(origin, it.url, it.username, secret, hostOf(it.url), null, now, now);
           inserted++;
         }
+        return { inserted, skipped };
       });
-      run();
+      return run();
     } catch (e) {
       console.warn('[Passwords] bulkImport error:', (e as Error).message);
+      return { inserted: 0, skipped: 0 };
     }
-    return { inserted, skipped };
   }
 
   update(input: PasswordUpdateInput): boolean {
@@ -352,19 +363,32 @@ export class PasswordManager {
     if (!this.#db || !this.#dek) return 0;
     try {
       const json = VaultCrypto.decryptWithPassphrase(passphrase, payload);
-      const entries = JSON.parse(json) as Array<{ url: string; username: string; password: string; title: string; notes: string | null }>;
-      let count = 0;
-      for (const entry of entries) {
-        const ok = this.add({
-          url: entry.url,
-          username: entry.username,
-          password: entry.password,
-          title: entry.title,
-          notes: entry.notes ?? undefined,
-        });
-        if (ok) count++;
+      const entries: unknown = JSON.parse(json);
+      // Весь файл проверяем ДО первой записи: повреждённый элемент в конце не должен
+      // оставлять уже импортированные пароли при ответе «ошибка».
+      if (!Array.isArray(entries) || !entries.every(isVaultEntry)) {
+        throw new Error('неверный формат записей экспорта');
       }
-      return count;
+      const db = this.#db;
+      const dek = this.#dek;
+      const exists = db.prepare('SELECT 1 FROM credentials WHERE origin = ? AND username = ? LIMIT 1');
+      const insert = db.prepare(`
+        INSERT INTO credentials (origin, url, username, secret, title, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      return db.transaction(() => {
+        let count = 0;
+        for (const entry of entries) {
+          const origin = originOf(entry.url);
+          if (entry.username !== '' && exists.get(origin, entry.username) !== undefined) continue;
+          const secret = VaultCrypto.encryptField(dek, entry.password);
+          const notes = entry.notes ? VaultCrypto.encryptField(dek, entry.notes) : null;
+          const now = Date.now();
+          insert.run(origin, entry.url, entry.username, secret, entry.title, notes, now, now);
+          count++;
+        }
+        return count;
+      })();
     } catch (e) {
       console.warn('[Passwords] importVault error (неверная passphrase или битый файл):', (e as Error).message);
       return 0;
