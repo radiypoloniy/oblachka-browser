@@ -14,6 +14,18 @@ await withStand(async (ctx) => {
     }
     return response.result?.result?.value;
   };
+  // Под нагрузкой панель загружается дольше фиксированных 500 мс: ждём готовые вью.
+  let ready = false;
+  for (let i = 0; i < 50; i++) {
+    ready = await evaluateMain(`(() => {
+      const all = process.mainModule.require('electron').webContents.getAllWebContents();
+      return all.some(wc => wc.getURL() === ${JSON.stringify(url)} && !wc.isLoading()) &&
+        all.some(wc => wc.getURL().includes('/aipanel.html') && !wc.isLoading());
+    })()`);
+    if (ready) break;
+    await wait(100);
+  }
+  if (!ready) throw new Error('Страница и панель не загрузились за 5 секунд');
   await evaluateMain(`(() => {
     const { Menu } = process.mainModule.require('electron');
     const original = Menu.buildFromTemplate;
