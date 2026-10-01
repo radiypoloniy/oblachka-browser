@@ -1,5 +1,5 @@
-// Карточка «внешний агент просит разрешение» — отдельная WebContentsView поверх страницы,
-// у ЛЕВОГО верхнего угла контентной зоны — там же, где разрешения сайта (см. McpPromptManager).
+// Карточка «внешний агент просит разрешение» — в отдельном окне у правого нижнего угла
+// рабочего стола: запрос виден и тогда, когда человек находится в другой программе.
 // Очередь держит main: сюда приезжает ровно один текущий вопрос, null — очередь пуста.
 //
 // ⚠️ РИСУЕТСЯ ТЕМ ЖЕ РЕЦЕПТОМ, ЧТО КАРТОЧКА РАЗРЕШЕНИЙ САЙТА (popoverKit + PermissionPrompt), и
@@ -24,7 +24,8 @@ declare global {
   interface Window {
     mcpPrompt: {
       respond: (id: string, granted: boolean, remember: boolean) => void;
-      reportHeight: (px: number) => void;
+      reportHeight: (px: number, requestId: string) => void;
+      ready: () => void;
       onRequest: (cb: (req: McpPromptRequest | null) => void) => () => void;
     };
   }
@@ -36,10 +37,16 @@ function McpPromptApp() {
   const [request, setRequest] = useState<McpPromptRequest | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => window.mcpPrompt.onRequest(setRequest), []);
+  useEffect(() => {
+    const stop = window.mcpPrompt.onRequest(setRequest);
+    // Main отправляет текущий вопрос после подписки: событие на did-finish-load
+    // могло прийти до React effect и оставить видимое окно пустым.
+    window.mcpPrompt.ready();
+    return stop;
+  }, []);
 
   // Высоту меряем и сообщаем main: длинный адрес переносится на вторую строку, и карточка
-  // подросла бы за границу вью — WebContentsView обрезает всё, что вышло за её прямоугольник.
+  // подросла бы за границу окна — прозрачная поверхность обрезает содержимое.
   //
   // ⚠️ ПОВОДОВ СООБЩИТЬ НЕСКОЛЬКО. Живой случай 04.09.2026: карточка на экране была обрезана ровно
   // по INITIAL_HEIGHT из McpPromptManager — то есть высота от вью до main не доехала, а второй
@@ -52,8 +59,8 @@ function McpPromptApp() {
   // шрифтом, и карточка ниже настоящей.
   useEffect(() => {
     const el = cardRef.current;
-    if (!el) return;
-    const report = () => window.mcpPrompt.reportHeight(el.offsetHeight);
+    if (!el || !request) return;
+    const report = () => window.mcpPrompt.reportHeight(el.offsetHeight, request.id);
     report();
     // Следующий кадр: к этому моменту карточка уже прошла первую раскладку.
     const raf = requestAnimationFrame(report);

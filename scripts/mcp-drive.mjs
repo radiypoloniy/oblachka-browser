@@ -22,7 +22,7 @@
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { withStand, wait } from './isolated-stand.mjs';
+import { withStand, wait, connectCdp } from './isolated-stand.mjs';
 
 let ok = 0;
 let bad = 0;
@@ -457,6 +457,8 @@ await withStand(async (ctx) => {
   // ошиблась — файл менялся, в памяти оставался прежний 'deny', и «вкладка не открылась» проходило
   // по отказу политики, а не потому, что браузер спросил человека.
   await ctx.evalMain(`(() => { ${MOD('mcp/McpClients.js')}.setStance(${JSON.stringify(CLIENT.toLowerCase())}, 'tabs_open', 'ask'); return true; })()`);
+  const askingStance = await ctx.evalMain(`JSON.stringify(${MOD('mcp/McpClients.js')}.stancesFor(${JSON.stringify(CLIENT.toLowerCase())}))`);
+  check('право открытия перед вопросом — ask', JSON.parse(askingStance).tabs_open === 'ask', askingStance);
   const asking = talk(endpoint.pipe, endpoint.token);
   await asking.ready;
   await asking.send('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: CLIENT, version: '1' } });
@@ -547,6 +549,22 @@ await withStand(async (ctx) => {
     })()
   `);
   check('после ответа окно вопроса скрыто', hidden === 'false' || hidden === 'нет окна', hidden);
+
+  // Задерживаем renderer: даже при зависшей отрисовке прозрачное окно не перекрывает браузер.
+  const promptTarget = await ctx.findTarget((t) => t.url?.includes('mcpprompt.html'));
+  const promptCdp = connectCdp(promptTarget);
+  await promptCdp.ready;
+  await promptCdp.send('Debugger.enable');
+  await promptCdp.send('Debugger.pause');
+  await ctx.evalMain(`(() => { void ${MOD('McpPromptManager.js')}.askMcp({ kind: 'connect', title: 'Delayed render probe', detail: 'Проверка задержанной карточки' }); return true; })()`);
+  const delayedVisible = await ctx.evalMain(`${E}.BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('mcpprompt.html')).isVisible()`);
+  check('окно не показывается до отрисовки нового вопроса', delayedVisible === false);
+  await promptCdp.send('Debugger.resume');
+  await wait(600);
+  const drawnVisible = await ctx.evalMain(`${E}.BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('mcpprompt.html')).isVisible()`);
+  check('после отрисовки окно появляется', drawnVisible === true);
+  await promptCdp.evaluate(`document.querySelectorAll('button')[1].click()`);
+  promptCdp.close();
 
   // ── Снимок страницы ───────────────────────────────────────────────────────
   //
@@ -840,6 +858,26 @@ await withStand(async (ctx) => {
   const backHome = await c.send('tools/call', { name: 'tabs_list', arguments: {} });
   check('в своём профиле отвечает снова', backHome?.result?.isError !== true,
     textOf(backHome).slice(0, 160));
+
+  // Новая программа должна вызвать вопрос уже на initialize. Проверяем текст в renderer:
+  // isVisible() для прозрачного окна проходил и тогда, когда React пропускал первое IPC.
+  const newcomer = talk(endpoint.pipe, endpoint.token);
+  await newcomer.ready;
+  const hello = await newcomer.send('initialize', {
+    protocolVersion: '2025-06-18', capabilities: {},
+    clientInfo: { name: 'Fresh Drive Client', version: '1' },
+  });
+  check('новому клиенту рукопожатие отвечает сразу', !!hello?.result?.serverInfo);
+  await wait(1200);
+  const firstPrompt = await ctx.evalMain(`(async () => {
+    const w = ${E}.BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('mcpprompt.html'));
+    return w ? JSON.stringify({ visible: w.isVisible(), text: await w.webContents.executeJavaScript('document.body.innerText') }) : 'null';
+  })()`);
+  const seen = firstPrompt === 'null' ? {} : JSON.parse(firstPrompt);
+  check('вопрос подключения реально нарисован до первого инструмента',
+    seen.visible === true && seen.text?.includes('Fresh Drive Client') && seen.text?.includes('Подключить'), firstPrompt);
+  await ctx.evalMain(`(() => { ${MOD('McpPromptManager.js')}.dropMcpPrompts(); return true; })()`);
+  newcomer.close();
 
   // ── Выключение ────────────────────────────────────────────────────────────
   c.close();

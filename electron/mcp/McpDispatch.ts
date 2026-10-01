@@ -184,6 +184,11 @@ export async function dispatch(
   switch (method) {
     // Старая эпоха: рукопожатие. Отвечаем ТОЙ версией, о которой попросили, если она нам знакома.
     case 'initialize':
+      // Клиент уже запросил подключение, но первый tool call может случиться позже
+      // или не случиться вовсе. Показываем вопрос сразу, не задерживая рукопожатие.
+      if (session.label !== UNKNOWN && deps.running()) {
+        void askToConnect(clientKey(session.label), session.label);
+      }
       return ok(req.id, {
         protocolVersion: picked.version,
         capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
@@ -192,6 +197,9 @@ export async function dispatch(
 
     // Новая эпоха: то же самое без рукопожатия — «кто ты и что умеешь».
     case 'server/discover':
+      if (session.label !== UNKNOWN && deps.running()) {
+        void askToConnect(clientKey(session.label), session.label);
+      }
       return ok(req.id, {
         supportedVersions: MCP_SUPPORTED_VERSIONS,
         capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
@@ -202,6 +210,9 @@ export async function dispatch(
       return ok(req.id, {});
 
     case 'tools/list':
+      if (session.label !== UNKNOWN && deps.running()) {
+        void askToConnect(clientKey(session.label), session.label);
+      }
       return ok(req.id, toolList());
 
     // ⚠️ Промпты — ТЕКСТ для чата человека, а не действие: клиент показывает их списком (в Claude
@@ -268,13 +279,11 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession)
   // чтобы повторными вызовами нельзя было выбить согласие измором (см. McpClients.ts).
   if (!isApproved(key) && !(await askToConnect(key, who))) {
     note(false, 'not-connected');
-    // ⚠️ Говорим, ЧТО СДЕЛАТЬ, а не только что случилось. Прежний текст («карточка показана в
-    // окне браузера») агент честно пересказывал человеку, а тот не знал, куда смотреть: карточка
-    // висит в окне Oblako, которое в этот момент за спиной у той самой программы, из которой он
-    // спрашивает. Живой случай — «не работает, какие вкладки у меня открыты».
+    // ⚠️ Говорим, где искать карточку: агент пересказывает это человеку, находящемуся
+    // в другой программе. Старый текст отправлял его к левому краю окна Oblako.
     return ok(req.id, content(
-      'The user has not connected this client to the browser yet. Ask the user to switch to the '
-      + 'Oblako browser window: a card is waiting there in the top-left corner. They can also '
+      'The user has not connected this client to the browser yet. Ask the user to check the '
+      + 'connection card in the bottom-right corner of the desktop. They can also '
       + 'connect this client afterwards from the browser: Library → Agents → the call log. '
       + 'Once connected, call this tool again.',
       true,
@@ -318,8 +327,8 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession)
     if (outcome === 'waiting') {
       note(false, 'waiting');
       return ok(req.id, content(
-        'The user has not answered yet. A card is waiting in the Oblako browser window (top-left '
-        + 'corner). Ask the user to switch to Oblako and confirm it, then call this tool again — '
+        'The user has not answered yet. A card is waiting in the bottom-right corner of the '
+        + 'desktop. Ask the user to confirm it, then call this tool again — '
         + 'the card stays open, and once confirmed the repeat goes through without asking. '
         + 'To stop being asked every time, the user can set this tool to "Можно" in the browser: '
         + 'Library → Agents → pick this program.',

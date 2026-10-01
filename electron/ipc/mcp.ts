@@ -4,7 +4,7 @@ import type { McpServerState } from '../../shared/ipc';
 import { MCP_TOOLS, type McpStance } from '../../shared/mcpPolicy';
 import { connectCommand, initMcp, mcpState, setMcpEnabled, stopMcp } from '../mcp';
 import { recentCalls } from '../mcp/McpLog';
-import { answer, closeMcpPromptWindow, setMcpPromptHeight } from '../McpPromptManager';
+import { answer, closeMcpPromptWindow, setMcpPromptHeight, syncMcpPrompt } from '../McpPromptManager';
 import {
   approveClient, listClients, revokeClient, setDomains, setStance,
 } from '../mcp/McpClients';
@@ -58,7 +58,8 @@ export function registerMcpIpc(d: IpcDeps): void {
   ipcMain.on('mcp-prompt:respond', (_e, id: string, granted: boolean, remember: boolean) => {
     answer(String(id ?? ''), { granted: !!granted, remember: !!remember });
   });
-  ipcMain.on('mcp-prompt:height', (e, px: number) => setMcpPromptHeight(e.sender, Number(px) || 0));
+  ipcMain.on('mcp-prompt:height', (e, px: number, requestId: string) => setMcpPromptHeight(e.sender, Number(px) || 0, requestId));
+  ipcMain.on('mcp-prompt:ready', (e) => syncMcpPrompt(e.sender));
   // ⚠️ Отзыв гасит и выданные подтверждения на запись (см. McpClients.revokeClient): иначе
   // отключённая программа успела бы доиграть минуту чужого «разрешаю».
   ipcMain.handle(IPC.MCP_REVOKE, (_e, key: string) => {

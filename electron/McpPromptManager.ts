@@ -57,6 +57,7 @@ let win: BrowserWindow | null = null;
 let height = INITIAL_HEIGHT;
 const queue: McpPromptRequest[] = [];
 const waiting = new Map<string, (a: McpAnswer) => void>();
+let renderedRequestId: string | null = null;
 
 function bounds(): { x: number; y: number; width: number; height: number } {
   const area = screen.getPrimaryDisplay().workArea;
@@ -99,6 +100,9 @@ function ensureWindow(): BrowserWindow {
     },
   });
   win = created;
+  // Пустое прозрачное окно не должно перехватывать низ полноэкранного браузера.
+  created.setIgnoreMouseEvents(true);
+  renderedRequestId = null;
   created.setMenuBarVisibility(false);
   // ⚠️ Уровень 'screen-saver', а не просто alwaysOnTop: иначе полноэкранное приложение (редактор
   // на весь экран, видео) окажется выше — и вопрос снова станет невидимым.
@@ -110,18 +114,25 @@ function ensureWindow(): BrowserWindow {
   });
   created.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   created.webContents.once('did-finish-load', () => { pushCurrent(); });
+  created.webContents.on('render-process-gone', () => { if (!created.isDestroyed()) created.destroy(); });
   created.on('closed', () => {
     win = null;
     // Окно закрыли, не ответив: ждущие вызовы обязаны получить «нет», иначе агент ждёт вечно.
     for (const q of [...queue]) answer(q.id, { granted: false, remember: false });
   });
-  void created.loadURL('oblako-chrome://localhost/mcpprompt.html');
+  void created.loadURL('oblako-chrome://localhost/mcpprompt.html').catch(() => {
+    if (!created.isDestroyed()) created.destroy();
+  });
   return created;
 }
 
 function pushCurrent(): void {
   const wc = win?.webContents;
   if (!wc || wc.isDestroyed()) return;
+  if (renderedRequestId !== queue[0]?.id) {
+    win!.setIgnoreMouseEvents(true);
+    win!.hide();
+  }
   wc.send('mcp-prompt:request', queue[0] ?? null);
 }
 
@@ -143,14 +154,8 @@ export function askMcp(req: Omit<McpPromptRequest, 'id'>): Promise<McpAnswer> {
   const w = ensureWindow();
   layout();
   pushCurrent();
-  // ⚠️ showInactive(), а не show(): show() просит у системы активацию. Окно и так неактивируемое,
-  // но просить активацию и не получать её — лишний повод системе дёрнуть фокус чужой программы.
-  //
-  // ⚠️ Зовём БЕЗУСЛОВНО, а не «если скрыто». Проверка `isVisible()` выглядела бережливой, а на
-  // деле давала вопрос, которого не видно: живой драйвер поймал это на втором вопросе подряд —
-  // окно после ответа спрятано, а показать его обратно условие не дало. На видимом окне
-  // showInactive() ничего не делает, так что экономить тут было не на чем.
-  w.showInactive();
+  // Новая карточка появится после подтверждения от renderer; готовая не забирает фокус.
+  if (renderedRequestId === full.id) w.showInactive();
 
   return new Promise<McpAnswer>((resolve) => { waiting.set(full.id, resolve); });
 }
@@ -178,12 +183,22 @@ export function answer(id: string, a: McpAnswer): void {
  * ⚠️ Окно РАСТЁТ ВВЕРХ, а не вниз: оно прижато к нижнему краю рабочей области, и рост вниз уводил
  * бы кнопки под панель задач.
  */
-export function setMcpPromptHeight(sender: Electron.WebContents, px: number): void {
+export function setMcpPromptHeight(sender: Electron.WebContents, px: number, requestId: string): void {
   if (!win || win.isDestroyed() || win.webContents !== sender) return;
+  if (!queue[0] || queue[0].id !== requestId || !Number.isFinite(px) || px <= 0) return;
   const next = Math.max(80, Math.round(px));
-  if (next === height) return;
   height = next;
+  renderedRequestId = requestId;
   layout();
+  // Подтверждение приходит после React commit: показываем только нарисованный вопрос.
+  win.setIgnoreMouseEvents(false);
+  win.showInactive();
+}
+
+/** Синхронизировать первый вопрос после того, как React подписался на IPC. */
+export function syncMcpPrompt(sender: Electron.WebContents): void {
+  if (!win || win.isDestroyed() || win.webContents !== sender) return;
+  pushCurrent();
 }
 
 /** Снять все висящие вопросы — при выключении сервера и отзыве клиента. */
