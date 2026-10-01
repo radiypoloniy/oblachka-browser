@@ -122,7 +122,9 @@ await withStand(async ctx => {
   await ctx.chrome.evaluate(`window.oblako.setPageInsightsConfig({enabled:false,connectionId:null,allowRemote:false})`);
   page.close(); panel.close();
   await ctx.restart();
-  const persisted = await ctx.chrome.evaluate('window.oblako.pageInsightsConfig()');
+  // После перезапуска CDP может подключиться до завершения навигации chrome-view.
+  let persisted;
+  await until(async () => { persisted = await ctx.chrome.evaluate('window.oblako?.pageInsightsConfig()'); return !!persisted; }, 'Настройки доступны после загрузки хрома');
   assert.equal(persisted.enabled, false); assert.equal(persisted.collapsed, true); assert.equal(persisted.dailyLimit, 3);
   console.log('ok Настройки и счёт пережили перезапуск; текст страниц на диск не записан');
 }, { main: true });

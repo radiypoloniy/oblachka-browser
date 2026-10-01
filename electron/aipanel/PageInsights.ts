@@ -117,7 +117,10 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
       cards.length ? 'По текущей версии страницы' : 'В ответе модели нет карточек. Можно повторить разбор');
   }).catch(error => {
     if (!abort.signal.aborted) console.warn('[page-insights] Разбор не выполнен:', error instanceof Error ? error.message : 'ошибка подключения');
-    if (!abort.signal.aborted && w.pageKey === pageKey) phase(w, 'error', 'Не удалось разобрать страницу. Можно повторить вручную');
+    if (!abort.signal.aborted && w.pageKey === pageKey) phase(w, 'error',
+      error instanceof Error && error.message === 'Модель вернула пустой обзор' ?
+        'Модель вернула пустой обзор вместо главного тезиса. Попробуйте другую модель или повторите разбор' :
+        'Не удалось разобрать страницу. Можно повторить вручную');
   }).finally(() => { if (w.abort === abort) w.abort = null; });
 }
 async function tick(): Promise<void> {

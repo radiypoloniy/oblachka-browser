@@ -62,15 +62,16 @@ export function selectInsightFragments(text: string): InsightFragment[] {
   return chosen.sort((a, b) => a.i - b.i).map((block, i) => ({ id: i + 1, text: block.text }));
 }
 export const INSIGHTS_SCHEMA: JsonSchema = {
-  type: 'object', properties: { cards: { type: 'array', maxItems: INSIGHTS_MAX, items: {
+  type: 'object', properties: { cards: { type: 'array', minItems: 1, maxItems: INSIGHTS_MAX, items: {
     type: 'object', properties: {
-      title: { type: 'string' }, text: { type: 'string' }, kind: { type: 'string' },
-      source: { type: 'integer' },
+      title: { type: 'string', minLength: 1 }, text: { type: 'string', minLength: 1 }, kind: { type: 'string', minLength: 1 },
+      source: { type: 'integer', minimum: 1 },
     }, required: ['title', 'text', 'kind', 'source'], additionalProperties: false,
   } } }, required: ['cards'], additionalProperties: false,
 };
 export function validateInsights(raw: unknown, fragments: InsightFragment[]): PageInsight[] {
   if (!raw || typeof raw !== 'object' || !('cards' in raw) || !Array.isArray(raw.cards)) throw new Error('Некорректный ответ модели');
+  if (!raw.cards.length) throw new Error('Модель вернула пустой обзор');
   const cards: PageInsight[] = [];
   const seen = new Set<string>();
   for (const item of raw.cards) {

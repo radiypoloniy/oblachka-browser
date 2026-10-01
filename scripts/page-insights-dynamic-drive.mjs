@@ -26,7 +26,7 @@ await withStand(async ctx => {
   await ctx.evalMain(String.raw`(() => {
     const req = process.mainModule.require, root = req('electron').app.getAppPath();
     const mod = name => req(req('path').join(root,'dist-electron/electron',name));
-    globalThis.insightCalls = 0; globalThis.insightDelay = 0;
+    globalThis.insightCalls = 0; globalThis.insightDelay = 0; globalThis.insightEmpty = false;
     const conn = { id:'insight-fixture', label:'Тестовое облако', kind:'openai-compatible',
       baseUrl:'https://insights-fixture.invalid/v1', model:'fixture', concurrency:1 };
     mod('ai/KeyStore.js').saveKey(conn.id,'fixture-key');
@@ -37,6 +37,7 @@ await withStand(async ctx => {
         globalThis.insightCalls++;
         await new Promise(resolve => setTimeout(resolve,globalThis.insightDelay));
         if (opts.abort.aborted) throw new Error('Отменено');
+        if (globalThis.insightEmpty) return {cards:[]};
         const fragments = [...prompt.matchAll(/^\[(\d+)\] (.+)$/gm)];
         return {cards:fragments.slice(0,7).map((f,i) => ({title:'Вывод '+(i+1),text:'Сохраните документы заранее.',kind:'Условие',source:Number(f[1]),quote:f[2].slice(0,100)}))};
       }
@@ -59,5 +60,15 @@ await withStand(async ctx => {
   await wait(3000);
   assert.equal(await ctx.evalMain('globalThis.insightCalls'),1);
   console.log('OK: ограниченное ожидание, устаревший снимок показан явно, повторного платного запроса нет');
+  await ctx.evalMain('globalThis.insightDelay = 0; globalThis.insightEmpty = true');
+  await panel.evaluate('window.aiPanel.runPageInsights()');
+  await until(() => panel.evaluate(`document.body.innerText.includes('Модель вернула пустой обзор')`), 'Пустой ответ — ошибка, а не успешный обзор');
+  await wait(3000);
+  assert.ok(await panel.evaluate(`document.body.innerText.includes('Модель вернула пустой обзор')`));
+  assert.equal(await ctx.evalMain('globalThis.insightCalls'),2);
+  await ctx.evalMain('globalThis.insightEmpty = false');
+  await panel.evaluate('window.aiPanel.runPageInsights()');
+  await until(() => panel.evaluate(`!!document.querySelector('.page-insights-track:not(.is-stale)')`), 'Повтор после пустого ответа даёт карточки вместо кэша ошибки');
+  assert.equal(await ctx.evalMain('globalThis.insightCalls'),3);
   panel.close(); page.close();
 },{main:true});
