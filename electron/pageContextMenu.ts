@@ -147,10 +147,9 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
       // setWindowOpenHandler): иначе правило «ссылки с хабра — в группу» не сработало бы
       // на самом частом способе открыть ссылку.
       click: () => {
-        const openedId = host.openTab(p.linkURL, true, priv, p.referrerPolicy);
+        const openedId = host.openTab(p.linkURL, false, priv, p.referrerPolicy);
         // Третий аргумент — «кто открыл»: см. closeTab, закрытие вернёт человека сюда же.
         host.noteOpened(openedId, hostOfUrl(wc.getURL()), id);
-        host.didOpenBackgroundTab(openedId, id);
       },
     },
     // Окно создаёт main — TabManager про окна не знает (тот же приём, что у пункта
@@ -196,12 +195,11 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
   return out;
 }
 
-function imageSection(host: PageContextMenuHost, id: string, wc: WebContents, p: ContextMenuParams, priv: boolean, hasPrev: boolean): MenuItemConstructorOptions[] {
+function imageSection(host: PageContextMenuHost, wc: WebContents, p: ContextMenuParams, priv: boolean, hasPrev: boolean): MenuItemConstructorOptions[] {
   const out: MenuItemConstructorOptions[] = hasPrev ? [{ type: 'separator' }] : [];
   out.push(
     { label: tr('Открыть картинку в новой вкладке'), icon: menuIcon('SquareArrowOutUpRight'), click: () => {
-      const openedId = host.openTab(p.srcURL, true, priv);
-      host.didOpenBackgroundTab(openedId, id);
+      host.openTab(p.srcURL, false, priv);
     } },
     { type: 'separator' },
     { label: tr('Копировать картинку'), icon: menuIcon('Image'), click: () => wc.copyImageAt(p.x, p.y) },
@@ -373,7 +371,7 @@ export function wirePageContextMenu(host: PageContextMenuHost, id: string, view:
     const priv = host.isIncognito(id);
 
     if (p.linkURL) items.push(...linkSection(host, id, wc, p, priv));
-    if (p.mediaType === 'image' && p.srcURL) items.push(...imageSection(host, id, wc, p, priv, items.length > 0));
+    if (p.mediaType === 'image' && p.srcURL) items.push(...imageSection(host, wc, p, priv, items.length > 0));
     // isEditable обрабатываем ДО selectionText: cut/copy/paste — главное для инпутов.
     if (p.isEditable) {
       items.push(...editableSection(host, wc, view, p, priv, engine, items.length > 0));
