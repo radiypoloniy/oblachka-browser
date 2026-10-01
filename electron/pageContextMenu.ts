@@ -142,6 +142,7 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
   const out: MenuItemConstructorOptions[] = [
     {
       label: tr('Открыть ссылку в новой вкладке'),
+      icon: menuIcon('SquarePlus'),
       // Источник новой вкладки — страница, где щёлкнули ссылку (тот же учёт, что в
       // setWindowOpenHandler): иначе правило «ссылки с хабра — в группу» не сработало бы
       // на самом частом способе открыть ссылку.
@@ -154,10 +155,10 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
     },
     // Окно создаёт main — TabManager про окна не знает (тот же приём, что у пункта
     // «Добавить в граф»: сюда приходит готовый колбэк).
-    { label: tr('Открыть ссылку в новом окне'), click: () => host.openInNewWindow(p.linkURL) },
+    { label: tr('Открыть ссылку в новом окне'), icon: menuIcon('AppWindow'), click: () => host.openInNewWindow(p.linkURL) },
     // ⚠️ Инкогнито Referer НЕ теряет: приватность здесь про хранилище (куки, история), а не про
     // то, чтобы притвориться переходом ниоткуда — Chrome в приватном окне шлёт его так же.
-    { label: tr('Открыть ссылку в инкогнито'), click: () => host.openTab(p.linkURL, true, true, p.referrerPolicy) },
+    { label: tr('Открыть ссылку в инкогнито'), icon: menuIcon('VenetianMask'), click: () => host.openTab(p.linkURL, true, true, p.referrerPolicy) },
   ];
   // Пункт только когда текущая вкладка ещё НЕ в показываемой паре — модель split строго
   // бинарная (пара = 2 панели), добавить третью панель к уже сплитнутой вкладке некуда.
@@ -169,6 +170,7 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
   if (!host.splitShown()) {
     out.push({
       label: tr('Открыть ссылку в split'),
+      icon: menuIcon('Columns2'),
       click: () => {
         const newId = host.openTab(p.linkURL, true, priv, p.referrerPolicy); // background — не перебивать фокус до enterSplit
         if (newId) host.enterSplit(newId); // активная → левая, новая → правая
@@ -178,6 +180,7 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
     // Пара уже на экране: ссылка открывается НА СОСЕДНЕЙ панели, эта остаётся.
     out.push({
       label: tr('Открыть в другой половине'),
+      icon: menuIcon('Columns2'),
       click: () => {
         const openedId = host.openTab(p.linkURL, true, priv, p.referrerPolicy);
         host.noteOpened(openedId, hostOfUrl(wc.getURL()), id);
@@ -185,11 +188,11 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
       },
     });
   }
-  out.push({ label: tr('Копировать адрес ссылки'), click: () => clipboard.writeText(p.linkURL) });
+  out.push({ type: 'separator' }, { label: tr('Копировать адрес ссылки'), icon: menuIcon('Copy'), click: () => clipboard.writeText(p.linkURL) });
   // «Добавить в граф» строит main: TabManager не должен знать про хранилище графов,
   // ему отдают готовый пункт меню (тот же приём, что с tabManagerRef у менеджеров вью).
   const toGraph = host.graphMenuItem([{ url: p.linkURL, title: p.linkText || p.linkURL }]);
-  if (toGraph) out.push({ type: 'separator' }, toGraph);
+  if (toGraph) out.push({ type: 'separator' }, { ...toGraph, icon: menuIcon('Workflow') });
   return out;
 }
 
@@ -329,12 +332,13 @@ function selectionSection(host: PageContextMenuHost, wc: WebContents, view: WebC
 /** Просто страница: ни ссылки, ни картинки, ни выделения. */
 function pageSection(wc: WebContents): MenuItemConstructorOptions[] {
   return [
-    { label: tr('Назад'),    enabled: wc.canGoBack(),    click: () => wc.goBack() },
-    { label: tr('Вперёд'),   enabled: wc.canGoForward(), click: () => wc.goForward() },
-    { label: tr('Обновить'),                             click: () => wc.reload() },
+    { label: tr('Назад'),    icon: menuIcon('ArrowLeft'),  enabled: wc.canGoBack(),    click: () => wc.goBack() },
+    { label: tr('Вперёд'),   icon: menuIcon('ArrowRight'), enabled: wc.canGoForward(), click: () => wc.goForward() },
+    { type: 'separator' },
+    { label: tr('Обновить'), icon: menuIcon('RotateCw'), click: () => wc.reload() },
     // Пара к «Обновить»: тот же жест, но мимо кэша — когда сайт отдал протухшие стили
     // или скрипт и обычное обновление ничего не меняет.
-    { label: tr('Обновить без кэша'), accelerator: 'Ctrl+F5', click: () => wc.reloadIgnoringCache() },
+    { label: tr('Обновить без кэша'), icon: menuIcon('RefreshCw'), accelerator: 'Ctrl+F5', click: () => wc.reloadIgnoringCache() },
   ];
 }
 

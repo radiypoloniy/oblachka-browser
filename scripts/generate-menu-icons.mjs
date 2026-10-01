@@ -13,6 +13,8 @@ const names = [
   'Sparkles', 'Undo2', 'Workflow', 'Search', 'Languages', 'ListFilter',
   'CircleHelp', 'FileText', 'Code2', 'Scissors', 'ClipboardPaste', 'TextSelect',
   'Pencil', 'Palette', 'FoldVertical', 'FolderX', 'Trash2',
+  'SquarePlus', 'AppWindow', 'VenetianMask', 'Columns2',
+  'ArrowLeft', 'ArrowRight', 'RotateCw',
 ];
 const output = path.resolve('src/public/menu-icons');
 await mkdir(output, { recursive: true });
