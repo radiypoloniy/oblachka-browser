@@ -1,7 +1,7 @@
 import type { WebContents } from 'electron';
 
 // Изолированный мир хранит только один снимок. Неизменный DOM не клонируется и не пересылается.
-// Наблюдатель сам отключается через 15 секунд после закрытия панели/выключения функции.
+// Наблюдатель сам отключается через 15 секунд без проверок; подготовка активной вкладки его продлевает.
 export const INSIGHT_SAMPLE = String.raw`(() => {
   if (!document.body) return '';
   const excluded = 'nav,header,footer,aside,form,input,textarea,select,script,style,[contenteditable],[role="log"],[role="feed"],[role="status"],[role="timer"],.comments,#comments';
@@ -52,6 +52,13 @@ export const INSIGHT_SAMPLE = String.raw`(() => {
   state.text = text; return text;
 })()`;
 const snapshots = new WeakMap<WebContents, string>();
+export function releaseInsightPage(wc: WebContents): void {
+  snapshots.delete(wc);
+  if (!wc.isDestroyed()) void wc.executeJavaScriptInIsolatedWorld(1004, [{ code: `(() => {
+    const state = globalThis.__oblakoInsights;
+    if (state) { clearTimeout(state.expires); state.observer.disconnect(); delete globalThis.__oblakoInsights; }
+  })()` }]).catch(() => {});
+}
 export async function insightPageText(wc: WebContents): Promise<string> {
   const text: unknown = await wc.executeJavaScriptInIsolatedWorld(1004, [{ code: INSIGHT_SAMPLE }]);
   if (typeof text === 'string') snapshots.set(wc, text.trim());

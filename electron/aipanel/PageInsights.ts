@@ -11,6 +11,7 @@ import { insightsConfig, setInsightsConfig, reserveInsightRequest } from './Insi
 import { eligibleInsightPage, insightPageText, revealInsight } from './InsightsPage';
 import { generateInsights, insightModelWarm } from './InsightsGeneration';
 import { sendCurrentContext } from './tabChat';
+import { prepareActiveInsights, preparedInsights, clearPreparedInsights } from './InsightsPreparation';
 
 interface Watcher {
   sender: WebContents;
@@ -75,6 +76,8 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
   const version = target.id === LOCAL_CONNECTION_ID ? Models.getDefault()?.id :
     JSON.stringify(connectionsState().connections.find(c => c.id === target.id));
   const text = await insightPageText(wc);
+  const prepared = preparedInsights(panel.win.id, tab.id, tab.url);
+  const matching = prepared?.text === text && prepared.title === tab.title ? prepared : null;
   const freshConfig = insightsConfig();
   if (w.pageKey !== pageKey || !panel.open || w.sender.isDestroyed() || watchers.get(w.sender.id) !== w ||
       !freshConfig.enabled || freshConfig.connectionId !== config.connectionId || freshConfig.allowRemote !== config.allowRemote) return;
@@ -83,8 +86,9 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
     createHash('sha256').update(text).update(String(version)).digest('hex');
   w.text = text; w.version = String(version);
   if (w.hash !== hash) {
-    w.hash = hash; w.stableAt = Date.now();
-    if (!w.waitingAt) w.waitingAt = Date.now();
+    w.hash = hash; w.stableAt = matching?.stableAt ?? Date.now();
+    if (!w.waitingAt || !w.text) w.waitingAt = matching?.waitingAt ?? Date.now();
+    if (matching) w.waitingAt = matching.waitingAt;
     if (!w.abort) phase(w, w.state.cards.length ? 'stale' : 'idle', 'Подготавливаю текст страницы');
   }
   if (w.abort) return;
@@ -106,7 +110,7 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
   attempts.set(attemptKey, Date.now()); trim(attempts, 200);
   const abort = new AbortController(); w.abort = abort;
   phase(w, 'reading', 'Выделяю главное на странице');
-  void generateInsights(text, tab.title, target.id, explicit, abort.signal).then(async cards => {
+  void generateInsights(text, tab.title, target.id, explicit, abort.signal, matching?.material).then(async cards => {
     if (abort.signal.aborted || w.pageKey !== pageKey || wc.isDestroyed()) return;
     // Ответ может прийти между тиками проверки DOM. Перед публикацией сверяем источник ещё раз.
     const fresh = await insightPageText(wc);
@@ -126,11 +130,19 @@ async function inspect(w: Watcher, explicit = false): Promise<void> {
 async function tick(): Promise<void> {
   if (ticking) return;
   ticking = true;
-  try { await Promise.all([...watchers.values()].map(w => inspect(w).catch(() => phase(w, 'error', 'Страница пока недоступна для разбора')))); }
+  try {
+    await prepareActiveInsights().catch(() => {});
+    await Promise.all([...watchers.values()].map(w => inspect(w).catch(() => phase(w, 'error', 'Страница пока недоступна для разбора'))));
+  }
   finally { ticking = false; }
+}
+function schedule(): void {
+  if (insightsConfig().enabled && !timer) { timer = setInterval(() => { void tick(); }, 2500); timer.unref(); }
+  if (!insightsConfig().enabled && timer) { clearInterval(timer); timer = null; clearPreparedInsights(); }
 }
 export function registerPageInsightsIpc(): void {
   if (registered) return; registered = true;
+  schedule();
   ipcMain.handle(INSIGHTS.config, () => insightsConfig());
   ipcMain.handle(INSIGHTS.set, (_e, patch: unknown) => {
     const before = insightsConfig();
@@ -140,6 +152,7 @@ export function registerPageInsightsIpc(): void {
     }
     broadcastToChrome(INSIGHTS.changed, config);
     for (const view of panelViews()) view.webContents.send(INSIGHTS.changed, config);
+    schedule();
     void tick(); return config;
   });
   ipcMain.on(INSIGHTS.watch, (e, visible: boolean) => {
@@ -152,8 +165,7 @@ export function registerPageInsightsIpc(): void {
       watchers.set(e.sender.id, { sender: e.sender, state: emptyState(), pageKey: '', hash: '', stableAt: 0, waitingAt: 0, text: '', version: '', abort: null, published: '' });
       e.sender.once('destroyed', () => { const w = watchers.get(e.sender.id); if (w) stop(w); watchers.delete(e.sender.id); });
     }
-    if (watchers.size && !timer) { timer = setInterval(() => { void tick(); }, 2500); timer.unref(); }
-    if (!watchers.size && timer) { clearInterval(timer); timer = null; }
+    schedule();
     void tick();
   });
   ipcMain.on(INSIGHTS.run, e => { const w = watchers.get(e.sender.id); if (w) void inspect(w, true).catch(() => phase(w, 'error', 'Не удалось начать разбор')); });
