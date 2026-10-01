@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="ru" data-palette="coal">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oblako — карточки о странице</title>
+  <link rel="stylesheet" href="../src/styles/global.css">
+  <style>
+    :root { color-scheme: light; --card-paper: var(--on-poster-light); --card-ink: var(--on-poster-dark); --card-muted: color-mix(in srgb, var(--card-ink) 72%, var(--card-paper)); }
+    [data-theme="dark"] { color-scheme: dark; }
+    body { min-width: 320px; margin: 0; background: var(--app-bg); }
+    button { cursor: pointer; }
+    button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .doc { max-width: 1512px; margin: auto; padding: 32px 32px 60px; }
+    .eyebrow { font: 600 11px/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+    .intro { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin: 0 0 24px; }
+    .intro h1 { margin: 8px 0 12px; font: 700 30px/1.2 var(--font-display); letter-spacing: -.03em; color: var(--text-strong); }
+    .intro p { max-width: 680px; margin: 0; color: var(--text-muted); font-size: var(--fs-sm); line-height: var(--lh-body); }
+    .top-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+    .small-btn, .seg button { border: 1px solid var(--divider); background: var(--surface-solid); color: var(--text-body); border-radius: var(--radius-chip); padding: 7px 11px; font-size: var(--fs-xs); line-height: 1.3; white-space: nowrap; }
+    .small-btn:hover, .seg button:hover { background: var(--surface-hover); }
+    .small-btn svg { vertical-align: -3px; margin-right: 5px; }
+    .seg { display: inline-flex; gap: 3px; padding: 3px; border-radius: var(--radius-chip); background: var(--surface-sunken); }
+    .seg button { border: 0; background: transparent; }
+    .seg button[aria-pressed="true"] { background: var(--surface-solid); color: var(--text-strong); box-shadow: var(--shadow-lvl1); font-weight: 600; }
+    .spec-strip { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+    .spec-strip span { padding: 6px 10px; border: 1px solid var(--divider); border-radius: var(--radius-chip); color: var(--text-muted); font: 500 11px/1.2 var(--font-mono); }
+    .browser { min-height: 830px; display: grid; grid-template-columns: 188px minmax(0,1fr); grid-template-rows: 56px minmax(0,1fr); overflow: hidden; border-radius: var(--radius-island); background: var(--canvas); box-shadow: var(--shadow-lvl2); }
+    .sidebar { grid-row: 1/3; padding: 20px 12px 16px; display: flex; flex-direction: column; min-width: 0; }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 1px 8px 21px; font: 700 15px/1 var(--font-display); color: var(--text-strong); letter-spacing: -.02em; }
+    .brand-mark { width: 28px; height: 28px; border-radius: var(--radius-sm); display: grid; place-items: center; background: var(--poster-mustard); color: var(--on-poster-dark); font: 700 18px var(--font-display); }
+    .sidebar-label { padding: 0 11px 9px; font: 600 10px/1.2 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+    .tab-row { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 37px; padding: 0 10px; border: 0; border-radius: 11px; background: transparent; color: var(--text-muted); font-size: 12px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tab-row.active { background: var(--selected); color: var(--text-strong); font-weight: 600; }
+    .tab-row svg { flex: none; color: var(--text-faint); }
+    .sidebar-bottom { margin-top: auto; padding: 13px 10px 2px; border-top: 1px solid var(--divider); font-size: 11px; color: var(--text-faint); line-height: 1.5; }
+    .toolbar { grid-column: 2; display: flex; align-items: center; gap: 12px; padding: 0 16px; min-width: 0; }
+    .traffic { display: none; }
+    .traffic i { width: 9px; height: 9px; border-radius: 50%; background: var(--divider-strong); }
+    .tool-icon { width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: transparent; border-radius: 9px; color: var(--text-muted); }
+    .tool-icon:hover { background: var(--surface-hover); }
+    .omnibox { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 13px; border-radius: var(--radius-chip); background: var(--surface-sunken); color: var(--text-muted); font-size: 12px; }
+    .omnibox span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ai-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 0; border-radius: var(--radius-chip); background: var(--selected); color: var(--text-strong); font-size: 11px; font-weight: 650; white-space: nowrap; }
+    .browser-body { grid-column: 2; display: grid; grid-template-columns: minmax(0,1fr) 460px; min-height: 0; }
+    .page-well { min-width: 0; padding: 12px 5px 12px 12px; }
+    .page { height: 100%; overflow: auto; border-radius: var(--radius-island); background: var(--surface-solid); box-shadow: var(--shadow-lvl1); }
+    .page-inner { max-width: 690px; margin: auto; padding: 54px clamp(24px,5vw,72px) 80px; }
+    .page-source { display: flex; gap: 8px; align-items: center; margin-bottom: 28px; color: var(--text-muted); font-size: 12px; }
+    .fake-favicon { width: 21px; height: 21px; border-radius: 7px; display: grid; place-items: center; background: var(--selected); color: var(--accent); font: 700 11px var(--font-display); }
+    .page-category { color: var(--text-faint); font: 600 10px/1.5 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; }
+    .page h2 { max-width: 650px; margin: 12px 0 14px; color: var(--text-strong); font: 700 clamp(27px,3.2vw,43px)/1.15 var(--font-display); letter-spacing: -.055em; }
+    .page-lead { margin: 0 0 28px; color: var(--text-muted); font-size: 15px; line-height: 1.6; }
+    .page hr { height: 1px; border: 0; background: var(--divider); margin: 29px 0; }
+    .page h3 { margin: 24px 0 10px; color: var(--text-strong); font-size: 18px; }
+    .page p, .page li { color: var(--text-body); font-size: 14px; line-height: 1.75; }
+    .page p { margin: 0 0 15px; }
+    .page ul { padding-left: 22px; }
+    .source-focus { border-radius: 5px; background: color-mix(in srgb, var(--accent) 20%, transparent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 12%, transparent); transition: background 250ms; }
+    .panel-wrap { padding: 0 12px 12px 8px; min-width: 0; }
+    .panel { display: flex; flex-direction: column; height: 100%; min-height: 750px; overflow: hidden; border-radius: var(--radius-island); background: var(--surface-solid); box-shadow: var(--shadow-lvl2); }
+    .panel-top { display: flex; align-items: center; gap: 8px; padding: 20px 20px 0; }
+    .mode-toggle { display: flex; gap: 2px; padding: 3px; background: var(--surface-sunken); border-radius: var(--radius-chip); }
+    .mode-toggle span { padding: 6px 12px; font-size: var(--fs-xs); color: var(--text-muted); }
+    .mode-toggle span:first-child { border-radius: var(--radius-chip); background: var(--surface-solid); box-shadow: var(--shadow-lvl1); color: var(--text-strong); font-weight: 650; }
+    .panel-top .grow { flex: 1; }
+    .close-round { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 50%; background: var(--surface-sunken); color: var(--text-muted); }
+    .page-island { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 12px 20px 0; padding: 12px; border-radius: var(--radius-card); background: var(--surface-solid); box-shadow: var(--shadow-card); }
+    .page-island .name { min-width: 0; flex: 1; }
+    .page-island strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1.4 var(--font-sans); color: var(--text-strong); }
+    .page-island small { display: block; color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+    .model-chip { padding: 5px 8px; border-radius: var(--radius-chip); background: var(--surface-sunken); color: var(--text-muted); font: 500 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+    .feed { flex: 1; min-height: 0; overflow-y: auto; padding: 28px 20px 20px; display: flex; flex-direction: column; }
+    .feed-title { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; }
+    .feed-title h3 { margin: 0; color: var(--text-strong); font: 600 16px/1.35 var(--font-sans); letter-spacing: -.01em; }
+    .feed-title .count { color: var(--text-faint); font: 500 11px var(--font-mono); }
+    .feed-sub { margin: 0 0 16px; color: var(--text-muted); font-size: var(--fs-xs); line-height: 1.45; }
+    .carousel { margin: 0 -20px 0 0; overflow: hidden; }
+    .cards { display: flex; gap: 10px; padding: 2px 20px 16px 0; transition: transform 320ms cubic-bezier(.16,1,.3,1); }
+    /* Плакатная плитка и бумага внутри — тот же материал, что у виджета карточек. */
+    .insight { --slide-bg: var(--poster-mustard); --slide-fg: var(--on-poster-dark); position: relative; display: flex; flex: 0 0 calc(100% - 44px); flex-direction: column; height: 308px; padding: 12px; overflow: hidden; border-radius: var(--radius-island); background: var(--slide-bg); color: var(--slide-fg); box-shadow: var(--shadow-lvl1); touch-action: pan-y; }
+    .insight[data-tone="sky"] { --slide-bg: var(--poster-sky); }
+    .insight[data-tone="tangerine"] { --slide-bg: var(--poster-tangerine); }
+    .insight::before { content: ''; position: absolute; inset: 0; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E"); opacity: var(--grain-op); mix-blend-mode: overlay; }
+    .card-top { position: relative; display: flex; align-items: center; gap: 8px; min-height: 32px; margin: 0 0 12px; }
+    .card-kind { padding: 0 0 0 4px; font: 600 12.5px/1.4 var(--font-sans); color: var(--slide-fg); }
+    .card-top .spacer { flex: 1; }
+    .source-number { color: var(--slide-fg); font: 500 11px var(--font-mono); opacity: .75; }
+    .dismiss { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--slide-fg) 10%, transparent); color: var(--slide-fg); }
+    .dismiss:hover { background: color-mix(in srgb, var(--slide-fg) 20%, transparent); }
+    .card-paper { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 20px; border-radius: var(--radius-card); background: var(--card-paper); color: var(--card-ink); box-shadow: 0 1px 0 color-mix(in srgb, var(--card-paper) 65%, transparent) inset, 0 2px 4px color-mix(in srgb, var(--card-ink) 8%, transparent), 0 10px 20px color-mix(in srgb, var(--card-ink) 10%, transparent); }
+    .insight h4 { margin: 0 0 12px; color: var(--card-ink); font: 700 19px/1.25 var(--font-display); letter-spacing: -.025em; text-wrap: balance; }
+    .insight p { margin: 0 0 16px; color: var(--card-muted); font: 400 14px/1.5 var(--font-sans); }
+    .source-link { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin-top: auto; padding: 12px 0 0; border: 0; border-top: 1px solid color-mix(in srgb, var(--card-ink) 14%, transparent); background: transparent; color: var(--card-ink); font-size: 12.5px; font-weight: 600; text-align: left; }
+    .source-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+        .carousel-nav { display: flex; align-items: center; gap: 12px; margin: 0; }
+    .carousel-nav .position { color: var(--text-muted); font: 600 11px var(--font-mono); }
+    .carousel-nav .track { display: flex; gap: 4px; flex: 1; }
+    .carousel-nav .track button { position: relative; flex: 1; height: 28px; padding: 0; border: 0; background: transparent; }
+    .carousel-nav .track button.active { background: transparent; }
+    .carousel-nav .nav-arrow { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--radius-pill); color: var(--text-body); background: var(--surface-sunken); font-size: 20px; }
+    .carousel-nav .nav-arrow:disabled { opacity: .35; cursor: default; }
+    .carousel-nav .track button::after { content: ""; position: absolute; top: 12px; left: 0; right: 0; height: 4px; border-radius: 4px; background: var(--divider-strong); }
+    .carousel-nav .track button.active::after { background: var(--accent); }
+    .feed-status { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 12px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+    .route { display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+    .route i { width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid var(--dot-cloud); }
+    .route.local i { border: 0; background: var(--dot-local); }
+    .stale-note { display: none; margin-bottom: 10px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-sunken); color: var(--text-muted); font-size: 11px; line-height: 1.4; }
+    .stale .stale-note { display: block; }
+    .stale .cards { opacity: .47; pointer-events: none; }
+    .stale .feed-status { opacity: .55; }
+    .empty { display: none; padding: 30px 18px; border: 1px dashed var(--divider-strong); border-radius: var(--radius-card); text-align: center; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+    .undo-row { display: none; margin: 10px 2px 0; color: var(--text-muted); font-size: 11px; }
+    .undo-row button { padding: 0 4px; border: 0; background: transparent; color: var(--accent); font-weight: 650; }
+    .chat-rest { margin: auto 0 0; padding-top: 28px; }
+    .chat-rest strong { display: block; color: var(--text-strong); font: 700 18px/1.3 var(--font-display); letter-spacing: -.02em; }
+    .chat-rest span { display: block; margin-top: 6px; color: var(--text-muted); font-size: 12.5px; line-height: 1.45; }
+    .composer-wrap { padding: 0 20px 20px; }
+    .actions { display: flex; gap: 8px; margin-bottom: 11px; }
+    .action-chip { flex: 1; min-height: 60px; padding: 12px; border: 0; border-radius: var(--radius-card); background: var(--text-strong); color: var(--surface-solid); font: 600 14px var(--font-sans); text-align: left; }
+    .action-chip:nth-child(2) { background: var(--surface-sunken); color: var(--text-strong); }
+    .action-chip:nth-child(3) { display: none; }
+    .action-chip small { display: block; margin-top: 3px; opacity: .8; font: 400 12px var(--font-sans); }
+    @media (prefers-reduced-motion: reduce) { .cards { transition: none; } }
+    .composer { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px; border-radius: var(--radius-island); background: var(--surface-solid); box-shadow: var(--shadow-card); color: var(--text-faint); font-size: 14px; }
+    .composer .grow { flex: 1; }
+    .send { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); }
+    .design-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; }
+    .note-section { padding-top: 15px; border-top: 1px solid var(--divider); }
+    .note-section h2 { margin: 0 0 12px; font: 700 17px var(--font-display); color: var(--text-strong); }
+    .note-section ol, .note-section ul { margin: 0; padding-left: 21px; color: var(--text-body); font-size: 14px; line-height: 1.65; }
+    .note-section li { margin-bottom: 7px; }
+    .note-section b { color: var(--text-strong); }
+    .settings-mask { display: none; position: fixed; inset: 0; z-index: 20; padding: 24px; place-items: center; background: color-mix(in srgb, var(--text-strong) 28%, transparent); }
+    .settings-mask.open { display: grid; }
+    .settings { width: min(510px,100%); max-height: calc(100vh - 48px); overflow: auto; padding: 22px; border: 1px solid var(--divider); border-radius: var(--radius-island); background: var(--surface-solid); box-shadow: var(--shadow-lvl3); }
+    .settings-header { display: flex; align-items: center; gap: 10px; }
+    .settings-header h2 { flex: 1; margin: 0; font: 700 18px var(--font-display); color: var(--text-strong); }
+    .settings p { margin: 12px 0 20px; font-size: 12px; color: var(--text-muted); line-height: 1.55; }
+    .setting-row { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--divider); }
+    .setting-row .copy { flex: 1; }
+    .setting-row strong { display: block; font-size: 13px; color: var(--text-strong); }
+    .setting-row small { display: block; margin-top: 4px; font-size: 11px; color: var(--text-muted); line-height: 1.45; }
+    .switch { appearance: none; position: relative; flex: none; width: 36px; height: 22px; margin: 0; border: 0; border-radius: 20px; background: var(--divider-strong); cursor: pointer; }
+    .switch:checked { background: var(--accent); }
+    .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface-solid); transition: transform 150ms; }
+    .switch:checked::after { transform: translateX(14px); }
+    .setting-row select, .setting-row input[type="number"] { max-width: 145px; padding: 7px 10px; border: 1px solid var(--divider); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-body); font-size: 12px; }
+    .settings-foot { margin-top: 8px; padding-top: 15px; border-top: 1px solid var(--divider); color: var(--text-muted); font-size: 11px; line-height: 1.55; }
+    .settings-foot b { color: var(--text-strong); }
+    @media (max-width: 1100px) { .browser { grid-template-columns: 145px minmax(0,1fr); } .browser-body { grid-template-columns: minmax(0,1fr) 390px; } .sidebar { padding-inline: 7px; } .page-inner { padding-inline: 30px; } }
+    @media (max-width: 850px) { .doc { padding: 20px 14px 40px; } .intro { display: block; } .top-controls { margin-top: 18px; } .browser { grid-template-columns: minmax(0,1fr); } .sidebar { display: none; } .toolbar, .browser-body { grid-column: 1; } .browser-body { grid-template-columns: minmax(0,1fr) 345px; } .design-notes { grid-template-columns: 1fr; } }
+    @media (max-width: 660px) { .browser { min-height: auto; display: block; } .toolbar { height: 53px; } .traffic, .toolbar .tool-icon { display: none; } .browser-body { display: flex; flex-direction: column; } .page-well { padding: 10px; } .page { max-height: 250px; } .page-inner { padding: 24px; } .page h2 { font-size: 26px; } .panel-wrap { padding: 0 10px 10px; } .panel { min-height: 680px; } .spec-strip { display: none; } }
+  </style>
+</head>
+<body>
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Zm7 14 .7 1.3L21 19l-1.3.7L19 21l-.7-1.3L17 19l1.3-.7L19 17Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M9.5 3h5l.6 2.1 1.8.8 2-.9 2.5 4.3-1.6 1.5v2.4l1.6 1.5-2.5 4.3-2-.9-1.8.8-.6 2.1h-5l-.6-2.1-1.8-.8-2 .9-2.5-4.3 1.6-1.5v-2.4L2.6 9.3 5.1 5l2 .9 1.8-.8L9.5 3Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l2-2A5 5 0 0 0 12 4l-1.1 1.1M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20l1.1-1.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+</svg>
+<main class="doc">
+  <header class="intro">
+    <div><div class="eyebrow">Oblako / концепт AI-панели</div><h1>Страница уже прочитана</h1><p>Короткие цветные слайды о том, что важно на странице. Листайте их как презентацию: на каждом один тезис и ссылка на исходный фрагмент.</p></div>
+    <div class="top-controls" aria-label="Демонстрация">
+      <div class="seg" role="group" aria-label="Пример страницы">
+        <button type="button" data-scenario="article" aria-pressed="true">Статья</button>
+        <button type="button" data-scenario="terms" aria-pressed="false">Условия</button>
+        <button type="button" data-scenario="changes" aria-pressed="false">Изменения</button>
+      </div>
+      <button class="small-btn" id="update-button" type="button">Изменить страницу</button>
+      <button class="small-btn" id="theme-button" type="button">Тёмная тема</button>
+      <button class="small-btn" id="settings-button" type="button"><svg width="14" height="14"><use href="#i-gear"/></svg>Настройки</button>
+    </div>
+  </header>
+  <div class="spec-strip" aria-label="Ключевые параметры"><span>до 3 карточек</span><span>1 запрос на версию страницы</span><span>без запроса при закрытой панели</span><span>источник обязателен</span></div>
+  <div class="browser" aria-label="Макет браузера Oblako">
+    <aside class="sidebar"><div class="brand"><span class="brand-mark">о</span>oblako</div><div class="sidebar-label">Вкладки</div><button class="tab-row active" type="button"><svg width="15" height="15"><use href="#i-link"/></svg><span id="side-title">Экспорт данных</span></button><button class="tab-row" type="button"><span class="fake-favicon">?</span> Документация API</button><button class="tab-row" type="button"><span class="fake-favicon">⌁</span> Почта</button><div class="sidebar-bottom">Панель следует за активной вкладкой.<br>Карточки не попадают в чат.</div></aside>
+    <div class="toolbar"><div class="traffic"><i></i><i></i><i></i></div><button class="tool-icon" type="button" aria-label="Назад">‹</button><button class="tool-icon" type="button" aria-label="Вперёд">›</button><div class="omnibox"><svg width="14" height="14"><use href="#i-link"/></svg><span id="address">docs.example/export</span></div><button class="ai-pill" type="button"><svg width="14" height="14"><use href="#i-spark"/></svg>AI-панель</button></div>
+    <div class="browser-body">
+      <section class="page-well"><article class="page" id="demo-page"><div class="page-inner"><div class="page-source"><span class="fake-favicon" id="page-icon">D</span><span id="page-domain">docs.example</span><span>·</span><span>страница открыта</span></div><div class="page-category" id="page-category">Руководство · данные</div><h2 id="page-title">Как экспортировать данные</h2><p class="page-lead" id="page-lead">Скачайте копию своих данных и проверьте, что именно входит в архив.</p><hr><div id="page-content"></div></div></article></section>
+      <section class="panel-wrap"><div class="panel"><div class="panel-top"><div class="mode-toggle"><span>✦ AI</span><span>Приложения</span></div><span class="grow"></span><button class="close-round" type="button" aria-label="Закрыть панель"><svg width="14" height="14"><use href="#i-x"/></svg></button></div><div class="page-island"><span class="fake-favicon" id="island-icon">D</span><span class="name"><strong id="island-title">Как экспортировать данные</strong><small id="island-domain">docs.example</small></span><span class="model-chip" id="model-chip">в памяти</span></div><div class="feed" id="feed"><div class="feed-title"><h3>Важное здесь</h3><span class="count" id="card-count">03</span></div><p class="feed-sub" id="feed-sub">На этой странице · коротко и с источниками</p><div class="stale-note" id="stale-note">Страница изменилась. Старые карточки приглушены; новый разбор начнётся после паузы.</div><div class="carousel" id="carousel"><div class="cards" id="cards"></div></div><div class="carousel-nav" id="carousel-nav"><span class="position" id="carousel-position">01 / 03</span><div class="track" id="carousel-track"></div><button class="nav-arrow" id="carousel-prev" type="button" aria-label="Предыдущая карточка">‹</button><button class="nav-arrow" id="carousel-next" type="button" aria-label="Следующая карточка">›</button></div><div class="empty" id="empty">Здесь пока нет полезных карточек. Можно задать вопрос о странице ниже.</div><div class="undo-row" id="undo-row">Карточка скрыта. <button id="undo-button" type="button">Вернуть</button></div><div class="feed-status"><span id="freshness">Проверено по этой версии страницы</span><span class="route" id="route"><i></i><span id="route-label">Облако · 1 запрос</span></span></div><div class="chat-rest"><strong>Спросите о странице</strong><span>Карточки дают быстрый ориентир. Здесь можно уточнить детали своими словами.</span></div></div><div class="composer-wrap"><div class="actions"><button class="action-chip" type="button">🌐 Перевести<small>Страницу на русский</small></button><button class="action-chip" type="button">✦ Фактчек<small>Проверить в сети</small></button></div><div class="composer"><input aria-label="Сообщение" placeholder="Написать сообщение…" style="width:100%;min-width:0;border:0;background:transparent;color:var(--text-body);font-size:14px"><span class="grow"></span><span class="send"><svg width="15" height="15"><use href="#i-arrow"/></svg></span></div></div></div></section>
+    </div>
+  </div>
+  <div class="design-notes">
+    <section class="note-section"><h2>Когда карточки обновляются</h2><ol><li>Только для <b>активной вкладки при открытой AI-панели</b>. Ждём завершения загрузки и 4 секунды без заметного изменения текста.</li><li>Извлекаем основной текст и считаем отпечаток содержимого. Тот же отпечаток и модель — берём готовые карточки, <b>0 запросов</b>.</li><li>Текст поменялся — старые карточки сразу помечаются устаревшими. После стабилизации делаем новый разбор; ответ от предыдущей вкладки отбрасываем.</li><li>Для длинной ленты и динамических страниц: не чаще одного нового разбора за 10 минут на вкладку. До него показываем состояние «обновляется», не выдаём старый вывод за актуальный.</li></ol></section>
+    <section class="note-section"><h2>Почему это не съест API-бюджет</h2><ul><li>Правилами отсеиваем короткие страницы, поиск, главные, чаты и формы. Без содержательного текста <b>модель не вызывается</b>.</li><li>Один структурированный запрос: до 8 000 символов отобранного текста, до 3 карточек, короткий ответ. Цитаты берутся из пронумерованных фрагментов, которые затем проверяет код.</li><li>У «Изменилось» сравнение делает обычный код. Модель получает только найденные различия, и лишь если они существенны.</li><li>Отдельные выключатели функций, явный маршрут «Здесь / Облако», предел запросов в день. При достижении предела — тишина и кнопка ручного разбора, <b>без платного обходного маршрута</b>.</li></ul></section>
+  </div>
+</main>
+<div class="settings-mask" id="settings-mask" role="dialog" aria-modal="true" aria-labelledby="settings-title"><div class="settings"><div class="settings-header"><h2 id="settings-title">Карточки AI-панели</h2><button class="close-round" id="settings-close" type="button" aria-label="Закрыть настройки"><svg width="14" height="14"><use href="#i-x"/></svg></button></div><p>Каждая функция отключается отдельно. Облачное подключение используется в фоне только после выбора здесь.</p><label class="setting-row"><span class="copy"><strong>Важное на странице</strong><small>Факты и условия с переходом к исходному фрагменту.</small></span><input class="switch" id="enable-insights" type="checkbox" checked aria-label="Включить важное на странице"></label><label class="setting-row"><span class="copy"><strong>Изменилось с прошлого визита</strong><small>Обычный код сравнивает снимки; модель подписывает значимые изменения.</small></span><input class="switch" id="enable-changes" type="checkbox" checked aria-label="Включить изменения страницы"></label><div class="setting-row"><span class="copy"><strong>Модель для карточек</strong><small>Выбирается отдельно от модели чата.</small></span><select id="model-select" aria-label="Модель для карточек"><option value="local">Здесь · локальная</option><option value="cloud">Облако · подключение</option></select></div><div class="setting-row"><span class="copy"><strong>Дневной предел</strong><small>Жёсткий потолок для фоновых облачных запросов.</small></span><input id="daily-cap" type="number" min="1" max="100" value="12" aria-label="Запросов в день"></div><div class="settings-foot"><b>В облако:</b> только выбранные фрагменты открытой страницы или найденные изменения. История, другие вкладки и поля ввода не входят в запрос. При выключении облака сохранённые карточки остаются до смены страницы; новые запросы прекращаются.</div></div></div>
+<script>
+(() => {
+  const scenarios = {
+    article: {
+      side:'Экспорт данных', address:'docs.example/export', domain:'docs.example', icon:'D', category:'Руководство · данные', title:'Как экспортировать данные', lead:'Скачайте копию своих данных и проверьте, что именно входит в архив.',
+      html:'<h3>Создание архива</h3><p id="a1">Откройте раздел «Данные» и выберите «Создать архив». Подготовка занимает до 48 часов; готовность приходит уведомлением на почту.</p><h3>Состав экспорта</h3><p id="a2">Архив содержит настройки, сообщения и список проектов. Файлы, загруженные в проекты, в экспорт не входят — их нужно скачать отдельно.</p><h3>Ссылка на скачивание</h3><p id="a3">После подготовки ссылка на архив доступна 7 дней. Если срок истёк, создайте новый экспорт.</p>',
+      cards:[
+        {kind:'Не пропустите', title:'Файлы нужно скачать отдельно', text:'Экспорт включает сообщения и проекты, но не загруженные в них файлы.', source:'a2', quote:'§ 2'},
+        {kind:'Срок', title:'Ссылка действует 7 дней', text:'После этого архив придётся сформировать заново.', source:'a3', quote:'§ 3'},
+        {kind:'Время', title:'Подготовка — до 48 часов', text:'О готовности сообщат письмом; ждать у открытой страницы не нужно.', source:'a1', quote:'§ 1'}
+      ]
+    },
+    terms: {
+      side:'Условия подписки', address:'studio.example/pricing', domain:'studio.example', icon:'S', category:'Подписка · условия', title:'Тариф Studio Plus', lead:'Важные сроки и условия продления подписки собраны в одном месте.',
+      html:'<h3>Пробный период</h3><p id="t1">Первые 14 дней бесплатны. Затем подписка продлевается автоматически за 499 ₽ в месяц, если не отменить её заранее.</p><h3>Отмена</h3><p id="t2">Чтобы избежать списания, отмените пробный период не позднее чем за 24 часа до его завершения. Доступ сохранится до конца оплаченного периода.</p><h3>Ваши проекты</h3><p id="t3">После окончания подписки проекты остаются доступны для скачивания 30 дней. Редактирование в этот период недоступно.</p>',
+      cards:[
+        {kind:'Платёж', title:'После 14 дней — 499 ₽/мес.', text:'Пробный период переходит в платную подписку автоматически.', source:'t1', quote:'§ 1'},
+        {kind:'Условие отмены', title:'Отменить за 24 часа', text:'Чтобы не было первого списания, отмена нужна до последнего дня пробного срока.', source:'t2', quote:'§ 2'},
+        {kind:'Доступ к данным', title:'30 дней на скачивание', text:'После окончания подписки проекты можно скачать, но редактировать уже нельзя.', source:'t3', quote:'§ 3'}
+      ]
+    },
+    changes: {
+      side:'Правила возврата', address:'shop.example/returns', domain:'shop.example', icon:'R', category:'Помощь · обновлено', title:'Возврат и обмен', lead:'Страница знакома браузеру: текущая версия сравнивается с тем, что вы читали раньше.',
+      html:'<h3>Срок возврата</h3><p id="c1">Товар можно вернуть в течение 14 дней после получения заказа. Ранее срок составлял 30 дней.</p><h3>Стоимость отправки</h3><p id="c2">Для возврата без брака обратную пересылку оплачивает покупатель. Ранее доставка возврата была бесплатной.</p><h3>Когда вернут деньги</h3><p id="c3">После проверки товара деньги поступают в течение 10 рабочих дней. Этот пункт не менялся.</p>',
+      cards:[
+        {kind:'Изменилось', title:'Срок возврата стал короче', text:'Было 30 дней, теперь 14 дней после получения заказа.', source:'c1', quote:'§ 1'},
+        {kind:'Изменилось', title:'Возвратная доставка теперь платная', text:'Если товар без брака, пересылку оплачивает покупатель.', source:'c2', quote:'§ 2'}
+      ]
+    }
+  };
+  const $ = id => document.getElementById(id);
+  const state = { slide:0, scenario:'article', dismissed:{article:new Set(),terms:new Set(),changes:new Set()}, last:null, stale:false, timer:null, updated:false };
+  function icon(name,size=13) { const s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('width',size);s.setAttribute('height',size); const u=document.createElementNS('http://www.w3.org/2000/svg','use');u.setAttribute('href','#i-'+name);s.append(u);return s; }
+  function source(id) { const node=$(id); if (!node) return; node.scrollIntoView({behavior:'smooth',block:'center'});node.classList.add('source-focus');setTimeout(()=>node.classList.remove('source-focus'),2200); }
+  function render() {
+    const d=scenarios[state.scenario];
+    $('side-title').textContent=d.side;$('address').textContent=d.address;$('page-domain').textContent=d.domain;$('island-domain').textContent=d.domain;$('page-icon').textContent=d.icon;$('island-icon').textContent=d.icon;$('page-category').textContent=d.category;$('page-title').textContent=d.title;$('island-title').textContent=d.title;$('page-lead').textContent=d.lead;$('page-content').innerHTML=d.html;
+    if(state.scenario==='article'&&state.updated)$('a1').textContent='Откройте раздел «Данные» и выберите «Создать архив». Подготовка занимает до 24 часов; готовность приходит уведомлением на почту.';
+    $('update-button').hidden=state.scenario!=='article'||state.updated;
+    document.querySelectorAll('[data-scenario]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scenario===state.scenario)));
+    const enabled=state.scenario==='changes'?$('enable-changes').checked:$('enable-insights').checked;
+    const list=enabled?d.cards.filter((_,i)=>!state.dismissed[state.scenario].has(i)):[];
+    $('cards').replaceChildren();
+    state.slide=Math.min(state.slide,Math.max(0,list.length-1));
+    list.forEach((card,position)=>{
+      const idx=d.cards.indexOf(card), el=document.createElement('article');el.className='insight';el.dataset.index=String(idx);el.dataset.tone=['mustard','sky','tangerine'][idx];el.dataset.serial=String(position+1).padStart(2,'0');
+      const top=document.createElement('div');top.className='card-top';const kind=document.createElement('span');kind.className='card-kind';kind.textContent=card.kind;const spacer=document.createElement('span');spacer.className='spacer';const num=document.createElement('span');num.className='source-number';num.textContent=card.quote;const dismiss=document.createElement('button');dismiss.className='dismiss';dismiss.type='button';dismiss.setAttribute('aria-label','Скрыть карточку');dismiss.append(icon('x',12));dismiss.addEventListener('click',()=>hide(idx));top.append(kind,spacer,num,dismiss);
+      const title=document.createElement('h4');title.textContent=state.scenario==='article'&&state.updated&&idx===2?'Подготовка — до 24 часов':card.title;const body=document.createElement('p');body.textContent=state.scenario==='article'&&state.updated&&idx===2?'Страница обновилась: срок подготовки архива сократился с 48 до 24 часов.':card.text;const link=document.createElement('button');link.type='button';link.className='source-link';link.append(document.createTextNode('Показать на странице'),icon('arrow',12));link.addEventListener('click',()=>source(card.source));const paper=document.createElement('div');paper.className='card-paper';paper.append(title,body,link);el.append(top,paper);$('cards').append(el);
+    });
+    $('carousel-track').replaceChildren();
+    list.forEach((_,i)=>{const dot=document.createElement('button');dot.type='button';dot.setAttribute('aria-label',`Карточка ${i+1}`);dot.addEventListener('click',()=>go(i));$('carousel-track').append(dot);});
+    $('carousel').style.display=list.length?'block':'none';$('carousel-nav').style.display=list.length?'flex':'none';
+    positionSlides();
+    $('card-count').textContent=String(list.length).padStart(2,'0');$('empty').style.display=list.length?'none':'block';$('feed').classList.toggle('stale',state.stale);$('feed-sub').textContent=state.scenario==='changes'?'Со времени прошлого визита · только значимые различия':'На этой странице · коротко и с источниками';
+    const cloud=$('model-select').value==='cloud';$('model-chip').textContent=cloud?'облако':'в памяти';$('route').classList.toggle('local',!cloud);$('route-label').textContent=cloud?'Облако · 1 запрос':'Здесь · 1 запуск';$('freshness').textContent=state.stale?'Ожидаю обновления':'Проверено по этой версии страницы';
+  }
+  function positionSlides() {
+    const cards=$('cards'), first=cards.firstElementChild;
+    if(!first)return;
+    const gap=10;
+    cards.style.transform=`translateX(-${state.slide*(first.getBoundingClientRect().width+gap)}px)`;
+    const total=cards.children.length;
+    $('carousel-position').textContent=`${String(state.slide+1).padStart(2,'0')} / ${String(total).padStart(2,'0')}`;
+    $('carousel-prev').disabled=state.slide===0;$('carousel-next').disabled=state.slide>=total-1;
+    [...$('carousel-track').children].forEach((b,i)=>b.classList.toggle('active',i===state.slide));
+  }
+  function go(n) { state.slide=Math.max(0,Math.min(n,$('cards').children.length-1));positionSlides(); }
+  function hide(idx) { state.dismissed[state.scenario].add(idx);state.last={scenario:state.scenario,idx};$('undo-row').style.display='block';render(); }
+  document.querySelectorAll('[data-scenario]').forEach(b=>b.addEventListener('click',()=>{state.scenario=b.dataset.scenario;state.slide=0;state.stale=false;$('undo-row').style.display='none';render();$('demo-page').scrollTop=0;}));
+  $('carousel-prev').addEventListener('click',()=>go(state.slide-1));
+  $('carousel-next').addEventListener('click',()=>go(state.slide+1));
+  let drag=null;
+  $('carousel').addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;drag={x:e.clientX,y:e.clientY};});
+  $('carousel').addEventListener('pointerup',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag=null;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy))go(state.slide+(dx<0?1:-1));});
+  $('carousel').addEventListener('pointercancel',()=>drag=null);
+  $('carousel').addEventListener('wheel',e=>{if(Math.abs(e.deltaX)>15){e.preventDefault();go(state.slide+(e.deltaX>0?1:-1));}},{passive:false});
+  window.addEventListener('resize',positionSlides);
+  $('update-button').addEventListener('click',()=>{state.updated=true;state.stale=true;render();state.timer=setTimeout(()=>{state.stale=false;render();},2400);});
+  $('undo-button').addEventListener('click',()=>{if(state.last){state.dismissed[state.last.scenario].delete(state.last.idx);state.last=null;}$('undo-row').style.display='none';render();});
+  $('settings-button').addEventListener('click',()=>$('settings-mask').classList.add('open'));
+  $('settings-close').addEventListener('click',()=>$('settings-mask').classList.remove('open'));
+  $('settings-mask').addEventListener('click',e=>{if(e.target===$('settings-mask'))$('settings-mask').classList.remove('open');});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')$('settings-mask').classList.remove('open');});
+  ['enable-insights','enable-changes','model-select'].forEach(id=>$(id).addEventListener('change',render));
+  $('theme-button').addEventListener('click',()=>{const dark=document.documentElement.getAttribute('data-theme')==='dark';document.documentElement.setAttribute('data-theme',dark?'light':'dark');$('theme-button').textContent=dark?'Тёмная тема':'Светлая тема';});
+  render();
+})();
+</script>
+</body>
+</html>
