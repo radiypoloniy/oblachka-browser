@@ -1,0 +1,1469 @@
+{
+  "measuredAt": "2026-10-02T16:09:41.982Z",
+  "model": "Qwen3.5 4B Q4_K_M",
+  "pages": 18,
+  "queries": 18,
+  "repeats": 2,
+  "loadMs": 29460.2349,
+  "rssBeforeLoad": 128356352,
+  "runs": [
+    {
+      "repeat": 0,
+      "key": "sound",
+      "query": "почему в гарнитуре исчезает уличный гул",
+      "target": "paraphrase",
+      "control": false,
+      "variants": [
+        "уменьшение уличного шума в наушниках",
+        "подавление внешнего гула гарнитурой"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.07129999999961001,
+      "expandedCandidates": [
+        "paraphrase"
+      ],
+      "chosen": [
+        "paraphrase"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2744.940599999998,
+      "extraRetrievalMs": 3.130700000001525,
+      "rerankMs": 250.31059999999707,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"уменьшение уличного шума в наушниках\",\n    \"second\": \"подавление внешнего гула гарнитурой\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "battery",
+      "query": "как уберечь аккумулятор от деградации во время пополнения заряда",
+      "target": "battery",
+      "control": false,
+      "variants": [
+        "защита аккумулятора от деградации при зарядке",
+        "предотвращение старения батареи во время пополнения заряда"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "density",
+        "dns"
+      ],
+      "baselineChosen": [
+        "density"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 285.6226999999999,
+      "expandedCandidates": [
+        "density",
+        "dns",
+        "battery",
+        "python",
+        "start"
+      ],
+      "chosen": [
+        "battery"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2722.3992999999973,
+      "extraRetrievalMs": 4.515500000001339,
+      "rerankMs": 418.1641000000018,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"защита аккумулятора от деградации при зарядке\",\n    \"second\": \"предотвращение старения батареи во время пополнения заряда\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "dns",
+      "query": "как скрыть от оператора имена сайтов которые я открываю",
+      "target": "dns",
+      "control": false,
+      "variants": [
+        "скрыть сайты от оператора",
+        "не показывать сайты оператору"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "dns"
+      ],
+      "baselineChosen": [
+        "dns"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 263.895500000006,
+      "expandedCandidates": [
+        "dns"
+      ],
+      "chosen": [
+        "dns"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2376.6812999999966,
+      "extraRetrievalMs": 2.1982999999963795,
+      "rerankMs": 244.43009999999776,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"скрыть сайты от оператора\",\n    \"second\": \"не показывать сайты оператору\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "backup",
+      "query": "как не потерять файлы при поломке диска",
+      "target": "backup",
+      "control": false,
+      "variants": [
+        "резервное копирование файлов",
+        "защита данных от поломки диска"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "python",
+        "start",
+        "battery"
+      ],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 253.282100000004,
+      "expandedCandidates": [
+        "python",
+        "start",
+        "battery",
+        "backup",
+        "dns"
+      ],
+      "chosen": [
+        "backup"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2516.6772999999957,
+      "extraRetrievalMs": 2.4011000000027707,
+      "rerankMs": 375.76199999999517,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"резервное копирование файлов\",\n    \"second\": \"защита данных от поломки диска\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "camera",
+      "query": "как снять белый пейзаж чтобы детали не исчезли",
+      "target": "camera",
+      "control": false,
+      "variants": [
+        "снять белый пейзаж",
+        "избавиться от белого фона"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "camera"
+      ],
+      "baselineChosen": [
+        "camera"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 239.23559999999998,
+      "expandedCandidates": [
+        "camera",
+        "dns"
+      ],
+      "chosen": [
+        "camera"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2493.248900000006,
+      "extraRetrievalMs": 1.3999000000039814,
+      "rerankMs": 263.16049999999814,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"снять белый пейзаж\",\n    \"second\": \"избавиться от белого фона\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "aurora",
+      "query": "откуда берутся цветные огни на северном небе",
+      "target": "start",
+      "control": false,
+      "variants": [
+        "северное сияние",
+        "полярное сияние"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "backup"
+      ],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 200.8773000000001,
+      "expandedCandidates": [
+        "backup",
+        "start"
+      ],
+      "chosen": [
+        "start"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2350.8915999999954,
+      "extraRetrievalMs": 2.2603000000017346,
+      "rerankMs": 268.3885999999984,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"северное сияние\",\n    \"second\": \"полярное сияние\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "plants",
+      "query": "когда давать воду растениям с толстыми листьями",
+      "target": "short",
+      "control": false,
+      "variants": [
+        "полив растений с толстыми листьями",
+        "когда поливать суккуленты"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.006900000000314321,
+      "expandedCandidates": [
+        "short"
+      ],
+      "chosen": [
+        "short"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2559.393100000001,
+      "extraRetrievalMs": 1.4539999999979045,
+      "rerankMs": 230.93070000000444,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"полив растений с толстыми листьями\",\n    \"second\": \"когда поливать суккуленты\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "english",
+      "query": "найди английскую заметку о том как уменьшить износ литиевого аккумулятора при зарядке",
+      "target": "english",
+      "control": false,
+      "variants": [
+        "lithium battery wear reduction charging",
+        "minimize lithium battery degradation during charge"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "battery",
+        "python",
+        "start",
+        "density"
+      ],
+      "baselineChosen": [
+        "battery",
+        "density"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 346.5246000000043,
+      "expandedCandidates": [
+        "battery",
+        "python",
+        "start",
+        "density",
+        "english"
+      ],
+      "chosen": [
+        "english",
+        "battery"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 1962.749499999998,
+      "extraRetrievalMs": 2.77560000000085,
+      "rerankMs": 399.167300000001,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"lithium battery wear reduction charging\",\n    \"second\": \"minimize lithium battery degradation during charge\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [
+        "battery",
+        "density"
+      ],
+      "constraintViolations": [
+        "battery"
+      ]
+    },
+    {
+      "repeat": 0,
+      "key": "python",
+      "query": "как уменьшить память программы на Питоне",
+      "target": "python",
+      "control": false,
+      "variants": [
+        "уменьшить память Python",
+        "освободить память Python"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "python",
+        "snake",
+        "backup"
+      ],
+      "baselineChosen": [
+        "python"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 278.32919999999285,
+      "expandedCandidates": [
+        "python",
+        "snake",
+        "backup"
+      ],
+      "chosen": [
+        "python"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2479.6944000000003,
+      "extraRetrievalMs": 1.3611999999993714,
+      "rerankMs": 280.82360000000335,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"уменьшить память Python\",\n    \"second\": \"освободить память Python\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "jaguar",
+      "query": "как обслуживать трансмиссию машины Ягуар",
+      "target": "jaguar-car",
+      "control": false,
+      "variants": [
+        "обслуживание трансмиссии Jaguar",
+        "сервис коробки передач Ягуар"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "jaguar-animal",
+        "jaguar-car"
+      ],
+      "baselineChosen": [
+        "jaguar-car"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 250.88680000000022,
+      "expandedCandidates": [
+        "jaguar-animal",
+        "jaguar-car"
+      ],
+      "chosen": [
+        "jaguar-car"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2656.2091,
+      "extraRetrievalMs": 1.5867999999973108,
+      "rerankMs": 242.00020000000222,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"обслуживание трансмиссии Jaguar\",\n    \"second\": \"сервис коробки передач Ягуар\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "socket",
+      "query": "как двум приложениям на одном компьютере обмениваться сообщениями",
+      "target": "socket",
+      "control": false,
+      "variants": [
+        "интерпринатор",
+        "интерпретатор"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "socket",
+        "backup"
+      ],
+      "baselineChosen": [
+        "socket"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 251.2115000000049,
+      "expandedCandidates": [
+        "socket",
+        "backup"
+      ],
+      "chosen": [
+        "socket"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2466.0481,
+      "extraRetrievalMs": 2.4292999999961467,
+      "rerankMs": 249.86159999999654,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"интерпринатор\",\n    \"second\": \"интерпретатор\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "passive",
+      "query": "наушники которые изолируют внешний звук без электроники",
+      "target": "passive",
+      "control": false,
+      "variants": [
+        "passive noise cancelling headphones",
+        "acoustic isolation earphones"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "paraphrase",
+        "passive"
+      ],
+      "baselineChosen": [
+        "passive",
+        "paraphrase"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 277.2387999999992,
+      "expandedCandidates": [
+        "paraphrase",
+        "passive"
+      ],
+      "chosen": [
+        "passive",
+        "paraphrase"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2539.1452999999965,
+      "extraRetrievalMs": 1.7180999999982305,
+      "rerankMs": 273.7756000000081,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"passive noise cancelling headphones\",\n    \"second\": \"acoustic isolation earphones\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [
+        "paraphrase"
+      ],
+      "constraintViolations": [
+        "paraphrase"
+      ]
+    },
+    {
+      "repeat": 0,
+      "key": "sound-exact",
+      "query": "активное шумоподавление",
+      "target": "paraphrase",
+      "control": true,
+      "variants": [
+        "активное шумоподавление",
+        "активное снижение шума"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "paraphrase"
+      ],
+      "baselineChosen": [
+        "paraphrase"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 245.74980000000505,
+      "expandedCandidates": [
+        "paraphrase"
+      ],
+      "chosen": [
+        "paraphrase"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2275.9766999999993,
+      "extraRetrievalMs": 1.4818000000086613,
+      "rerankMs": 227.62729999999283,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"активное шумоподавление\",\n    \"second\": \"активное снижение шума\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "numeric",
+      "query": "3-2-1",
+      "target": "backup",
+      "control": true,
+      "variants": [
+        "3-2-1 правило",
+        "правило 3-2-1"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "backup"
+      ],
+      "baselineChosen": [
+        "backup"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 235.5966999999946,
+      "expandedCandidates": [
+        "backup"
+      ],
+      "chosen": [
+        "backup"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 1179.195900000006,
+      "extraRetrievalMs": 1.310799999992014,
+      "rerankMs": 238.64479999999458,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\"first\": \"3-2-1 правило\", \"second\": \"правило 3-2-1\"}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "missing",
+      "query": "нейтринный телескоп",
+      "target": null,
+      "control": false,
+      "variants": [
+        "нейтринный телескоп",
+        "детектор нейтрино"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.0030999999871710315,
+      "expandedCandidates": [],
+      "chosen": [],
+      "degraded": false,
+      "retrieved": false,
+      "selected": false,
+      "expansionMs": 2449.3678000000073,
+      "extraRetrievalMs": 1.45779999998922,
+      "rerankMs": 0.004199999995762482,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"нейтринный телескоп\",\n    \"second\": \"детектор нейтрино\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "missing-heraldry",
+      "query": "средневековая геральдика",
+      "target": null,
+      "control": false,
+      "variants": [
+        "средневековая геральдика",
+        "средневековые гербы"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.003000000011525117,
+      "expandedCandidates": [],
+      "chosen": [],
+      "degraded": false,
+      "retrieved": false,
+      "selected": false,
+      "expansionMs": 2433.5243000000046,
+      "extraRetrievalMs": 1.0632999999943422,
+      "rerankMs": 0.003200000006472692,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"средневековая геральдика\",\n    \"second\": \"средневековые гербы\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "missing-car",
+      "query": "срок службы аккумулятора Toyota Prius",
+      "target": null,
+      "control": false,
+      "variants": [
+        "Toyota Prius аккумулятор срок службы",
+        "батарейный блок Prius долговечность"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.001999999993131496,
+      "expandedCandidates": [],
+      "chosen": [],
+      "degraded": false,
+      "retrieved": false,
+      "selected": false,
+      "expansionMs": 2380.8600000000006,
+      "extraRetrievalMs": 1.3549999999959255,
+      "rerankMs": 0.0029000000067753717,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"Toyota Prius аккумулятор срок службы\",\n    \"second\": \"батарейный блок Prius долговечность\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 0,
+      "key": "missing-number",
+      "query": "резервное копирование по правилу 3-2-9",
+      "target": null,
+      "control": false,
+      "variants": [
+        "правило 3-2-9 резервное копирование",
+        "архивация по правилу 3-2-9"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.002099999997881241,
+      "expandedCandidates": [],
+      "chosen": [],
+      "degraded": false,
+      "retrieved": false,
+      "selected": false,
+      "expansionMs": 2495.909200000009,
+      "extraRetrievalMs": 1.8935999999957858,
+      "rerankMs": 0.005699999994249083,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"правило 3-2-9 резервное копирование\",\n    \"second\": \"архивация по правилу 3-2-9\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "sound",
+      "query": "почему в гарнитуре исчезает уличный гул",
+      "target": "paraphrase",
+      "control": false,
+      "variants": [
+        "уменьшение уличного шума в наушниках",
+        "подавление внешнего гула в гарнитуре"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.0022000000026309863,
+      "expandedCandidates": [
+        "paraphrase"
+      ],
+      "chosen": [
+        "paraphrase"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2401.1532000000007,
+      "extraRetrievalMs": 2.423500000004424,
+      "rerankMs": 227.886599999998,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"уменьшение уличного шума в наушниках\",\n    \"second\": \"подавление внешнего гула в гарнитуре\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "battery",
+      "query": "как уберечь аккумулятор от деградации во время пополнения заряда",
+      "target": "battery",
+      "control": false,
+      "variants": [
+        "защита аккумулятора от деградации при зарядке",
+        "предотвращение старения батареи во время пополнения заряда"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "density",
+        "dns"
+      ],
+      "baselineChosen": [
+        "density"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 284.4475999999995,
+      "expandedCandidates": [
+        "density",
+        "dns",
+        "battery",
+        "python",
+        "start"
+      ],
+      "chosen": [
+        "battery"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2631.8252000000066,
+      "extraRetrievalMs": 4.268899999995483,
+      "rerankMs": 391.16049999999814,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"защита аккумулятора от деградации при зарядке\",\n    \"second\": \"предотвращение старения батареи во время пополнения заряда\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "dns",
+      "query": "как скрыть от оператора имена сайтов которые я открываю",
+      "target": "dns",
+      "control": false,
+      "variants": [
+        "скрыть сайты от оператора",
+        "не показывать сайты оператору"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "dns"
+      ],
+      "baselineChosen": [
+        "dns"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 237.38969999999972,
+      "expandedCandidates": [
+        "dns"
+      ],
+      "chosen": [
+        "dns"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2208.224099999992,
+      "extraRetrievalMs": 1.4994999999908032,
+      "rerankMs": 238.67860000001383,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"скрыть сайты от оператора\",\n    \"second\": \"не показывать сайты оператору\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "backup",
+      "query": "как не потерять файлы при поломке диска",
+      "target": "backup",
+      "control": false,
+      "variants": [
+        "резервное копирование файлов",
+        "защита данных от поломки диска"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "python",
+        "start",
+        "battery"
+      ],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 244.67480000000796,
+      "expandedCandidates": [
+        "python",
+        "start",
+        "battery",
+        "backup",
+        "dns"
+      ],
+      "chosen": [
+        "backup"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2459.021099999998,
+      "extraRetrievalMs": 2.286000000007334,
+      "rerankMs": 363.8966999999975,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"резервное копирование файлов\",\n    \"second\": \"защита данных от поломки диска\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "camera",
+      "query": "как снять белый пейзаж чтобы детали не исчезли",
+      "target": "camera",
+      "control": false,
+      "variants": [
+        "снять белый пейзаж",
+        "избавиться от белого фона"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "camera"
+      ],
+      "baselineChosen": [
+        "camera"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 236.89719999999215,
+      "expandedCandidates": [
+        "camera",
+        "dns"
+      ],
+      "chosen": [
+        "camera"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2456.59169999999,
+      "extraRetrievalMs": 1.6347999999998137,
+      "rerankMs": 271.29619999999704,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"снять белый пейзаж\",\n    \"second\": \"избавиться от белого фона\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "aurora",
+      "query": "откуда берутся цветные огни на северном небе",
+      "target": "start",
+      "control": false,
+      "variants": [
+        "северное сияние",
+        "полярное сияние"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "backup"
+      ],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 200.85990000001038,
+      "expandedCandidates": [
+        "backup",
+        "start"
+      ],
+      "chosen": [
+        "start"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2312.4676000000036,
+      "extraRetrievalMs": 1.6593000000139,
+      "rerankMs": 258.59419999999227,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"северное сияние\",\n    \"second\": \"полярное сияние\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "plants",
+      "query": "когда давать воду растениям с толстыми листьями",
+      "target": "short",
+      "control": false,
+      "variants": [
+        "полив растений с толстыми листьями",
+        "когда поливать суккуленты"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.0031000000017229468,
+      "expandedCandidates": [
+        "short"
+      ],
+      "chosen": [
+        "short"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2543.321199999991,
+      "extraRetrievalMs": 1.4140999999945052,
+      "rerankMs": 231.62579999999434,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"полив растений с толстыми листьями\",\n    \"second\": \"когда поливать суккуленты\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "english",
+      "query": "найди английскую заметку о том как уменьшить износ литиевого аккумулятора при зарядке",
+      "target": "english",
+      "control": false,
+      "variants": [
+        "lithium battery wear reduction charging",
+        "minimize lithium battery degradation during charge"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "battery",
+        "python",
+        "start",
+        "density"
+      ],
+      "baselineChosen": [
+        "battery",
+        "density"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 338.18889999999374,
+      "expandedCandidates": [
+        "battery",
+        "python",
+        "start",
+        "density",
+        "english"
+      ],
+      "chosen": [
+        "english",
+        "battery"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 1931.2762000000075,
+      "extraRetrievalMs": 2.3357000000105472,
+      "rerankMs": 398.7584999999963,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"lithium battery wear reduction charging\",\n    \"second\": \"minimize lithium battery degradation during charge\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [
+        "battery",
+        "density"
+      ],
+      "constraintViolations": [
+        "battery"
+      ]
+    },
+    {
+      "repeat": 1,
+      "key": "python",
+      "query": "как уменьшить память программы на Питоне",
+      "target": "python",
+      "control": false,
+      "variants": [
+        "уменьшить память Python",
+        "освободить память Python"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "python",
+        "snake",
+        "backup"
+      ],
+      "baselineChosen": [
+        "python"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 280.30539999999746,
+      "expandedCandidates": [
+        "python",
+        "snake",
+        "backup"
+      ],
+      "chosen": [
+        "python"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2448.5806999999913,
+      "extraRetrievalMs": 1.8149999999877764,
+      "rerankMs": 286.4024000000063,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"уменьшить память Python\",\n    \"second\": \"освободить память Python\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "jaguar",
+      "query": "как обслуживать трансмиссию машины Ягуар",
+      "target": "jaguar-car",
+      "control": false,
+      "variants": [
+        "обслуживание трансмиссии Jaguar",
+        "сервис коробки передач Ягуар"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "jaguar-animal",
+        "jaguar-car"
+      ],
+      "baselineChosen": [
+        "jaguar-car"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 251.24639999998908,
+      "expandedCandidates": [
+        "jaguar-animal",
+        "jaguar-car"
+      ],
+      "chosen": [
+        "jaguar-car"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2616.7657000000036,
+      "extraRetrievalMs": 1.3927000000112457,
+      "rerankMs": 246.02449999999953,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"обслуживание трансмиссии Jaguar\",\n    \"second\": \"сервис коробки передач Ягуар\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "socket",
+      "query": "как двум приложениям на одном компьютере обмениваться сообщениями",
+      "target": "socket",
+      "control": false,
+      "variants": [
+        "интерпринатор",
+        "интерпретатор"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "socket",
+        "backup"
+      ],
+      "baselineChosen": [
+        "socket"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 250.72550000000047,
+      "expandedCandidates": [
+        "socket",
+        "backup"
+      ],
+      "chosen": [
+        "socket"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2105.32699999999,
+      "extraRetrievalMs": 0.9215999999869382,
+      "rerankMs": 253.0625,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"интерпринатор\",\n    \"second\": \"интерпретатор\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "passive",
+      "query": "наушники которые изолируют внешний звук без электроники",
+      "target": "passive",
+      "control": false,
+      "variants": [
+        "passive noise cancelling headphones",
+        "acoustic isolation earphones"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "paraphrase",
+        "passive"
+      ],
+      "baselineChosen": [
+        "passive",
+        "paraphrase"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 271.89010000000417,
+      "expandedCandidates": [
+        "paraphrase",
+        "passive"
+      ],
+      "chosen": [
+        "passive"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2494.454199999993,
+      "extraRetrievalMs": 1.4210999999922933,
+      "rerankMs": 246.73889999999665,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"passive noise cancelling headphones\",\n    \"second\": \"acoustic isolation earphones\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [
+        "paraphrase"
+      ],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "sound-exact",
+      "query": "активное шумоподавление",
+      "target": "paraphrase",
+      "control": true,
+      "variants": [
+        "активное шумоподавление",
+        "активное снижение шума"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "paraphrase"
+      ],
+      "baselineChosen": [
+        "paraphrase"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 227.70219999999972,
+      "expandedCandidates": [
+        "paraphrase"
+      ],
+      "chosen": [
+        "paraphrase"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 2276.818100000004,
+      "extraRetrievalMs": 1.4121999999915715,
+      "rerankMs": 230.08219999998983,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"активное шумоподавление\",\n    \"second\": \"активное снижение шума\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "numeric",
+      "query": "3-2-1",
+      "target": "backup",
+      "control": true,
+      "variants": [
+        "3-2-1 правило",
+        "правило 3-2-1"
+      ],
+      "parseError": null,
+      "baselineCandidates": [
+        "backup"
+      ],
+      "baselineChosen": [
+        "backup"
+      ],
+      "baselineDegraded": false,
+      "baselineMs": 237.28770000000077,
+      "expandedCandidates": [
+        "backup"
+      ],
+      "chosen": [
+        "backup"
+      ],
+      "degraded": false,
+      "retrieved": true,
+      "selected": true,
+      "expansionMs": 1215.4786999999924,
+      "extraRetrievalMs": 1.170799999992596,
+      "rerankMs": 243.93469999999797,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\"first\": \"3-2-1 правило\", \"second\": \"правило 3-2-1\"}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "missing",
+      "query": "нейтринный телескоп",
+      "target": null,
+      "control": false,
+      "variants": [
+        "нейтринный телескоп",
+        "детектор нейтрино"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.004600000000209548,
+      "expandedCandidates": [],
+      "chosen": [],
+      "degraded": false,
+      "retrieved": false,
+      "selected": false,
+      "expansionMs": 2464.985799999995,
+      "extraRetrievalMs": 1.103000000002794,
+      "rerankMs": 0.004100000005564652,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"нейтринный телескоп\",\n    \"second\": \"детектор нейтрино\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "missing-heraldry",
+      "query": "средневековая геральдика",
+      "target": null,
+      "control": false,
+      "variants": [
+        "средневековая геральдика",
+        "средневековые гербы"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.004000000000814907,
+      "expandedCandidates": [],
+      "chosen": [],
+      "degraded": false,
+      "retrieved": false,
+      "selected": false,
+      "expansionMs": 2478.634600000005,
+      "extraRetrievalMs": 1.0072999999974854,
+      "rerankMs": 0.0031000000017229468,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"средневековая геральдика\",\n    \"second\": \"средневековые гербы\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "missing-car",
+      "query": "срок службы аккумулятора Toyota Prius",
+      "target": null,
+      "control": false,
+      "variants": [
+        "Toyota Prius аккумулятор срок службы",
+        "батарейный блок Prius долговечность"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.001999999993131496,
+      "expandedCandidates": [],
+      "chosen": [],
+      "degraded": false,
+      "retrieved": false,
+      "selected": false,
+      "expansionMs": 2373.395399999994,
+      "extraRetrievalMs": 1.1719000000011874,
+      "rerankMs": 0.003499999991618097,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"Toyota Prius аккумулятор срок службы\",\n    \"second\": \"батарейный блок Prius долговечность\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    },
+    {
+      "repeat": 1,
+      "key": "missing-number",
+      "query": "резервное копирование по правилу 3-2-9",
+      "target": null,
+      "control": false,
+      "variants": [
+        "правило 3-2-9 резервное копирование",
+        "архивация по правилу 3-2-9"
+      ],
+      "parseError": null,
+      "baselineCandidates": [],
+      "baselineChosen": [],
+      "baselineDegraded": false,
+      "baselineMs": 0.0019000000029336661,
+      "expandedCandidates": [],
+      "chosen": [],
+      "degraded": false,
+      "retrieved": false,
+      "selected": false,
+      "expansionMs": 2507.742299999998,
+      "extraRetrievalMs": 1.2850000000034925,
+      "rerankMs": 0.0031999999919207767,
+      "additionalCandidateReads": 2,
+      "rawExpansion": {
+        "ok": true,
+        "out": "{\n    \"first\": \"правило 3-2-9 резервное копирование\",\n    \"second\": \"архивация по правилу 3-2-9\"\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "baselineConstraintViolations": [],
+      "constraintViolations": []
+    }
+  ],
+  "diagnostic": " generation=41ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=364ms outTokens=1\n[inference] [perf] segment: inputTokens=293 setup/prefill=191ms generation=40ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=237ms outTokens=1\n[inference] [perf] segment: inputTokens=153 setup/prefill=253ms generation=2200ms (genTokens=36) finalOutTokens=29\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=36)\n[perf] segment: всего=2457ms outTokens=29\n[inference] [perf] segment: inputTokens=372 setup/prefill=218ms generation=45ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=271ms outTokens=1\n[inference] [perf] segment: inputTokens=297 setup/prefill=194ms generation=1ms (genTokens=0) finalOutTokens=0\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=0)\n[perf] segment: всего=201ms outTokens=0\n[inference] [perf] segment: inputTokens=155 setup/prefill=133ms generation=2176ms (genTokens=34) finalOutTokens=27\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=34)\n[perf] segment: всего=2312ms outTokens=27\n[inference] [perf] segment: inputTokens=367 setup/prefill=209ms generation=41ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=258ms outTokens=1\n[inference] [perf] segment: inputTokens=154 setup/prefill=256ms generation=2284ms (genTokens=40) finalOutTokens=33\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=40)\n[perf] segment: всего=2543ms outTokens=33\n[inference] [perf] segment: inputTokens=258 setup/prefill=185ms generation=41ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=232ms outTokens=1\n[inference] [perf] segment: inputTokens=488 setup/prefill=258ms generation=69ms (genTokens=3) finalOutTokens=3\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=3)\n[perf] segment: всего=338ms outTokens=3\n[inference] [perf] segment: inputTokens=162 setup/prefill=255ms generation=1673ms (genTokens=35) finalOutTokens=31\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=35)\n[perf] segment: всего=1931ms outTokens=31\n[inference] [perf] segment: inputTokens=551 setup/prefill=320ms generation=68ms (genTokens=3) finalOutTokens=3\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=3)\n[perf] segment: всего=399ms outTokens=3\n[inference] [perf] segment: inputTokens=377 setup/prefill=231ms generation=41ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=280ms outTokens=1\n[inference] [perf] segment: inputTokens=150 setup/prefill=256ms generation=2189ms (genTokens=36) finalOutTokens=29\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=36)\n[perf] segment: всего=2449ms outTokens=29\n[inference] [perf] segment: inputTokens=377 setup/prefill=235ms generation=43ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=286ms outTokens=1\n[inference] [perf] segment: inputTokens=312 setup/prefill=202ms generation=43ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=251ms outTokens=1\n[inference] [perf] segment: inputTokens=154 setup/prefill=254ms generation=2359ms (genTokens=40) finalOutTokens=33\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=40)\n[perf] segment: всего=2617ms outTokens=33\n[inference] [perf] segment: inputTokens=312 setup/prefill=199ms generation=42ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=246ms outTokens=1\n[inference] [perf] segment: inputTokens=341 setup/prefill=202ms generation=41ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=251ms outTokens=1\n[inference] [perf] segment: inputTokens=155 setup/prefill=259ms generation=1842ms (genTokens=34) finalOutTokens=27\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=34)\n[perf] segment: всего=2105ms outTokens=27\n[inference] [perf] segment: inputTokens=341 setup/prefill=205ms generation=41ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=253ms outTokens=1\n[inference] [perf] segment: inputTokens=317 setup/prefill=197ms generation=68ms (genTokens=3) finalOutTokens=3\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=3)\n[perf] segment: всего=272ms outTokens=3\n[inference] [perf] segment: inputTokens=156 setup/prefill=251ms generation=2240ms (genTokens=35) finalOutTokens=27\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=35)\n[perf] segment: всего=2494ms outTokens=27\n[inference] [perf] segment: inputTokens=317 setup/prefill=200ms generation=41ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=247ms outTokens=1\n[inference] [perf] segment: inputTokens=258 setup/prefill=182ms generation=40ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=228ms outTokens=1\n[inference] [perf] segment: inputTokens=149 setup/prefill=258ms generation=2015ms (genTokens=34) finalOutTokens=27\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=34)\n[perf] segment: всего=2277ms outTokens=27\n[inference] [perf] segment: inputTokens=258 setup/prefill=184ms generation=41ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=230ms outTokens=1\n[inference] [perf] segment: inputTokens=290 setup/prefill=190ms generation=42ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=237ms outTokens=1\n[inference] [perf] segment: inputTokens=148 setup/prefill=264ms generation=948ms (genTokens=24) finalOutTokens=24\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=24)\n[perf] segment: всего=1215ms outTokens=24\n[inference] [perf] segment: inputTokens=290 setup/prefill=196ms generation=41ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=244ms outTokens=1\n[inference] [gen] vram: gpu=vulkan total=8601468928 free=82563072 devices=[NVIDIA GeForce RTX 2070 SUPER]\n[inference] [perf] segment: inputTokens=151 setup/prefill=263ms generation=2199ms (genTokens=38) finalOutTokens=31\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=38)\n[perf] segment: всего=2465ms outTokens=31\n[inference] [perf] segment: inputTokens=150 setup/prefill=251ms generation=2224ms (genTokens=37) finalOutTokens=30\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=37)\n[perf] segment: всего=2479ms outTokens=30\n[inference] [perf] segment: inputTokens=150 setup/prefill=251ms generation=2119ms (genTokens=41) finalOutTokens=34\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=41)\n[perf] segment: всего=2373ms outTokens=34\n[inference] [perf] segment: inputTokens=158 setup/prefill=272ms generation=2232ms (genTokens=50) finalOutTokens=43\n[inference] [gen] stopped: stop token (stopGenerationTrigger) (limit=96, genTokens=50)\n[perf] segment: всего=2508ms outTokens=43\n[inference] [gen] модель выгружена из VRAM\n",
+  "summary": {
+    "positiveRuns": 28,
+    "baselineRetrieved": 16,
+    "expandedRetrieved": 28,
+    "baselineSelected": 16,
+    "expandedSelected": 28,
+    "negativeRuns": 8,
+    "baselineNegativeFalseHits": 0,
+    "expandedNegativeFalseHits": 0,
+    "invalidExpansions": 0,
+    "degradedReranks": 0,
+    "expansion": {
+      "medianMs": 2459.021099999998,
+      "p95Ms": 2722.3992999999973
+    },
+    "extraRetrieval": {
+      "medianMs": 1.4994999999908032,
+      "p95Ms": 4.268899999995483
+    },
+    "baselineConstraintViolationRuns": 4,
+    "expandedConstraintViolationRuns": 3
+  }
+}
