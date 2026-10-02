@@ -450,13 +450,8 @@ export async function rerankHistoryCandidates(
   opts?: { background?: boolean; related?: boolean },
 ): Promise<number[]> {
   if (candidates.length === 0) return []
-  // runPrompt САМ модель не грузит — обычно её загружает вызывающая сторона (runSegmented для
-  // перевода/AI-действий, runChatMessageQueued для чата) до первого runPrompt/session.prompt().
-  // Умный поиск — единственный потребитель runPrompt(), у которого нет такого «заботливого»
-  // вызывающего кода вокруг. Явный ensureLoaded() обязателен: без него первый заход (человек в
-  // этой сессии ещё ни разу не переводил и не чатился) ушёл бы в процесс инференса с незагруженной
-  // моделью.
-  await ensureLoaded()
+  // Загрузка принадлежит выбранному provider: локальный поднимет модель сам,
+  // внешний не должен зависеть от наличия GGUF и занимать локальную память.
   const { out } = await runPrompt(buildRerankPrompt(query, candidates, opts?.related), RERANK_MAX_TOKENS, undefined, { ...opts, role: 'search' })
   return parseRerankIndices(out, candidates.length)
 }
