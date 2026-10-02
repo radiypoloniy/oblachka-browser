@@ -64,7 +64,8 @@ function safeOrigin(url: string): string {
 }
 
 interface PendingEntry {
-  callback: (granted: boolean) => void;
+  callbacks: Array<(granted: boolean) => void>;
+  requesterWcId: number | null;
   origin: string;
   keysToStore: PermKey[];
 }
@@ -151,10 +152,7 @@ export class PermissionManager {
           return;
         }
 
-        const requestId = randomUUID();
-        this.#pending.set(requestId, { callback, origin, keysToStore: keys });
-        this.#onHintChanged?.();
-        this.#sendRequest?.({ requestId, origin, permission: displayKey }, wc?.id ?? null);
+        this.#enqueue(origin, keys, displayKey, wc?.id ?? null, callback);
       },
     );
 
@@ -221,10 +219,33 @@ export class PermissionManager {
     if (saved !== null) return Promise.resolve(saved === 'granted');
     if (!this.#sendRequest) return Promise.resolve(false);
     return new Promise((resolve) => {
-      const requestId = randomUUID();
-      this.#pending.set(requestId, { origin, keysToStore: [key], callback: resolve });
-      this.#sendRequest?.({ requestId, origin, permission: key }, requesterWcId);
+      this.#enqueue(origin, [key], key, requesterWcId, resolve);
     });
+  }
+
+  #enqueue(origin: string, keys: PermKey[], displayKey: PermKey, requesterWcId: number | null,
+    callback: (granted: boolean) => void): void {
+    if (!this.#sendRequest) { callback(false); return; }
+    // Объединяем только запросы одной страницы с одинаковым набором прав.
+    // Соседняя вкладка обязана получить собственный вопрос и собственную отмену.
+    for (const entry of this.#pending.values()) {
+      if (entry.origin === origin && entry.requesterWcId === requesterWcId
+        && entry.keysToStore.length === keys.length && keys.every((key) => entry.keysToStore.includes(key))) {
+        entry.callbacks.push(callback);
+        return;
+      }
+    }
+    const requestId = randomUUID();
+    this.#pending.set(requestId, { origin, keysToStore: keys, requesterWcId, callbacks: [callback] });
+    this.#onHintChanged?.();
+    this.#sendRequest({ requestId, origin, permission: displayKey }, requesterWcId);
+  }
+
+  #complete(entry: PendingEntry, granted: boolean): void {
+    for (const callback of entry.callbacks) {
+      // Закрытый renderer не должен помешать завершению остальных запросов.
+      try { callback(granted); } catch (error) { console.warn('[Permissions] callback:', error); }
+    }
   }
 
   // Вызывается из IPC-хендлера когда пользователь ответил на prompt.
@@ -262,12 +283,12 @@ export class PermissionManager {
     this.#pending.delete(requestId);
     this.#clearBlocked(entry.origin);
     this.#onHintChanged?.();
-    entry.callback(granted);
     if (remember) {
       for (const key of entry.keysToStore) {
         this.#store(entry.origin, key, granted ? 'granted' : 'denied');
       }
     }
+    this.#complete(entry, granted);
   }
 
   // Вопрос снят не человеком, а обстоятельствами (ушли со страницы, закрыли вкладку). Отвечаем
@@ -277,7 +298,7 @@ export class PermissionManager {
     const entry = this.#pending.get(requestId);
     if (!entry) return;
     this.#pending.delete(requestId);
-    entry.callback(false);
+    this.#complete(entry, false);
   }
 
   // ── Управление из настроек ───────────────────────────────────────────────────

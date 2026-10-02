@@ -9,7 +9,6 @@
 // только на пару «сайт + схема».
 import { shell } from 'electron'
 import type { BrowserWindow } from 'electron'
-import { hostOfUrl } from '../shared/rules'
 
 // Схемы, которые обслуживает сам браузер или которые нельзя отдавать наружу ни при каких условиях.
 // file/javascript/data — классические способы превратить «открыть ссылку» в исполнение чужого кода;
@@ -31,7 +30,7 @@ const SILENT = new Set(['mailto', 'tel'])
 // геопозицией. Раньше оно жило в памяти до перезапуска, потому что не было экрана, где его
 // отозвать; экран есть (раздел «Разрешения»), и памяти процесса тут не место: человек ставит
 // галочку «больше не спрашивать» и читает её как «навсегда», а получал «до следующего запуска».
-type ConsentAsk = (origin: string, requesterWcId: number | null) => Promise<boolean>
+type ConsentAsk = (origin: string, scheme: string, requesterWcId: number | null) => Promise<boolean>
 let askConsent: ConsentAsk | null = null
 export function setExternalConsentAsk(fn: ConsentAsk): void { askConsent = fn }
 
@@ -51,11 +50,7 @@ export function isExternalAppUrl(url: string): boolean {
  *
  * fromPageUrl — АДРЕС СТРАНИЦЫ, откуда пришли, целиком, а не готовый хост.
  *
- * ⚠️ Раньше сюда передавали уже вычисленный хост, и вычисляли его В ДВУХ МЕСТАХ ПО-РАЗНОМУ:
- * переход по ссылке считал `new URL(u).host` (с «www.» и портом), а window.open — hostOfUrl()
- * (без «www.», в нижнем регистре). Ключ согласия писался одним, а искался другим — и галочка
- * «больше не спрашивать» не работала вообще, though выглядела рабочей. Теперь источник один и
- * нормализация одна, по построению.
+ * Точный origin сохраняет границу доверия между HTTP/HTTPS, поддоменами и портами.
  */
 export async function openExternalWithConsent(
   win: BrowserWindow | null, url: string, fromPageUrl: string, requesterWcId: number | null = null,
@@ -69,13 +64,17 @@ export async function openExternalWithConsent(
     return true
   }
 
-  // Origin в том же виде, в каком его пишут остальные разрешения: раздел настроек группирует
-  // записи по сайту, и «tg для sberbank.ru» обязан лежать рядом с «камера для sberbank.ru».
-  const host = hostOfUrl(fromPageUrl)
-  const origin = host ? `https://${host}` : 'about:blank'
+  // Схема приложения передаётся отдельно: согласие на Telegram не разрешает другие программы.
+  let origin: string
+  try {
+    const source = new URL(fromPageUrl)
+    // Непрозрачные origin нельзя объединять в общее постоянное разрешение.
+    if (source.protocol !== 'https:' && source.protocol !== 'http:') return false
+    origin = source.origin
+  } catch { return false }
 
   if (!askConsent) return false
-  const granted = await askConsent(origin, requesterWcId)
+  const granted = await askConsent(origin, scheme, requesterWcId)
   if (!granted) return false
 
   await shell.openExternal(url).catch((e: unknown) => console.warn('[external] не открылось:', e))

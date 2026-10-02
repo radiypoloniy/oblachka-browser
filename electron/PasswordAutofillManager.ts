@@ -155,33 +155,30 @@ export async function handleGenerateAndFill(win: BrowserWindow): Promise<boolean
     if (originOf(activeUrl) !== state.origin) return false;
 
     const password = pm.generate(INLINE_GENERATE_OPTS);
-    // Только пароль (username отсутствует в payload) — не трогаем поле логина, пользователь
-    // мог его уже начать заполнять.
-    const filled = tm.sendPasswordFill(tabId, { password, mode: 'generated' });
-    if (!filled) return false;
-
     // Фикс дыры «сгенерировали и потеряли»: пароль сохраняется в сейф НЕМЕДЛЕННО (с пустым
     // username — логина мы ещё не знаем), а не «когда-нибудь на submit» — раньше при пропуске
     // submit-детектора (не всякая SPA ловится) свежесозданный аккаунт оставался без пароля.
     // Первый submit с этим же паролем и непустым логином молча допишет логин в эту же запись
     // (см. handleCredentialSubmitted), а не создаст дубликат.
     const title = hostnameOf(state.origin);
-    if (pm.add({ url: state.origin, username: '', password, title })) {
-      // add() возвращает только boolean — id свежей записи достаём из list() (самая новая
-      // запись этого origin с пустым username); API сейфа ради этого не расширяем.
-      const entry = pm.list()
-        .filter((e) => e.origin === state.origin && e.username === '')
-        .sort((a, b) => b.createdAt - a.createdAt)[0];
-      if (entry) {
-        const candidate = usernameCandidates.get(tabId);
-        if (candidate?.origin === state.origin && pm.update({ id: entry.id, username: candidate.username })) {
-          entry.username = candidate.username;
-        }
-        pendingGenerated.set(tabId, { origin: state.origin, password, id: entry.id });
+    // Не отдаём странице секрет, пока сейф не подтвердил запись: регистрация может пройти
+    // даже при ошибке диска, и тогда человек останется без сохранённого пароля.
+    if (!pm.add({ url: state.origin, username: '', password, title })) return false;
+    // add() возвращает только boolean — id свежей записи достаём из list() (самая новая
+    // запись этого origin с пустым username); API сейфа ради этого не расширяем.
+    const entry = pm.list()
+      .filter((e) => e.origin === state.origin && e.username === '')
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (entry) {
+      const candidate = usernameCandidates.get(tabId);
+      if (candidate?.origin === state.origin && pm.update({ id: entry.id, username: candidate.username })) {
+        entry.username = candidate.username;
       }
-      onListChangedCb?.();
+      pendingGenerated.set(tabId, { origin: state.origin, password, id: entry.id });
     }
-    return true;
+    onListChangedCb?.();
+    // При неудачной подстановке запись сохраняем: удалять уже сохранённый секрет опаснее.
+    return tm.sendPasswordFill(tabId, { password, mode: 'generated' });
   } catch (e) {
     console.warn('[PasswordAutofill] handleGenerateAndFill error:', (e as Error).message);
     return false;

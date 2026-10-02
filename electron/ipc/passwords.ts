@@ -45,6 +45,7 @@ export function registerPasswordsIpc(d: IpcDeps): void {
   // никогда не расшифрованный JSON.
   ipcMain.handle(IPC.PASSWORDS_EXPORT, async (e, passphrase: string) => {
     const w = winOf(e);
+    if (!w || !(await ensurePasswordAuth('Экспортировать сохранённые пароли'))) return false;
     const payload = passwords.exportVault(passphrase);
     if (payload === null || !w) return false;
     const { canceled, filePath } = await dialog.showSaveDialog(w, {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Camera, Mic, MapPin, Bell, Maximize2, Clipboard, ShieldAlert, ExternalLink } from 'lucide-react';
 import type { PermissionRequest, PermKey } from '../../shared/ipc';
+import { basePermission, externalScheme } from '../../shared/permissionScope';
 import { PopoverCard, PopoverActions, PrimaryButton, QuietButton } from './popoverKit';
 import { sp, RADIUS, TEXT, DISPLAY } from '../styles/system';
 
@@ -42,7 +43,7 @@ const PERM_HINT: Record<PermKey, string> = {
 function PermIcon({ perm }: { perm: PermKey }) {
   // Цвет наследуется от плашки: на инверсной плите значок светлый, а не акцентный.
   const props = { size: 23, style: { flexShrink: 0 } };
-  switch (perm) {
+  switch (basePermission(perm)) {
     case 'camera':
     case 'camera+microphone': return <Camera {...props} />;
     case 'microphone':        return <Mic {...props} />;
@@ -63,6 +64,8 @@ interface Props {
 
 export default function PermissionPrompt({ request, onRespond }: Props) {
   const [remember, setRemember] = useState(false);
+  const permission = basePermission(request.permission);
+  const scheme = externalScheme(request.permission);
 
   // Показываем только hostname: в origin есть схема и порт, а решение человек принимает про сайт.
   // ⚠️ У локального файла origin — строка «null» (так его отдаёт Chromium), и в карточке
@@ -70,6 +73,7 @@ export default function PermissionPrompt({ request, onRespond }: Props) {
   let host = request.origin;
   try { host = new URL(request.origin).hostname || request.origin; } catch { /* origin мог прийти не-URL */ }
   if (!host || host === 'null') host = 'Эта страница';
+  if (scheme) host = request.origin;
 
   return (
     // ⚠️ ИНВЕРСНАЯ плита и 380 px — единственная такая карточка в браузере. Разбор в
@@ -99,9 +103,9 @@ export default function PermissionPrompt({ request, onRespond }: Props) {
             <div style={{
               ...DISPLAY, fontSize: 20, fontWeight: 700, letterSpacing: '-0.03em',
               lineHeight: 1.14, color: 'var(--overlay-invert-ink)', marginBottom: sp(2),
-            }}>{PERM_TITLE[request.permission]}</div>
+            }}>{PERM_TITLE[permission]}</div>
             <div style={{ ...TEXT.body, color: 'var(--overlay-invert-body)' }}>
-              {PERM_HINT[request.permission]}
+              {PERM_HINT[permission]}{scheme ? ` (${scheme}:)` : ''}
             </div>
           </div>
         </div>

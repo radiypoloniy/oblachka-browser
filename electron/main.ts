@@ -1544,7 +1544,8 @@ app.whenReady().then(async () => {
   // Разрешения: та же гарантия — падение не блокирует старт, браузер работает без персистенции.
   // Вопрос «открыть ссылку в приложении?» идёт тем же путём, что камера и геопозиция: свой
   // поповер, общая таблица, отзыв в разделе «Разрешения» (разбор — в ExternalProtocol.ts).
-  setExternalConsentAsk((origin, wcId) => permissions.askOwn(origin, 'external-app', wcId));
+  // Старые общие разрешения не расширяем на конкретные приложения: спросим заново.
+  setExternalConsentAsk((origin, scheme, wcId) => permissions.askOwn(origin, `external-app:${scheme}`, wcId));
   await permissions.initialize().catch((e) =>
     console.error('[Permissions] инициализация упала:', e),
   );

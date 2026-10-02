@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { StandaloneLanguageProvider, useLanguage } from './i18n';
 import { Lock, ShieldOff, Camera, Mic, MapPin, Bell, Maximize, Clipboard, RotateCcw, History, ExternalLink, Wand2 } from 'lucide-react';
 import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
+import { basePermission, externalScheme } from '../shared/permissionScope';
 // ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
 // страницей, где backdrop-filter не работает вовсе, и полупрозрачность означала бы
 // просвечивающий текст сайта. Разбор — у --overlay-plate в styles/tokens/colors.css.
@@ -170,12 +171,12 @@ function PermissionsList({ perms, onRevoked }: { perms: PermissionRecord[]; onRe
   return (
     <Section title="Разрешения">
       {perms.map((p) => {
-        const Icon = PERM_ICON[p.permission];
+        const Icon = PERM_ICON[basePermission(p.permission)];
         return (
           <div key={p.permission} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px' }}>
             <Icon size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
             <span style={{ flex: 1, minWidth: 0, ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>
-              {PERM_LABEL[p.permission]}
+              {PERM_LABEL[basePermission(p.permission)]}{externalScheme(p.permission) ? ` (${externalScheme(p.permission)}:)` : ''}
             </span>
             {/* Статус — СЛОВОМ И ЦВЕТОМ СЛОВА, фон он не красит: закон цвета, заливка в
                 продукте означает «выбрано», а не «разрешено». */}
@@ -291,7 +292,7 @@ function SitePopoverApp() {
   ].filter(Boolean).join(' · ');
 
   // Что именно сайт спрашивал — словами, а не «2 решения»: список короткий и он и есть ответ.
-  const permsHint = sitePerms.map((p) => PERM_LABEL[p.permission].toLowerCase()).join(', ');
+  const permsHint = sitePerms.map((p) => PERM_LABEL[basePermission(p.permission)].toLowerCase()).join(', ');
 
   // Адблок общий выключатель. Push'а ADBLOCK_STATE_CHANGED в эту вью нет (main шлёт его только в
   // слой хрома), поэтому после своей же мутации состояние перезапрашиваем явно.

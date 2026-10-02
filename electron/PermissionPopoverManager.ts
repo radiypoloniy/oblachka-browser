@@ -142,12 +142,11 @@ function detach(st: WindowPermPopover): void {
   try { st.win.contentView.removeChildView(st.view!) } catch { /* окно могло закрыться */ }
 }
 
-// Новый запрос от PermissionManager. Дубликаты (тот же сайт просит то же самое повторно, пока
-// вопрос висит) в очередь не добавляем — иначе человек отвечал бы на один и тот же вопрос дважды.
+// PermissionManager объединяет повторные запросы одной страницы до передачи в UI.
 export function showPermissionRequest(win: BrowserWindow, req: PermissionRequest): void {
   const st = stateFor(win)
-  const dup = st.queue.some((q) => q.origin === req.origin && q.permission === req.permission)
-  if (!dup) st.queue.push(req)
+  // Дубликаты объединяет PermissionManager вместе с callbacks; здесь нельзя терять ID.
+  if (!st.queue.some((q) => q.requestId === req.requestId)) st.queue.push(req)
   if (isAttached(st)) pushCurrent(st)
   else showTop(st)
 }

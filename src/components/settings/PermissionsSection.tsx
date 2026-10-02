@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Camera, Clipboard, MapPin, Maximize, Mic, Bell, RotateCcw, ExternalLink } from 'lucide-react';
 import type { PermissionRecord, PermKey } from '../../../shared/ipc';
+import { basePermission, externalScheme } from '../../../shared/permissionScope';
 import { siteHue } from '../desktop/siteTint';
 import {
   Favicon, SectionHeader, Subsection, SegTrack, segBtnStyle,
@@ -128,7 +129,7 @@ export default function PermissionsSection() {
                   stain={stainOf(host)}
                   icon={<Favicon host={host} size={28} />}
                   title={host}
-                  subtitle={list.length === 1 ? t('1 решение') : t('{n} решений', { n: list.length })}
+                  subtitle={`${origin} · ${list.length === 1 ? t('1 решение') : t('{n} решений', { n: list.length })}`}
                   actions={(
                     <button
                       onClick={() => void forget(origin)}
@@ -140,14 +141,16 @@ export default function PermissionsSection() {
                   )}
                 >
                   {list.map((r) => {
-                    const Icon = ICON[r.permission];
+                    const key = basePermission(r.permission);
+                    const scheme = externalScheme(r.permission);
+                    const Icon = ICON[key];
                     return (
                       <SpotLine
                         key={r.permission}
                         title={(
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(2) }}>
                             <Icon size={14} strokeWidth={2} style={{ color: 'var(--text-faint)' }} />
-                            {LABEL[r.permission] ? t(LABEL[r.permission]) : r.permission}
+                            {LABEL[key] ? t(LABEL[key]) : r.permission}{scheme ? ` (${scheme}:)` : ''}
                           </span>
                         )}
                         control={(

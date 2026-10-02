@@ -1,6 +1,7 @@
 import React from 'react';
 import { Lock, ShieldCheck, ShieldOff, Sparkles, ChevronRight, Camera, Mic, MapPin, Bell, Maximize, Clipboard, History, Pencil, Check, X, Plus, ExternalLink, RotateCcw } from 'lucide-react';
 import type { SuggestDropdownItem, OmniboxPanel, PermKey } from '../../../shared/ipc';
+import { basePermission } from '../../../shared/permissionScope';
 import { siteLabel, plural, SitePlate, hostOf } from './siteIcons';
 import { CAPS, DISPLAY_CARD, RADIUS } from '../../styles/system';
 
@@ -239,7 +240,7 @@ function SiteHeader({ site, url }: { site: NonNullable<OmniboxPanel['site']>; ur
       {site.perms.length > 0 && (
         <Pill>
           {site.perms.map((p) => {
-            const Icon = PERM_ICON[p];
+            const Icon = PERM_ICON[basePermission(p)];
             return <Icon key={p} size={12} />;
           })}
         </Pill>

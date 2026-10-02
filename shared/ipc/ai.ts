@@ -73,7 +73,8 @@ export type PermKey =
   // открытие ссылки в чужом приложении — tg://, sbolpay://, itms-apps://. Живёт в общей таблице
   // не ради экономии, а ради отзыва: разрешение, которое человек не может найти и отменить,
   // выдавать нельзя, а раздел «Разрешения» — ровно то место, где он его ищет.
-  | 'external-app';
+  | 'external-app'
+  | `external-app:${string}`;
 
 export interface PermissionRequest {
   requestId: string;
