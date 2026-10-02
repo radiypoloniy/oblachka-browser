@@ -8,9 +8,10 @@ import { withStand } from './isolated-stand.mjs';
 const after = process.argv.includes('--after');
 const liveAi = process.argv.includes('--live-ai');
 const aiOnly = process.argv.includes('--ai-only');
-const file = path.resolve(`scripts/reports/history-smart-${after ? 'after' : 'before'}.json`);
-const beforeFile = path.resolve('scripts/reports/history-smart-before.json');
-const baseline = after ? JSON.parse(fs.readFileSync(beforeFile, 'utf8')) : null;
+const reader = process.argv.includes('--reader');
+const file = path.resolve(`scripts/reports/${reader ? 'history-read-worker' : `history-smart-${after ? 'after' : 'before'}`}.json`);
+const beforeFile = path.resolve(`scripts/reports/history-smart-${reader ? 'after' : 'before'}.json`);
+const baseline = after || reader ? JSON.parse(fs.readFileSync(beforeFile, 'utf8')) : null;
 const modulePath = name => path.resolve(`dist-electron/electron/${name}.js`);
 const report = aiOnly ? JSON.parse(fs.readFileSync(file, 'utf8')) : { measuredAt: new Date().toISOString(), samples: 12, results: [], liveAi: null };
 
@@ -24,6 +25,7 @@ for (const [visits, indexed] of aiOnly ? [] : [[10000, 2000], [100000, 10000], [
       const { stemText } = req(${JSON.stringify(modulePath('textStemming'))});
       const service = req(${JSON.stringify(modulePath('TranslationService'))});
       const search = req(${JSON.stringify(modulePath('HistorySearch'))});
+      const reader = req(${JSON.stringify(modulePath('HistoryReader'))});
       const history = new HistoryManager(${JSON.stringify(path.join(ctx.profile, 'smart-bench.sqlite'))});
       await history.initialize();
       const db = new Database(${JSON.stringify(path.join(ctx.profile, 'smart-bench.sqlite'))});
@@ -57,14 +59,14 @@ for (const [visits, indexed] of aiOnly ? [] : [[10000, 2000], [100000, 10000], [
           let t = performance.now(); history.search(q); readings.lexical.push(performance.now()-t);
           t = performance.now(); history.searchContentChunksFts(q,version,96); readings.fts.push(performance.now()-t);
           const timerStart = performance.now(); const timer = new Promise(r=>setTimeout(()=>r(performance.now()-timerStart),0));
-          t = performance.now(); search.collectHistoryCandidates(history,q); readings.collect.push(performance.now()-t);
+          t = performance.now(); ${reader ? 'await search.collectHistoryCandidateSetAsync(history,q)' : 'search.collectHistoryCandidates(history,q)'}; readings.collect.push(performance.now()-t);
           readings.mainTimer.push(await timer);
         }
         let lexicalCalls = 0, ftsCalls = 0;
         const lexical = history.search.bind(history), fulltext = history.searchContentChunksFts.bind(history);
         history.search = (...args) => { lexicalCalls++; return lexical(...args); };
         history.searchContentChunksFts = (...args) => { ftsCalls++; return fulltext(...args); };
-        const candidates = search.collectHistoryCandidates(history,q);
+        const candidates = ${reader ? '(await search.collectHistoryCandidateSetAsync(history,q)).candidates' : 'search.collectHistoryCandidates(history,q)'};
         const modes = {};
         for (const mode of ['ranked','empty','failed','related']) {
           service.rerankHistoryCandidates = async (_q, rows) => {
@@ -85,11 +87,15 @@ for (const [visits, indexed] of aiOnly ? [] : [[10000, 2000], [100000, 10000], [
       const t = performance.now();
       const saved = history.saveContentChunks(id,[{chunkIndex:0,url:'https://bench.test/new',title:'Новая статья',text:'маркерновойиндексации',vector:new Float32Array(0),dims:0}],version);
       const writeMs = performance.now()-t;
-      const visible = history.searchContentChunksFts('маркерновойиндексации',version,96).some(c=>c.historyId===id);
-      const coverageStart = performance.now(); const coverage = history.getContentCoverage();
+      const visible = ${reader ? "(await reader.readHistory(history,{kind:'candidates',query:'маркерновойиндексации',version,lexicalLimit:8,ftsLimit:96})).chunks" : "history.searchContentChunksFts('маркерновойиндексации',version,96)"}.some(c=>c.historyId===id);
+      const coverageStart = performance.now();
+      const coverageTimer = new Promise(r=>setTimeout(()=>r(performance.now()-coverageStart),0));
+      const coverage = ${reader ? "await reader.readHistory(history,{kind:'coverage'})" : 'history.getContentCoverage()'};
       const coverageMs = performance.now()-coverageStart;
+      const coverageMainTimerMs = await coverageTimer;
       db.close();
-      return {visits:${visits},indexed:${indexed},chunks,seedMs,cases,write:{saved,visible,writeMs},coverage:{value:coverage,ms:coverageMs}};
+      reader.closeHistoryReaders();
+      return {visits:${visits},indexed:${indexed},chunks,seedMs,cases,write:{saved,visible,writeMs},coverage:{value:coverage,ms:coverageMs,mainTimerMs:coverageMainTimerMs}};
     })()`);
     assert.equal(result.write.saved, true);
     assert.equal(result.write.visible, true);
@@ -98,6 +104,7 @@ for (const [visits, indexed] of aiOnly ? [] : [[10000, 2000], [100000, 10000], [
     assert.equal(result.cases.missing.candidates.length, 0);
     if (baseline) {
       const old = baseline.results.find(r => r.visits === visits);
+      assert.deepEqual(result.coverage.value,old.coverage.value,'coverage regression');
       for (const [name, item] of Object.entries(result.cases)) {
         assert.deepEqual(item.candidates, old.cases[name].candidates, name + ': candidate regression');
         for (const [mode, value] of Object.entries(item.modes)) assert.deepEqual(value.response, old.cases[name].modes[mode].response, name + '/' + mode);
@@ -121,7 +128,7 @@ if (liveAi) {
       registry.setDefault('bench-qwen4b');
       const { HistoryManager, TEXT_EXTRACTION_VERSION: version } = req(${JSON.stringify(modulePath('HistoryManager'))});
       const search = req(${JSON.stringify(modulePath('HistorySearch'))});
-      const history = new HistoryManager(':memory:'); await history.initialize();
+      const history = new HistoryManager(${JSON.stringify(path.join(ctx.profile,'ai-search.sqlite'))}); await history.initialize();
       for (const [i,text] of ['Квантовые вычисления используют кубиты и квантовые алгоритмы.','Рецепт приготовления супа с овощами.','Квантовый компьютер решает задачи с использованием кубитов.'].entries()) {
         const url = 'https://bench.test/ai/' + i; history.recordVisit(url,'Статья ' + i);
         history.saveContentChunks(history.getIdByUrl(url),[{chunkIndex:0,url,title:'Статья '+i,text,vector:new Float32Array(0),dims:0}],version);

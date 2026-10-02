@@ -9,7 +9,7 @@
 // «Караван, процедурная генерация… Diablo V» теряет Diablo за лимитом FTS в 8 слов, а реранк
 // ищет ту же статью и молчит. FTS без модели уже ответ; модель только переставляет.
 import type { HistoryManager } from './HistoryManager';
-import { collectHistoryCandidateSet, rerankCollectedHistoryCandidates } from './HistorySearch';
+import { collectHistoryCandidateSetAsync, rerankCollectedHistoryCandidates } from './HistorySearch';
 import { isModelWarm } from './TranslationService';
 import type { RelatedPagesResult, SemanticSearchResult } from '../shared/ipc';
 import { normalizeForOmnibox } from '../shared/frecency';
@@ -48,6 +48,7 @@ type RelatedJob = {
 
 // Один и тот же адрес и заголовок встречается в разных профилях с разной историей.
 const jobs = new WeakMap<HistoryManager, RelatedJob>();
+const preparations = new WeakMap<HistoryManager, { key: string; job: RelatedJob; promise: Promise<RelatedPagesResult> }>();
 
 function jobKey(currentKey: string, q: string): string {
   return `${currentKey}\n${q}`;
@@ -79,11 +80,26 @@ export async function findRelatedPages(
     return DONE(existing.fts);
   }
 
-  const collected = collectHistoryCandidateSet(history, q);
+  const preparing = preparations.get(history);
+  if (preparing?.key === key) {
+    const initial = await preparing.promise;
+    return preparing.job.ranked ? DONE(await preparing.job.ranked) : initial;
+  }
+  const job: RelatedJob = { key, fts: [], ranked: null };
+  const promise = prepareRelated(history, q, job, currentKey, limit);
+  const preparation = { key, job, promise };
+  preparations.set(history, preparation);
+  try { return await promise; } finally {
+    if (preparations.get(history) === preparation) preparations.delete(history);
+  }
+}
+
+async function prepareRelated(history: HistoryManager, q: string, job: RelatedJob, currentKey: string, limit: number): Promise<RelatedPagesResult> {
+  const collected = await collectHistoryCandidateSetAsync(history, q);
   const fts = takeRelated(collected.candidates, currentKey, limit);
   console.log(`[related] «${q.slice(0, 40)}» → ${fts.length} страниц (FTS)`);
 
-  const job: RelatedJob = { key, fts, ranked: null };
+  job.fts = fts;
   if (!isModelWarm()) return DONE(fts);
 
   job.ranked = rerankCollectedHistoryCandidates(q, collected, limit + 4, { background: true, related: true })

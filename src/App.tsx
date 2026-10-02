@@ -430,7 +430,7 @@ export default function App() {
             // ⚠️ section перекрывает kind: так «Что я отслеживаю» открывается существующим видом
             // вкладки ('history') с секцией 'tracking' — новый вид попал бы в session.json, а
             // менять формат сессии с реальными вкладками человека ради одного экрана несоразмерно.
-            <HistoryBookmarks defaultSection={(active?.section as typeof kind) ?? kind} downloads={downloads} onClose={() => void window.oblako.closeTab(activeId)} />
+            <HistoryBookmarks key={activeId} defaultSection={(active?.section as typeof kind) ?? kind} downloads={downloads} onClose={() => void window.oblako.closeTab(activeId)} />
           ) : kind === 'settings' ? (
             <Settings
               // Раздел берём из своей памяти, если человек уже щёлкал по меню в ЭТОЙ вкладке;

@@ -9,6 +9,7 @@ import SiteFavicon from './SiteFavicon';
 import { EmptyState } from './EmptyState';
 import { ClockGlyph, SearchGlyph } from './glyphs';
 import { sectionCache } from './library/sectionCache'; import { useLanguage } from '../i18n';
+import { useHistoryLoad } from './library/useHistoryLoad';
 
 interface HistoryProps {
   /** Строка поиска — общая на всю библиотеку, живёт в оболочке (LibraryShell). */
@@ -159,7 +160,7 @@ export default function History({ query, onSummary }: HistoryProps) {
     setSmartDegraded(false);
   }, [query]);
 
-  useEffect(() => { void load(); }, [load]);
+  useHistoryLoad(load, searchSeqRef);
 
   useEffect(() => {
     searchRef.current?.focus();

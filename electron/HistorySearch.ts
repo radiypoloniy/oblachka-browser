@@ -7,6 +7,8 @@ import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
 import { rerankHistoryCandidates } from './TranslationService';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
 import { normalizeForOmnibox } from '../shared/frecency';
+import { readHistory } from './HistoryReader';
+import type { CandidateChunk, CandidateRows } from './HistoryReadQueries';
 import type { HistoryEntry, SemanticSearchResult, SmartSearchResponse } from '../shared/ipc';
 
 function makeSnippet(text: string, max = 360): string {
@@ -15,7 +17,7 @@ function makeSnippet(text: string, max = 360): string {
   return `${compact.slice(0, max).trim()}...`;
 }
 
-function chunkToResult(chunk: HistoryContentChunk, score: number): SemanticSearchResult {
+function chunkToResult(chunk: CandidateChunk, score: number): SemanticSearchResult {
   return {
     id: chunk.historyId,
     url: chunk.url,
@@ -44,9 +46,9 @@ const SMART_FTS_SQL_LIMIT = SMART_FTS_CANDIDATE_LIMIT * 8;
 
 // Строки уже отсортированы по bm25 (searchContentChunksFts::ORDER BY rank ASC) — первое
 // вхождение historyId в порядке обхода и есть лучший по релевантности чанк этой страницы.
-function dedupChunksByHistoryId(chunks: HistoryContentChunk[], limit: number): HistoryContentChunk[] {
+function dedupChunksByHistoryId(chunks: CandidateChunk[], limit: number): CandidateChunk[] {
   const seen = new Set<number>();
-  const result: HistoryContentChunk[] = [];
+  const result: CandidateChunk[] = [];
   for (const chunk of chunks) {
     if (seen.has(chunk.historyId)) continue;
     seen.add(chunk.historyId);
@@ -84,21 +86,33 @@ export function collectHistoryCandidateSet(history: HistoryManager, query: strin
   const q = query.trim();
   if (!q) return { candidates: [], lexicalKeys: new Set() };
 
-  let ftsCandidates: SemanticSearchResult[] = [];
+  let chunks: HistoryContentChunk[] = [];
   try {
     // Фильтр шума — до дедупа (не после), чтобы шумная страница не отъедала слот у
     // SMART_FTS_CANDIDATE_LIMIT впустую. h.title (см. коммит "заголовок из history, не из
     // чанка") — без него isNoisyForEmbedding почти всегда сработал бы по isBareDomainTitle:
     // заголовок-URL выглядит как «домен целиком», что выкосило бы валидные результаты, а не только шум.
-    const ftsChunks = history.searchContentChunksFts(q, TEXT_EXTRACTION_VERSION, SMART_FTS_SQL_LIMIT)
-      .filter((chunk) => !isNoisyForEmbedding(chunk.url, chunk.title));
-    ftsCandidates = dedupChunksByHistoryId(ftsChunks, SMART_FTS_CANDIDATE_LIMIT)
-      .map((chunk) => chunkToResult(chunk, 1.12));
+    chunks = history.searchContentChunksFts(q, TEXT_EXTRACTION_VERSION, SMART_FTS_SQL_LIMIT);
   } catch (e) {
     console.warn('[HistorySearch] FTS для smart search не удался:', (e as Error).message);
   }
-  const lexicalCandidates = history.search(q, SMART_LEXICAL_CANDIDATE_LIMIT)
-    .map((entry) => historyEntryToSemanticResult(entry, 1));
+  return mergeCandidateRows({ chunks, lexical: history.search(q, SMART_LEXICAL_CANDIDATE_LIMIT) });
+}
+
+export async function collectHistoryCandidateSetAsync(history: HistoryManager, query: string): Promise<HistoryCandidateSet> {
+  const q = query.trim();
+  if (!q) return { candidates: [], lexicalKeys: new Set() };
+  const rows = await readHistory(history, {
+    kind: 'candidates', query: q, version: TEXT_EXTRACTION_VERSION,
+    lexicalLimit: SMART_LEXICAL_CANDIDATE_LIMIT, ftsLimit: SMART_FTS_SQL_LIMIT,
+  });
+  return mergeCandidateRows(rows);
+}
+
+function mergeCandidateRows(rows: CandidateRows): HistoryCandidateSet {
+  const ftsCandidates = dedupChunksByHistoryId(rows.chunks.filter(chunk => !isNoisyForEmbedding(chunk.url, chunk.title)), SMART_FTS_CANDIDATE_LIMIT)
+    .map(chunk => chunkToResult(chunk, 1.12));
+  const lexicalCandidates = rows.lexical.map(entry => historyEntryToSemanticResult(entry, 1));
 
   // Лексика → FTS: точное совпадение по заголовку/URL (лексика) весомее текстового FTS-совпадения
   // внутри чанка, поэтому идёт первым — при коллизии URL ниже побеждает бОльший score, а не порядок
@@ -133,7 +147,7 @@ export async function searchHistorySmart(
   const q = query.trim();
   if (!q) return { results: [], degraded: false };
 
-  return rerankCollectedHistoryCandidates(q, collectHistoryCandidateSet(history, q), limit, opts);
+  return rerankCollectedHistoryCandidates(q, await collectHistoryCandidateSetAsync(history, q), limit, opts);
 }
 
 // Связанные страницы передают уже собранный снимок, чтобы не повторять SQL и FTS перед Qwen.

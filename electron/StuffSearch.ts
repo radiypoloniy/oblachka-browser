@@ -15,7 +15,7 @@ import type { HistoryManager } from './HistoryManager';
 import type { BookmarkManager } from './BookmarkManager';
 import type { DownloadManager } from './DownloadManager';
 import type { BookmarkNode, StuffHit } from '../shared/ipc';
-import { collectHistoryCandidates } from './HistorySearch';
+import { collectHistoryCandidateSetAsync } from './HistorySearch';
 import { queryTokens, countMatches } from '../shared/wordMatch';
 import { rerankHistoryCandidates } from './TranslationService';
 import { fileContentIndexFor } from './FileContentIndex';
@@ -68,7 +68,8 @@ export async function searchStuff(
   const hits: StuffHit[] = [];
 
   // История — тем же сбором, что у умного поиска.
-  for (const c of collectHistoryCandidates(history, q).slice(0, MAX_PER_SOURCE)) {
+  const collected = await collectHistoryCandidateSetAsync(history, q);
+  for (const c of collected.candidates.slice(0, MAX_PER_SOURCE)) {
     hits.push({
       kind: 'history',
       title: c.title || c.url,

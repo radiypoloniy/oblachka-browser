@@ -8,6 +8,7 @@ import { suggestBookmarkFolders } from '../BookmarkOrganizer';
 import { cancelContentBackfill, setContentBackfillProgressListener, startContentBackfill } from '../HistoryContentBackfill';
 import { startHistoryIdleCatchup } from '../HistoryIdleCatchup';
 import { searchHistorySmart } from '../HistorySearch';
+import { readHistory } from '../HistoryReader';
 import { fetchSearchSuggestions } from '../SearchSuggestFetcher';
 import { broadcastToChrome, contextFromSender, mainContext } from '../WindowRegistry';
 import { ipcMain } from 'electron';
@@ -17,7 +18,7 @@ export function registerHistoryIpc(d: IpcDeps): void {
   const { bookmarkImporters, bookmarks, history, importManager, settings, showBookmarkMenu, winOf } = d;
 
   // не подписка: панель настроек открывают редко, push-канал ради этого избыточен.
-  ipcMain.handle(IPC.HISTORY_CONTENT_COVERAGE, () => history().getContentCoverage());
+  ipcMain.handle(IPC.HISTORY_CONTENT_COVERAGE, () => readHistory(history(), { kind: 'coverage' }));
 
   // Рискованный бэкфилл полного текста (electron/HistoryContentBackfill.ts) — тихое переоткрытие
   // старых URL, отдельная секция в Settings.tsx с явным предупреждением. Нужен win (создаёт
@@ -42,8 +43,8 @@ export function registerHistoryIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.SEARCH_SUGGEST, (_e, query: string) => fetchSearchSuggestions(query, settings.getSearchEngine()));
 
   // История посещений
-  ipcMain.handle(IPC.HISTORY_GET,    (_e, limit?: number)           => history().getRecent(limit));
-  ipcMain.handle(IPC.HISTORY_SEARCH, (_e, query: string)            => history().search(query));
+  ipcMain.handle(IPC.HISTORY_GET,    (_e, limit = 500)              => readHistory(history(), { kind: 'recent', limit }));
+  ipcMain.handle(IPC.HISTORY_SEARCH, (_e, query: string)            => readHistory(history(), { kind: 'search', query, limit: 500 }));
   ipcMain.handle(IPC.HISTORY_DELETE, (_e, id: number)               => history().deleteEntry(id));
   ipcMain.handle(IPC.HISTORY_CLEAR,  (_e, period: HistoryClearPeriod) => history().clearHistory(period));
   // Умный поиск — Qwen-реранк, только по явному Enter (см. HistorySearch.ts::searchHistorySmart).

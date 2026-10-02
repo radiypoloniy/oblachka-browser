@@ -4,7 +4,8 @@ import type { HistoryEntry, HistoryClearPeriod, HistoryContentCoverage } from '.
 import { isSearchResultUrl } from '../shared/searchEngines';
 import { normalizeForOmnibox } from '../shared/frecency';
 import { coverageFromCounts, isIdleCatchupRow, isNoisyForEmbedding, IDLE_CATCHUP_MAX_AGE_MS, IDLE_CATCHUP_MAX_PAGES } from '../shared/historyIndex';
-import { stemText, stemQuery, STEM_VERSION } from './textStemming';
+import { stemText, STEM_VERSION } from './textStemming';
+import { buildFtsQuery, readFts, readRecent, readSearch } from './HistoryReadQueries';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
@@ -55,6 +56,9 @@ export class HistoryManager {
   constructor(dbPath?: string) {
     this.#dbPath = dbPath ?? path.join(app.getPath('userData'), 'history.sqlite');
   }
+
+  /** Читатель открывает только уже инициализированную базу, без повторных миграций. */
+  readPath(): string | null { return this.#db ? this.#dbPath : null; }
 
   async initialize(): Promise<void> {
     let SqliteConstructor: BetterSqlite3 | null = null;
@@ -351,21 +355,8 @@ export class HistoryManager {
 
   searchContentChunksFts(query: string, modelVersion: string, limit: number): HistoryContentChunk[] {
     if (!this.#db) return [];
-    const ftsQuery = buildFtsQuery(query);
-    if (!ftsQuery) return [];
     try {
-      return this.#db.prepare(`
-        SELECT c.id AS chunkId, c.history_id AS historyId, c.chunk_index AS chunkIndex,
-               c.url, h.title AS title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
-               c.vector, c.dims, c.model_version AS modelVersion,
-               bm25(history_content_chunks_fts) AS rank
-        FROM history_content_chunks_fts
-        JOIN history_content_chunks c ON c.id = history_content_chunks_fts.rowid
-        JOIN history h ON h.id = c.history_id
-        WHERE history_content_chunks_fts MATCH ? AND c.model_version = ?
-        ORDER BY rank ASC
-        LIMIT ?
-      `).all(ftsQuery, modelVersion, limit) as HistoryContentChunk[];
+      return readFts(this.#db, query, modelVersion, limit);
     } catch (e) {
       console.warn('[History] searchContentChunksFts error:', (e as Error).message);
       return [];
@@ -401,12 +392,7 @@ export class HistoryManager {
   getRecent(limit = RECENT_LIMIT): HistoryEntry[] {
     if (!this.#db) return [];
     try {
-      return this.#db.prepare(`
-        SELECT id, url, title, last_visit AS lastVisit, visit_count AS visitCount
-        FROM history
-        ORDER BY last_visit DESC
-        LIMIT ?
-      `).all(limit) as HistoryEntry[];
+      return readRecent(this.#db, limit);
     } catch (e) {
       console.warn('[History] getRecent error:', (e as Error).message);
       return [];
@@ -433,14 +419,7 @@ export class HistoryManager {
   search(query: string, limit = RECENT_LIMIT): HistoryEntry[] {
     if (!this.#db) return [];
     try {
-      const like = `%${query}%`;
-      return this.#db.prepare(`
-        SELECT id, url, title, last_visit AS lastVisit, visit_count AS visitCount
-        FROM history
-        WHERE url LIKE ? OR title LIKE ?
-        ORDER BY last_visit DESC
-        LIMIT ?
-      `).all(like, like, limit) as HistoryEntry[];
+      return readSearch(this.#db, query, limit);
     } catch (e) {
       console.warn('[History] search error:', (e as Error).message);
       return [];
@@ -682,18 +661,4 @@ export class HistoryManager {
     if (!/^https?:\/\//i.test(url)) return false;
     return !isSearchResultUrl(url);
   }
-}
-
-function buildFtsQuery(query: string): string {
-  // stemQuery ДО разбиения на термины — тот же textStemming.ts::stemText, что уже стеммит
-  // индекс при записи (см. saveContentChunks/rebuildFtsWithStemming). Расхождение здесь дало бы
-  // тихий пустой результат: запрос искал бы нестеммленные токены в стеммленном индексе.
-  const terms = stemQuery(query)
-    .toLowerCase()
-    .split(/[\s\-_/|·•,.:;!?()[\]{}'"«»—–]+/)
-    .map((x) => x.trim())
-    .filter((x) => x.length >= 2)
-    .slice(0, 8)
-    .map((x) => `"${x.replace(/"/g, '""')}"`);
-  return terms.join(' OR ');
 }

@@ -12,7 +12,8 @@ function load(name, mocks) {
     id => Object.hasOwn(mocks,id) ? mocks[id] : native(id), module, module.exports);
   return module.exports;
 }
-let mode = 'ranked', reranks = 0, lastCandidates, resolveRank;
+let mode = 'ranked', reranks = 0, lastCandidates, resolveRank, releaseRead;
+let delayedRead = false;
 const service = {
   isModelWarm: () => mode !== 'cold',
   rerankHistoryCandidates: async (_q, candidates) => {
@@ -22,7 +23,13 @@ const service = {
     return mode === 'ranked' ? [1,0] : [];
   },
 };
-const search = load('HistorySearch', { './HistoryManager': { TEXT_EXTRACTION_VERSION:'test' }, './TranslationService':service });
+const search = load('HistorySearch', {
+  './HistoryManager': { TEXT_EXTRACTION_VERSION:'test' }, './TranslationService':service,
+  './HistoryReader': { readHistory: async (h,r) => {
+    if (delayedRead) await new Promise(resolve => { releaseRead=resolve; });
+    return {chunks:h.searchContentChunksFts(r.query,r.version,r.ftsLimit),lexical:h.search(r.query,r.lexicalLimit)};
+  } },
+});
 const related = load('RelatedHistory', { './HistorySearch':search,'./TranslationService':service });
 const entries = Array.from({length:20},(_,i)=>({id:i+1,url:`https://bench.test/article/${i}`,title:`Квантовые вычисления ${i}`,lastVisit:1000-i,visitCount:1}));
 const chunks = [...Array.from({length:8},(_,i)=>({historyId:1,chunkIndex:i,url:entries[0].url,title:entries[0].title,text:'Квантовые вычисления',lastVisit:1000,visitCount:1})),
@@ -64,6 +71,16 @@ resolveRank([1,0]);
 const done=await second;
 assert.equal(done.pending,false); assert.deepEqual(done.results.map(r=>r.id),[2]);
 assert.deepEqual([lexicalCalls,ftsCalls,reranks],[1,1,1]);
+// Второй клик ещё во время SQL ждёт итог реранка и не запускает второй сбор кандидатов.
+delayedRead=true; reset();
+const loading=related.findRelatedPages(history,entries[0].url,'Квантовые вычисления');
+const loadingAgain=related.findRelatedPages(history,entries[0].url,'Квантовые вычисления');
+releaseRead();
+assert.equal((await loading).pending,true);
+resolveRank([1,0]);
+assert.deepEqual((await loadingAgain).results.map(r=>r.id),[2]);
+assert.deepEqual([lexicalCalls,ftsCalls,reranks],[1,1,1]);
+delayedRead=false;
 reset();
 assert.deepEqual(await search.searchHistorySmart(history,'   '),{results:[],degraded:false});
 assert.deepEqual([lexicalCalls,ftsCalls,reranks],[0,0,0]);
