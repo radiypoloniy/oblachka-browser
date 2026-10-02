@@ -1,0 +1,31 @@
+const intro='В справочнике подробно описаны условия наблюдения и результаты испытаний. '.repeat(12);
+export const numericPages=[
+  {key:'backup',text:intro+'Правило резервного копирования 3-2-1 сохраняет документы.'+intro,evidence:'Правило резервного копирования 3-2-1'},
+  {key:'reversed',text:'Правило резервного копирования 1-2-3 требует другого порядка.'},
+  {key:'scattered',text:'Правило резервного копирования: 3 документа, 2 носителя, 1 архив.'},
+  {key:'infix',text:'Правило резервного копирования 13-2-10 описано отдельно.'},
+  {key:'alternate',text:'Правило резервного копирования 3-2-4 описано отдельно.'},
+  {key:'version',text:intro+'Версия 1.2.3 исправляет обработку документов.'+intro,evidence:'Версия 1.2.3 исправляет обработку документов.'},
+  {key:'other-version',text:'Версия 1.2.4 исправляет обработку документов.'},
+  {key:'year',text:intro+'Прогноз на 2026 год описывает спрос.'+intro,evidence:'Прогноз на 2026 год описывает спрос.'},
+  {key:'other-year',text:'Прогноз на 2025 год описывает спрос.'},
+  {key:'model',text:intro+'Видеокарта RTX 5090 прошла испытания.'+intro,evidence:'Видеокарта RTX 5090 прошла испытания.'},
+  {key:'other-model',text:'Видеокарта RTX 5080 прошла испытания.'},
+];
+export const numericCases=[
+  {key:'rule',query:'3-2-1',expected:['backup'],evidence:'backup'},
+  {key:'quoted-rule',query:'"3-2-1"',expected:['backup'],evidence:'backup'},
+  {key:'rule-dot',query:'3-2-1.',expected:['backup'],evidence:'backup'},
+  {key:'mixed',query:'резервное копирование 3-2-1',expected:['backup'],evidence:'backup'},
+  {key:'natural',query:'Найди статью про 3-2-1',expected:['backup'],evidence:'backup'},
+  {key:'version',query:'1.2.3',expected:['version'],evidence:'version'},
+  {key:'mixed-version',query:'версия 1.2.3',expected:['version'],evidence:'version'},
+  {key:'slash',query:'1/2/3',expected:['version','reversed']},
+  {key:'missing-rule',query:'9-8-7',expected:[]},
+  {key:'missing-mixed',query:'резервное копирование 9-8-7',expected:[]},
+  {key:'two-groups',query:'3-2-1 1.2.3',expected:[]},
+  {key:'single-digit',query:'3',expected:[],unchanged:true},
+  {key:'year',query:'2026',expected:['year'],evidence:'year',unchanged:true},
+  {key:'model',query:'5090',expected:['model'],evidence:'model',unchanged:true},
+  {key:'model-name',query:'RTX 5090',expected:['model','other-model'],evidence:'model',unchanged:true},
+];

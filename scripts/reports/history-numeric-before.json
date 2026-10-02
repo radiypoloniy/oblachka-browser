@@ -1,0 +1,196 @@
+{
+  "measuredAt": "2026-10-02T15:40:18.050Z",
+  "cases": [
+    {
+      "key": "rule",
+      "query": "3-2-1",
+      "match": "",
+      "keys": [],
+      "visibleEvidence": false,
+      "snippet": "",
+      "reads": 1,
+      "calls": 0,
+      "modelQuery": null
+    },
+    {
+      "key": "quoted-rule",
+      "query": "\"3-2-1\"",
+      "match": "",
+      "keys": [],
+      "visibleEvidence": false,
+      "snippet": "",
+      "reads": 1,
+      "calls": 0,
+      "modelQuery": null
+    },
+    {
+      "key": "rule-dot",
+      "query": "3-2-1.",
+      "match": "",
+      "keys": [],
+      "visibleEvidence": false,
+      "snippet": "",
+      "reads": 1,
+      "calls": 0,
+      "modelQuery": null
+    },
+    {
+      "key": "mixed",
+      "query": "резервное копирование 3-2-1",
+      "match": "\"резервн\" OR \"копирован\"",
+      "keys": [
+        "infix",
+        "alternate",
+        "reversed",
+        "scattered",
+        "backup"
+      ],
+      "visibleEvidence": true,
+      "snippet": "… и результаты испытаний. Правило резервного копирования 3-2-1 сохраняет документы.В справочнике подробно описаны условия наблюдения и результаты испытаний. В справочнике подробно описаны условия наблюдения и результаты испытаний. В справ …",
+      "reads": 1,
+      "calls": 1,
+      "modelQuery": "резервное копирование 3-2-1"
+    },
+    {
+      "key": "natural",
+      "query": "Найди статью про 3-2-1",
+      "match": "\"найд\" OR \"стат\" OR \"про\"",
+      "keys": [],
+      "visibleEvidence": false,
+      "snippet": "",
+      "reads": 1,
+      "calls": 0,
+      "modelQuery": null
+    },
+    {
+      "key": "version",
+      "query": "1.2.3",
+      "match": "",
+      "keys": [],
+      "visibleEvidence": false,
+      "snippet": "",
+      "reads": 1,
+      "calls": 0,
+      "modelQuery": null
+    },
+    {
+      "key": "mixed-version",
+      "query": "версия 1.2.3",
+      "match": "\"верс\"",
+      "keys": [
+        "other-version",
+        "version"
+      ],
+      "visibleEvidence": true,
+      "snippet": "… наблюдения и результаты испытаний. Версия 1.2.3 исправляет обработку документов.В справочнике подробно описаны условия наблюдения и результаты испытаний. В справочнике подробно описаны условия наблюдения и результаты испытаний. В справо …",
+      "reads": 1,
+      "calls": 1,
+      "modelQuery": "версия 1.2.3"
+    },
+    {
+      "key": "slash",
+      "query": "1/2/3",
+      "match": "",
+      "keys": [],
+      "visibleEvidence": false,
+      "snippet": "",
+      "reads": 1,
+      "calls": 0,
+      "modelQuery": null
+    },
+    {
+      "key": "missing-rule",
+      "query": "9-8-7",
+      "match": "",
+      "keys": [],
+      "visibleEvidence": false,
+      "snippet": "",
+      "reads": 1,
+      "calls": 0,
+      "modelQuery": null
+    },
+    {
+      "key": "missing-mixed",
+      "query": "резервное копирование 9-8-7",
+      "match": "\"резервн\" OR \"копирован\"",
+      "keys": [
+        "infix",
+        "alternate",
+        "reversed",
+        "scattered",
+        "backup"
+      ],
+      "visibleEvidence": false,
+      "snippet": "",
+      "reads": 1,
+      "calls": 1,
+      "modelQuery": "резервное копирование 9-8-7"
+    },
+    {
+      "key": "two-groups",
+      "query": "3-2-1 1.2.3",
+      "match": "",
+      "keys": [],
+      "visibleEvidence": false,
+      "snippet": "",
+      "reads": 1,
+      "calls": 0,
+      "modelQuery": null
+    },
+    {
+      "key": "single-digit",
+      "query": "3",
+      "match": "",
+      "keys": [],
+      "visibleEvidence": false,
+      "snippet": "",
+      "reads": 1,
+      "calls": 0,
+      "modelQuery": null
+    },
+    {
+      "key": "year",
+      "query": "2026",
+      "match": "\"2026\"",
+      "keys": [
+        "year"
+      ],
+      "visibleEvidence": true,
+      "snippet": "… результаты испытаний. Прогноз на 2026 год описывает спрос.В справочнике подробно описаны условия наблюдения и результаты испытаний. В справочнике подробно описаны условия наблюдения и результаты испытаний. В справочнике подробно описаны …",
+      "reads": 1,
+      "calls": 1,
+      "modelQuery": "2026"
+    },
+    {
+      "key": "model",
+      "query": "5090",
+      "match": "\"5090\"",
+      "keys": [
+        "model"
+      ],
+      "visibleEvidence": true,
+      "snippet": "… результаты испытаний. Видеокарта RTX 5090 прошла испытания.В справочнике подробно описаны условия наблюдения и результаты испытаний. В справочнике подробно описаны условия наблюдения и результаты испытаний. В справочнике подробно описан …",
+      "reads": 1,
+      "calls": 1,
+      "modelQuery": "5090"
+    },
+    {
+      "key": "model-name",
+      "query": "RTX 5090",
+      "match": "\"rtx\" OR \"5090\"",
+      "keys": [
+        "model",
+        "other-model"
+      ],
+      "visibleEvidence": true,
+      "snippet": "… результаты испытаний. Видеокарта RTX 5090 прошла испытания.В справочнике подробно описаны условия наблюдения и результаты испытаний. В справочнике подробно описаны условия наблюдения и результаты испытаний. В справочнике подробно описан …",
+      "reads": 1,
+      "calls": 1,
+      "modelQuery": "RTX 5090"
+    }
+  ],
+  "summary": {
+    "queries": 15,
+    "exactCandidateSets": 6
+  }
+}
