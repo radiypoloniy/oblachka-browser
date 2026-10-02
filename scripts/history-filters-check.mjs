@@ -14,13 +14,16 @@ await withStand(async ctx => {
     const page=await readHistory(h,{kind:'page',page:{query:'',filters:{domain:'example.test'}}});
     const candidates=await search.collectHistoryCandidateSetAsync(h,'установка',{domain:'example.test'});
     const future=await readHistory(h,{kind:'page',page:{query:'',filters:{from:Date.now()+1000}}});
+    h.recordVisit('https://sub.a_b.test/article','Домен с подчёркиванием');h.recordVisit('https://sub.axb.test/article','Похожий домен');
+    const escaped=await readHistory(h,{kind:'page',page:{query:'',filters:{domain:'a_b.test'}}});
     const {prepareHistoryCandidateChunks}=req(${p('HistorySearchSnippet')});
     const base={historyId:100,url:'https://example.test/notes',title:'Настройка клиента',lastVisit:1,visitCount:1};
     const evidence=prepareHistoryCandidateChunks([{...base,text:'Linux: установка клиента. '+ 'Описание установки. '.repeat(20)},{...base,text:'Работает без интернета. '+ 'Описание работы. '.repeat(20)}],'Linux без интернета')[0].snippet;
-    return {urls:page.entries.map(r=>r.url).sort(),candidates:candidates.candidates.map(r=>r.url).sort(),future:future.entries.length,evidence};
+    return {escaped:escaped.entries.map(r=>r.url),urls:page.entries.map(r=>r.url).sort(),candidates:candidates.candidates.map(r=>r.url).sort(),future:future.entries.length,evidence};
   })()`);
   const expected=['https://example.test/article','https://sub.example.test/article'];
   assert.deepEqual(result.urls,expected); assert.deepEqual(result.candidates,expected); assert.equal(result.future,0);
+  assert.deepEqual(result.escaped,['https://sub.a_b.test/article']);
   assert.ok(result.evidence.includes('Linux')); assert.ok(result.evidence.includes('без интернета')); assert.ok(result.evidence.length<=240);
   console.log('ok: домен/поддомены без подделок; период до отбора; два доказательства в прежнем бюджете');
 }, { main: true });

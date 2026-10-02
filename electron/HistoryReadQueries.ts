@@ -1,3 +1,4 @@
+import { readHistorySubstring } from './HistorySubstring';
 import { historyFilterSql } from './HistoryFilters';
 import type { Database } from 'better-sqlite3';
 import type { HistoryEntry, HistoryContentCoverage, HistoryPage, HistoryPageRequest, HistorySearchFilters } from '../shared/ipc';
@@ -29,9 +30,7 @@ export function readRecent(db: Database, limit: number): HistoryEntry[] {
     FROM history ORDER BY last_visit DESC LIMIT ?`).all(limit) as HistoryEntry[];
 }
 export function readSearch(db: Database, query: string, limit: number, filters?: HistorySearchFilters): HistoryEntry[] {
-  const like = `%${query}%`;
-  return db.prepare(`SELECT id, url, title, last_visit AS lastVisit, visit_count AS visitCount
-    FROM history WHERE (url LIKE ? OR title LIKE ?)${historyFilterSql(filters).sql} ORDER BY last_visit DESC LIMIT ?`).all(like, like, ...historyFilterSql(filters).args, limit) as HistoryEntry[];
+  return readHistorySubstring(db, { query, filters }, limit);
 }
 export function buildFtsQuery(query: string, allWords = false): string {
   // Тот же стемминг, что при записи индекса; исходные тексты чанков не меняются.

@@ -1,6 +1,7 @@
+import { setupHistoryLookup, resetHistoryLookupForImport } from './HistoryLookup';
 import { setupHistoryContentStore, saveHistoryContent, deletePreviousHistoryContent } from './HistoryContentStore';
 import { installHistoryFunctions } from './HistoryFilters';
-import { app } from 'electron';
+import { app, powerMonitor } from 'electron';
 import path from 'node:path';
 import type { HistoryEntry, HistoryClearPeriod, HistoryContentCoverage } from '../shared/ipc';
 import { isSearchResultUrl } from '../shared/searchEngines';
@@ -82,6 +83,7 @@ export class HistoryManager {
       this.#migrateContentChunksToTextVersion();
       this.#rebuildFtsWithStemming();
       this.#dropEmbeddingsTable();
+      try { setupHistoryLookup(this.#db, () => powerMonitor.getSystemIdleTime() >= 15); } catch (error) { console.warn('[History] триграммы недоступны, используем LIKE', error); }
       console.log('[History] база инициализирована:', this.#dbPath);
     } catch (e) {
       this.#db = sqliteOpenFailed('History', this.#dbPath, e);
@@ -117,6 +119,7 @@ export class HistoryManager {
     const db = this.#db;
     let inserted = 0;
     let skipped = 0;
+    let rebuildLookup = false;
     try {
       const existsStmt = db.prepare(`SELECT 1 FROM history WHERE url = ? LIMIT 1`);
       const upsert = db.prepare(`
@@ -128,6 +131,7 @@ export class HistoryManager {
           visit_count = history.visit_count + excluded.visit_count
       `);
       const run = db.transaction(() => {
+        if (visits.length >= 2000) rebuildLookup = resetHistoryLookupForImport(db);
         for (const v of visits) {
           if (!this.#shouldRecord(v.url)) { skipped++; continue; }
           // «Уже были» для отчёта = слияние с существующим url (не ошибка, просто не новая строка).
@@ -139,6 +143,10 @@ export class HistoryManager {
       run();
     } catch (e) {
       console.warn('[History] bulkImportVisits error:', (e as Error).message);
+    }
+    if (rebuildLookup) {
+      try { setupHistoryLookup(db, () => powerMonitor.getSystemIdleTime() >= 15); }
+      catch (error) { console.warn('[History] индекс после импорта отложен:', error); }
     }
     return { inserted, skipped };
   }
@@ -435,7 +443,7 @@ export class HistoryManager {
           // history_content_chunks.history_id → history(id) БЕЗ ON DELETE CASCADE, а foreign_keys=ON
           // (#setup) — DELETE FROM history без предварительной чистки детей падает на FK constraint.
           // Порядок обязателен: сначала дети, потом родители.
-          db.prepare('DELETE FROM history_previous_chunks_fts').run();
+          try { db.prepare('DELETE FROM history_previous_chunks_fts').run(); } catch { /* FTS может быть недоступен. */ }
           db.prepare('DELETE FROM history_previous_chunks').run();
           try { db.prepare(`DELETE FROM history_content_chunks_fts`).run(); } catch { /* FTS может быть недоступен */ }
           db.prepare(`DELETE FROM history_content_chunks`).run();

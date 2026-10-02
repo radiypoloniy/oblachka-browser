@@ -7,6 +7,7 @@ export function historyHostname(url: unknown): string {
 }
 export function installHistoryFunctions(db: Database): void {
   db.function('history_hostname', { deterministic: true }, historyHostname);
+  db.function('history_lower', { deterministic: true }, (value: unknown) => typeof value === 'string' ? value.toLowerCase() : '');
 }
 export function historyFilterSql(filters?: HistorySearchFilters, prefix = ''): { sql: string; args: (string | number)[] } {
   const conditions: string[] = [], args: (string | number)[] = [];
@@ -24,8 +25,8 @@ export function historyFilterSql(filters?: HistorySearchFilters, prefix = ''): {
     const host = url.hostname.toLowerCase();
     if (!host || url.username || url.password) throw new Error('Invalid history domain');
     // Граница поддомена исключает похожие адреса и host в пути/userinfo.
-    conditions.push(`(history_hostname(${prefix}url) = ? OR history_hostname(${prefix}url) LIKE ?)`);
-    args.push(host, `%.${host}`);
+    conditions.push(`(history_hostname(${prefix}url) = ? OR history_hostname(${prefix}url) LIKE ? ESCAPE '!')`);
+    args.push(host, `%.${host.replace(/[!%_]/g, '!$&')}`);
   }
   return { sql: conditions.length ? ` AND ${conditions.join(' AND ')}` : '', args };
 }

@@ -1,0 +1,57 @@
+{
+  "records": 500000,
+  "seedMs": 30306.759000000002,
+  "indexBytes": 25296896,
+  "writeMs": 0.28641700000000125,
+  "maxMainTimerGapMs": 31.02089999999953,
+  "runs": [
+    {
+      "mode": "baseline",
+      "query": "",
+      "ms": 30.89980000000287,
+      "rows": 500
+    },
+    {
+      "mode": "baseline",
+      "query": "common",
+      "ms": 9.02009999999791,
+      "rows": 500
+    },
+    {
+      "mode": "baseline",
+      "query": "common 0",
+      "ms": 270.4871999999996,
+      "rows": 1
+    },
+    {
+      "mode": "baseline",
+      "query": "absent-term",
+      "ms": 256.65439999999944,
+      "rows": 0
+    },
+    {
+      "mode": "indexed",
+      "query": "",
+      "ms": 5.667300000000978,
+      "rows": 500
+    },
+    {
+      "mode": "indexed",
+      "query": "common",
+      "ms": 5.860599999999977,
+      "rows": 500
+    },
+    {
+      "mode": "indexed",
+      "query": "common 0",
+      "ms": 1.3122000000003027,
+      "rows": 1
+    },
+    {
+      "mode": "indexed",
+      "query": "absent-term",
+      "ms": 0.7796999999991385,
+      "rows": 0
+    }
+  ]
+}
