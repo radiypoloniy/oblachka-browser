@@ -1,0 +1,364 @@
+{
+  "model": "Qwen3.5 4B Q4_K_M",
+  "pages": 29,
+  "queries": 8,
+  "runs": [
+    {
+      "ms": 79.21900000000096,
+      "variants": [],
+      "candidates": [],
+      "results": [],
+      "degraded": false,
+      "key": "sound",
+      "expand": false,
+      "target": "paraphrase",
+      "candidateHit": false,
+      "hit": false,
+      "forbidden": []
+    },
+    {
+      "ms": 3098.332699999999,
+      "variants": [
+        "уменьшение уличного шума в наушниках",
+        "подавление внешнего гула гарнитурой"
+      ],
+      "candidates": [
+        "paraphrase"
+      ],
+      "results": [
+        "paraphrase"
+      ],
+      "degraded": false,
+      "key": "sound",
+      "expand": true,
+      "target": "paraphrase",
+      "candidateHit": true,
+      "hit": true,
+      "forbidden": []
+    },
+    {
+      "ms": 415.66849999999977,
+      "variants": [],
+      "candidates": [
+        "prius",
+        "corolla",
+        "density",
+        "russian-short",
+        "dns"
+      ],
+      "results": [
+        "russian-short",
+        "density"
+      ],
+      "degraded": false,
+      "key": "battery",
+      "expand": false,
+      "target": "battery",
+      "candidateHit": false,
+      "hit": false,
+      "forbidden": []
+    },
+    {
+      "ms": 3499.1543999999994,
+      "variants": [
+        "защита аккумулятора от деградации при зарядке",
+        "предотвращение старения батареи во время пополнения заряда"
+      ],
+      "candidates": [
+        "battery",
+        "python",
+        "start",
+        "prius",
+        "corolla",
+        "density",
+        "russian-short",
+        "dns"
+      ],
+      "results": [
+        "russian-short",
+        "density"
+      ],
+      "degraded": false,
+      "key": "battery",
+      "expand": true,
+      "target": "battery",
+      "candidateHit": true,
+      "hit": false,
+      "forbidden": []
+    },
+    {
+      "ms": 460.0561000000016,
+      "variants": [],
+      "candidates": [
+        "python",
+        "russian-short",
+        "offline",
+        "linux",
+        "windows",
+        "prius",
+        "corolla",
+        "start",
+        "battery"
+      ],
+      "results": [
+        "battery"
+      ],
+      "degraded": false,
+      "key": "backup",
+      "expand": false,
+      "target": "backup",
+      "candidateHit": false,
+      "hit": false,
+      "forbidden": []
+    },
+    {
+      "ms": 3566.5022000000026,
+      "variants": [
+        "резервное копирование файлов",
+        "защита данных от поломки диска"
+      ],
+      "candidates": [
+        "version-good",
+        "version-wrong",
+        "dns",
+        "backup",
+        "prius",
+        "corolla",
+        "python",
+        "russian-short",
+        "offline",
+        "linux",
+        "windows",
+        "start",
+        "battery"
+      ],
+      "results": [
+        "version-wrong",
+        "backup"
+      ],
+      "degraded": false,
+      "key": "backup",
+      "expand": true,
+      "target": "backup",
+      "candidateHit": true,
+      "hit": true,
+      "forbidden": []
+    },
+    {
+      "ms": 7.602899999998044,
+      "variants": [],
+      "candidates": [],
+      "results": [],
+      "degraded": false,
+      "key": "plants",
+      "expand": false,
+      "target": "short",
+      "candidateHit": false,
+      "hit": false,
+      "forbidden": []
+    },
+    {
+      "ms": 1560.3202999999994,
+      "variants": [
+        "полив растений с толстыми листьями",
+        "когда поливать суккуленты"
+      ],
+      "candidates": [
+        "short"
+      ],
+      "results": [
+        "short"
+      ],
+      "degraded": false,
+      "key": "plants",
+      "expand": true,
+      "target": "short",
+      "candidateHit": true,
+      "hit": true,
+      "forbidden": []
+    },
+    {
+      "ms": 310.2268999999942,
+      "variants": [],
+      "candidates": [
+        "offline",
+        "cloud",
+        "passive"
+      ],
+      "results": [
+        "offline",
+        "cloud"
+      ],
+      "degraded": false,
+      "key": "offline",
+      "expand": false,
+      "target": "offline",
+      "candidateHit": true,
+      "hit": true,
+      "forbidden": [
+        "cloud"
+      ]
+    },
+    {
+      "ms": 2988.3868999999977,
+      "variants": [
+        "распознавание речи офлайн",
+        "локальная обработка голоса"
+      ],
+      "candidates": [
+        "socket",
+        "python",
+        "offline",
+        "cloud",
+        "passive"
+      ],
+      "results": [
+        "offline",
+        "cloud"
+      ],
+      "degraded": false,
+      "key": "offline",
+      "expand": true,
+      "target": "offline",
+      "candidateHit": true,
+      "hit": true,
+      "forbidden": [
+        "cloud"
+      ]
+    },
+    {
+      "ms": 314.54619999999704,
+      "variants": [],
+      "candidates": [
+        "backup",
+        "version-good"
+      ],
+      "results": [
+        "version-good",
+        "backup"
+      ],
+      "degraded": false,
+      "key": "number",
+      "expand": false,
+      "target": "version-good",
+      "candidateHit": true,
+      "hit": true,
+      "forbidden": []
+    },
+    {
+      "ms": 3166.201000000001,
+      "variants": [
+        "правило 3-2-1 резервное копирование",
+        "стратегия резервного копирования 3-2-1"
+      ],
+      "candidates": [
+        "backup",
+        "version-good"
+      ],
+      "results": [
+        "version-good",
+        "backup"
+      ],
+      "degraded": false,
+      "key": "number",
+      "expand": true,
+      "target": "version-good",
+      "candidateHit": true,
+      "hit": true,
+      "forbidden": []
+    },
+    {
+      "ms": 1.8113999999986845,
+      "variants": [],
+      "candidates": [],
+      "results": [],
+      "degraded": false,
+      "key": "missing",
+      "expand": false,
+      "target": null,
+      "candidateHit": false,
+      "hit": false,
+      "forbidden": []
+    },
+    {
+      "ms": 2526.7872999999963,
+      "variants": [
+        "детектор нейтрино"
+      ],
+      "candidates": [],
+      "results": [],
+      "degraded": false,
+      "key": "missing",
+      "expand": true,
+      "target": null,
+      "candidateHit": false,
+      "hit": false,
+      "forbidden": []
+    },
+    {
+      "ms": 270.88099999999395,
+      "variants": [],
+      "candidates": [
+        "prius",
+        "corolla",
+        "russian-short"
+      ],
+      "results": [
+        "russian-short"
+      ],
+      "degraded": false,
+      "key": "missing-brand",
+      "expand": false,
+      "target": null,
+      "candidateHit": false,
+      "hit": false,
+      "forbidden": [
+        "russian-short"
+      ]
+    },
+    {
+      "ms": 1442.2626000000018,
+      "variants": [
+        "срок службы АКБ Honda Civic"
+      ],
+      "candidates": [
+        "prius",
+        "corolla",
+        "russian-short"
+      ],
+      "results": [
+        "russian-short"
+      ],
+      "degraded": false,
+      "key": "missing-brand",
+      "expand": true,
+      "target": null,
+      "candidateHit": false,
+      "hit": false,
+      "forbidden": [
+        "russian-short"
+      ]
+    }
+  ],
+  "loadMs": 31134.3512,
+  "summary": [
+    {
+      "expand": false,
+      "positive": 6,
+      "candidateHits": 2,
+      "hits": 2,
+      "forbidden": 2,
+      "negativeFalse": 1,
+      "medianMs": 310.2268999999942
+    },
+    {
+      "expand": true,
+      "positive": 6,
+      "candidateHits": 6,
+      "hits": 5,
+      "forbidden": 2,
+      "negativeFalse": 1,
+      "medianMs": 3098.332699999999
+    }
+  ]
+}

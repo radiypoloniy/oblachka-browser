@@ -14,7 +14,7 @@ await withStand(async ctx => {
   };
   const untilDom = predicate => ctx.chrome.evaluate(`(async()=>{
     for(let i=0;i<100;i++){if(${predicate})return;await new Promise(r=>setTimeout(r,20));}
-    throw Error('DOM wait timeout');
+    throw Error('DOM wait timeout: '+JSON.stringify([...document.querySelectorAll('input')].map(e=>({placeholder:e.placeholder,value:e.value}))));
   })()`);
   const type = value => ctx.chrome.evaluate(`(()=>{
     const input=[...document.querySelectorAll('input')].find(e=>/истории|history/i.test(e.placeholder));
@@ -41,6 +41,9 @@ await withStand(async ctx => {
       return result;
     };
   })()`);
+  // Ждём маунта чрома: ранний IPC до его стартовой синхронизации меняет условия стенда.
+  await untilDom(`document.querySelector('input')`);
+  await ctx.chrome.evaluate('window.oblako.getSyncState()');
   let tab=await ctx.chrome.evaluate(`window.oblako.createSpecialTab('history')`);
   await untilDom(`document.querySelector('[title="https://bench.test/final"]')`);
   const hold = async first => {
