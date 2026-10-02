@@ -74,9 +74,15 @@ function historyEntryToSemanticResult(entry: HistoryEntry, score: number): Seman
  * (StuffSearch.ts) брал те же самые кандидаты, а не заводил свою вторую копию этой логики.
  * Реранк сюда не входит намеренно: у объединённого поиска он один на все три источника.
  */
-export function collectHistoryCandidates(history: HistoryManager, query: string): SemanticSearchResult[] {
+export interface HistoryCandidateSet {
+  candidates: SemanticSearchResult[];
+  lexicalKeys: ReadonlySet<string>;
+}
+
+// Один снимок кандидатов и их происхождения: запасной путь не перечитывает историю после FTS.
+export function collectHistoryCandidateSet(history: HistoryManager, query: string): HistoryCandidateSet {
   const q = query.trim();
-  if (!q) return [];
+  if (!q) return { candidates: [], lexicalKeys: new Set() };
 
   let ftsCandidates: SemanticSearchResult[] = [];
   try {
@@ -91,8 +97,7 @@ export function collectHistoryCandidates(history: HistoryManager, query: string)
   } catch (e) {
     console.warn('[HistorySearch] FTS для smart search не удался:', (e as Error).message);
   }
-  const lexicalCandidates = history.search(q)
-    .slice(0, SMART_LEXICAL_CANDIDATE_LIMIT)
+  const lexicalCandidates = history.search(q, SMART_LEXICAL_CANDIDATE_LIMIT)
     .map((entry) => historyEntryToSemanticResult(entry, 1));
 
   // Лексика → FTS: точное совпадение по заголовку/URL (лексика) весомее текстового FTS-совпадения
@@ -106,7 +111,14 @@ export function collectHistoryCandidates(history: HistoryManager, query: string)
     const existing = byUrl.get(key);
     if (!existing || c.score > existing.score) byUrl.set(key, c);
   }
-  return [...byUrl.values()].slice(0, SMART_CANDIDATE_LIMIT);
+  return {
+    candidates: [...byUrl.values()].slice(0, SMART_CANDIDATE_LIMIT),
+    lexicalKeys: new Set(lexicalCandidates.map((c) => normalizeForOmnibox(c.url))),
+  };
+}
+
+export function collectHistoryCandidates(history: HistoryManager, query: string): SemanticSearchResult[] {
+  return collectHistoryCandidateSet(history, query).candidates;
 }
 
 export async function searchHistorySmart(
@@ -121,12 +133,20 @@ export async function searchHistorySmart(
   const q = query.trim();
   if (!q) return { results: [], degraded: false };
 
-  const candidates = collectHistoryCandidates(history, q);
+  return rerankCollectedHistoryCandidates(q, collectHistoryCandidateSet(history, q), limit, opts);
+}
+
+// Связанные страницы передают уже собранный снимок, чтобы не повторять SQL и FTS перед Qwen.
+export async function rerankCollectedHistoryCandidates(
+  query: string,
+  collected: HistoryCandidateSet,
+  limit = 8,
+  opts?: { background?: boolean; related?: boolean },
+): Promise<SmartSearchResponse> {
+  const q = query.trim();
+  const { candidates, lexicalKeys } = collected;
+  if (!q) return { results: [], degraded: false };
   if (candidates.length === 0) return { results: [], degraded: false };
-  // Ключи лексики нужны для запасного пути ниже — считаем их по тем же кандидатам.
-  const lexicalKeys = new Set(
-    history.search(q).slice(0, SMART_LEXICAL_CANDIDATE_LIMIT).map((e) => normalizeForOmnibox(e.url)),
-  );
 
   let order: number[];
   try {

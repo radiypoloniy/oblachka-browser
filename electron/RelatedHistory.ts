@@ -9,7 +9,7 @@
 // «Караван, процедурная генерация… Diablo V» теряет Diablo за лимитом FTS в 8 слов, а реранк
 // ищет ту же статью и молчит. FTS без модели уже ответ; модель только переставляет.
 import type { HistoryManager } from './HistoryManager';
-import { collectHistoryCandidates, searchHistorySmart } from './HistorySearch';
+import { collectHistoryCandidateSet, rerankCollectedHistoryCandidates } from './HistorySearch';
 import { isModelWarm } from './TranslationService';
 import type { RelatedPagesResult, SemanticSearchResult } from '../shared/ipc';
 import { normalizeForOmnibox } from '../shared/frecency';
@@ -79,13 +79,14 @@ export async function findRelatedPages(
     return DONE(existing.fts);
   }
 
-  const fts = takeRelated(collectHistoryCandidates(history, q), currentKey, limit);
+  const collected = collectHistoryCandidateSet(history, q);
+  const fts = takeRelated(collected.candidates, currentKey, limit);
   console.log(`[related] «${q.slice(0, 40)}» → ${fts.length} страниц (FTS)`);
 
   const job: RelatedJob = { key, fts, ranked: null };
   if (!isModelWarm()) return DONE(fts);
 
-  job.ranked = searchHistorySmart(history, q, limit + 4, { background: true, related: true })
+  job.ranked = rerankCollectedHistoryCandidates(q, collected, limit + 4, { background: true, related: true })
     .then((res) => {
       const out = takeRelated(res.results, currentKey, limit);
       const final = out.length ? out : fts;

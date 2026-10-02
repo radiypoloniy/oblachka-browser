@@ -430,7 +430,7 @@ export class HistoryManager {
     }
   }
 
-  search(query: string): HistoryEntry[] {
+  search(query: string, limit = RECENT_LIMIT): HistoryEntry[] {
     if (!this.#db) return [];
     try {
       const like = `%${query}%`;
@@ -440,7 +440,7 @@ export class HistoryManager {
         WHERE url LIKE ? OR title LIKE ?
         ORDER BY last_visit DESC
         LIMIT ?
-      `).all(like, like, RECENT_LIMIT) as HistoryEntry[];
+      `).all(like, like, limit) as HistoryEntry[];
     } catch (e) {
       console.warn('[History] search error:', (e as Error).message);
       return [];
