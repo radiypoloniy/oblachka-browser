@@ -1,0 +1,745 @@
+{
+  "measuredAt": "2026-10-02T17:15:52.740Z",
+  "model": "Qwen3.5 4B Q4_K_M",
+  "source": "scripts/reports/history-semantic-chain.json",
+  "sourceSha256": "3edfa8ebae62324dff541140fcf3fb7db3b39487efb1f198519f3e5a0e718cba",
+  "savedPools": 4,
+  "freshPools": 4,
+  "runs": [
+    {
+      "key": "language",
+      "query": "найди английскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "language",
+      "target": "english-short",
+      "acceptable": [
+        "english-short",
+        "english"
+      ],
+      "forbidden": [
+        "russian-short",
+        "battery",
+        "density"
+      ],
+      "candidates": [
+        "english-short"
+      ],
+      "chosen": [
+        "english-short"
+      ],
+      "ms": 466.7416000000012,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "languageCheck": {
+        "requested": "en",
+        "checks": [
+          {
+            "key": "english-short",
+            "raw": "eng",
+            "picked": {
+              "code": "en",
+              "iso3": "eng",
+              "overrode": null
+            },
+            "keep": true
+          },
+          {
+            "key": "english",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "battery",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "russian-short",
+            "raw": "bul",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": "cyrillic"
+            },
+            "keep": false
+          },
+          {
+            "key": "prius",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "corolla",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "python",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "start",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "density",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          }
+        ],
+        "ms": 1.023300000000006
+      }
+    },
+    {
+      "key": "heldout-french",
+      "query": "найди французскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:heldout-negative",
+      "repeat": 0,
+      "mode": "language",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [],
+      "chosen": [],
+      "ms": 0.010699999998905696,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "languageCheck": {
+        "requested": "fr",
+        "checks": [
+          {
+            "key": "paraphrase",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "russian-short",
+            "raw": "bul",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": "cyrillic"
+            },
+            "keep": false
+          },
+          {
+            "key": "battery",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "prius",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "corolla",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "python",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "start",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "density",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          }
+        ],
+        "ms": 0.7483000000000004
+      }
+    },
+    {
+      "key": "language",
+      "query": "найди английскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "language",
+      "target": "english-short",
+      "acceptable": [
+        "english-short",
+        "english"
+      ],
+      "forbidden": [
+        "russian-short",
+        "battery",
+        "density"
+      ],
+      "candidates": [
+        "english-short"
+      ],
+      "chosen": [
+        "english-short"
+      ],
+      "ms": 243.00419999999576,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "languageCheck": {
+        "requested": "en",
+        "checks": [
+          {
+            "key": "english-short",
+            "raw": "eng",
+            "picked": {
+              "code": "en",
+              "iso3": "eng",
+              "overrode": null
+            },
+            "keep": true
+          },
+          {
+            "key": "english",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "battery",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "russian-short",
+            "raw": "bul",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": "cyrillic"
+            },
+            "keep": false
+          },
+          {
+            "key": "prius",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "corolla",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "python",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "start",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "density",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          }
+        ],
+        "ms": 1.2025999999999897
+      }
+    },
+    {
+      "key": "heldout-french",
+      "query": "найди французскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:heldout-negative",
+      "repeat": 1,
+      "mode": "language",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [],
+      "chosen": [],
+      "ms": 0.011800000000221189,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "languageCheck": {
+        "requested": "fr",
+        "checks": [
+          {
+            "key": "paraphrase",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "russian-short",
+            "raw": "bul",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": "cyrillic"
+            },
+            "keep": false
+          },
+          {
+            "key": "prius",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "battery",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "corolla",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "python",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "start",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "density",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          }
+        ],
+        "ms": 1.0773999999999972
+      }
+    },
+    {
+      "key": "fresh-german",
+      "query": "найди немецкую заметку об износе аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "language",
+      "target": "german",
+      "acceptable": [
+        "german"
+      ],
+      "forbidden": [
+        "english",
+        "russian"
+      ],
+      "candidates": [
+        "german"
+      ],
+      "chosen": [
+        "german"
+      ],
+      "ms": 246.57979999999952,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "languageCheck": {
+        "requested": "de",
+        "checks": [
+          {
+            "key": "russian",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "english",
+            "raw": "eng",
+            "picked": {
+              "code": "en",
+              "iso3": "eng",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "german",
+            "raw": "deu",
+            "picked": {
+              "code": "de",
+              "iso3": "deu",
+              "overrode": null
+            },
+            "keep": true
+          }
+        ],
+        "ms": 0.3556999999999988
+      }
+    },
+    {
+      "key": "fresh-missing-french",
+      "query": "найди французский материал про износ аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "language",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [],
+      "chosen": [],
+      "ms": 0.011800000000221189,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "languageCheck": {
+        "requested": "fr",
+        "checks": [
+          {
+            "key": "german",
+            "raw": "deu",
+            "picked": {
+              "code": "de",
+              "iso3": "deu",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "english",
+            "raw": "eng",
+            "picked": {
+              "code": "en",
+              "iso3": "eng",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "russian",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          }
+        ],
+        "ms": 0.30509999999999593
+      }
+    },
+    {
+      "key": "fresh-german",
+      "query": "найди немецкую заметку об износе аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "language",
+      "target": "german",
+      "acceptable": [
+        "german"
+      ],
+      "forbidden": [
+        "english",
+        "russian"
+      ],
+      "candidates": [
+        "german"
+      ],
+      "chosen": [
+        "german"
+      ],
+      "ms": 244.21790000000328,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "languageCheck": {
+        "requested": "de",
+        "checks": [
+          {
+            "key": "german",
+            "raw": "deu",
+            "picked": {
+              "code": "de",
+              "iso3": "deu",
+              "overrode": null
+            },
+            "keep": true
+          },
+          {
+            "key": "english",
+            "raw": "eng",
+            "picked": {
+              "code": "en",
+              "iso3": "eng",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "russian",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          }
+        ],
+        "ms": 0.3838000000000079
+      }
+    },
+    {
+      "key": "fresh-missing-french",
+      "query": "найди французский материал про износ аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "language",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [],
+      "chosen": [],
+      "ms": 0.0054000000018277206,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "languageCheck": {
+        "requested": "fr",
+        "checks": [
+          {
+            "key": "russian",
+            "raw": "rus",
+            "picked": {
+              "code": "ru",
+              "iso3": "rus",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "english",
+            "raw": "eng",
+            "picked": {
+              "code": "en",
+              "iso3": "eng",
+              "overrode": null
+            },
+            "keep": false
+          },
+          {
+            "key": "german",
+            "raw": "deu",
+            "picked": {
+              "code": "de",
+              "iso3": "deu",
+              "overrode": null
+            },
+            "keep": false
+          }
+        ],
+        "ms": 1.7900999999999954
+      }
+    }
+  ],
+  "loadMs": 31897.563100000003,
+  "perfLines": [
+    "[inference] [perf] segment: inputTokens=263 setup/prefill=401ms generation=58ms (genTokens=1) finalOutTokens=1",
+    "[inference] [perf] segment: inputTokens=263 setup/prefill=194ms generation=43ms (genTokens=1) finalOutTokens=1",
+    "[inference] [perf] segment: inputTokens=271 setup/prefill=197ms generation=44ms (genTokens=1) finalOutTokens=1",
+    "[inference] [perf] segment: inputTokens=271 setup/prefill=195ms generation=43ms (genTokens=1) finalOutTokens=1"
+  ],
+  "summary": {
+    "language": {
+      "all": {
+        "runs": 8,
+        "positiveRuns": 4,
+        "selected": 4,
+        "violationRuns": 0,
+        "negativeRuns": 4,
+        "negativeFalseHits": 0,
+        "validNegativeEmpty": 4,
+        "negativeErrors": 0,
+        "errors": 0,
+        "rejectedRows": 0,
+        "rerank": {
+          "medianMs": 243.00419999999576,
+          "p95Ms": 466.7416000000012
+        }
+      },
+      "saved": {
+        "runs": 4,
+        "positiveRuns": 2,
+        "selected": 2,
+        "violationRuns": 0,
+        "negativeRuns": 2,
+        "negativeFalseHits": 0,
+        "validNegativeEmpty": 2,
+        "negativeErrors": 0,
+        "errors": 0,
+        "rejectedRows": 0,
+        "rerank": {
+          "medianMs": 243.00419999999576,
+          "p95Ms": 466.7416000000012
+        }
+      },
+      "fresh": {
+        "runs": 4,
+        "positiveRuns": 2,
+        "selected": 2,
+        "violationRuns": 0,
+        "negativeRuns": 2,
+        "negativeFalseHits": 0,
+        "validNegativeEmpty": 2,
+        "negativeErrors": 0,
+        "errors": 0,
+        "rejectedRows": 0,
+        "rerank": {
+          "medianMs": 244.21790000000328,
+          "p95Ms": 246.57979999999952
+        }
+      }
+    }
+  }
+}

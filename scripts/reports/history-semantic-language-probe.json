@@ -1,0 +1,793 @@
+{
+  "measuredAt": "2026-10-02T17:14:02.036Z",
+  "detector": "Existing franc-min + shared/langDetect",
+  "rows": [
+    {
+      "key": "battery",
+      "kind": "stored-text",
+      "textChars": 1523,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 2.2781999999999982
+    },
+    {
+      "key": "dns",
+      "kind": "stored-text",
+      "textChars": 1533,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 1.0720000000000027
+    },
+    {
+      "key": "backup",
+      "kind": "stored-text",
+      "textChars": 1535,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.8605000000000018
+    },
+    {
+      "key": "camera",
+      "kind": "stored-text",
+      "textChars": 1535,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.6619000000000028
+    },
+    {
+      "key": "density",
+      "kind": "stored-text",
+      "textChars": 1553,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.6649000000000029
+    },
+    {
+      "key": "english",
+      "kind": "stored-text",
+      "textChars": 1526,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.9500999999999991
+    },
+    {
+      "key": "short",
+      "kind": "stored-text",
+      "textChars": 58,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.23100000000000165
+    },
+    {
+      "key": "start",
+      "kind": "stored-text",
+      "textChars": 812,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.29299999999999926
+    },
+    {
+      "key": "title",
+      "kind": "stored-text",
+      "textChars": 729,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.2154999999999987
+    },
+    {
+      "key": "far-tail",
+      "kind": "stored-text",
+      "textChars": 12000,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.593599999999995
+    },
+    {
+      "key": "paraphrase",
+      "kind": "stored-text",
+      "textChars": 75,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.13469999999999516
+    },
+    {
+      "key": "noise",
+      "kind": "stored-text",
+      "textChars": 28,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.05270000000000152
+    },
+    {
+      "key": "python",
+      "kind": "stored-text",
+      "textChars": 103,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.09689999999999799
+    },
+    {
+      "key": "snake",
+      "kind": "stored-text",
+      "textChars": 65,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.07150000000000034
+    },
+    {
+      "key": "jaguar-car",
+      "kind": "stored-text",
+      "textChars": 99,
+      "expected": null,
+      "raw": "ukr",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": "cyrillic"
+      },
+      "ms": 0.1739999999999995
+    },
+    {
+      "key": "jaguar-animal",
+      "kind": "stored-text",
+      "textChars": 51,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.06669999999999732
+    },
+    {
+      "key": "socket",
+      "kind": "stored-text",
+      "textChars": 111,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.0963999999999956
+    },
+    {
+      "key": "passive",
+      "kind": "stored-text",
+      "textChars": 94,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.08579999999999899
+    },
+    {
+      "key": "linux",
+      "kind": "stored-text",
+      "textChars": 109,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.08990000000000009
+    },
+    {
+      "key": "windows",
+      "kind": "stored-text",
+      "textChars": 111,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.08209999999999695
+    },
+    {
+      "key": "offline",
+      "kind": "stored-text",
+      "textChars": 115,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.09299999999999642
+    },
+    {
+      "key": "cloud",
+      "kind": "stored-text",
+      "textChars": 101,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.12070000000000647
+    },
+    {
+      "key": "prius",
+      "kind": "stored-text",
+      "textChars": 124,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.0987000000000009
+    },
+    {
+      "key": "corolla",
+      "kind": "stored-text",
+      "textChars": 126,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.08399999999999608
+    },
+    {
+      "key": "english-short",
+      "kind": "stored-text",
+      "textChars": 108,
+      "expected": "en",
+      "raw": "eng",
+      "picked": {
+        "code": "en",
+        "iso3": "eng",
+        "overrode": null
+      },
+      "ms": 0.4281000000000006
+    },
+    {
+      "key": "russian-short",
+      "kind": "stored-text",
+      "textChars": 96,
+      "expected": "ru",
+      "raw": "bul",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": "cyrillic"
+      },
+      "ms": 0.08720000000000283
+    },
+    {
+      "key": "version-good",
+      "kind": "stored-text",
+      "textChars": 71,
+      "expected": null,
+      "raw": "bul",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": "cyrillic"
+      },
+      "ms": 0.06459999999999866
+    },
+    {
+      "key": "version-wrong",
+      "kind": "stored-text",
+      "textChars": 118,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.07459999999999667
+    },
+    {
+      "key": "injection",
+      "kind": "stored-text",
+      "textChars": 126,
+      "expected": null,
+      "raw": "bul",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": "cyrillic"
+      },
+      "ms": 0.1034000000000006
+    },
+    {
+      "key": "fresh-russian",
+      "kind": "snippet",
+      "textChars": 62,
+      "expected": "ru",
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.04529999999999745
+    },
+    {
+      "key": "fresh-english",
+      "kind": "snippet",
+      "textChars": 67,
+      "expected": "en",
+      "raw": "eng",
+      "picked": {
+        "code": "en",
+        "iso3": "eng",
+        "overrode": null
+      },
+      "ms": 0.07620000000000005
+    },
+    {
+      "key": "fresh-german",
+      "kind": "snippet",
+      "textChars": 111,
+      "expected": "de",
+      "raw": "deu",
+      "picked": {
+        "code": "de",
+        "iso3": "deu",
+        "overrode": null
+      },
+      "ms": 0.12290000000000134
+    },
+    {
+      "key": "fresh-win",
+      "kind": "snippet",
+      "textChars": 85,
+      "expected": null,
+      "raw": "bul",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": "cyrillic"
+      },
+      "ms": 0.07540000000000191
+    },
+    {
+      "key": "fresh-linux",
+      "kind": "snippet",
+      "textChars": 75,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.20479999999999876
+    },
+    {
+      "key": "fresh-mac",
+      "kind": "snippet",
+      "textChars": 87,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.07880000000000109
+    },
+    {
+      "key": "fresh-cloud",
+      "kind": "snippet",
+      "textChars": 92,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.07839999999999492
+    },
+    {
+      "key": "fresh-local",
+      "kind": "snippet",
+      "textChars": 115,
+      "expected": null,
+      "raw": "bul",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": "cyrillic"
+      },
+      "ms": 0.08840000000000003
+    },
+    {
+      "key": "fresh-prius",
+      "kind": "snippet",
+      "textChars": 123,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.08859999999999957
+    },
+    {
+      "key": "fresh-leaf",
+      "kind": "snippet",
+      "textChars": 110,
+      "expected": null,
+      "raw": "bul",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": "cyrillic"
+      },
+      "ms": 0.09080000000000155
+    },
+    {
+      "key": "fresh-passive",
+      "kind": "snippet",
+      "textChars": 93,
+      "expected": null,
+      "raw": "bul",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": "cyrillic"
+      },
+      "ms": 0.10390000000000299
+    },
+    {
+      "key": "fresh-anc",
+      "kind": "snippet",
+      "textChars": 104,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.11399999999999721
+    },
+    {
+      "key": "language:english-short",
+      "kind": "retrieval-snippet",
+      "textChars": 108,
+      "expected": null,
+      "raw": "eng",
+      "picked": {
+        "code": "en",
+        "iso3": "eng",
+        "overrode": null
+      },
+      "ms": 0.13340000000000174
+    },
+    {
+      "key": "language:english",
+      "kind": "retrieval-snippet",
+      "textChars": 240,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.13629999999999853
+    },
+    {
+      "key": "language:battery",
+      "kind": "retrieval-snippet",
+      "textChars": 240,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.11200000000000188
+    },
+    {
+      "key": "language:russian-short",
+      "kind": "retrieval-snippet",
+      "textChars": 96,
+      "expected": null,
+      "raw": "bul",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": "cyrillic"
+      },
+      "ms": 0.06749999999999545
+    },
+    {
+      "key": "language:prius",
+      "kind": "retrieval-snippet",
+      "textChars": 124,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.07570000000000476
+    },
+    {
+      "key": "language:corolla",
+      "kind": "retrieval-snippet",
+      "textChars": 126,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.07280000000000086
+    },
+    {
+      "key": "language:python",
+      "kind": "retrieval-snippet",
+      "textChars": 103,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.06690000000000396
+    },
+    {
+      "key": "language:start",
+      "kind": "retrieval-snippet",
+      "textChars": 240,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.12049999999999983
+    },
+    {
+      "key": "language:density",
+      "kind": "retrieval-snippet",
+      "textChars": 240,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.11460000000000292
+    },
+    {
+      "key": "heldout-french:paraphrase",
+      "kind": "retrieval-snippet",
+      "textChars": 75,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.051499999999997215
+    },
+    {
+      "key": "heldout-french:russian-short",
+      "kind": "retrieval-snippet",
+      "textChars": 96,
+      "expected": null,
+      "raw": "bul",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": "cyrillic"
+      },
+      "ms": 0.06260000000000332
+    },
+    {
+      "key": "heldout-french:battery",
+      "kind": "retrieval-snippet",
+      "textChars": 240,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.10289999999999822
+    },
+    {
+      "key": "heldout-french:prius",
+      "kind": "retrieval-snippet",
+      "textChars": 124,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.07230000000000558
+    },
+    {
+      "key": "heldout-french:corolla",
+      "kind": "retrieval-snippet",
+      "textChars": 126,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.07090000000000174
+    },
+    {
+      "key": "heldout-french:python",
+      "kind": "retrieval-snippet",
+      "textChars": 103,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.06380000000000052
+    },
+    {
+      "key": "heldout-french:start",
+      "kind": "retrieval-snippet",
+      "textChars": 240,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.10790000000000077
+    },
+    {
+      "key": "heldout-french:density",
+      "kind": "retrieval-snippet",
+      "textChars": 240,
+      "expected": null,
+      "raw": "rus",
+      "picked": {
+        "code": "ru",
+        "iso3": "rus",
+        "overrode": null
+      },
+      "ms": 0.09770000000000323
+    },
+    {
+      "key": "empty",
+      "kind": "unknown",
+      "textChars": 0,
+      "expected": null,
+      "raw": "und",
+      "picked": {
+        "code": "en",
+        "iso3": "und",
+        "overrode": null
+      },
+      "ms": 0.03459999999999752
+    },
+    {
+      "key": "numeric-only",
+      "kind": "unknown",
+      "textChars": 5,
+      "expected": null,
+      "raw": "und",
+      "picked": {
+        "code": "en",
+        "iso3": "und",
+        "overrode": null
+      },
+      "ms": 0.008399999999994634
+    }
+  ],
+  "summary": {
+    "samples": 60,
+    "marked": 5,
+    "markedCorrect": 5,
+    "medianMs": 0.0963999999999956,
+    "p95Ms": 0.8605000000000018
+  }
+}

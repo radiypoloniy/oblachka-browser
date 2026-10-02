@@ -1,0 +1,1814 @@
+{
+  "measuredAt": "2026-10-02T17:10:11.586Z",
+  "model": "Qwen3.5 4B Q4_K_M",
+  "source": "scripts/reports/history-semantic-chain.json",
+  "sourceSha256": "3edfa8ebae62324dff541140fcf3fb7db3b39487efb1f198519f3e5a0e718cba",
+  "savedPools": 38,
+  "freshPools": 14,
+  "runs": [
+    {
+      "key": "sound",
+      "query": "почему в гарнитуре исчезает уличный гул",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "paraphrase",
+      "acceptable": [
+        "paraphrase"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "paraphrase"
+      ],
+      "chosen": [
+        "paraphrase"
+      ],
+      "ms": 1572.1986999999972,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "paraphrase"
+      ],
+      "semanticMs": 465.15320000000065
+    },
+    {
+      "key": "battery",
+      "query": "как уберечь аккумулятор от деградации во время пополнения заряда",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "battery",
+      "acceptable": [
+        "battery",
+        "density",
+        "russian-short",
+        "english",
+        "english-short"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "russian-short",
+        "density"
+      ],
+      "chosen": [
+        "russian-short",
+        "density"
+      ],
+      "ms": 2927.4124999999985,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0,\n        1\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "russian-short",
+        "density"
+      ],
+      "semanticMs": 482.3011000000042
+    },
+    {
+      "key": "backup",
+      "query": "как не потерять файлы при поломке диска",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "backup",
+      "acceptable": [
+        "backup",
+        "version-good"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "version-good"
+      ],
+      "chosen": [
+        "version-good"
+      ],
+      "ms": 2416.019699999997,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "version-good"
+      ],
+      "semanticMs": 627.578300000001
+    },
+    {
+      "key": "aurora",
+      "query": "откуда берутся цветные огни на северном небе",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "start",
+      "acceptable": [
+        "start"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "start"
+      ],
+      "chosen": [
+        "start"
+      ],
+      "ms": 2544.2641000000003,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "start"
+      ],
+      "semanticMs": 438.5237999999954
+    },
+    {
+      "key": "plants",
+      "query": "когда давать воду растениям с толстыми листьями",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "short",
+      "acceptable": [
+        "short"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "short"
+      ],
+      "chosen": [
+        "short"
+      ],
+      "ms": 2323.4266999999963,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "short"
+      ],
+      "semanticMs": 247.3689000000013
+    },
+    {
+      "key": "socket",
+      "query": "как двум приложениям на одном компьютере обмениваться сообщениями",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "socket",
+      "acceptable": [
+        "socket"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "socket"
+      ],
+      "chosen": [
+        "socket"
+      ],
+      "ms": 2355.4858999999997,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "socket"
+      ],
+      "semanticMs": 412.3877999999968
+    },
+    {
+      "key": "passive",
+      "query": "наушники которые изолируют внешний звук без электроники",
+      "group": "saved:known-constraint",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "passive",
+      "acceptable": [
+        "passive"
+      ],
+      "forbidden": [
+        "paraphrase"
+      ],
+      "candidates": [
+        "passive",
+        "paraphrase"
+      ],
+      "chosen": [
+        "passive",
+        "paraphrase"
+      ],
+      "ms": 1414.5290999999997,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0, 1]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "passive",
+        "paraphrase"
+      ],
+      "semanticMs": 308.1959000000061
+    },
+    {
+      "key": "language",
+      "query": "найди английскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "english-short",
+      "acceptable": [
+        "english-short",
+        "english"
+      ],
+      "forbidden": [
+        "russian-short",
+        "battery",
+        "density"
+      ],
+      "candidates": [
+        "russian-short",
+        "english",
+        "battery"
+      ],
+      "chosen": [
+        "russian-short",
+        "english",
+        "battery"
+      ],
+      "ms": 1467.6736999999994,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0, 1, 2]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "russian-short",
+        "english",
+        "battery"
+      ],
+      "semanticMs": 524.0402000000031
+    },
+    {
+      "key": "platform",
+      "query": "установка сетевого клиента только в Linux",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "linux",
+      "acceptable": [
+        "linux"
+      ],
+      "forbidden": [
+        "windows",
+        "injection"
+      ],
+      "candidates": [
+        "linux"
+      ],
+      "chosen": [
+        "linux"
+      ],
+      "ms": 2292.0781999999963,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "linux"
+      ],
+      "semanticMs": 549.7486000000063
+    },
+    {
+      "key": "offline",
+      "query": "распознавание речи без интернета и облачного сервиса",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "offline",
+      "acceptable": [
+        "offline"
+      ],
+      "forbidden": [
+        "cloud"
+      ],
+      "candidates": [
+        "offline",
+        "cloud"
+      ],
+      "chosen": [
+        "offline"
+      ],
+      "ms": 2363.3079999999973,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "offline",
+        "cloud"
+      ],
+      "semanticMs": 290.6426000000065
+    },
+    {
+      "key": "brand",
+      "query": "ресурс аккумулятора Toyota Prius",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "prius",
+      "acceptable": [
+        "prius"
+      ],
+      "forbidden": [
+        "corolla"
+      ],
+      "candidates": [
+        "prius"
+      ],
+      "chosen": [
+        "prius"
+      ],
+      "ms": 1584.6123000000007,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "prius"
+      ],
+      "semanticMs": 429.97840000000724
+    },
+    {
+      "key": "number",
+      "query": "резервное копирование по правилу 3-2-1",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "version-good",
+      "acceptable": [
+        "version-good",
+        "backup"
+      ],
+      "forbidden": [
+        "version-wrong"
+      ],
+      "candidates": [
+        "backup",
+        "version-good"
+      ],
+      "chosen": [
+        "backup",
+        "version-good"
+      ],
+      "ms": 1384.1561000000002,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0, 1]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "backup",
+        "version-good"
+      ],
+      "semanticMs": 346.98829999999725
+    },
+    {
+      "key": "missing",
+      "query": "нейтринный телескоп",
+      "group": "saved:negative",
+      "repeat": 0,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [],
+      "chosen": [],
+      "ms": 0.005599999996775296,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "baseChosen": [],
+      "semanticMs": 0.008000000001629815
+    },
+    {
+      "key": "missing-brand",
+      "query": "ресурс аккумулятора Honda Civic",
+      "group": "saved:negative",
+      "repeat": 0,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [
+        "prius",
+        "corolla",
+        "battery",
+        "density",
+        "english",
+        "english-short",
+        "russian-short"
+      ],
+      "candidates": [
+        "russian-short"
+      ],
+      "chosen": [
+        "russian-short"
+      ],
+      "ms": 1561.0100999999995,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "russian-short"
+      ],
+      "semanticMs": 290.8179999999993
+    },
+    {
+      "key": "heldout-windows",
+      "query": "нужна инструкция по установке сетевого клиента для Windows",
+      "group": "saved:heldout",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "windows",
+      "acceptable": [
+        "windows"
+      ],
+      "forbidden": [
+        "linux"
+      ],
+      "candidates": [
+        "windows",
+        "linux"
+      ],
+      "chosen": [
+        "windows"
+      ],
+      "ms": 2614.0813000000053,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "windows",
+        "linux"
+      ],
+      "semanticMs": 555.2506999999896
+    },
+    {
+      "key": "heldout-macos",
+      "query": "установка сетевого клиента только в macOS",
+      "group": "saved:heldout-negative",
+      "repeat": 0,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "injection"
+      ],
+      "chosen": [],
+      "ms": 1608.8718999999983,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": []\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "injection"
+      ],
+      "semanticMs": 426.79769999999553
+    },
+    {
+      "key": "heldout-french",
+      "query": "найди французскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:heldout-negative",
+      "repeat": 0,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "russian-short",
+        "battery"
+      ],
+      "chosen": [
+        "russian-short",
+        "battery"
+      ],
+      "ms": 1371.7448000000004,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0, 1]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "russian-short",
+        "battery"
+      ],
+      "semanticMs": 515.020199999999
+    },
+    {
+      "key": "crowding",
+      "query": "уличный гул гарнитура",
+      "group": "saved:boundary",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "crowding-target",
+      "acceptable": [
+        "crowding-target"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "noise-0",
+        "noise-1",
+        "noise-2",
+        "noise-3",
+        "noise-4",
+        "noise-5",
+        "noise-6",
+        "noise-7"
+      ],
+      "chosen": [
+        "noise-0",
+        "noise-1",
+        "noise-2",
+        "noise-3",
+        "noise-4",
+        "noise-5",
+        "noise-6",
+        "noise-7"
+      ],
+      "ms": 4485.656500000005,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0,\n        1,\n        2,\n        3,\n        4,\n        5,\n        6,\n        7\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "noise-0",
+        "noise-1",
+        "noise-2",
+        "noise-3",
+        "noise-4",
+        "noise-5",
+        "noise-6",
+        "noise-7"
+      ],
+      "semanticMs": 1067.9774999999936
+    },
+    {
+      "key": "lexical-refusal",
+      "query": "ресурс аккумулятора Honda Civic",
+      "group": "saved:boundary-negative",
+      "repeat": 0,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "lexical-refused"
+      ],
+      "chosen": [],
+      "ms": 1553.4979999999923,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": []\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "lexical-refused"
+      ],
+      "semanticMs": 239.0586000000185
+    },
+    {
+      "key": "sound",
+      "query": "почему в гарнитуре исчезает уличный гул",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "paraphrase",
+      "acceptable": [
+        "paraphrase"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "paraphrase"
+      ],
+      "chosen": [
+        "paraphrase"
+      ],
+      "ms": 2322.483100000012,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "paraphrase"
+      ],
+      "semanticMs": 235.89569999999367
+    },
+    {
+      "key": "battery",
+      "query": "как уберечь аккумулятор от деградации во время пополнения заряда",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "battery",
+      "acceptable": [
+        "battery",
+        "density",
+        "russian-short",
+        "english",
+        "english-short"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "russian-short",
+        "density"
+      ],
+      "chosen": [
+        "russian-short",
+        "density"
+      ],
+      "ms": 3359.7623999999923,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0,\n        1\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "russian-short",
+        "density"
+      ],
+      "semanticMs": 479.3662999999942
+    },
+    {
+      "key": "backup",
+      "query": "как не потерять файлы при поломке диска",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "backup",
+      "acceptable": [
+        "backup",
+        "version-good"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "version-good"
+      ],
+      "chosen": [
+        "version-good"
+      ],
+      "ms": 2424.2274999999936,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "version-good"
+      ],
+      "semanticMs": 560.7430000000168
+    },
+    {
+      "key": "aurora",
+      "query": "откуда берутся цветные огни на северном небе",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "start",
+      "acceptable": [
+        "start"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "start"
+      ],
+      "chosen": [
+        "start"
+      ],
+      "ms": 2554.6824999999953,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "start"
+      ],
+      "semanticMs": 377.22949999998673
+    },
+    {
+      "key": "plants",
+      "query": "когда давать воду растениям с толстыми листьями",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "short",
+      "acceptable": [
+        "short"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "short"
+      ],
+      "chosen": [
+        "short"
+      ],
+      "ms": 2434.3237999999983,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "short"
+      ],
+      "semanticMs": 237.23200000001816
+    },
+    {
+      "key": "socket",
+      "query": "как двум приложениям на одном компьютере обмениваться сообщениями",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "socket",
+      "acceptable": [
+        "socket"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "socket"
+      ],
+      "chosen": [
+        "socket"
+      ],
+      "ms": 2421.6496000000043,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "socket"
+      ],
+      "semanticMs": 376.9545999999973
+    },
+    {
+      "key": "passive",
+      "query": "наушники которые изолируют внешний звук без электроники",
+      "group": "saved:known-constraint",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "passive",
+      "acceptable": [
+        "passive"
+      ],
+      "forbidden": [
+        "paraphrase"
+      ],
+      "candidates": [
+        "passive",
+        "paraphrase"
+      ],
+      "chosen": [
+        "passive",
+        "paraphrase"
+      ],
+      "ms": 1379.3320999999996,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0, 1]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "passive",
+        "paraphrase"
+      ],
+      "semanticMs": 293.9004000000132
+    },
+    {
+      "key": "language",
+      "query": "найди английскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "english-short",
+      "acceptable": [
+        "english-short",
+        "english"
+      ],
+      "forbidden": [
+        "russian-short",
+        "battery",
+        "density"
+      ],
+      "candidates": [
+        "russian-short",
+        "english",
+        "battery"
+      ],
+      "chosen": [
+        "russian-short",
+        "english",
+        "battery"
+      ],
+      "ms": 1428.6621000000014,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0, 1, 2]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "russian-short",
+        "english",
+        "battery"
+      ],
+      "semanticMs": 514.1824999999953
+    },
+    {
+      "key": "platform",
+      "query": "установка сетевого клиента только в Linux",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "linux",
+      "acceptable": [
+        "linux"
+      ],
+      "forbidden": [
+        "windows",
+        "injection"
+      ],
+      "candidates": [
+        "linux"
+      ],
+      "chosen": [
+        "linux"
+      ],
+      "ms": 2308.4968999999983,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "linux"
+      ],
+      "semanticMs": 517.5503000000026
+    },
+    {
+      "key": "offline",
+      "query": "распознавание речи без интернета и облачного сервиса",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "offline",
+      "acceptable": [
+        "offline"
+      ],
+      "forbidden": [
+        "cloud"
+      ],
+      "candidates": [
+        "offline",
+        "cloud"
+      ],
+      "chosen": [
+        "offline"
+      ],
+      "ms": 2401.660300000003,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "offline",
+        "cloud"
+      ],
+      "semanticMs": 341.7887000000046
+    },
+    {
+      "key": "brand",
+      "query": "ресурс аккумулятора Toyota Prius",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "prius",
+      "acceptable": [
+        "prius"
+      ],
+      "forbidden": [
+        "corolla"
+      ],
+      "candidates": [
+        "prius"
+      ],
+      "chosen": [
+        "prius"
+      ],
+      "ms": 1655.484500000006,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "prius"
+      ],
+      "semanticMs": 380.60310000000754
+    },
+    {
+      "key": "number",
+      "query": "резервное копирование по правилу 3-2-1",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "version-good",
+      "acceptable": [
+        "version-good",
+        "backup"
+      ],
+      "forbidden": [
+        "version-wrong"
+      ],
+      "candidates": [
+        "version-good",
+        "backup"
+      ],
+      "chosen": [
+        "version-good",
+        "backup"
+      ],
+      "ms": 1386.552800000005,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0, 1]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "version-good",
+        "backup"
+      ],
+      "semanticMs": 304.07790000000386
+    },
+    {
+      "key": "missing",
+      "query": "нейтринный телескоп",
+      "group": "saved:negative",
+      "repeat": 1,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [],
+      "chosen": [],
+      "ms": 0.006699999998090789,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "baseChosen": [],
+      "semanticMs": 0.0020000000076834112
+    },
+    {
+      "key": "missing-brand",
+      "query": "ресурс аккумулятора Honda Civic",
+      "group": "saved:negative",
+      "repeat": 1,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [
+        "prius",
+        "corolla",
+        "battery",
+        "density",
+        "english",
+        "english-short",
+        "russian-short"
+      ],
+      "candidates": [
+        "russian-short"
+      ],
+      "chosen": [
+        "russian-short"
+      ],
+      "ms": 1544.7516999999934,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "russian-short"
+      ],
+      "semanticMs": 270.8994000000239
+    },
+    {
+      "key": "heldout-windows",
+      "query": "нужна инструкция по установке сетевого клиента для Windows",
+      "group": "saved:heldout",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "windows",
+      "acceptable": [
+        "windows"
+      ],
+      "forbidden": [
+        "linux"
+      ],
+      "candidates": [
+        "windows",
+        "linux"
+      ],
+      "chosen": [
+        "windows"
+      ],
+      "ms": 2577.7595,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "windows",
+        "linux"
+      ],
+      "semanticMs": 528.3479000000225
+    },
+    {
+      "key": "heldout-macos",
+      "query": "установка сетевого клиента только в macOS",
+      "group": "saved:heldout-negative",
+      "repeat": 1,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "windows"
+      ],
+      "chosen": [],
+      "ms": 1580.545499999993,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": []\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "windows"
+      ],
+      "semanticMs": 371.8735999999917
+    },
+    {
+      "key": "heldout-french",
+      "query": "найди французскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:heldout-negative",
+      "repeat": 1,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "russian-short",
+        "battery"
+      ],
+      "chosen": [
+        "russian-short",
+        "battery"
+      ],
+      "ms": 1356.6742999999988,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0, 1]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "russian-short",
+        "battery"
+      ],
+      "semanticMs": 458.4800000000105
+    },
+    {
+      "key": "crowding",
+      "query": "уличный гул гарнитура",
+      "group": "saved:boundary",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "crowding-target",
+      "acceptable": [
+        "crowding-target"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "noise-11",
+        "noise-10",
+        "noise-9",
+        "noise-8",
+        "noise-7",
+        "noise-6",
+        "noise-5",
+        "noise-4"
+      ],
+      "chosen": [
+        "noise-11",
+        "noise-10",
+        "noise-9",
+        "noise-8",
+        "noise-7",
+        "noise-6",
+        "noise-5",
+        "noise-4"
+      ],
+      "ms": 4503.158100000001,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0,\n        1,\n        2,\n        3,\n        4,\n        5,\n        6,\n        7\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "noise-11",
+        "noise-10",
+        "noise-9",
+        "noise-8",
+        "noise-7",
+        "noise-6",
+        "noise-5",
+        "noise-4"
+      ],
+      "semanticMs": 1010.9904999999853
+    },
+    {
+      "key": "lexical-refusal",
+      "query": "ресурс аккумулятора Honda Civic",
+      "group": "saved:boundary-negative",
+      "repeat": 1,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "lexical-refused"
+      ],
+      "chosen": [],
+      "ms": 1512.6435999999958,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": []\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "lexical-refused"
+      ],
+      "semanticMs": 236.3417999999947
+    },
+    {
+      "key": "fresh-german",
+      "query": "найди немецкую заметку об износе аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "german",
+      "acceptable": [
+        "german"
+      ],
+      "forbidden": [
+        "english",
+        "russian"
+      ],
+      "candidates": [
+        "german",
+        "english",
+        "russian"
+      ],
+      "chosen": [
+        "german",
+        "english",
+        "russian"
+      ],
+      "ms": 1659.6264000000083,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0, 1, 2]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "german",
+        "english",
+        "russian"
+      ],
+      "semanticMs": 311.0898000000161
+    },
+    {
+      "key": "fresh-macos",
+      "query": "как установить приложение в macOS, без инструкции для Windows",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "mac",
+      "acceptable": [
+        "mac"
+      ],
+      "forbidden": [
+        "win",
+        "linux"
+      ],
+      "candidates": [
+        "mac"
+      ],
+      "chosen": [
+        "mac"
+      ],
+      "ms": 2329.301299999992,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "mac"
+      ],
+      "semanticMs": 286.4936999999918
+    },
+    {
+      "key": "fresh-offline",
+      "query": "чтобы переводить текст без сети и отправки на сервер",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "local",
+      "acceptable": [
+        "local"
+      ],
+      "forbidden": [
+        "cloud"
+      ],
+      "candidates": [
+        "local"
+      ],
+      "chosen": [
+        "local"
+      ],
+      "ms": 2326.731700000004,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "local"
+      ],
+      "semanticMs": 352.36570000002393
+    },
+    {
+      "key": "fresh-leaf",
+      "query": "от чего зависит ресурс аккумулятора Nissan Leaf",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "leaf",
+      "acceptable": [
+        "leaf"
+      ],
+      "forbidden": [
+        "prius"
+      ],
+      "candidates": [
+        "leaf"
+      ],
+      "chosen": [
+        "leaf"
+      ],
+      "ms": 2332.9983000000066,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "leaf"
+      ],
+      "semanticMs": 331.00380000000587
+    },
+    {
+      "key": "fresh-sound",
+      "query": "как наушники гасят окружающий грохот встречным сигналом",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "filter",
+      "target": "anc",
+      "acceptable": [
+        "anc"
+      ],
+      "forbidden": [
+        "passive"
+      ],
+      "candidates": [
+        "anc"
+      ],
+      "chosen": [
+        "anc"
+      ],
+      "ms": 2359.7909999999974,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "anc"
+      ],
+      "semanticMs": 338.96750000002794
+    },
+    {
+      "key": "fresh-missing-french",
+      "query": "найди французский материал про износ аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "russian"
+      ],
+      "chosen": [
+        "russian"
+      ],
+      "ms": 2342.8718999999983,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "russian"
+      ],
+      "semanticMs": 289.75559999997495
+    },
+    {
+      "key": "fresh-missing-apple",
+      "query": "инструкция по установке приложения в iOS",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [],
+      "chosen": [],
+      "ms": 0.0044000000052619725,
+      "error": null,
+      "raw": null,
+      "parsed": null,
+      "baseChosen": [],
+      "semanticMs": 266.4773999999743
+    },
+    {
+      "key": "fresh-german",
+      "query": "найди немецкую заметку об износе аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "german",
+      "acceptable": [
+        "german"
+      ],
+      "forbidden": [
+        "english",
+        "russian"
+      ],
+      "candidates": [
+        "russian",
+        "german"
+      ],
+      "chosen": [
+        "german"
+      ],
+      "ms": 2312.9985000000015,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        1\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "russian",
+        "german"
+      ],
+      "semanticMs": 281.9418000000296
+    },
+    {
+      "key": "fresh-macos",
+      "query": "как установить приложение в macOS, без инструкции для Windows",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "mac",
+      "acceptable": [
+        "mac"
+      ],
+      "forbidden": [
+        "win",
+        "linux"
+      ],
+      "candidates": [
+        "win",
+        "mac",
+        "linux"
+      ],
+      "chosen": [
+        "mac"
+      ],
+      "ms": 2654.685400000002,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        1\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "win",
+        "mac",
+        "linux"
+      ],
+      "semanticMs": 311.79369999998016
+    },
+    {
+      "key": "fresh-offline",
+      "query": "чтобы переводить текст без сети и отправки на сервер",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "local",
+      "acceptable": [
+        "local"
+      ],
+      "forbidden": [
+        "cloud"
+      ],
+      "candidates": [
+        "local"
+      ],
+      "chosen": [
+        "local"
+      ],
+      "ms": 2336.173299999995,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "local"
+      ],
+      "semanticMs": 250.09049999999115
+    },
+    {
+      "key": "fresh-leaf",
+      "query": "от чего зависит ресурс аккумулятора Nissan Leaf",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "leaf",
+      "acceptable": [
+        "leaf"
+      ],
+      "forbidden": [
+        "prius"
+      ],
+      "candidates": [
+        "leaf"
+      ],
+      "chosen": [
+        "leaf"
+      ],
+      "ms": 2335.614300000001,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "leaf"
+      ],
+      "semanticMs": 252.09049999999115
+    },
+    {
+      "key": "fresh-sound",
+      "query": "как наушники гасят окружающий грохот встречным сигналом",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "filter",
+      "target": "anc",
+      "acceptable": [
+        "anc"
+      ],
+      "forbidden": [
+        "passive"
+      ],
+      "candidates": [
+        "anc"
+      ],
+      "chosen": [
+        "anc"
+      ],
+      "ms": 2306.894100000005,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [\n        0\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "anc"
+      ],
+      "semanticMs": 249.01780000003055
+    },
+    {
+      "key": "fresh-missing-french",
+      "query": "найди французский материал про износ аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "german",
+        "english",
+        "russian"
+      ],
+      "chosen": [
+        "german",
+        "english",
+        "russian"
+      ],
+      "ms": 1740.5524999999907,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": [0, 1, 2]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "german",
+        "english",
+        "russian"
+      ],
+      "semanticMs": 309.08599999995204
+    },
+    {
+      "key": "fresh-missing-apple",
+      "query": "инструкция по установке приложения в iOS",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "filter",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "mac"
+      ],
+      "chosen": [],
+      "ms": 1496.3422999999893,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"indices\": []\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": null,
+      "baseChosen": [
+        "mac"
+      ],
+      "semanticMs": 259.78409999998985
+    }
+  ],
+  "semanticControl": {
+    "source": "scripts/reports/history-semantic-evidence.json",
+    "sha256": "5099ca99e3a5899be59fba0f3a61bb40e5ec99971b6be913daa507996fe33c4b"
+  },
+  "loadMs": 31235.6932,
+  "perfLines": [
+    "[inference] [perf] segment: inputTokens=306 setup/prefill=594ms generation=968ms (genTokens=13) finalOutTokens=11",
+    "[inference] [perf] segment: inputTokens=391 setup/prefill=368ms generation=2550ms (genTokens=33) finalOutTokens=21",
+    "[inference] [perf] segment: inputTokens=306 setup/prefill=323ms generation=2085ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=332 setup/prefill=416ms generation=2120ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=300 setup/prefill=375ms generation=1941ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=306 setup/prefill=379ms generation=1969ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=359 setup/prefill=411ms generation=995ms (genTokens=16) finalOutTokens=14",
+    "[inference] [perf] segment: inputTokens=460 setup/prefill=391ms generation=1066ms (genTokens=19) finalOutTokens=17",
+    "[inference] [perf] segment: inputTokens=298 setup/prefill=325ms generation=1958ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=349 setup/prefill=401ms generation=1954ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=306 setup/prefill=358ms generation=1218ms (genTokens=13) finalOutTokens=11",
+    "[inference] [perf] segment: inputTokens=389 setup/prefill=372ms generation=1003ms (genTokens=16) finalOutTokens=14",
+    "[inference] [perf] segment: inputTokens=309 setup/prefill=335ms generation=1218ms (genTokens=13) finalOutTokens=11",
+    "[inference] [perf] segment: inputTokens=341 setup/prefill=338ms generation=2267ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=309 setup/prefill=407ms generation=1193ms (genTokens=11) finalOutTokens=9",
+    "[inference] [perf] segment: inputTokens=397 setup/prefill=372ms generation=989ms (genTokens=16) finalOutTokens=14",
+    "[inference] [perf] segment: inputTokens=610 setup/prefill=491ms generation=3982ms (genTokens=87) finalOutTokens=51",
+    "[inference] [perf] segment: inputTokens=313 setup/prefill=329ms generation=1217ms (genTokens=11) finalOutTokens=9",
+    "[inference] [perf] segment: inputTokens=306 setup/prefill=328ms generation=1986ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=391 setup/prefill=432ms generation=2918ms (genTokens=33) finalOutTokens=21",
+    "[inference] [perf] segment: inputTokens=306 setup/prefill=394ms generation=2022ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=332 setup/prefill=386ms generation=2160ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=300 setup/prefill=408ms generation=2016ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=306 setup/prefill=391ms generation=2022ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=359 setup/prefill=393ms generation=978ms (genTokens=16) finalOutTokens=14",
+    "[inference] [perf] segment: inputTokens=460 setup/prefill=392ms generation=1026ms (genTokens=19) finalOutTokens=17",
+    "[inference] [perf] segment: inputTokens=298 setup/prefill=337ms generation=1961ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=349 setup/prefill=400ms generation=1993ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=306 setup/prefill=391ms generation=1256ms (genTokens=13) finalOutTokens=11",
+    "[inference] [perf] segment: inputTokens=389 setup/prefill=373ms generation=1005ms (genTokens=16) finalOutTokens=14",
+    "[inference] [perf] segment: inputTokens=309 setup/prefill=331ms generation=1206ms (genTokens=13) finalOutTokens=11",
+    "[inference] [perf] segment: inputTokens=341 setup/prefill=334ms generation=2235ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=298 setup/prefill=382ms generation=1190ms (genTokens=11) finalOutTokens=9",
+    "[inference] [perf] segment: inputTokens=397 setup/prefill=371ms generation=977ms (genTokens=16) finalOutTokens=14",
+    "[inference] [perf] segment: inputTokens=614 setup/prefill=473ms generation=4019ms (genTokens=87) finalOutTokens=51",
+    "[inference] [perf] segment: inputTokens=313 setup/prefill=333ms generation=1172ms (genTokens=11) finalOutTokens=9",
+    "[inference] [perf] segment: inputTokens=382 setup/prefill=360ms generation=1291ms (genTokens=19) finalOutTokens=17",
+    "[inference] [perf] segment: inputTokens=295 setup/prefill=317ms generation=2005ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=307 setup/prefill=398ms generation=1921ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=304 setup/prefill=364ms generation=1961ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=312 setup/prefill=411ms generation=1942ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=301 setup/prefill=389ms generation=1947ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=352 setup/prefill=351ms generation=1954ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=365 setup/prefill=420ms generation=2226ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=307 setup/prefill=393ms generation=1936ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=304 setup/prefill=395ms generation=1933ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=312 setup/prefill=368ms generation=1932ms (genTokens=24) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=381 setup/prefill=432ms generation=1300ms (genTokens=19) finalOutTokens=17",
+    "[inference] [perf] segment: inputTokens=292 setup/prefill=320ms generation=1169ms (genTokens=11) finalOutTokens=9"
+  ],
+  "summary": {
+    "filter": {
+      "all": {
+        "runs": 52,
+        "positiveRuns": 38,
+        "selected": 36,
+        "violationRuns": 7,
+        "negativeRuns": 14,
+        "negativeFalseHits": 6,
+        "validNegativeEmpty": 8,
+        "negativeErrors": 0,
+        "errors": 0,
+        "rejectedRows": 0,
+        "rerank": {
+          "medianMs": 2312.9985000000015,
+          "p95Ms": 3359.7623999999923
+        },
+        "combinedRerank": {
+          "medianMs": 2586.263799999986,
+          "p95Ms": 3839.1286999999866
+        }
+      },
+      "saved": {
+        "runs": 38,
+        "positiveRuns": 28,
+        "selected": 26,
+        "violationRuns": 6,
+        "negativeRuns": 10,
+        "negativeFalseHits": 4,
+        "validNegativeEmpty": 6,
+        "negativeErrors": 0,
+        "errors": 0,
+        "rejectedRows": 0,
+        "rerank": {
+          "medianMs": 2292.0781999999963,
+          "p95Ms": 4485.656500000005
+        },
+        "combinedRerank": {
+          "medianMs": 2558.378800000006,
+          "p95Ms": 5514.148599999986
+        }
+      },
+      "fresh": {
+        "runs": 14,
+        "positiveRuns": 10,
+        "selected": 10,
+        "violationRuns": 1,
+        "negativeRuns": 4,
+        "negativeFalseHits": 2,
+        "validNegativeEmpty": 2,
+        "negativeErrors": 0,
+        "errors": 0,
+        "rejectedRows": 0,
+        "rerank": {
+          "medianMs": 2329.301299999992,
+          "p95Ms": 2654.685400000002
+        },
+        "combinedRerank": {
+          "medianMs": 2594.940300000031,
+          "p95Ms": 2966.4790999999823
+        }
+      }
+    }
+  }
+}

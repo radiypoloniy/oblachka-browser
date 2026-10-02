@@ -1,0 +1,2376 @@
+{
+  "measuredAt": "2026-10-02T17:06:46.598Z",
+  "model": "Qwen3.5 4B Q4_K_M",
+  "source": "scripts/reports/history-semantic-chain.json",
+  "sourceSha256": "3edfa8ebae62324dff541140fcf3fb7db3b39487efb1f198519f3e5a0e718cba",
+  "savedPools": 38,
+  "freshPools": 14,
+  "runs": [
+    {
+      "key": "sound",
+      "query": "почему в гарнитуре исчезает уличный гул",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "paraphrase",
+      "acceptable": [
+        "paraphrase"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "paraphrase"
+      ],
+      "chosen": [],
+      "ms": 916.7108999999982,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[],\"excluded\":[]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [],
+        "relevant": [],
+        "excluded": [],
+        "rejected": []
+      }
+    },
+    {
+      "key": "battery",
+      "query": "как уберечь аккумулятор от деградации во время пополнения заряда",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "battery",
+      "acceptable": [
+        "battery",
+        "density",
+        "russian-short",
+        "english",
+        "english-short"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "battery",
+        "python",
+        "start",
+        "prius",
+        "corolla",
+        "density",
+        "russian-short",
+        "dns"
+      ],
+      "chosen": [
+        "russian-short"
+      ],
+      "ms": 1500.638500000001,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[6],\"excluded\":[0,1,2,3,4,5,7]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          6
+        ],
+        "relevant": [
+          6
+        ],
+        "excluded": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          7
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "backup",
+      "query": "как не потерять файлы при поломке диска",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "backup",
+      "acceptable": [
+        "backup",
+        "version-good"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "version-good",
+        "version-wrong",
+        "backup",
+        "dns",
+        "prius",
+        "corolla",
+        "python",
+        "russian-short",
+        "offline",
+        "linux",
+        "windows",
+        "start",
+        "battery"
+      ],
+      "chosen": [
+        "version-good"
+      ],
+      "ms": 1826.510699999999,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0],\"excluded\":[1,2,3,4,5,6,7,8,9,10,11,12]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0
+        ],
+        "relevant": [
+          0
+        ],
+        "excluded": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "aurora",
+      "query": "откуда берутся цветные огни на северном небе",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "start",
+      "acceptable": [
+        "start"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "start",
+        "cloud",
+        "offline",
+        "version-good",
+        "version-wrong",
+        "backup"
+      ],
+      "chosen": [
+        "start"
+      ],
+      "ms": 1365.615300000005,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0],\"excluded\":[1,2,3,4,5]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0
+        ],
+        "relevant": [
+          0
+        ],
+        "excluded": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "plants",
+      "query": "когда давать воду растениям с толстыми листьями",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "short",
+      "acceptable": [
+        "short"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "short"
+      ],
+      "chosen": [],
+      "ms": 626.1682999999975,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[],\"excluded\":[]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [],
+        "relevant": [],
+        "excluded": [],
+        "rejected": []
+      }
+    },
+    {
+      "key": "socket",
+      "query": "как двум приложениям на одном компьютере обмениваться сообщениями",
+      "group": "saved:recall",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "socket",
+      "acceptable": [
+        "socket"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "socket",
+        "offline",
+        "version-good",
+        "cloud",
+        "version-wrong",
+        "backup"
+      ],
+      "chosen": [
+        "socket"
+      ],
+      "ms": 1389.7926000000007,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0],\"excluded\":[1,2,3,4,5]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0
+        ],
+        "relevant": [
+          0
+        ],
+        "excluded": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "passive",
+      "query": "наушники которые изолируют внешний звук без электроники",
+      "group": "saved:known-constraint",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "passive",
+      "acceptable": [
+        "passive"
+      ],
+      "forbidden": [
+        "paraphrase"
+      ],
+      "candidates": [
+        "paraphrase",
+        "passive",
+        "offline"
+      ],
+      "chosen": [
+        "passive"
+      ],
+      "ms": 1034.4679000000033,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[1],\"excluded\":[0,2]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          1
+        ],
+        "relevant": [
+          1
+        ],
+        "excluded": [
+          0,
+          2
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "language",
+      "query": "найди английскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "english-short",
+      "acceptable": [
+        "english-short",
+        "english"
+      ],
+      "forbidden": [
+        "russian-short",
+        "battery",
+        "density"
+      ],
+      "candidates": [
+        "english-short",
+        "english",
+        "battery",
+        "russian-short",
+        "prius",
+        "corolla",
+        "python",
+        "start",
+        "density"
+      ],
+      "chosen": [
+        "english",
+        "battery"
+      ],
+      "ms": 1337.1526000000013,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[1,2],\"excluded\":[3,4,5]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          1,
+          2
+        ],
+        "relevant": [
+          1,
+          2
+        ],
+        "excluded": [
+          3,
+          4,
+          5
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "platform",
+      "query": "установка сетевого клиента только в Linux",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "linux",
+      "acceptable": [
+        "linux"
+      ],
+      "forbidden": [
+        "windows",
+        "injection"
+      ],
+      "candidates": [
+        "camera",
+        "cloud",
+        "offline",
+        "title",
+        "linux",
+        "injection",
+        "windows",
+        "dns",
+        "short",
+        "version-good",
+        "version-wrong",
+        "backup"
+      ],
+      "chosen": [
+        "linux"
+      ],
+      "ms": 1420.4867999999988,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[4],\"excluded\":[5,6]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          4
+        ],
+        "relevant": [
+          4
+        ],
+        "excluded": [
+          5,
+          6
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "offline",
+      "query": "распознавание речи без интернета и облачного сервиса",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "offline",
+      "acceptable": [
+        "offline"
+      ],
+      "forbidden": [
+        "cloud"
+      ],
+      "candidates": [
+        "offline",
+        "cloud",
+        "passive"
+      ],
+      "chosen": [
+        "offline",
+        "cloud"
+      ],
+      "ms": 1160.8410999999978,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0,1],\"excluded\":[2]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0,
+          1
+        ],
+        "relevant": [
+          0,
+          1
+        ],
+        "excluded": [
+          2
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "brand",
+      "query": "ресурс аккумулятора Toyota Prius",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "prius",
+      "acceptable": [
+        "prius"
+      ],
+      "forbidden": [
+        "corolla"
+      ],
+      "candidates": [
+        "english-short",
+        "battery",
+        "english",
+        "prius",
+        "corolla",
+        "russian-short"
+      ],
+      "chosen": [
+        "prius",
+        "russian-short"
+      ],
+      "ms": 1362.0400999999983,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[3,5],\"excluded\":[0,1,2,4]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          3,
+          5
+        ],
+        "relevant": [
+          3,
+          5
+        ],
+        "excluded": [
+          0,
+          1,
+          2,
+          4
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "number",
+      "query": "резервное копирование по правилу 3-2-1",
+      "group": "saved:new-constraint",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "version-good",
+      "acceptable": [
+        "version-good",
+        "backup"
+      ],
+      "forbidden": [
+        "version-wrong"
+      ],
+      "candidates": [
+        "version-good",
+        "backup"
+      ],
+      "chosen": [
+        "version-good"
+      ],
+      "ms": 1124.372199999998,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0],\"excluded\":[1]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0
+        ],
+        "relevant": [
+          0
+        ],
+        "excluded": [
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "missing",
+      "query": "нейтринный телескоп",
+      "group": "saved:negative",
+      "repeat": 0,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [],
+      "chosen": [],
+      "ms": 0.006500000003143214,
+      "error": null,
+      "raw": null,
+      "parsed": null
+    },
+    {
+      "key": "missing-brand",
+      "query": "ресурс аккумулятора Honda Civic",
+      "group": "saved:negative",
+      "repeat": 0,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [
+        "prius",
+        "corolla",
+        "battery",
+        "density",
+        "english",
+        "english-short",
+        "russian-short"
+      ],
+      "candidates": [
+        "prius",
+        "corolla",
+        "russian-short"
+      ],
+      "chosen": [
+        "russian-short"
+      ],
+      "ms": 1175.8816000000006,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[2],\"excluded\":[0,1]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          2
+        ],
+        "relevant": [
+          2
+        ],
+        "excluded": [
+          0,
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "heldout-windows",
+      "query": "нужна инструкция по установке сетевого клиента для Windows",
+      "group": "saved:heldout",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "windows",
+      "acceptable": [
+        "windows"
+      ],
+      "forbidden": [
+        "linux"
+      ],
+      "candidates": [
+        "camera",
+        "title",
+        "windows",
+        "linux",
+        "injection",
+        "dns",
+        "short",
+        "backup",
+        "jaguar-car",
+        "version-wrong"
+      ],
+      "chosen": [
+        "windows"
+      ],
+      "ms": 1385.0525999999954,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[2],\"excluded\":[4,9]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          2
+        ],
+        "relevant": [
+          2
+        ],
+        "excluded": [
+          4,
+          9
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "heldout-macos",
+      "query": "установка сетевого клиента только в macOS",
+      "group": "saved:heldout-negative",
+      "repeat": 0,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "jaguar-car",
+        "version-wrong",
+        "linux",
+        "windows",
+        "injection",
+        "dns",
+        "short"
+      ],
+      "chosen": [
+        "linux",
+        "windows"
+      ],
+      "ms": 1000.6517999999996,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[2,3],\"excluded\":[4]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          2,
+          3
+        ],
+        "relevant": [
+          2,
+          3
+        ],
+        "excluded": [
+          4
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "heldout-french",
+      "query": "найди французскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:heldout-negative",
+      "repeat": 0,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "paraphrase",
+        "russian-short",
+        "battery",
+        "prius",
+        "corolla",
+        "python",
+        "start",
+        "density"
+      ],
+      "chosen": [
+        "russian-short",
+        "battery",
+        "prius",
+        "density"
+      ],
+      "ms": 5672.660500000005,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"relevant\": [\n        1,\n        2,\n        3,\n        7\n    ],\n    \"excluded\": [\n        0,\n        4,\n        5,\n        6\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          1,
+          2,
+          3,
+          7
+        ],
+        "relevant": [
+          1,
+          2,
+          3,
+          7
+        ],
+        "excluded": [
+          0,
+          4,
+          5,
+          6
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "crowding",
+      "query": "уличный гул гарнитура",
+      "group": "saved:boundary",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "crowding-target",
+      "acceptable": [
+        "crowding-target"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "lexical-3",
+        "lexical-4",
+        "lexical-5",
+        "lexical-6",
+        "lexical-7",
+        "lexical-0",
+        "lexical-1",
+        "lexical-2",
+        "noise-0",
+        "noise-1",
+        "noise-2",
+        "noise-3",
+        "noise-4",
+        "noise-5",
+        "noise-6",
+        "noise-7",
+        "noise-8",
+        "noise-9",
+        "noise-10",
+        "noise-11"
+      ],
+      "chosen": [
+        "noise-0",
+        "noise-1",
+        "noise-2",
+        "noise-3",
+        "noise-4",
+        "noise-5",
+        "noise-6",
+        "noise-7"
+      ],
+      "ms": 2335.211900000002,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[8,9,10,11,12,13,14,15],\"excluded\":[0,1,2,3,4,5,6,7,16,17,18,19]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "relevant": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "excluded": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          16,
+          17,
+          18,
+          19
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "lexical-refusal",
+      "query": "ресурс аккумулятора Honda Civic",
+      "group": "saved:boundary-negative",
+      "repeat": 0,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "lexical-refused"
+      ],
+      "chosen": [],
+      "ms": 921.6462000000029,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[],\"excluded\":[0]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [],
+        "relevant": [],
+        "excluded": [
+          0
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "sound",
+      "query": "почему в гарнитуре исчезает уличный гул",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "paraphrase",
+      "acceptable": [
+        "paraphrase"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "paraphrase"
+      ],
+      "chosen": [],
+      "ms": 638.684699999998,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[],\"excluded\":[]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [],
+        "relevant": [],
+        "excluded": [],
+        "rejected": []
+      }
+    },
+    {
+      "key": "battery",
+      "query": "как уберечь аккумулятор от деградации во время пополнения заряда",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "battery",
+      "acceptable": [
+        "battery",
+        "density",
+        "russian-short",
+        "english",
+        "english-short"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "battery",
+        "python",
+        "start",
+        "prius",
+        "corolla",
+        "density",
+        "russian-short",
+        "dns"
+      ],
+      "chosen": [
+        "russian-short"
+      ],
+      "ms": 1505.1149000000005,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[6],\"excluded\":[0,1,2,3,4,5,7]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          6
+        ],
+        "relevant": [
+          6
+        ],
+        "excluded": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          7
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "backup",
+      "query": "как не потерять файлы при поломке диска",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "backup",
+      "acceptable": [
+        "backup",
+        "version-good"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "version-good",
+        "version-wrong",
+        "backup",
+        "dns",
+        "prius",
+        "corolla",
+        "python",
+        "russian-short",
+        "offline",
+        "linux",
+        "windows",
+        "start",
+        "battery"
+      ],
+      "chosen": [],
+      "ms": 6611.844800000006,
+      "error": "Error: Truncated output",
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"relevant\": [\n        0,\n        2\n    ],\n    \"excluded\": [\n        1,\n        3,\n        4,\n        5,\n        6,\n        7,\n        8,\n        9,\n        10,",
+        "stopReason": "maxTokens"
+      },
+      "parsed": null
+    },
+    {
+      "key": "aurora",
+      "query": "откуда берутся цветные огни на северном небе",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "start",
+      "acceptable": [
+        "start"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "start",
+        "cloud",
+        "offline",
+        "version-good",
+        "version-wrong",
+        "backup"
+      ],
+      "chosen": [],
+      "ms": 920.0708000000013,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[],\"excluded\":[]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [],
+        "relevant": [],
+        "excluded": [],
+        "rejected": []
+      }
+    },
+    {
+      "key": "plants",
+      "query": "когда давать воду растениям с толстыми листьями",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "short",
+      "acceptable": [
+        "short"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "short"
+      ],
+      "chosen": [],
+      "ms": 635.9444999999978,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[],\"excluded\":[]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [],
+        "relevant": [],
+        "excluded": [],
+        "rejected": []
+      }
+    },
+    {
+      "key": "socket",
+      "query": "как двум приложениям на одном компьютере обмениваться сообщениями",
+      "group": "saved:recall",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "socket",
+      "acceptable": [
+        "socket"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "socket",
+        "offline",
+        "version-good",
+        "cloud",
+        "version-wrong",
+        "backup"
+      ],
+      "chosen": [
+        "socket"
+      ],
+      "ms": 1359.1547000000137,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0],\"excluded\":[1,2,3,4,5]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0
+        ],
+        "relevant": [
+          0
+        ],
+        "excluded": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "passive",
+      "query": "наушники которые изолируют внешний звук без электроники",
+      "group": "saved:known-constraint",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "passive",
+      "acceptable": [
+        "passive"
+      ],
+      "forbidden": [
+        "paraphrase"
+      ],
+      "candidates": [
+        "passive",
+        "paraphrase",
+        "offline"
+      ],
+      "chosen": [
+        "passive"
+      ],
+      "ms": 1032.7045999999973,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0],\"excluded\":[1,2]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0
+        ],
+        "relevant": [
+          0
+        ],
+        "excluded": [
+          1,
+          2
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "language",
+      "query": "найди английскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "english-short",
+      "acceptable": [
+        "english-short",
+        "english"
+      ],
+      "forbidden": [
+        "russian-short",
+        "battery",
+        "density"
+      ],
+      "candidates": [
+        "english-short",
+        "english",
+        "battery",
+        "russian-short",
+        "prius",
+        "corolla",
+        "python",
+        "start",
+        "density"
+      ],
+      "chosen": [
+        "english",
+        "battery"
+      ],
+      "ms": 1318.9758000000002,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[1,2],\"excluded\":[3,4,5]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          1,
+          2
+        ],
+        "relevant": [
+          1,
+          2
+        ],
+        "excluded": [
+          3,
+          4,
+          5
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "platform",
+      "query": "установка сетевого клиента только в Linux",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "linux",
+      "acceptable": [
+        "linux"
+      ],
+      "forbidden": [
+        "windows",
+        "injection"
+      ],
+      "candidates": [
+        "camera",
+        "cloud",
+        "offline",
+        "title",
+        "linux",
+        "injection",
+        "windows",
+        "dns",
+        "short",
+        "version-good",
+        "version-wrong",
+        "backup"
+      ],
+      "chosen": [
+        "linux"
+      ],
+      "ms": 1416.2828000000009,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[4],\"excluded\":[5,6]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          4
+        ],
+        "relevant": [
+          4
+        ],
+        "excluded": [
+          5,
+          6
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "offline",
+      "query": "распознавание речи без интернета и облачного сервиса",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "offline",
+      "acceptable": [
+        "offline"
+      ],
+      "forbidden": [
+        "cloud"
+      ],
+      "candidates": [
+        "python",
+        "socket",
+        "offline",
+        "cloud",
+        "passive"
+      ],
+      "chosen": [
+        "offline"
+      ],
+      "ms": 1267.123900000006,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[2],\"excluded\":[1,3,4]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          2
+        ],
+        "relevant": [
+          2
+        ],
+        "excluded": [
+          1,
+          3,
+          4
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "brand",
+      "query": "ресурс аккумулятора Toyota Prius",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "prius",
+      "acceptable": [
+        "prius"
+      ],
+      "forbidden": [
+        "corolla"
+      ],
+      "candidates": [
+        "english-short",
+        "battery",
+        "english",
+        "prius",
+        "corolla",
+        "russian-short"
+      ],
+      "chosen": [
+        "prius",
+        "russian-short"
+      ],
+      "ms": 1360.0922999999893,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[3,5],\"excluded\":[0,1,2,4]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          3,
+          5
+        ],
+        "relevant": [
+          3,
+          5
+        ],
+        "excluded": [
+          0,
+          1,
+          2,
+          4
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "number",
+      "query": "резервное копирование по правилу 3-2-1",
+      "group": "saved:new-constraint",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "version-good",
+      "acceptable": [
+        "version-good",
+        "backup"
+      ],
+      "forbidden": [
+        "version-wrong"
+      ],
+      "candidates": [
+        "version-good",
+        "backup"
+      ],
+      "chosen": [
+        "version-good"
+      ],
+      "ms": 1119.777900000001,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0],\"excluded\":[1]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0
+        ],
+        "relevant": [
+          0
+        ],
+        "excluded": [
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "missing",
+      "query": "нейтринный телескоп",
+      "group": "saved:negative",
+      "repeat": 1,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [],
+      "chosen": [],
+      "ms": 0.004799999995157123,
+      "error": null,
+      "raw": null,
+      "parsed": null
+    },
+    {
+      "key": "missing-brand",
+      "query": "ресурс аккумулятора Honda Civic",
+      "group": "saved:negative",
+      "repeat": 1,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [
+        "prius",
+        "corolla",
+        "battery",
+        "density",
+        "english",
+        "english-short",
+        "russian-short"
+      ],
+      "candidates": [
+        "prius",
+        "corolla",
+        "russian-short"
+      ],
+      "chosen": [
+        "russian-short"
+      ],
+      "ms": 1168.3306999999913,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[2],\"excluded\":[0,1]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          2
+        ],
+        "relevant": [
+          2
+        ],
+        "excluded": [
+          0,
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "heldout-windows",
+      "query": "нужна инструкция по установке сетевого клиента для Windows",
+      "group": "saved:heldout",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "windows",
+      "acceptable": [
+        "windows"
+      ],
+      "forbidden": [
+        "linux"
+      ],
+      "candidates": [
+        "camera",
+        "title",
+        "windows",
+        "linux",
+        "injection",
+        "dns",
+        "short",
+        "backup",
+        "jaguar-car",
+        "version-wrong"
+      ],
+      "chosen": [
+        "windows"
+      ],
+      "ms": 1369.0881999999983,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[2],\"excluded\":[4,9]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          2
+        ],
+        "relevant": [
+          2
+        ],
+        "excluded": [
+          4,
+          9
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "heldout-macos",
+      "query": "установка сетевого клиента только в macOS",
+      "group": "saved:heldout-negative",
+      "repeat": 1,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "english",
+        "linux",
+        "windows",
+        "injection",
+        "short",
+        "dns"
+      ],
+      "chosen": [
+        "linux"
+      ],
+      "ms": 1184.741000000009,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[1],\"excluded\":[2,3,4,5]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          1
+        ],
+        "relevant": [
+          1
+        ],
+        "excluded": [
+          2,
+          3,
+          4,
+          5
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "heldout-french",
+      "query": "найди французскую заметку об уменьшении износа литиевого аккумулятора при зарядке",
+      "group": "saved:heldout-negative",
+      "repeat": 1,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "paraphrase",
+        "russian-short",
+        "prius",
+        "battery",
+        "corolla",
+        "python",
+        "start",
+        "density"
+      ],
+      "chosen": [
+        "russian-short",
+        "battery"
+      ],
+      "ms": 2346.8675000000076,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"relevant\": [1, 3],\n    \"excluded\": [2, 4, 5, 6, 7]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          1,
+          3
+        ],
+        "relevant": [
+          1,
+          3
+        ],
+        "excluded": [
+          2,
+          4,
+          5,
+          6,
+          7
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "crowding",
+      "query": "уличный гул гарнитура",
+      "group": "saved:boundary",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "crowding-target",
+      "acceptable": [
+        "crowding-target"
+      ],
+      "forbidden": [],
+      "candidates": [
+        "lexical-3",
+        "lexical-4",
+        "lexical-5",
+        "lexical-6",
+        "lexical-7",
+        "lexical-0",
+        "lexical-1",
+        "lexical-2",
+        "noise-0",
+        "noise-1",
+        "noise-2",
+        "noise-3",
+        "noise-4",
+        "noise-5",
+        "noise-6",
+        "noise-7",
+        "noise-8",
+        "noise-9",
+        "noise-10",
+        "noise-11"
+      ],
+      "chosen": [
+        "noise-0",
+        "noise-1",
+        "noise-2",
+        "noise-3",
+        "noise-4",
+        "noise-5",
+        "noise-6",
+        "noise-7"
+      ],
+      "ms": 2324.216400000005,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[8,9,10,11,12,13,14,15],\"excluded\":[0,1,2,3,4,5,6,7,16,17,18,19]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "relevant": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "excluded": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          16,
+          17,
+          18,
+          19
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "lexical-refusal",
+      "query": "ресурс аккумулятора Honda Civic",
+      "group": "saved:boundary-negative",
+      "repeat": 1,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "lexical-refused"
+      ],
+      "chosen": [],
+      "ms": 920.3753999999899,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[],\"excluded\":[0]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [],
+        "relevant": [],
+        "excluded": [
+          0
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-german",
+      "query": "найди немецкую заметку об износе аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "german",
+      "acceptable": [
+        "german"
+      ],
+      "forbidden": [
+        "english",
+        "russian"
+      ],
+      "candidates": [
+        "russian",
+        "english",
+        "german"
+      ],
+      "chosen": [
+        "german"
+      ],
+      "ms": 4307.044599999994,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\n    \"relevant\": [\n        2\n    ],\n    \"excluded\": [\n        0,\n        1\n    ]\n}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          2
+        ],
+        "relevant": [
+          2
+        ],
+        "excluded": [
+          0,
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-macos",
+      "query": "как установить приложение в macOS, без инструкции для Windows",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "mac",
+      "acceptable": [
+        "mac"
+      ],
+      "forbidden": [
+        "win",
+        "linux"
+      ],
+      "candidates": [
+        "win",
+        "linux",
+        "mac"
+      ],
+      "chosen": [
+        "mac"
+      ],
+      "ms": 1007.7991000000038,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[2],\"excluded\":[0,1]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          2
+        ],
+        "relevant": [
+          2
+        ],
+        "excluded": [
+          0,
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-offline",
+      "query": "чтобы переводить текст без сети и отправки на сервер",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "local",
+      "acceptable": [
+        "local"
+      ],
+      "forbidden": [
+        "cloud"
+      ],
+      "candidates": [
+        "cloud",
+        "local"
+      ],
+      "chosen": [
+        "local"
+      ],
+      "ms": 1121.5353000000032,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[1],\"excluded\":[0]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          1
+        ],
+        "relevant": [
+          1
+        ],
+        "excluded": [
+          0
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-leaf",
+      "query": "от чего зависит ресурс аккумулятора Nissan Leaf",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "leaf",
+      "acceptable": [
+        "leaf"
+      ],
+      "forbidden": [
+        "prius"
+      ],
+      "candidates": [
+        "prius",
+        "leaf"
+      ],
+      "chosen": [
+        "leaf"
+      ],
+      "ms": 1180.5935999999929,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[1],\"excluded\":[0]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          1
+        ],
+        "relevant": [
+          1
+        ],
+        "excluded": [
+          0
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-sound",
+      "query": "как наушники гасят окружающий грохот встречным сигналом",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "compact",
+      "target": "anc",
+      "acceptable": [
+        "anc"
+      ],
+      "forbidden": [
+        "passive"
+      ],
+      "candidates": [
+        "passive",
+        "anc"
+      ],
+      "chosen": [
+        "anc"
+      ],
+      "ms": 851.4430999999895,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[1],\"excluded\":[0]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          1
+        ],
+        "relevant": [
+          1
+        ],
+        "excluded": [
+          0
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-missing-french",
+      "query": "найди французский материал про износ аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "german",
+        "english",
+        "russian"
+      ],
+      "chosen": [
+        "russian"
+      ],
+      "ms": 880.921199999997,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[2],\"excluded\":[0,1]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          2
+        ],
+        "relevant": [
+          2
+        ],
+        "excluded": [
+          0,
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-missing-apple",
+      "query": "инструкция по установке приложения в iOS",
+      "group": "fresh",
+      "repeat": 0,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "mac",
+        "win",
+        "linux"
+      ],
+      "chosen": [],
+      "ms": 1035.1128000000026,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[],\"excluded\":[0,1,2]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [],
+        "relevant": [],
+        "excluded": [
+          0,
+          1,
+          2
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-german",
+      "query": "найди немецкую заметку об износе аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "german",
+      "acceptable": [
+        "german"
+      ],
+      "forbidden": [
+        "english",
+        "russian"
+      ],
+      "candidates": [
+        "german",
+        "english",
+        "russian"
+      ],
+      "chosen": [
+        "german",
+        "english",
+        "russian"
+      ],
+      "ms": 1027.1667000000016,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0,1,2],\"excluded\":[]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "relevant": [
+          0,
+          1,
+          2
+        ],
+        "excluded": [],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-macos",
+      "query": "как установить приложение в macOS, без инструкции для Windows",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "mac",
+      "acceptable": [
+        "mac"
+      ],
+      "forbidden": [
+        "win",
+        "linux"
+      ],
+      "candidates": [
+        "mac",
+        "linux",
+        "win"
+      ],
+      "chosen": [],
+      "ms": 1046.5372000000061,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[],\"excluded\":[0,1,2]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [],
+        "relevant": [],
+        "excluded": [
+          0,
+          1,
+          2
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-offline",
+      "query": "чтобы переводить текст без сети и отправки на сервер",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "local",
+      "acceptable": [
+        "local"
+      ],
+      "forbidden": [
+        "cloud"
+      ],
+      "candidates": [
+        "local",
+        "cloud"
+      ],
+      "chosen": [
+        "local"
+      ],
+      "ms": 1103.2045999999973,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0],\"excluded\":[1]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0
+        ],
+        "relevant": [
+          0
+        ],
+        "excluded": [
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-leaf",
+      "query": "от чего зависит ресурс аккумулятора Nissan Leaf",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "leaf",
+      "acceptable": [
+        "leaf"
+      ],
+      "forbidden": [
+        "prius"
+      ],
+      "candidates": [
+        "leaf",
+        "prius"
+      ],
+      "chosen": [
+        "leaf"
+      ],
+      "ms": 1122.421399999992,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0],\"excluded\":[1]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0
+        ],
+        "relevant": [
+          0
+        ],
+        "excluded": [
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-sound",
+      "query": "как наушники гасят окружающий грохот встречным сигналом",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "compact",
+      "target": "anc",
+      "acceptable": [
+        "anc"
+      ],
+      "forbidden": [
+        "passive"
+      ],
+      "candidates": [
+        "anc",
+        "passive"
+      ],
+      "chosen": [
+        "anc"
+      ],
+      "ms": 987.2825000000012,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[0],\"excluded\":[1]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          0
+        ],
+        "relevant": [
+          0
+        ],
+        "excluded": [
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-missing-french",
+      "query": "найди французский материал про износ аккумулятора при зарядке",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "russian",
+        "english",
+        "german"
+      ],
+      "chosen": [
+        "german"
+      ],
+      "ms": 897.1611999999877,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[2],\"excluded\":[0,1]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [
+          2
+        ],
+        "relevant": [
+          2
+        ],
+        "excluded": [
+          0,
+          1
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "key": "fresh-missing-apple",
+      "query": "инструкция по установке приложения в iOS",
+      "group": "fresh",
+      "repeat": 1,
+      "mode": "compact",
+      "target": null,
+      "acceptable": [],
+      "forbidden": [],
+      "candidates": [
+        "linux",
+        "win",
+        "mac"
+      ],
+      "chosen": [],
+      "ms": 1024.8589999999967,
+      "error": null,
+      "raw": {
+        "ok": true,
+        "out": "{\"relevant\":[],\"excluded\":[0,1,2]}",
+        "stopReason": "stopGenerationTrigger"
+      },
+      "parsed": {
+        "indices": [],
+        "relevant": [],
+        "excluded": [
+          0,
+          1,
+          2
+        ],
+        "rejected": []
+      }
+    }
+  ],
+  "loadMs": 31334.9174,
+  "perfLines": [
+    "[inference] [perf] segment: inputTokens=338 setup/prefill=482ms generation=422ms (genTokens=8) finalOutTokens=8",
+    "[inference] [perf] segment: inputTokens=794 setup/prefill=560ms generation=925ms (genTokens=22) finalOutTokens=22",
+    "[inference] [perf] segment: inputTokens=1027 setup/prefill=703ms generation=1103ms (genTokens=35) finalOutTokens=35",
+    "[inference] [perf] segment: inputTokens=636 setup/prefill=504ms generation=848ms (genTokens=18) finalOutTokens=18",
+    "[inference] [perf] segment: inputTokens=332 setup/prefill=211ms generation=406ms (genTokens=8) finalOutTokens=8",
+    "[inference] [perf] segment: inputTokens=610 setup/prefill=485ms generation=891ms (genTokens=18) finalOutTokens=18",
+    "[inference] [perf] segment: inputTokens=437 setup/prefill=256ms generation=769ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=815 setup/prefill=616ms generation=701ms (genTokens=16) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=937 setup/prefill=624ms generation=778ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=433 setup/prefill=386ms generation=765ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=612 setup/prefill=495ms generation=855ms (genTokens=18) finalOutTokens=18",
+    "[inference] [perf] segment: inputTokens=421 setup/prefill=376ms generation=739ms (genTokens=10) finalOutTokens=10",
+    "[inference] [perf] segment: inputTokens=441 setup/prefill=394ms generation=773ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=848 setup/prefill=580ms generation=787ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=632 setup/prefill=506ms generation=481ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=759 setup/prefill=569ms generation=5088ms (genTokens=100) finalOutTokens=60",
+    "[inference] [perf] segment: inputTokens=1096 setup/prefill=718ms generation=1601ms (genTokens=56) finalOutTokens=56",
+    "[inference] [perf] segment: inputTokens=345 setup/prefill=216ms generation=697ms (genTokens=9) finalOutTokens=9",
+    "[inference] [perf] segment: inputTokens=338 setup/prefill=210ms generation=421ms (genTokens=8) finalOutTokens=8",
+    "[inference] [perf] segment: inputTokens=794 setup/prefill=565ms generation=921ms (genTokens=22) finalOutTokens=22",
+    "[inference] [perf] segment: inputTokens=1027 setup/prefill=696ms generation=5896ms (genTokens=122) finalOutTokens=72",
+    "[inference] [perf] segment: inputTokens=636 setup/prefill=501ms generation=406ms (genTokens=8) finalOutTokens=8",
+    "[inference] [perf] segment: inputTokens=332 setup/prefill=211ms generation=417ms (genTokens=8) finalOutTokens=8",
+    "[inference] [perf] segment: inputTokens=610 setup/prefill=483ms generation=863ms (genTokens=18) finalOutTokens=18",
+    "[inference] [perf] segment: inputTokens=437 setup/prefill=256ms generation=767ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=815 setup/prefill=584ms generation=716ms (genTokens=16) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=937 setup/prefill=626ms generation=771ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=523 setup/prefill=449ms generation=807ms (genTokens=14) finalOutTokens=14",
+    "[inference] [perf] segment: inputTokens=612 setup/prefill=485ms generation=861ms (genTokens=18) finalOutTokens=18",
+    "[inference] [perf] segment: inputTokens=421 setup/prefill=376ms generation=734ms (genTokens=10) finalOutTokens=10",
+    "[inference] [perf] segment: inputTokens=441 setup/prefill=392ms generation=767ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=848 setup/prefill=581ms generation=771ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=593 setup/prefill=493ms generation=678ms (genTokens=16) finalOutTokens=16",
+    "[inference] [perf] segment: inputTokens=759 setup/prefill=554ms generation=1777ms (genTokens=39) finalOutTokens=35",
+    "[inference] [perf] segment: inputTokens=1096 setup/prefill=716ms generation=1593ms (genTokens=56) finalOutTokens=56",
+    "[inference] [perf] segment: inputTokens=345 setup/prefill=210ms generation=702ms (genTokens=9) finalOutTokens=9",
+    "[inference] [perf] segment: inputTokens=414 setup/prefill=378ms generation=3920ms (genTokens=55) finalOutTokens=35",
+    "[inference] [perf] segment: inputTokens=397 setup/prefill=243ms generation=755ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=381 setup/prefill=375ms generation=738ms (genTokens=10) finalOutTokens=10",
+    "[inference] [perf] segment: inputTokens=385 setup/prefill=382ms generation=789ms (genTokens=10) finalOutTokens=10",
+    "[inference] [perf] segment: inputTokens=394 setup/prefill=379ms generation=464ms (genTokens=10) finalOutTokens=10",
+    "[inference] [perf] segment: inputTokens=413 setup/prefill=376ms generation=496ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=394 setup/prefill=241ms generation=785ms (genTokens=13) finalOutTokens=13",
+    "[inference] [perf] segment: inputTokens=414 setup/prefill=378ms generation=639ms (genTokens=13) finalOutTokens=13",
+    "[inference] [perf] segment: inputTokens=397 setup/prefill=241ms generation=797ms (genTokens=13) finalOutTokens=13",
+    "[inference] [perf] segment: inputTokens=381 setup/prefill=360ms generation=734ms (genTokens=10) finalOutTokens=10",
+    "[inference] [perf] segment: inputTokens=385 setup/prefill=371ms generation=742ms (genTokens=10) finalOutTokens=10",
+    "[inference] [perf] segment: inputTokens=394 setup/prefill=241ms generation=737ms (genTokens=10) finalOutTokens=10",
+    "[inference] [perf] segment: inputTokens=413 setup/prefill=379ms generation=495ms (genTokens=12) finalOutTokens=12",
+    "[inference] [perf] segment: inputTokens=394 setup/prefill=240ms generation=776ms (genTokens=13) finalOutTokens=13"
+  ],
+  "summary": {
+    "compact": {
+      "all": {
+        "runs": 52,
+        "positiveRuns": 38,
+        "selected": 29,
+        "violationRuns": 6,
+        "negativeRuns": 14,
+        "negativeFalseHits": 8,
+        "validNegativeEmpty": 6,
+        "negativeErrors": 0,
+        "errors": 1,
+        "rejectedRows": 0,
+        "rerank": {
+          "medianMs": 1160.8410999999978,
+          "p95Ms": 4307.044599999994
+        }
+      },
+      "saved": {
+        "runs": 38,
+        "positiveRuns": 28,
+        "selected": 20,
+        "violationRuns": 5,
+        "negativeRuns": 10,
+        "negativeFalseHits": 6,
+        "validNegativeEmpty": 4,
+        "negativeErrors": 0,
+        "errors": 1,
+        "rejectedRows": 0,
+        "rerank": {
+          "medianMs": 1318.9758000000002,
+          "p95Ms": 5672.660500000005
+        }
+      },
+      "fresh": {
+        "runs": 14,
+        "positiveRuns": 10,
+        "selected": 9,
+        "violationRuns": 1,
+        "negativeRuns": 4,
+        "negativeFalseHits": 2,
+        "validNegativeEmpty": 2,
+        "negativeErrors": 0,
+        "errors": 0,
+        "rejectedRows": 0,
+        "rerank": {
+          "medianMs": 1035.1128000000026,
+          "p95Ms": 4307.044599999994
+        }
+      }
+    }
+  }
+}
