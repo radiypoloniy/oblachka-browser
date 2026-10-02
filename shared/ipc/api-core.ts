@@ -269,7 +269,7 @@ export interface CoreApi {
   clearHistory(period: HistoryClearPeriod): Promise<boolean>; // false — очистка не выполнилась, см. HistoryManager.ts::clearHistory
   onHistoryOpen(cb: () => void): () => void;
   // Умный поиск — Qwen-реранк top-k кандидатов, только по явному Enter (см. HistorySearch.ts).
-  // degraded:true в ответе — реранк не отработал, results это лексика+FTS top-k без LLM (см. SmartSearchResponse).
+  // degraded:true — запасные находки без подтверждения AI; fallbackReason объясняет причину.
   searchHistorySmart(query: string): Promise<SmartSearchResponse>;
 
   // Закладки — плоский список (parentId всегда null в Feature 1)

@@ -329,6 +329,9 @@ export const LAUNCH: Record<string, string> = {
   'Попробуйте другое слово — поиск смотрит и по заголовкам страниц, и по адресам.': 'Try another word — search looks at page titles and addresses.',
   'Страницы, которые вы откроете, появятся здесь по дням — и их можно будет найти словом из текста.': 'Pages you open appear here by day — and you can find them by a word from the text.',
   'По смыслу': 'By meaning',
+  'Обычные совпадения': 'Text matches',
+  'ИИ не нашёл подходящих страниц по смыслу. Показаны совпадения по заголовкам и адресам.': 'AI found no relevant pages. Showing matches in titles and addresses.',
+  'ИИ недоступен. Показаны совпадения по заголовкам, адресам и сохранённому тексту.': 'AI is unavailable. Showing matches in titles, addresses, and saved text.',
   'когда': 'when',
   'Удалить из истории': 'Remove from history',
 

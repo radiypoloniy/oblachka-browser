@@ -157,14 +157,16 @@ export async function rerankCollectedHistoryCandidates(
     // degraded:true — вызывающая сторона (History.tsx) честно показывает пользователю, что это
     // лексика+FTS без участия Qwen, а не молчаливая подмена результата умного поиска.
     console.warn('[HistorySearch] Qwen-реранк не удался, отдаю лексику+FTS как есть:', (e as Error).message);
-    return { results: candidates.slice(0, limit), degraded: true };
+    return { results: candidates.slice(0, limit), degraded: true, fallbackReason: 'unavailable' };
   }
 
   if (order.length === 0 && opts?.related) {
-    return { results: candidates.slice(0, limit), degraded: true };
+    return { results: candidates.slice(0, limit), degraded: true, fallbackReason: 'no-semantic-match' };
   }
   if (order.length === 0 && lexicalKeys.size > 0) {
-    return { results: candidates.filter((c) => lexicalKeys.has(normalizeForOmnibox(c.url))).slice(0, limit), degraded: false };
+    // Совпадение в заголовке полезно сохранить, но отказ модели нельзя выдавать за её одобрение.
+    return { results: candidates.filter((c) => lexicalKeys.has(normalizeForOmnibox(c.url))).slice(0, limit),
+      degraded: true, fallbackReason: 'no-semantic-match' };
   }
 
   return { results: order.slice(0, limit).map((i) => candidates[i]!), degraded: false };

@@ -52,13 +52,20 @@ for (const next of ['ranked','empty','failed']) {
   const response=await search.searchHistorySmart(history,'квантовые вычисления');
   assert.deepEqual([lexicalCalls,ftsCalls,reranks],[1,1,1]);
   assert.deepEqual(response.results.map(r=>r.id),next==='ranked'?[2,1]:entries.slice(0,8).map(r=>r.id));
-  assert.equal(response.degraded,next==='failed');
+  assert.equal(response.degraded,next!=='ranked');
+  assert.equal(response.fallbackReason,next==='failed'?'unavailable':next==='empty'?'no-semantic-match':undefined);
   assert.equal(lastCandidates.length,9);
 }
 mode='empty'; reset();
 const fallback=await search.rerankCollectedHistoryCandidates('квантовые вычисления',collected,8,{related:true});
 assert.equal(fallback.degraded,true);
+assert.equal(fallback.fallbackReason,'no-semantic-match');
 assert.deepEqual([lexicalCalls,ftsCalls],[0,0]);
+// Отказ модели без точного совпадения не превращается в ложноположительную выдачу FTS.
+const rejected=await search.rerankCollectedHistoryCandidates('квантовые вычисления',{
+  candidates:collected.candidates,lexicalKeys:new Set(),
+});
+assert.deepEqual(rejected,{results:[],degraded:false});
 mode='cold'; reset();
 const cold=await related.findRelatedPages(history,entries[0].url,'Квантовые вычисления');
 assert.equal(cold.pending,false); assert.ok(cold.results.every(r=>r.id!==1));

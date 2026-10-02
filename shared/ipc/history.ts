@@ -149,13 +149,12 @@ export interface RelatedPagesResult {
   pending: boolean;
 }
 
-// Ответ умного поиска (searchHistorySmart) — degraded:true означает, что Qwen-реранк не
-// отработал (упал/недоступна модель) и results — это cosine top-k без участия LLM, не то,
-// что пользователь запросил кнопкой «умный поиск». false — реранк реально отработал (даже
-// если вернул пустой список: это ЕГО осознанный ответ «ничего релевантного», не деградация).
+// Запасные находки не подтверждены моделью. Причина отличает отказ по смыслу от сбоя AI;
+// пустой ответ без запасных находок остаётся нормальным результатом поиска.
 export interface SmartSearchResponse {
   results: SemanticSearchResult[];
   degraded: boolean;
+  fallbackReason?: 'unavailable' | 'no-semantic-match';
 }
 
 // Заход G, блок 5 — прогресс разового бэкфилла истории.

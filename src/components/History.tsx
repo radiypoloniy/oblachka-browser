@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { X, Trash2, Wand2, Loader2 } from 'lucide-react';
-import type { HistoryEntry, HistoryClearPeriod } from '../../shared/ipc';
+import type { HistoryEntry, HistoryClearPeriod, SmartSearchResponse } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import { TEXT, RADIUS, motion, pad, sp } from '../styles/system';
 import { GroupCap, Row, Rows, SideNav, SplitView, type LibrarySummary } from './library/kit';
@@ -129,11 +129,9 @@ export default function History({ query, onSummary }: HistoryProps) {
   // ниже (load() как был) — включается только по явному Enter (см. handleSearchKeyDown).
   const [smartOn, setSmartOn] = useState(false);
   const [smartLoading, setSmartLoading] = useState(false);
-  // true — последний показанный результат умного поиска на самом деле cosine top-k без Qwen
-  // (реранк упал/недоступен, см. SmartSearchResponse.degraded в shared/ipc.ts). Не то же самое,
-  // что smartResultsShown=false — там результат вообще не от умного поиска, здесь он от него,
-  // просто без LLM-шага.
+  // Запасную выдачу нельзя подписывать «По смыслу»: модель её не подтвердила.
   const [smartDegraded, setSmartDegraded] = useState(false);
+  const [fallbackReason, setFallbackReason] = useState<SmartSearchResponse['fallbackReason']>();
   // true — entries сейчас содержит Qwen-реранк (порядок релевантности), не хронологию. Группировка
   // по дню/навигация по датам в этом случае показывать нельзя — она молча разрушила бы порядок
   // релевантности, раскидав результаты по датам. Плоский список — та же логика, что и раньше.
@@ -157,17 +155,16 @@ export default function History({ query, onSummary }: HistoryProps) {
     setEntries(result);
     setSmartResultsShown(false);
     setSmartDegraded(false);
+    setFallbackReason(undefined);
   }, [query, readQuery]);
 
   useHistoryLoad(load, searchSeqRef);
-
   useEffect(() => {
     searchRef.current?.focus();
   }, []);
 
   const dayGroups = useMemo(() => groupByDay(entries), [entries]);
   const navItems = useMemo(() => buildNavItems(dayGroups), [dayGroups]);
-
   function scrollToDay(key: string) {
     dayRefs.current.get(key)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -193,8 +190,11 @@ export default function History({ query, onSummary }: HistoryProps) {
     const seq = ++searchSeqRef.current;
     setSmartLoading(true);
     try {
-      const { results, degraded } = await window.oblako.searchHistorySmart(q);
-      if (searchSeqRef.current === seq) { setEntries(results); setSmartResultsShown(true); setSmartDegraded(degraded); } // иначе — устарело, юзер уже дальше
+      const response = await window.oblako.searchHistorySmart(q);
+      if (searchSeqRef.current === seq) {
+        setEntries(response.results); setSmartResultsShown(true);
+        setSmartDegraded(response.degraded); setFallbackReason(response.fallbackReason);
+      } // иначе — устарело, юзер уже дальше
     } catch {
       // IPC целиком недоступен (не то же самое, что "реранк внутри упал" — то помечено полем
       // degraded в успешном ответе выше) — не оставляем список пустым молча, просто откатываемся
@@ -290,11 +290,12 @@ export default function History({ query, onSummary }: HistoryProps) {
         </div>
       )}
 
-      {/* Реранк не отработал (упал/недоступна модель) — честно говорим, что порядок ниже это
-          cosine top-k, а не решение Qwen (SmartSearchResponse.degraded). */}
+      {/* Отказ по смыслу и сбой AI требуют разных объяснений запасной выдачи. */}
       {smartResultsShown && smartDegraded && (
         <span style={{ ...TEXT.caption, color: 'var(--warning-500)' }}>
-          {t('Показан быстрый результат — AI не ответил, порядок по сходству, не по смыслу.')}
+          {fallbackReason === 'no-semantic-match'
+            ? t('ИИ не нашёл подходящих страниц по смыслу. Показаны совпадения по заголовкам и адресам.')
+            : t('ИИ недоступен. Показаны совпадения по заголовкам, адресам и сохранённому тексту.')}
         </span>
       )}
 
@@ -310,7 +311,7 @@ export default function History({ query, onSummary }: HistoryProps) {
         // Умный поиск — плоский список в порядке релевантности: группировка по дню разрушила бы
         // этот порядок, раскидав находки по датам.
         <Rows>
-          <GroupCap title="По смыслу" note={t('{n} находок', { n: entries.length })} />
+          <GroupCap title={smartDegraded ? 'Обычные совпадения' : 'По смыслу'} note={t('{n} находок', { n: entries.length })} />
           {entries.map((entry) => (
             <HistoryRow key={entry.id} entry={entry} onDelete={handleDelete} />
           ))}
