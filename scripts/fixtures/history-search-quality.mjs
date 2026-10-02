@@ -1,0 +1,36 @@
+// Воспроизводимые вопросы к прочитанному: полезные сведения специально смещены внутрь чанка.
+const intro='Материал содержит наблюдения, условия испытаний и разбор полученных результатов. '.repeat(9);
+export const qualityPages=[
+  {key:'battery',title:'Испытания накопителей энергии',text:intro+'Охлаждение литиевых батарей уменьшает износ при быстрой зарядке. '+intro},
+  {key:'dns',title:'Защита сетевых запросов',text:intro+'DNS over HTTPS шифрует запросы к серверу имён и скрывает их от провайдера. '+intro},
+  {key:'backup',title:'Практика сохранения документов',text:intro+'Резервное копирование по правилу 3-2-1 требует трёх копий на двух носителях. '+intro},
+  {key:'camera',title:'Настройки фотосъёмки',text:intro+'Компенсация экспозиции помогает сохранить детали снега в ярком зимнем кадре. '+intro},
+  {key:'density',title:'Сравнение режимов эксплуатации',text:'Батареи используются в разных устройствах. '+intro+'Охлаждение батарей снижает нагрев во время зарядки. '+intro},
+  {key:'english',title:'Notes on equipment care',text:intro+'Keeping a lithium battery cool reduces degradation during charging. '+intro},
+  {key:'short',title:'Короткая памятка по поливу',text:'Суккуленты поливают только после полного высыхания грунта.'},
+  {key:'start',title:'Справочник наблюдателя',text:'Полярное сияние возникает при взаимодействии частиц солнечного ветра с атмосферой. '+intro},
+  {key:'title',title:'Настройка маршрутизатора',text:intro},
+  {key:'far-tail',title:'Большой справочник путешественника',text:intro.repeat(22)+'Акклиматизация на высоте требует постепенного подъёма и отдыха.'},
+  {key:'paraphrase',title:'Заметки о звуке',text:'Активное шумоподавление в наушниках компенсирует внешний звук противофазой.'},
+  {key:'noise',title:'Вход',url:'https://quality.test/login',text:'Охлаждение литиевых батарей.'},
+];
+export const qualityQueries=[
+  {key:'battery-phrase',query:'литиевые батареи',target:'battery',evidence:'Охлаждение литиевых батарей уменьшает износ',retrieved:true},
+  {key:'battery-morphology',query:'литиевых батарей',target:'battery',evidence:'Охлаждение литиевых батарей уменьшает износ',retrieved:true},
+  {key:'battery-caps',query:'ЛИТИЕВЫЕ БАТАРЕИ',target:'battery',evidence:'Охлаждение литиевых батарей уменьшает износ',retrieved:true},
+  {key:'dns-phrase',query:'DNS over HTTPS',target:'dns',evidence:'DNS over HTTPS шифрует запросы',retrieved:true},
+  {key:'dns-punctuation',query:'DNS-over-HTTPS',target:'dns',evidence:'DNS over HTTPS шифрует запросы',retrieved:true},
+  {key:'backup-morphology',query:'резервного копирования',target:'backup',evidence:'Резервное копирование по правилу 3-2-1',retrieved:true},
+  {key:'backup-number',query:'3-2-1',target:'backup',evidence:'Резервное копирование по правилу 3-2-1',retrieved:false,gap:'FTS исключает односимвольные части запроса'},
+  {key:'camera-phrase',query:'компенсация экспозиции',target:'camera',evidence:'Компенсация экспозиции помогает сохранить детали снега',retrieved:true},
+  {key:'camera-morphology',query:'экспозицию',target:'camera',evidence:'Компенсация экспозиции помогает сохранить детали снега',retrieved:true},
+  {key:'density',query:'охлаждение батарей',target:'density',evidence:'Охлаждение батарей снижает нагрев',retrieved:true},
+  {key:'english-exact',query:'lithium battery',target:'english',evidence:'Keeping a lithium battery cool reduces degradation',retrieved:true},
+  {key:'short',query:'суккуленты',target:'short',evidence:'Суккуленты поливают только после полного высыхания грунта.',retrieved:true},
+  {key:'start',query:'полярное сияние',target:'start',evidence:'Полярное сияние возникает',retrieved:true},
+  {key:'title',query:'Настройка маршрутизатора',target:'title',retrieved:true},
+  {key:'cross-language',query:'разрушение аккумулятора',target:'english',evidence:'Keeping a lithium battery cool reduces degradation',retrieved:false,gap:'нет совпадений слов между русским вопросом и английским текстом'},
+  {key:'paraphrase',query:'почему в гарнитуре исчезает уличный гул',target:'paraphrase',evidence:'Активное шумоподавление',retrieved:false,gap:'перефразированный вопрос не имеет совпадений FTS'},
+  {key:'far-tail',query:'акклиматизация',target:'far-tail',evidence:'Акклиматизация на высоте',retrieved:false,gap:'сведения за текущим бюджетом сохранения текста'},
+  {key:'missing',query:'нейтринный телескоп',target:null,retrieved:false},
+];

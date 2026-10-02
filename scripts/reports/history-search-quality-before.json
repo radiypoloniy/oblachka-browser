@@ -1,0 +1,674 @@
+{
+  "measuredAt": "2026-10-02T14:47:41.319Z",
+  "cases": [
+    {
+      "key": "battery-phrase",
+      "query": "литиевые батареи",
+      "target": "battery",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результато",
+      "candidates": [
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery",
+          "title": "Испытания накопителей энергии",
+          "lastVisit": 1790952461896,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 5,
+          "url": "https://quality.test/article/density",
+          "title": "Сравнение режимов эксплуатации",
+          "lastVisit": 1790952461910,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "battery-morphology",
+      "query": "литиевых батарей",
+      "target": "battery",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результато",
+      "candidates": [
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery",
+          "title": "Испытания накопителей энергии",
+          "lastVisit": 1790952461896,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 5,
+          "url": "https://quality.test/article/density",
+          "title": "Сравнение режимов эксплуатации",
+          "lastVisit": 1790952461910,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "battery-caps",
+      "query": "ЛИТИЕВЫЕ БАТАРЕИ",
+      "target": "battery",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результато",
+      "candidates": [
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery",
+          "title": "Испытания накопителей энергии",
+          "lastVisit": 1790952461896,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 5,
+          "url": "https://quality.test/article/density",
+          "title": "Сравнение режимов эксплуатации",
+          "lastVisit": 1790952461910,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "dns-phrase",
+      "query": "DNS over HTTPS",
+      "target": "dns",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результато",
+      "candidates": [
+        {
+          "id": 2,
+          "url": "https://quality.test/article/dns",
+          "title": "Защита сетевых запросов",
+          "lastVisit": 1790952461902,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 7,
+          "url": "https://quality.test/article/short",
+          "title": "Короткая памятка по поливу",
+          "lastVisit": 1790952461914,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 11,
+          "url": "https://quality.test/article/paraphrase",
+          "title": "Заметки о звуке",
+          "lastVisit": 1790952461927,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 4,
+          "url": "https://quality.test/article/camera",
+          "title": "Настройки фотосъёмки",
+          "lastVisit": 1790952461908,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery",
+          "title": "Испытания накопителей энергии",
+          "lastVisit": 1790952461896,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 3,
+          "url": "https://quality.test/article/backup",
+          "title": "Практика сохранения документов",
+          "lastVisit": 1790952461905,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 5,
+          "url": "https://quality.test/article/density",
+          "title": "Сравнение режимов эксплуатации",
+          "lastVisit": 1790952461910,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 6,
+          "url": "https://quality.test/article/english",
+          "title": "Notes on equipment care",
+          "lastVisit": 1790952461912,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 9,
+          "url": "https://quality.test/article/title",
+          "title": "Настройка маршрутизатора",
+          "lastVisit": 1790952461915,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 8,
+          "url": "https://quality.test/article/start",
+          "title": "Справочник наблюдателя",
+          "lastVisit": 1790952461914,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 10,
+          "url": "https://quality.test/article/far-tail",
+          "title": "Большой справочник путешественника",
+          "lastVisit": 1790952461916,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "dns-punctuation",
+      "query": "DNS-over-HTTPS",
+      "target": "dns",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результато",
+      "candidates": [
+        {
+          "id": 2,
+          "url": "https://quality.test/article/dns",
+          "title": "Защита сетевых запросов",
+          "lastVisit": 1790952461902,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 7,
+          "url": "https://quality.test/article/short",
+          "title": "Короткая памятка по поливу",
+          "lastVisit": 1790952461914,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 11,
+          "url": "https://quality.test/article/paraphrase",
+          "title": "Заметки о звуке",
+          "lastVisit": 1790952461927,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 4,
+          "url": "https://quality.test/article/camera",
+          "title": "Настройки фотосъёмки",
+          "lastVisit": 1790952461908,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery",
+          "title": "Испытания накопителей энергии",
+          "lastVisit": 1790952461896,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 3,
+          "url": "https://quality.test/article/backup",
+          "title": "Практика сохранения документов",
+          "lastVisit": 1790952461905,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 5,
+          "url": "https://quality.test/article/density",
+          "title": "Сравнение режимов эксплуатации",
+          "lastVisit": 1790952461910,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 6,
+          "url": "https://quality.test/article/english",
+          "title": "Notes on equipment care",
+          "lastVisit": 1790952461912,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 9,
+          "url": "https://quality.test/article/title",
+          "title": "Настройка маршрутизатора",
+          "lastVisit": 1790952461915,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 8,
+          "url": "https://quality.test/article/start",
+          "title": "Справочник наблюдателя",
+          "lastVisit": 1790952461914,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 10,
+          "url": "https://quality.test/article/far-tail",
+          "title": "Большой справочник путешественника",
+          "lastVisit": 1790952461916,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "backup-morphology",
+      "query": "резервного копирования",
+      "target": "backup",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результато",
+      "candidates": [
+        {
+          "id": 3,
+          "url": "https://quality.test/article/backup",
+          "title": "Практика сохранения документов",
+          "lastVisit": 1790952461905,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "backup-number",
+      "query": "3-2-1",
+      "target": "backup",
+      "indexedEvidence": true,
+      "retrieved": false,
+      "visibleEvidence": false,
+      "presented": "",
+      "candidates": [],
+      "lexicalKeys": []
+    },
+    {
+      "key": "camera-phrase",
+      "query": "компенсация экспозиции",
+      "target": "camera",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результато",
+      "candidates": [
+        {
+          "id": 4,
+          "url": "https://quality.test/article/camera",
+          "title": "Настройки фотосъёмки",
+          "lastVisit": 1790952461908,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "camera-morphology",
+      "query": "экспозицию",
+      "target": "camera",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результато",
+      "candidates": [
+        {
+          "id": 4,
+          "url": "https://quality.test/article/camera",
+          "title": "Настройки фотосъёмки",
+          "lastVisit": 1790952461908,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "density",
+      "query": "охлаждение батарей",
+      "target": "density",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Батареи используются в разных устройствах. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, услов",
+      "candidates": [
+        {
+          "id": 5,
+          "url": "https://quality.test/article/density",
+          "title": "Сравнение режимов эксплуатации",
+          "lastVisit": 1790952461910,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery",
+          "title": "Испытания накопителей энергии",
+          "lastVisit": 1790952461896,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "english-exact",
+      "query": "lithium battery",
+      "target": "english",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результато",
+      "candidates": [
+        {
+          "id": 6,
+          "url": "https://quality.test/article/english",
+          "title": "Notes on equipment care",
+          "lastVisit": 1790952461912,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery",
+          "title": "Испытания накопителей энергии",
+          "lastVisit": 1790952461896,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "short",
+      "query": "суккуленты",
+      "target": "short",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": true,
+      "presented": "Суккуленты поливают только после полного высыхания грунта.",
+      "candidates": [
+        {
+          "id": 7,
+          "url": "https://quality.test/article/short",
+          "title": "Короткая памятка по поливу",
+          "lastVisit": 1790952461914,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "start",
+      "query": "полярное сияние",
+      "target": "start",
+      "indexedEvidence": true,
+      "retrieved": true,
+      "visibleEvidence": true,
+      "presented": "Полярное сияние возникает при взаимодействии частиц солнечного ветра с атмосферой. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результа",
+      "candidates": [
+        {
+          "id": 8,
+          "url": "https://quality.test/article/start",
+          "title": "Справочник наблюдателя",
+          "lastVisit": 1790952461914,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": []
+    },
+    {
+      "key": "title",
+      "query": "Настройка маршрутизатора",
+      "target": "title",
+      "indexedEvidence": false,
+      "retrieved": true,
+      "visibleEvidence": false,
+      "presented": "Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результатов. Материал содержит наблюдения, условия испытаний и разбор полученных результато",
+      "candidates": [
+        {
+          "id": 9,
+          "url": "https://quality.test/article/title",
+          "title": "Настройка маршрутизатора",
+          "lastVisit": 1790952461915,
+          "visitCount": 1,
+          "score": 1.12
+        },
+        {
+          "id": 4,
+          "url": "https://quality.test/article/camera",
+          "title": "Настройки фотосъёмки",
+          "lastVisit": 1790952461908,
+          "visitCount": 1,
+          "score": 1.12
+        }
+      ],
+      "lexicalKeys": [
+        "https://quality.test/article/title"
+      ]
+    },
+    {
+      "key": "cross-language",
+      "query": "разрушение аккумулятора",
+      "target": "english",
+      "indexedEvidence": true,
+      "retrieved": false,
+      "visibleEvidence": false,
+      "presented": "",
+      "candidates": [],
+      "lexicalKeys": []
+    },
+    {
+      "key": "paraphrase",
+      "query": "почему в гарнитуре исчезает уличный гул",
+      "target": "paraphrase",
+      "indexedEvidence": true,
+      "retrieved": false,
+      "visibleEvidence": false,
+      "presented": "",
+      "candidates": [],
+      "lexicalKeys": []
+    },
+    {
+      "key": "far-tail",
+      "query": "акклиматизация",
+      "target": "far-tail",
+      "indexedEvidence": false,
+      "retrieved": false,
+      "visibleEvidence": false,
+      "presented": "",
+      "candidates": [],
+      "lexicalKeys": []
+    },
+    {
+      "key": "missing",
+      "query": "нейтринный телескоп",
+      "target": null,
+      "indexedEvidence": false,
+      "retrieved": false,
+      "visibleEvidence": false,
+      "presented": "",
+      "candidates": [],
+      "lexicalKeys": []
+    }
+  ],
+  "preparationMs": [
+    0.19700000000000273,
+    0.22879999999997835,
+    0.2545000000000073,
+    0.2177000000000362,
+    0.2156999999999698,
+    0.20270000000004984,
+    0.22630000000003747,
+    0.20650000000000546,
+    0.2137000000000171,
+    0.21699999999998454,
+    0.2964999999999236,
+    0.20429999999998927,
+    0.19889999999998054,
+    0.20429999999998927,
+    0.18780000000003838,
+    0.34359999999992397,
+    0.571700000000078,
+    0.23869999999999436,
+    0.21800000000007458,
+    0.21429999999998017,
+    0.18079999999997654,
+    0.16820000000006985,
+    0.17039999999997235,
+    0.1652000000000271,
+    0.171100000000024,
+    0.17059999999992215,
+    0.22460000000000946,
+    0.20510000000001583,
+    0.18650000000002365,
+    0.1954999999999245,
+    0.21470000000010714,
+    0.18259999999997945,
+    0.17799999999999727,
+    0.17230000000006385,
+    0.17380000000002838,
+    0.1753999999999678,
+    0.1933999999999969,
+    0.22130000000004202,
+    0.1778999999999087,
+    0.1773000000000593,
+    0.18859999999995125,
+    0.19420000000002346,
+    0.17230000000006385,
+    0.2234000000000833,
+    0.2154000000000451,
+    0.22630000000003747,
+    0.18270000000006803,
+    0.22479999999995925,
+    0.24929999999994834,
+    0.19259999999997035,
+    0.169399999999996,
+    0.17439999999999145,
+    0.1751000000000431,
+    0.1713000000000875,
+    0.16470000000003893,
+    1.5843999999999596,
+    0.31100000000003547,
+    0.26710000000002765,
+    0.2415000000000873,
+    0.25319999999999254,
+    0.19060000000001764,
+    0.15800000000001546,
+    0.14619999999990796,
+    0.14200000000005275,
+    0.1430000000000291,
+    0.1414999999999509,
+    0.14030000000002474,
+    0.14070000000003802,
+    0.14079999999989923,
+    0.1569000000000642,
+    0.17660000000000764,
+    0.16219999999998436,
+    0.14449999999999363,
+    0.14209999999991396,
+    0.15060000000005402,
+    0.15620000000001255,
+    0.14549999999997,
+    0.14469999999994343,
+    0.17060000000003583,
+    0.16830000000004475,
+    0.30129999999996926,
+    0.2078000000000202,
+    0.2036999999999125,
+    0.2058999999999287,
+    0.2037000000000262,
+    0.226099999999974,
+    0.21709999999995944,
+    0.20819999999991978,
+    0.2075000000000955,
+    0.2119000000000142,
+    0.21119999999996253,
+    0.23680000000001655,
+    0.266399999999976,
+    0.21660000000008495,
+    0.2778999999999314,
+    0.21330000000000382,
+    0.21690000000000964,
+    0.283800000000042,
+    0.2741000000000895,
+    0.28129999999998745
+  ],
+  "versions": {
+    "node": "24.18.1",
+    "acorn": "8.16.0",
+    "ada": "3.4.4",
+    "amaro": "1.1.9",
+    "ares": "1.34.6",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.3",
+    "merve": "1.2.2",
+    "modules": "146",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.69.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.4",
+    "simdutf": "7.7.0",
+    "sqlite": "3.53.1",
+    "tz": "2025c",
+    "undici": "7.29.0",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "14.8.178.38-electron.0",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "42.8.1",
+    "chrome": "148.0.7778.280"
+  },
+  "summary": {
+    "queries": 18,
+    "evidenceQueries": 12,
+    "visibleEvidence": 2
+  },
+  "preparation": {
+    "medianMs": 0.2036999999999125,
+    "p95Ms": 0.2964999999999236
+  }
+}
