@@ -31,6 +31,7 @@
 // Запуск: npm run drive -- ipc-wiring
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { INSIGHTS } from '../shared/pageInsights.ts';
 import { fileURLToPath } from 'node:url';
 import { withStand, wait } from './isolated-stand.mjs';
 
@@ -83,6 +84,9 @@ const LAZY = {
 // на них не действует ничего из contract-check: ни поиск мёртвых каналов, ни сверка арности, ни
 // golden-инвентарь. Список закрытый: любой НОВЫЙ канал мимо контракта здесь покраснеет.
 const OUTSIDE_CONTRACT = new Set([
+  // У карточек отдельный типизированный контракт; берём имена из него, а не копируем строки.
+  INSIGHTS.config,
+  INSIGHTS.set,
   'ai-panel:model-state',
   'ai-panel:currency-rates',
   'ai-panel:weather',

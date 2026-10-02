@@ -47,9 +47,18 @@ try {
     const added = await api.addPassword({ url: 'https://release-check.example/login',
       username: 'smoke', password: 'temporary-secret', title: 'Release check' });
     const rows = await api.listPasswords();
-    return { bridge: true, added, listed: rows.some((row) => row.username === 'smoke') };
+    const page = await api.getHistoryPage({ query: '' });
+    const missing = await api.getHistoryPage({ query: 'absent-release-check' });
+    await api.createSpecialTab('history');
+    for (let i=0;i<100;i++) {
+      if(/(?:Страница|Page) 1/.test(document.body.textContent))break;
+      await new Promise(resolve=>setTimeout(resolve,20));
+    }
+    return { bridge: true, added, listed: rows.some((row) => row.username === 'smoke'),
+      history: Array.isArray(page.entries) && missing.entries.length === 0
+        && /(?:Страница|Page) 1/.test(document.body.textContent) };
   })()`);
-  if (!result?.bridge || !result.added || !result.listed) throw new Error(`Упакованный сейф: ${JSON.stringify(result)}`);
+  if (!result?.bridge || !result.added || !result.listed || !result.history) throw new Error(`Упакованный релиз: ${JSON.stringify(result)}`);
   console.log(JSON.stringify(result));
 } finally {
   cdp?.close();
