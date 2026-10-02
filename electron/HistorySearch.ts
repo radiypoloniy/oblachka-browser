@@ -93,22 +93,19 @@ export async function collectHistoryCandidateSetAsync(history: HistoryManager, q
 
 function mergeCandidateRows(rows: CandidateRows, query: string): HistoryCandidateSet {
   const ftsCandidates = prepareHistoryCandidateChunks(rows.chunks, query)
-    .map(chunk => chunkToResult(chunk, 1.12));
-  const lexicalCandidates = rows.lexical.map(entry => historyEntryToSemanticResult(entry, 1));
+    .map((chunk, index) => chunkToResult(chunk, 1 / (60 + index + 1)));
+  const lexicalCandidates = rows.lexical.map((entry, index) => historyEntryToSemanticResult(entry, 1 / (60 + index + 1)));
 
-  // Лексика → FTS: точное совпадение по заголовку/URL (лексика) весомее текстового FTS-совпадения
-  // внутри чанка, поэтому идёт первым — при коллизии URL ниже побеждает бОльший score, а не порядок
-  // сам по себе, но порядок определяет, чья версия («первая встреченная» при равном score) войдёт
-  // в byUrl. SMART_LEXICAL_CANDIDATE_LIMIT(8) + SMART_FTS_CANDIDATE_LIMIT(12) = SMART_CANDIDATE_LIMIT(20)
-  // — весь бюджет кандидатов честно делят эти два источника.
+  // Ранги источников сопоставимы без сложения сырых BM25. Совместная находка получает бонус.
   const byUrl = new Map<string, SemanticSearchResult>();
   for (const c of [...lexicalCandidates, ...ftsCandidates]) {
     const key = normalizeForOmnibox(c.url);
     const existing = byUrl.get(key);
-    if (!existing || c.score > existing.score) byUrl.set(key, c);
+    if (!existing) byUrl.set(key, c);
+    else byUrl.set(key, { ...existing, ...(c.snippet ? { snippet: c.snippet } : {}), score: existing.score + c.score });
   }
   return {
-    candidates: [...byUrl.values()].slice(0, SMART_CANDIDATE_LIMIT),
+    candidates: [...byUrl.values()].sort((a, b) => b.score - a.score).slice(0, SMART_CANDIDATE_LIMIT),
     lexicalKeys: new Set(lexicalCandidates.map((c) => normalizeForOmnibox(c.url))),
   };
 }
@@ -160,7 +157,9 @@ export async function rerankCollectedHistoryCandidates(
     // degraded:true — вызывающая сторона (History.tsx) честно показывает пользователю, что это
     // лексика+FTS без участия Qwen, а не молчаливая подмена результата умного поиска.
     console.warn('[HistorySearch] Qwen-реранк не удался, отдаю лексику+FTS как есть:', (e as Error).message);
-    return { results: candidates.slice(0, limit), degraded: true, fallbackReason: 'unavailable' };
+    // При сбое AI сохраняем приоритет обычных точных совпадений, как до нового ранжирования.
+    const fallback = [...candidates].sort((a, b) => Number(lexicalKeys.has(normalizeForOmnibox(b.url))) - Number(lexicalKeys.has(normalizeForOmnibox(a.url))));
+    return { results: fallback.slice(0, limit), degraded: true, fallbackReason: 'unavailable' };
   }
 
   if (order.length === 0 && opts?.related) {

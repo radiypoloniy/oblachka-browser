@@ -32,12 +32,12 @@ export function readSearch(db: Database, query: string, limit: number): HistoryE
   return db.prepare(`SELECT id, url, title, last_visit AS lastVisit, visit_count AS visitCount
     FROM history WHERE url LIKE ? OR title LIKE ? ORDER BY last_visit DESC LIMIT ?`).all(like, like, limit) as HistoryEntry[];
 }
-export function buildFtsQuery(query: string): string {
+export function buildFtsQuery(query: string, allWords = false): string {
   // Тот же стемминг, что при записи индекса; исходные тексты чанков не меняются.
   const terms = historyFtsTerms(query);
   const quote = (term: string) => `"${term.replace(/"/g, '""')}"`;
   const phrases = terms.filter(isHistoryNumericPhrase);
-  const words = terms.filter(term => !isHistoryNumericPhrase(term)).map(quote).join(' OR ');
+  const words = terms.filter(term => !isHistoryNumericPhrase(term)).map(quote).join(allWords ? ' AND ' : ' OR ');
   if (!phrases.length) return words;
   // Номер обязателен: общие слова не должны возвращать другие версии и правила.
   return [...phrases.map(quote), ...(words ? [`(${words})`] : [])].join(' AND ');
@@ -45,15 +45,20 @@ export function buildFtsQuery(query: string): string {
 export function readFts(db: Database, query: string, version: string, limit: number): HistoryContentChunk[] {
   const match = buildFtsQuery(query);
   if (!match) return [];
-  const rows = db.prepare(`
+  const run = (matchQuery: string, budget: number, excluded: number[] = []) => db.prepare(`
     SELECT c.id AS chunkId, c.history_id AS historyId, c.chunk_index AS chunkIndex,
       c.url, h.title AS title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
-      c.vector, c.dims, c.model_version AS modelVersion, bm25(history_content_chunks_fts) AS rank
+      c.vector, c.dims, c.model_version AS modelVersion, bm25(history_content_chunks_fts, 1, 2, 0.5) AS rank
     FROM history_content_chunks_fts
     JOIN history_content_chunks c ON c.id = history_content_chunks_fts.rowid
     JOIN history h ON h.id = c.history_id
     WHERE history_content_chunks_fts MATCH ? AND c.model_version = ?
-    ORDER BY rank ASC LIMIT ?`).all(match, version, limit) as HistoryContentChunk[];
+      AND c.id NOT IN (SELECT value FROM json_each(?))
+    ORDER BY rank ASC LIMIT ?`).all(matchQuery, version, JSON.stringify(excluded), budget) as HistoryContentChunk[];
+  // Сначала совместные совпадения, затем мягкий добор; суммарно читаем прежнее число чанков.
+  const strict = buildFtsQuery(query, true);
+  const first = strict !== match ? run(strict, Math.floor(limit / 3)) : [];
+  const rows = [...first, ...run(match, limit - first.length, first.map(row => row.chunkId))];
   const numbers = historyFtsTerms(query).filter(isHistoryNumericPhrase).map(term => historyNumericPattern(term));
   return numbers.length ? rows.filter(row => numbers.every(pattern =>
     [row.text, row.title, row.url].some(text => pattern.test(text)))) : rows;
