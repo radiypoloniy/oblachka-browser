@@ -4,11 +4,12 @@
 // показала «магниты» без порога, отделяющего их от шума, см. git log).
 import type { HistoryContentChunk, HistoryManager } from './HistoryManager';
 import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
-import { rerankHistoryCandidates } from './TranslationService';
+import { expandHistorySearchQuery, rerankHistoryCandidates } from './TranslationService';
 import { HISTORY_FTS_PAGE_LIMIT, prepareHistoryCandidateChunks } from './HistorySearchSnippet';
 import { historySearchTopic } from './HistorySearchTopic';
 import { normalizeForOmnibox } from '../shared/frecency';
 import { readHistory } from './HistoryReader';
+import { mergeExpandedHistory } from '../shared/historyExpansion';
 import type { CandidateChunk, CandidateRows } from './HistoryReadQueries';
 import type { HistoryEntry, SemanticSearchResult, SmartSearchResponse } from '../shared/ipc';
 
@@ -121,13 +122,30 @@ export async function searchHistorySmart(
   // background — поиск, которого человек не заказывал (подсказка «вы это уже читали»).
   // related — та же труба, но пустой реранк не должен гасить FTS: для headline это «не та
   // статья», для темы — как раз соседние материалы.
-  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal },
+  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal; expand?: boolean; onStage?: (stage: 'expanding' | 'retrieving' | 'ranking') => void },
 ): Promise<SmartSearchResponse> {
   const q = query.trim();
   if (!q) return { results: [], degraded: false };
 
   opts?.abort?.throwIfAborted();
-  const collected = await collectHistoryCandidateSetAsync(history, q);
+  opts?.onStage?.('retrieving');
+  let collected = await collectHistoryCandidateSetAsync(history, q);
+  if (opts?.expand) {
+    try {
+      opts.onStage?.('expanding');
+      const variants = await expandHistorySearchQuery(q, opts.abort);
+      const extra: HistoryCandidateSet[] = [];
+      opts.onStage?.('retrieving');
+      for (const variant of variants) {
+        opts.abort?.throwIfAborted();
+        extra.push(await collectHistoryCandidateSetAsync(history, variant));
+      }
+      if (extra.length) collected = mergeExpandedHistory(collected, extra);
+    } catch (error) {
+      opts.abort?.throwIfAborted();
+      console.warn('[HistorySearch] расширение недоступно, используем исходный запрос');
+    }
+  }
   opts?.abort?.throwIfAborted();
   return rerankCollectedHistoryCandidates(q, collected, limit, opts);
 }
@@ -137,13 +155,14 @@ export async function rerankCollectedHistoryCandidates(
   query: string,
   collected: HistoryCandidateSet,
   limit = 8,
-  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal },
+  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal; expand?: boolean; onStage?: (stage: 'expanding' | 'retrieving' | 'ranking') => void },
 ): Promise<SmartSearchResponse> {
   const q = query.trim();
   const { candidates, lexicalKeys } = collected;
   if (!q) return { results: [], degraded: false };
   if (candidates.length === 0) return { results: [], degraded: false };
 
+  opts?.onStage?.('ranking');
   let order: number[];
   try {
     order = await rerankHistoryCandidates(q, candidates.map((c) => ({

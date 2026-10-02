@@ -161,6 +161,7 @@ export interface SmartSearchResponse {
   fallbackReason?: 'unavailable' | 'no-semantic-match';
   cancelled?: boolean;
 }
+export interface HistorySearchProgress { requestId: string; stage: 'expanding' | 'retrieving' | 'ranking' }
 
 // Заход G, блок 5 — прогресс разового бэкфилла истории.
 export interface BackfillProgress {

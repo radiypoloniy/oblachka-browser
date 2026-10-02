@@ -273,6 +273,7 @@ export interface CoreApi {
   // degraded:true — запасные находки без подтверждения AI; fallbackReason объясняет причину.
   searchHistorySmart(query: string, requestId?: string): Promise<SmartSearchResponse>;
   cancelHistorySearch(requestId: string): void;
+  onHistorySearchProgress(cb: (progress: import('./history').HistorySearchProgress) => void): () => void;
 
   // Закладки — плоский список (parentId всегда null в Feature 1)
   addBookmark(url: string, title: string): Promise<BookmarkEntry | null>;

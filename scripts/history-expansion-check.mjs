@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { parseHistoryExpansion, mergeExpandedHistory } from '../dist-electron/shared/historyExpansion.js';
+assert.deepEqual(parseHistoryExpansion('{"first":"активное шумоподавление","second":"noise cancellation"}', 'уличный гул в гарнитуре'), ['активное шумоподавление', 'noise cancellation']);
+assert.deepEqual(parseHistoryExpansion('{"first":"бэкап","second":"бэкап"}', 'правило 3-2-1'), ['бэкап 3-2-1']);
+for (const raw of ['текст', '{"first":[]}', '{"first":"x","second":"y","extra":1}', JSON.stringify({ first: 'x'.repeat(81), second: '' })]) assert.throws(() => parseHistoryExpansion(raw, 'query'));
+const entries = Array.from({ length: 20 }, (_, id) => ({ id, url: `https://example.test/${id}`, score: 1 }));
+const lexicalKeys = new Set(entries.slice(0, 8).map(c => c.url));
+const added = { id: 50, url: 'https://example.test/target', score: 1, snippet: 'Evidence' };
+const merged = mergeExpandedHistory({ candidates: entries, lexicalKeys }, [{ candidates: [added], lexicalKeys: new Set() }]);
+assert.equal(merged.candidates.length, 20); assert.ok(merged.candidates.some(c => c.id === 50));
+assert.ok(entries.slice(0, 8).every(c => merged.candidates.some(m => m.id === c.id)));
+assert.equal(new Set(merged.candidates.map(c => c.url)).size, 20);
+console.log('ok: расширение ограничено; номера сохраняются; переполненный набор оставляет место новой находке и точным совпадениям');

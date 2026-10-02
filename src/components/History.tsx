@@ -130,6 +130,7 @@ export default function History({ query, onSummary }: HistoryProps) {
   // ниже (load() как был) — включается только по явному Enter (см. handleSearchKeyDown).
   const [smartOn, setSmartOn] = useState(false);
   const [smartLoading, setSmartLoading] = useState(false);
+  const [smartStage, setSmartStage] = useState<'expanding' | 'retrieving' | 'ranking'>('retrieving');
   // Запасную выдачу нельзя подписывать «По смыслу»: модель её не подтвердила.
   const [smartDegraded, setSmartDegraded] = useState(false);
   const [fallbackReason, setFallbackReason] = useState<SmartSearchResponse['fallbackReason']>();
@@ -145,6 +146,9 @@ export default function History({ query, onSummary }: HistoryProps) {
   // уже показанные свежие результаты — тот самый «один результат из прошлого поиска затесался».
   const searchSeqRef = useRef(0);
   const smartRequest = useRef<string>();
+  useEffect(() => window.oblako.onHistorySearchProgress(progress => {
+    if (progress.requestId === smartRequest.current) setSmartStage(progress.stage);
+  }), []);
   const cancelSmart = useCallback(() => {
     if (smartRequest.current) window.oblako.cancelHistorySearch(smartRequest.current);
     smartRequest.current = undefined;
@@ -198,6 +202,7 @@ export default function History({ query, onSummary }: HistoryProps) {
     const requestId = crypto.randomUUID();
     smartRequest.current = requestId;
     setSmartLoading(true);
+    setSmartStage('retrieving');
     try {
       const response = await window.oblako.searchHistorySmart(q, requestId);
       if (searchSeqRef.current === seq && !response.cancelled) {
@@ -253,7 +258,7 @@ export default function History({ query, onSummary }: HistoryProps) {
             {smartLoading
               ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
               : <Wand2 size={14} />}
-            {smartLoading ? t('Qwen переранжирует…') : t('Найти по смыслу')}
+            {smartLoading ? t(smartStage === 'expanding' ? 'Уточняем смысл запроса…' : smartStage === 'ranking' ? 'Оцениваем совпадения…' : 'Ищем страницы…') : t('Найти по смыслу')}
           </button>
         )}
         <span style={{ flex: 1 }} />

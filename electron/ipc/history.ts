@@ -58,7 +58,12 @@ export function registerHistoryIpc(d: IpcDeps): void {
     const destroy = () => searches.cancel(owner, id);
     e.sender.once('destroyed', destroy);
     try {
-      const response = await searchHistorySmart(source, query, 8, { abort: abort.signal });
+      const response = await searchHistorySmart(source, query, 8, { abort: abort.signal, expand: true,
+        onStage: stage => {
+          if (history() !== source) abort.abort();
+          if (!abort.signal.aborted && !e.sender.isDestroyed()) e.sender.send(IPC.HISTORY_SEARCH_PROGRESS, { requestId: id, stage });
+        },
+      });
       return abort.signal.aborted || history() !== source ? { results: [], degraded: false, cancelled: true } : response;
     } catch (error) {
       if (abort.signal.aborted || history() !== source) return { results: [], degraded: false, cancelled: true };

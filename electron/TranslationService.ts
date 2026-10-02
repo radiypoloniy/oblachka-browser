@@ -24,6 +24,7 @@ import { isQwenBusy, withQwenQueue, withQwenQueueBackground } from './QwenQueue'
 import { buildRelatedRerankPrompt } from '../shared/relatedHistory'
 import { parseRerankIndices } from '../shared/rerankOutput'
 import { assertSearchGenerationComplete } from '../shared/searchGeneration'
+import { HISTORY_EXPANSION_PROMPT, parseHistoryExpansion } from '../shared/historyExpansion'
 import { LOCAL_CONNECTION_ID } from '../shared/aiProviders'
 export { withQwenQueueBackground }
 import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
@@ -395,18 +396,7 @@ async function runPromptQueued(model: Provider, prompt: string, maxTokens: numbe
   return res
 }
 
-// ── Умный поиск истории (Qwen-реранк top-k кандидатов от эмбеддинга) ────────────────────────
-// Реюз runPrompt() выше — та же труба, что и перевод/AI-действия, никакого нового способа звать
-// модель (см. HistorySearch.ts::searchHistorySmart, который строит кандидатов через cosine top-k
-// и зовёт эту функцию). Через очередь (withQwenQueue внутри runPrompt) — умный поиск не может
-// конкурировать с переводом/чатом за один и тот же sequence.
-// score — раньше передавался модели явным числом как сигнал силы совпадения; убран из промпта
-// (см. коммит "честные score и текст промпта", buildRerankPrompt ниже больше не показывает его).
-// Причина: у семантических кандидатов это был cosine, у FTS/лексики — несравнимые между собой
-// константы 1.12/1 (не измерение, просто «какой источник главнее при мерже») — показывать это
-// модели как единую шкалу было нечестно и не помогало (живая проверка: реранк вернул все
-// кандидаты как есть, включая заведомый шум). Поле в типе оставлено для внутреннего мержа в
-// HistorySearch.ts, но buildRerankPrompt его больше не читает.
+// Ограниченный AI-поиск поверх выбранного provider и общей очереди.
 export interface RerankCandidate { id: number; title: string; url: string; score: number; snippet?: string }
 
 // 512 — с запасом на список номеров по 20 кандидатам (несколько цифр с запятыми), это не
@@ -446,6 +436,14 @@ function buildRerankPrompt(query: string, candidates: RerankCandidate[], related
 // короче/длиннее/в любом порядке относительно исходного cosine-ранжирования, может быть пустым
 // массивом (не нашла релевантных). Неверный формат ответа бросает исключение: вызывающая
 // сторона отдаёт честно помеченный запасной результат, а не принимает цифры из пояснения.
+export async function expandHistorySearchQuery(query: string, abort?: AbortSignal): Promise<string[]> {
+  const schema: JsonSchema = { type: 'object', properties: { first: { type: 'string' }, second: { type: 'string' } }, required: ['first', 'second'], additionalProperties: false }
+  const { out, stopReason } = await runPrompt(HISTORY_EXPANSION_PROMPT + JSON.stringify(query.slice(0, 1200)), 256, undefined, { role: 'search', abort, schema })
+  abort?.throwIfAborted()
+  assertSearchGenerationComplete(stopReason)
+  return parseHistoryExpansion(out, query)
+}
+
 export async function rerankHistoryCandidates(
   query: string,
   candidates: RerankCandidate[],

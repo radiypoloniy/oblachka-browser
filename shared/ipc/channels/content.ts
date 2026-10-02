@@ -50,6 +50,7 @@ export const CONTENT = {
   // действию (Enter), НЕ на каждый keystroke, см. HistorySearch.ts::searchHistorySmart.
   HISTORY_SEARCH_SMART: 'history:search-smart', // renderer → main: query -> SmartSearchResponse
   HISTORY_SEARCH_CANCEL: 'history:search-cancel',
+  HISTORY_SEARCH_PROGRESS: 'history:search-progress',
 
   // Закладки — плоский список (parentId всегда null в Feature 1, см. BookmarkManager.ts)
   BOOKMARK_ADD:           'bookmark:add',            // renderer → main: (url, title) -> BookmarkEntry | null
