@@ -1,0 +1,42 @@
+// Разметка задаёт язык связного текста, а не брендов, кода или языка цитаты.
+const en='Keeping a lithium battery cool reduces degradation during charging. Regular maintenance protects the battery and improves its useful life. ',
+  ru='Охлаждение литиевого аккумулятора уменьшает износ при зарядке. Регулярный уход продлевает срок службы батареи и помогает сохранить её ёмкость. ',
+  de='Eine kühle Lithiumbatterie altert beim Laden langsamer. Regelmäßige Wartung schützt den Akku und verlängert seine Lebensdauer. ',
+  fr='Une batterie au lithium bien refroidie se dégrade moins pendant la recharge. Un entretien régulier protège la batterie et prolonge sa durée de vie. ',
+  uk='Охолодження літієвого акумулятора зменшує зношування під час заряджання. Регулярний догляд продовжує термін служби батареї та допомагає зберегти її ємність. ',
+  bg='Охлаждането на литиевата батерия намалява износването при зареждане. Редовната поддръжка удължава живота на батерията и запазва нейния капацитет. ',
+  code='const battery = { voltage: 12, temperature: 25 };\nfunction charge(device) { return device.temperature < 40; }\n'.repeat(3),
+  ruMenu='Главная. Настройки. Подписаться. Материалы. Поиск. Контакты. Новые публикации. '.repeat(5);
+export const languageEdgeCases=[
+  {key:'english',kind:'monolingual',expected:['en'],text:en.repeat(5)},
+  {key:'russian-brands',kind:'monolingual',expected:['ru'],text:('Adobe, NVIDIA, Electron, Windows и ChatGPT используются в этой статье как названия продуктов. '+ru).repeat(4)},
+  {key:'german',kind:'monolingual',expected:['de'],text:de.repeat(5)},
+  {key:'french',kind:'monolingual',expected:['fr'],text:fr.repeat(5)},
+  {key:'ukrainian',kind:'monolingual',expected:['uk'],text:uk.repeat(5)},
+  {key:'bulgarian',kind:'monolingual',expected:['bg'],text:bg.repeat(5)},
+  {key:'english-russian-menu',kind:'extraction-noise',expected:['en'],text:ruMenu+en.repeat(8),querySnippet:ruMenu.slice(0,240),declaredLang:'en'},
+  {key:'english-code-hit',kind:'code-hit',expected:['en'],text:en.repeat(3)+code+en.repeat(3),querySnippet:code.slice(0,240),declaredLang:'en'},
+  {key:'russian-code-hit',kind:'code-hit',expected:['ru'],text:ru.repeat(3)+code+ru.repeat(3),querySnippet:code.slice(0,240),declaredLang:'ru'},
+  {key:'english-french-quote',kind:'quote-hit',expected:['en'],text:en.repeat(4)+'Quoted translation: '+fr+en.repeat(4),querySnippet:fr,declaredLang:'en'},
+  {key:'english-short-quote',kind:'quote-hit',expected:['en'],text:en.repeat(3)+'Русская цитата: «Сохраните резервную копию». '+en.repeat(3),querySnippet:'Русская цитата: «Сохраните резервную копию». '},
+  {key:'bilingual',kind:'mixed',expected:null,text:en.repeat(3)+ru.repeat(3),querySnippet:ru,declaredLang:'en'},
+  {key:'wrong-html-hint',kind:'hint-conflict',expected:['ru'],text:ru.repeat(5),declaredLang:'en'},
+  {key:'english-borrowings',kind:'monolingual',expected:['en'],text:('The café offers a résumé workshop. Our team reviews software maintenance and charging safety. '+en).repeat(4)},
+  {key:'german-borrowings',kind:'monolingual',expected:['de'],text:('Windows und Linux unterstützen diese Anwendung. '+de).repeat(4)},
+  {key:'short-english',kind:'insufficient',expected:null,text:'Battery care'},
+  {key:'short-french',kind:'insufficient',expected:null,text:'Batterie lithium'},
+  {key:'code-only',kind:'insufficient',expected:null,text:code},
+  {key:'skeleton',kind:'insufficient',expected:null,text:'Loading… 74%'},
+  {key:'empty',kind:'insufficient',expected:null,text:''},
+];
+// Эти строки нужны только для аудита прежнего пробного распознавателя, не для обучения новой эвристики.
+export const languageQueryCases=[
+  {query:'найди английскую заметку о зарядке батареи',expected:'en'},
+  {query:'материал на немецком о батареях',expected:'de'},
+  {query:'французский материал про полив',expected:'fr'},
+  {query:'французская литература девятнадцатого века',expected:null},
+  {query:'почему немецкие автомобили дороже',expected:null},
+  {query:'английские сокращения в русском тексте',expected:null},
+  {query:'заметка об аккумуляторе на английском языке',expected:'en'},
+  {query:'статья на испанском',expected:'es'},
+];

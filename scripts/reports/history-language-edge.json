@@ -1,0 +1,1209 @@
+{
+  "measuredAt": "2026-10-02T17:33:10.704Z",
+  "scope": "20 fixture documents, one offline pass, existing detector unchanged",
+  "rows": [
+    {
+      "key": "english",
+      "kind": "monolingual",
+      "expected": [
+        "en"
+      ],
+      "declaredLang": null,
+      "textChars": 695,
+      "full": {
+        "raw": "eng",
+        "picked": {
+          "code": "en",
+          "iso3": "eng",
+          "overrode": null
+        },
+        "ms": 1.3877999999999986
+      },
+      "querySnippet": {
+        "raw": "eng",
+        "picked": {
+          "code": "en",
+          "iso3": "eng",
+          "overrode": null
+        },
+        "ms": 0.21249999999999858
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.22860000000000014
+        },
+        {
+          "offset": 227,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.21930000000000405
+        },
+        {
+          "offset": 455,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.1769000000000034
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "russian-brands",
+      "kind": "monolingual",
+      "expected": [
+        "ru"
+      ],
+      "declaredLang": null,
+      "textChars": 948,
+      "full": {
+        "raw": "rus",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": null
+        },
+        "ms": 0.6959000000000017
+      },
+      "querySnippet": {
+        "raw": "rus",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": null
+        },
+        "ms": 0.1857000000000042
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.1938999999999993
+        },
+        {
+          "offset": 354,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.22679999999999723
+        },
+        {
+          "offset": 708,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.18330000000000268
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "german",
+      "kind": "monolingual",
+      "expected": [
+        "de"
+      ],
+      "declaredLang": null,
+      "textChars": 635,
+      "full": {
+        "raw": "deu",
+        "picked": {
+          "code": "de",
+          "iso3": "deu",
+          "overrode": null
+        },
+        "ms": 0.23790000000000333
+      },
+      "querySnippet": {
+        "raw": "deu",
+        "picked": {
+          "code": "de",
+          "iso3": "deu",
+          "overrode": null
+        },
+        "ms": 0.14170000000000016
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "deu",
+          "picked": {
+            "code": "de",
+            "iso3": "deu",
+            "overrode": null
+          },
+          "ms": 0.2744
+        },
+        {
+          "offset": 197,
+          "raw": "deu",
+          "picked": {
+            "code": "de",
+            "iso3": "deu",
+            "overrode": null
+          },
+          "ms": 0.15049999999999386
+        },
+        {
+          "offset": 395,
+          "raw": "deu",
+          "picked": {
+            "code": "de",
+            "iso3": "deu",
+            "overrode": null
+          },
+          "ms": 0.14799999999999613
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "french",
+      "kind": "monolingual",
+      "expected": [
+        "fr"
+      ],
+      "declaredLang": null,
+      "textChars": 740,
+      "full": {
+        "raw": "fra",
+        "picked": {
+          "code": "fr",
+          "iso3": "fra",
+          "overrode": null
+        },
+        "ms": 0.7346000000000004
+      },
+      "querySnippet": {
+        "raw": "fra",
+        "picked": {
+          "code": "fr",
+          "iso3": "fra",
+          "overrode": null
+        },
+        "ms": 0.14560000000000173
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "fra",
+          "picked": {
+            "code": "fr",
+            "iso3": "fra",
+            "overrode": null
+          },
+          "ms": 0.13530000000000086
+        },
+        {
+          "offset": 250,
+          "raw": "fra",
+          "picked": {
+            "code": "fr",
+            "iso3": "fra",
+            "overrode": null
+          },
+          "ms": 0.17719999999999914
+        },
+        {
+          "offset": 500,
+          "raw": "fra",
+          "picked": {
+            "code": "fr",
+            "iso3": "fra",
+            "overrode": null
+          },
+          "ms": 0.13929999999999865
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "ukrainian",
+      "kind": "monolingual",
+      "expected": [
+        "uk"
+      ],
+      "declaredLang": null,
+      "textChars": 785,
+      "full": {
+        "raw": "ukr",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": "cyrillic"
+        },
+        "ms": 0.32630000000000337
+      },
+      "querySnippet": {
+        "raw": "ukr",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": "cyrillic"
+        },
+        "ms": 0.13389999999999702
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "ukr",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": "cyrillic"
+          },
+          "ms": 0.10889999999999844
+        },
+        {
+          "offset": 272,
+          "raw": "ukr",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": "cyrillic"
+          },
+          "ms": 0.12340000000000373
+        },
+        {
+          "offset": 545,
+          "raw": "ukr",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": "cyrillic"
+          },
+          "ms": 0.12160000000000082
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": true,
+      "snippetMismatch": true
+    },
+    {
+      "key": "bulgarian",
+      "kind": "monolingual",
+      "expected": [
+        "bg"
+      ],
+      "declaredLang": null,
+      "textChars": 730,
+      "full": {
+        "raw": "bul",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": "cyrillic"
+        },
+        "ms": 0.23920000000000385
+      },
+      "querySnippet": {
+        "raw": "bul",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": "cyrillic"
+        },
+        "ms": 0.10300000000000153
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "bul",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": "cyrillic"
+          },
+          "ms": 0.09659999999999513
+        },
+        {
+          "offset": 245,
+          "raw": "bul",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": "cyrillic"
+          },
+          "ms": 0.11590000000000344
+        },
+        {
+          "offset": 490,
+          "raw": "bul",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": "cyrillic"
+          },
+          "ms": 0.11380000000000479
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": true,
+      "snippetMismatch": true
+    },
+    {
+      "key": "english-russian-menu",
+      "kind": "extraction-noise",
+      "expected": [
+        "en"
+      ],
+      "declaredLang": "en",
+      "textChars": 1507,
+      "full": {
+        "raw": "eng",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": "cyrillic"
+        },
+        "ms": 0.7081000000000017
+      },
+      "querySnippet": {
+        "raw": "rus",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": null
+        },
+        "ms": 0.16540000000000532
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.11280000000000001
+        },
+        {
+          "offset": 633,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.30169999999999675
+        },
+        {
+          "offset": 1267,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.15909999999999513
+        }
+      ],
+      "sampleDisagreement": true,
+      "fullMismatch": true,
+      "snippetMismatch": true
+    },
+    {
+      "key": "english-code-hit",
+      "kind": "code-hit",
+      "expected": [
+        "en"
+      ],
+      "declaredLang": "en",
+      "textChars": 1164,
+      "full": {
+        "raw": "eng",
+        "picked": {
+          "code": "en",
+          "iso3": "eng",
+          "overrode": null
+        },
+        "ms": 0.45240000000000435
+      },
+      "querySnippet": {
+        "raw": "fra",
+        "picked": {
+          "code": "fr",
+          "iso3": "fra",
+          "overrode": null
+        },
+        "ms": 0.27770000000000294
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.1641000000000048
+        },
+        {
+          "offset": 462,
+          "raw": "fra",
+          "picked": {
+            "code": "fr",
+            "iso3": "fra",
+            "overrode": null
+          },
+          "ms": 0.12339999999999662
+        },
+        {
+          "offset": 924,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.14409999999999457
+        }
+      ],
+      "sampleDisagreement": true,
+      "fullMismatch": false,
+      "snippetMismatch": true
+    },
+    {
+      "key": "russian-code-hit",
+      "kind": "code-hit",
+      "expected": [
+        "ru"
+      ],
+      "declaredLang": "ru",
+      "textChars": 1188,
+      "full": {
+        "raw": "rus",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": null
+        },
+        "ms": 0.4750000000000014
+      },
+      "querySnippet": {
+        "raw": "fra",
+        "picked": {
+          "code": "fr",
+          "iso3": "fra",
+          "overrode": null
+        },
+        "ms": 0.12460000000000093
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.12429999999999808
+        },
+        {
+          "offset": 474,
+          "raw": "fra",
+          "picked": {
+            "code": "fr",
+            "iso3": "fra",
+            "overrode": null
+          },
+          "ms": 0.11780000000000257
+        },
+        {
+          "offset": 948,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.11470000000000624
+        }
+      ],
+      "sampleDisagreement": true,
+      "fullMismatch": false,
+      "snippetMismatch": true
+    },
+    {
+      "key": "english-french-quote",
+      "kind": "quote-hit",
+      "expected": [
+        "en"
+      ],
+      "declaredLang": "en",
+      "textChars": 1280,
+      "full": {
+        "raw": "fra",
+        "picked": {
+          "code": "fr",
+          "iso3": "fra",
+          "overrode": null
+        },
+        "ms": 0.4919000000000011
+      },
+      "querySnippet": {
+        "raw": "fra",
+        "picked": {
+          "code": "fr",
+          "iso3": "fra",
+          "overrode": null
+        },
+        "ms": 0.12519999999999953
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.20169999999999533
+        },
+        {
+          "offset": 520,
+          "raw": "fra",
+          "picked": {
+            "code": "fr",
+            "iso3": "fra",
+            "overrode": null
+          },
+          "ms": 0.21170000000000044
+        },
+        {
+          "offset": 1040,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.14159999999999684
+        }
+      ],
+      "sampleDisagreement": true,
+      "fullMismatch": true,
+      "snippetMismatch": true
+    },
+    {
+      "key": "english-short-quote",
+      "kind": "quote-hit",
+      "expected": [
+        "en"
+      ],
+      "declaredLang": null,
+      "textChars": 879,
+      "full": {
+        "raw": "eng",
+        "picked": {
+          "code": "en",
+          "iso3": "eng",
+          "overrode": null
+        },
+        "ms": 0.3913000000000011
+      },
+      "querySnippet": {
+        "raw": "bul",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": "cyrillic"
+        },
+        "ms": 0.07789999999999964
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.16270000000000095
+        },
+        {
+          "offset": 319,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.18009999999999593
+        },
+        {
+          "offset": 639,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.14039999999999964
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": true
+    },
+    {
+      "key": "bilingual",
+      "kind": "mixed",
+      "expected": null,
+      "declaredLang": "en",
+      "textChars": 846,
+      "full": {
+        "raw": "rus",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": null
+        },
+        "ms": 0.2698000000000036
+      },
+      "querySnippet": {
+        "raw": "rus",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": null
+        },
+        "ms": 0.08769999999999811
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.1460000000000008
+        },
+        {
+          "offset": 303,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.14679999999999893
+        },
+        {
+          "offset": 606,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.11840000000000117
+        }
+      ],
+      "sampleDisagreement": true,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "wrong-html-hint",
+      "kind": "hint-conflict",
+      "expected": [
+        "ru"
+      ],
+      "declaredLang": "en",
+      "textChars": 715,
+      "full": {
+        "raw": "rus",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": null
+        },
+        "ms": 0.20489999999999498
+      },
+      "querySnippet": {
+        "raw": "rus",
+        "picked": {
+          "code": "ru",
+          "iso3": "rus",
+          "overrode": null
+        },
+        "ms": 0.11059999999999803
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.11789999999999878
+        },
+        {
+          "offset": 237,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.12400000000000233
+        },
+        {
+          "offset": 475,
+          "raw": "rus",
+          "picked": {
+            "code": "ru",
+            "iso3": "rus",
+            "overrode": null
+          },
+          "ms": 0.27370000000000516
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "english-borrowings",
+      "kind": "monolingual",
+      "expected": [
+        "en"
+      ],
+      "declaredLang": null,
+      "textChars": 932,
+      "full": {
+        "raw": "eng",
+        "picked": {
+          "code": "en",
+          "iso3": "eng",
+          "overrode": null
+        },
+        "ms": 0.32090000000000174
+      },
+      "querySnippet": {
+        "raw": "eng",
+        "picked": {
+          "code": "en",
+          "iso3": "eng",
+          "overrode": null
+        },
+        "ms": 0.17489999999999384
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.16539999999999822
+        },
+        {
+          "offset": 346,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.18099999999999739
+        },
+        {
+          "offset": 692,
+          "raw": "eng",
+          "picked": {
+            "code": "en",
+            "iso3": "eng",
+            "overrode": null
+          },
+          "ms": 0.18079999999999785
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "german-borrowings",
+      "kind": "monolingual",
+      "expected": [
+        "de"
+      ],
+      "declaredLang": null,
+      "textChars": 700,
+      "full": {
+        "raw": "deu",
+        "picked": {
+          "code": "de",
+          "iso3": "deu",
+          "overrode": null
+        },
+        "ms": 0.24160000000000537
+      },
+      "querySnippet": {
+        "raw": "deu",
+        "picked": {
+          "code": "de",
+          "iso3": "deu",
+          "overrode": null
+        },
+        "ms": 0.14379999999999882
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "deu",
+          "picked": {
+            "code": "de",
+            "iso3": "deu",
+            "overrode": null
+          },
+          "ms": 0.14000000000000057
+        },
+        {
+          "offset": 230,
+          "raw": "deu",
+          "picked": {
+            "code": "de",
+            "iso3": "deu",
+            "overrode": null
+          },
+          "ms": 0.16779999999999973
+        },
+        {
+          "offset": 460,
+          "raw": "deu",
+          "picked": {
+            "code": "de",
+            "iso3": "deu",
+            "overrode": null
+          },
+          "ms": 0.15510000000000446
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "short-english",
+      "kind": "insufficient",
+      "expected": null,
+      "declaredLang": null,
+      "textChars": 12,
+      "full": {
+        "raw": "ron",
+        "picked": {
+          "code": "ro",
+          "iso3": "ron",
+          "overrode": null
+        },
+        "ms": 0.12290000000000134
+      },
+      "querySnippet": {
+        "raw": "ron",
+        "picked": {
+          "code": "ro",
+          "iso3": "ron",
+          "overrode": null
+        },
+        "ms": 0.06909999999999883
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "ron",
+          "picked": {
+            "code": "ro",
+            "iso3": "ron",
+            "overrode": null
+          },
+          "ms": 0.025199999999998113
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "short-french",
+      "kind": "insufficient",
+      "expected": null,
+      "declaredLang": null,
+      "textChars": 16,
+      "full": {
+        "raw": "ron",
+        "picked": {
+          "code": "ro",
+          "iso3": "ron",
+          "overrode": null
+        },
+        "ms": 0.03359999999999985
+      },
+      "querySnippet": {
+        "raw": "ron",
+        "picked": {
+          "code": "ro",
+          "iso3": "ron",
+          "overrode": null
+        },
+        "ms": 0.024300000000003763
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "ron",
+          "picked": {
+            "code": "ro",
+            "iso3": "ron",
+            "overrode": null
+          },
+          "ms": 0.023099999999999454
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "code-only",
+      "kind": "insufficient",
+      "expected": null,
+      "declaredLang": null,
+      "textChars": 330,
+      "full": {
+        "raw": "fra",
+        "picked": {
+          "code": "fr",
+          "iso3": "fra",
+          "overrode": null
+        },
+        "ms": 0.12140000000000128
+      },
+      "querySnippet": {
+        "raw": "fra",
+        "picked": {
+          "code": "fr",
+          "iso3": "fra",
+          "overrode": null
+        },
+        "ms": 0.10010000000000474
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "fra",
+          "picked": {
+            "code": "fr",
+            "iso3": "fra",
+            "overrode": null
+          },
+          "ms": 0.08630000000000138
+        },
+        {
+          "offset": 45,
+          "raw": "fra",
+          "picked": {
+            "code": "fr",
+            "iso3": "fra",
+            "overrode": null
+          },
+          "ms": 0.0876000000000019
+        },
+        {
+          "offset": 90,
+          "raw": "fra",
+          "picked": {
+            "code": "fr",
+            "iso3": "fra",
+            "overrode": null
+          },
+          "ms": 0.10970000000000368
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "skeleton",
+      "kind": "insufficient",
+      "expected": null,
+      "declaredLang": null,
+      "textChars": 12,
+      "full": {
+        "raw": "nld",
+        "picked": {
+          "code": "nl",
+          "iso3": "nld",
+          "overrode": null
+        },
+        "ms": 0.08089999999999975
+      },
+      "querySnippet": {
+        "raw": "nld",
+        "picked": {
+          "code": "nl",
+          "iso3": "nld",
+          "overrode": null
+        },
+        "ms": 0.0251000000000019
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "nld",
+          "picked": {
+            "code": "nl",
+            "iso3": "nld",
+            "overrode": null
+          },
+          "ms": 0.018799999999998818
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    },
+    {
+      "key": "empty",
+      "kind": "insufficient",
+      "expected": null,
+      "declaredLang": null,
+      "textChars": 0,
+      "full": {
+        "raw": "und",
+        "picked": {
+          "code": "en",
+          "iso3": "und",
+          "overrode": null
+        },
+        "ms": 0.06279999999999575
+      },
+      "querySnippet": {
+        "raw": "und",
+        "picked": {
+          "code": "en",
+          "iso3": "und",
+          "overrode": null
+        },
+        "ms": 0.0033000000000100727
+      },
+      "samples": [
+        {
+          "offset": 0,
+          "raw": "und",
+          "picked": {
+            "code": "en",
+            "iso3": "und",
+            "overrode": null
+          },
+          "ms": 0.0024000000000086175
+        }
+      ],
+      "sampleDisagreement": false,
+      "fullMismatch": false,
+      "snippetMismatch": false
+    }
+  ],
+  "queries": [
+    {
+      "query": "найди английскую заметку о зарядке батареи",
+      "expected": "en",
+      "detected": "en"
+    },
+    {
+      "query": "материал на немецком о батареях",
+      "expected": "de",
+      "detected": "de"
+    },
+    {
+      "query": "французский материал про полив",
+      "expected": "fr",
+      "detected": "fr"
+    },
+    {
+      "query": "французская литература девятнадцатого века",
+      "expected": null,
+      "detected": "fr"
+    },
+    {
+      "query": "почему немецкие автомобили дороже",
+      "expected": null,
+      "detected": "de"
+    },
+    {
+      "query": "английские сокращения в русском тексте",
+      "expected": null,
+      "detected": "en"
+    },
+    {
+      "query": "заметка об аккумуляторе на английском языке",
+      "expected": "en",
+      "detected": "en"
+    },
+    {
+      "query": "статья на испанском",
+      "expected": "es",
+      "detected": null
+    }
+  ],
+  "summary": {
+    "documents": 20,
+    "knownLanguageDocuments": 14,
+    "fullMismatches": 4,
+    "snippetMismatches": 7,
+    "sampleDisagreements": 5,
+    "insufficientGuessed": 4,
+    "insufficientEnglishFallback": 1,
+    "queryFalseLanguageRequirements": 3,
+    "queryMissedRequirements": 1,
+    "fullTextMedianMs": 0.32090000000000174,
+    "fullTextP95Ms": 0.7346000000000004
+  }
+}
