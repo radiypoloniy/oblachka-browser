@@ -1,0 +1,177 @@
+{
+  "measuredAt": "2026-10-02T14:33:44.493Z",
+  "cpu": "AMD Ryzen 5 3600 6-Core Processor              ",
+  "visits": 500000,
+  "indexedPages": 20000,
+  "chunks": 90000,
+  "inputIntervalMs": 30,
+  "rounds": [
+    {
+      "reference": {
+        "ms": 974.8650000095367,
+        "inputTimes": [
+          0,
+          31.180000066757202,
+          62.14999985694885,
+          93.15499997138977,
+          125.13499999046326,
+          156.13499999046326
+        ],
+        "reads": [
+          "queue-a",
+          "queue-ab",
+          "queue-abc",
+          "queue-abcd",
+          "queue-abcde",
+          "queue-final"
+        ],
+        "rows": 100,
+        "idsHash": "e72592a24fa49e93e1d540e8dc0b60176323906efe584a49db98840a7770d82c"
+      },
+      "queue": {
+        "ms": 462.13499999046326,
+        "inputTimes": [
+          0.005000114440917969,
+          31.12000012397766,
+          62.16000008583069,
+          93.08000016212463,
+          123.88000011444092,
+          154.69000005722046
+        ],
+        "reads": [
+          "queue-a",
+          "queue-abcde",
+          "queue-final"
+        ],
+        "rows": 100,
+        "idsHash": "e72592a24fa49e93e1d540e8dc0b60176323906efe584a49db98840a7770d82c"
+      }
+    },
+    {
+      "queue": {
+        "ms": 348.88499999046326,
+        "inputTimes": [
+          0.005000114440917969,
+          31.039999961853027,
+          61.41499996185303,
+          91.71500015258789,
+          121.97500014305115,
+          152.97500014305115
+        ],
+        "reads": [
+          "queue-a",
+          "queue-final"
+        ],
+        "rows": 100,
+        "idsHash": "e72592a24fa49e93e1d540e8dc0b60176323906efe584a49db98840a7770d82c"
+      },
+      "reference": {
+        "ms": 874.789999961853,
+        "inputTimes": [
+          0.005000114440917969,
+          31.265000104904175,
+          61.609999895095825,
+          93.61999988555908,
+          124.25999999046326,
+          155.59500002861023
+        ],
+        "reads": [
+          "queue-a",
+          "queue-ab",
+          "queue-abc",
+          "queue-abcd",
+          "queue-abcde",
+          "queue-final"
+        ],
+        "rows": 100,
+        "idsHash": "e72592a24fa49e93e1d540e8dc0b60176323906efe584a49db98840a7770d82c"
+      }
+    },
+    {
+      "reference": {
+        "ms": 840.5299999713898,
+        "inputTimes": [
+          0.004999876022338867,
+          30.365000009536743,
+          60.825000047683716,
+          92.82999992370605,
+          123.82500004768372,
+          154.78999996185303
+        ],
+        "reads": [
+          "queue-a",
+          "queue-ab",
+          "queue-abc",
+          "queue-abcd",
+          "queue-abcde",
+          "queue-final"
+        ],
+        "rows": 100,
+        "idsHash": "e72592a24fa49e93e1d540e8dc0b60176323906efe584a49db98840a7770d82c"
+      },
+      "queue": {
+        "ms": 428.5499999523163,
+        "inputTimes": [
+          0.004999876022338867,
+          30.72000002861023,
+          61.730000019073486,
+          92.23499989509583,
+          122.51999998092651,
+          153.72499990463257
+        ],
+        "reads": [
+          "queue-a",
+          "queue-abcde",
+          "queue-final"
+        ],
+        "rows": 100,
+        "idsHash": "e72592a24fa49e93e1d540e8dc0b60176323906efe584a49db98840a7770d82c"
+      }
+    }
+  ],
+  "methodology": "Same temporary database and read-only worker. Warm cache, three alternating pairs. Reference reproduces previous immediate IPC dispatch with generation guard; queue uses actual renderer queue module. Both finish at latest response, excluding DOM/paint. Separate actual UI run ends at matching DOM. Synthetic index is present but no concurrent AI inference/index writes or cold-disk simulation.",
+  "versions": {
+    "node": "24.18.1",
+    "acorn": "8.16.0",
+    "ada": "3.4.4",
+    "amaro": "1.1.9",
+    "ares": "1.34.6",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.3",
+    "merve": "1.2.2",
+    "modules": "146",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.69.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.4",
+    "simdutf": "7.7.0",
+    "sqlite": "3.53.1",
+    "tz": "2025c",
+    "undici": "7.29.0",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "14.8.178.38-electron.0",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "42.8.1",
+    "chrome": "148.0.7778.280"
+  },
+  "ui": {
+    "ms": 830.6600000858307,
+    "rows": 100,
+    "query": "queue-final",
+    "reads": [
+      "queue-a",
+      "queue-abc",
+      "queue-abcde",
+      "queue-final"
+    ]
+  }
+}

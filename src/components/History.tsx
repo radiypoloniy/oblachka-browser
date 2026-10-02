@@ -9,7 +9,7 @@ import SiteFavicon from './SiteFavicon';
 import { EmptyState } from './EmptyState';
 import { ClockGlyph, SearchGlyph } from './glyphs';
 import { sectionCache } from './library/sectionCache'; import { useLanguage } from '../i18n';
-import { useHistoryLoad } from './library/useHistoryLoad';
+import { useHistoryLoad, useHistoryQuery } from './library/useHistoryLoad';
 
 interface HistoryProps {
   /** Строка поиска — общая на всю библиотеку, живёт в оболочке (LibraryShell). */
@@ -139,26 +139,25 @@ export default function History({ query, onSummary }: HistoryProps) {
   // релевантности, раскидав результаты по датам. Плоский список — та же логика, что и раньше.
   const [smartResultsShown, setSmartResultsShown] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  // Счётчик запросов в entries — защита от гонки: load() (мгновенный, на каждый keystroke) и
+  // Счётчик запросов в entries — защита от гонки: load() (обычное чтение истории) и
   // handleSmartSearch() (Qwen, ~1-2+ сек) пишут в один и тот же entries независимо друг от
   // друга и без отмены. Без счётчика поздний ответ УСТАРЕВШЕГО запроса (юзер уже успел
   // напечатать/запустить новый, пока предыдущий Qwen-вызов ещё летел) мог молча перезаписать
   // уже показанные свежие результаты — тот самый «один результат из прошлого поиска затесался».
   const searchSeqRef = useRef(0);
+  const readQuery = useHistoryQuery(searchSeqRef);
   // Скролл к секции дня по клику в левой навигации — ключ дня → DOM-узел заголовка группы.
   const dayRefs = useRef(new Map<string, HTMLDivElement>());
 
   const load = useCallback(async () => {
     const seq = ++searchSeqRef.current;
-    const result = query.trim()
-      ? await window.oblako.searchHistory(query)
-      : await window.oblako.getHistory();
-    if (searchSeqRef.current !== seq) return; // подоспел более новый запрос — этот ответ устарел
+    const result = await readQuery(query, seq);
+    if (result === undefined || searchSeqRef.current !== seq) return;
     if (!query.trim()) cachedEntries.set(result);
     setEntries(result);
     setSmartResultsShown(false);
     setSmartDegraded(false);
-  }, [query]);
+  }, [query, readQuery]);
 
   useHistoryLoad(load, searchSeqRef);
 
