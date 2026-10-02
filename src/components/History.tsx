@@ -152,12 +152,12 @@ export default function History({ query, onSummary }: HistoryProps) {
   const dayRefs = useRef(new Map<string, HTMLDivElement>());
 
   const acceptPage = useCallback((page: HistoryPage, first: boolean) => {
-    if (!query.trim() && first) cachedEntries.set(page.entries);
+    if (!query.trim() && first && !filters.domain && !filters.from && !filters.to) cachedEntries.set(page.entries);
     setEntries(page.entries);
     setSmartResultsShown(false);
     setSmartDegraded(false);
     setFallbackReason(undefined);
-  }, [query]);
+  }, [query, filters]);
   const paging = useHistoryPages(query, searchSeqRef, acceptPage, filters);
   const { load } = paging;
   useEffect(() => {

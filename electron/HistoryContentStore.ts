@@ -12,8 +12,12 @@ export function setupHistoryContentStore(db: Database): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT, history_id INTEGER NOT NULL REFERENCES history(id) ON DELETE CASCADE,
       chunk_index INTEGER NOT NULL, url TEXT NOT NULL, title TEXT NOT NULL, text TEXT NOT NULL,
       vector BLOB NOT NULL, dims INTEGER NOT NULL, model_version TEXT NOT NULL, indexed_at INTEGER NOT NULL);
-    CREATE INDEX IF NOT EXISTS idx_history_previous_page ON history_previous_chunks(history_id);
-    CREATE VIRTUAL TABLE IF NOT EXISTS history_previous_chunks_fts USING fts5(text, title, url, tokenize='unicode61');`);
+    CREATE INDEX IF NOT EXISTS idx_history_previous_page ON history_previous_chunks(history_id);`);
+  try { db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS history_previous_chunks_fts USING fts5(text, title, url, tokenize='unicode61');
+    CREATE TRIGGER IF NOT EXISTS history_previous_cleanup AFTER DELETE ON history_previous_chunks BEGIN
+      DELETE FROM history_previous_chunks_fts WHERE rowid=old.id;
+    END;`); }
+  catch (error) { console.warn('[History] индекс предыдущего снимка недоступен:', error); }
 }
 
 export function saveHistoryContent(db: Database, historyId: number, chunks: ContentChunkInput[], version: string): void {
@@ -52,7 +56,8 @@ export function saveHistoryContent(db: Database, historyId: number, chunks: Cont
 
 export function deletePreviousHistoryContent(db: Database, ids: number[]): void {
   const rows = db.prepare('SELECT id FROM history_previous_chunks WHERE history_id IN (SELECT value FROM json_each(?))').all(JSON.stringify(ids)) as { id: number }[];
-  const remove = db.prepare('DELETE FROM history_previous_chunks_fts WHERE rowid = ?');
-  for (const row of rows) remove.run(row.id);
+  let remove: import('better-sqlite3').Statement | null = null;
+  try { remove = db.prepare('DELETE FROM history_previous_chunks_fts WHERE rowid = ?'); } catch { /* Отсутствие FTS не мешает удалению текста. */ }
+  for (const row of rows) remove?.run(row.id);
   db.prepare('DELETE FROM history_previous_chunks WHERE history_id IN (SELECT value FROM json_each(?))').run(JSON.stringify(ids));
 }

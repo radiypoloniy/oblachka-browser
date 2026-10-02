@@ -185,6 +185,7 @@ export const MORE: Record<string, string> = {
   'Оцениваем совпадения…': 'Ranking matches…',
   'Ищем страницы…': 'Finding pages…',
   'Сайт в истории': 'Site in history',
+  'Укажите корректный адрес сайта': 'Enter a valid site address',
   'Сайт: example.com': 'Site: example.com',
   'Период последнего посещения': 'Last visit period',
   'За последние сутки': 'Last 24 hours',
