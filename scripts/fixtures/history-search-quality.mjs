@@ -31,6 +31,6 @@ export const qualityQueries=[
   {key:'title',query:'Настройка маршрутизатора',target:'title',retrieved:true},
   {key:'cross-language',query:'разрушение аккумулятора',target:'english',evidence:'Keeping a lithium battery cool reduces degradation',retrieved:false,gap:'нет совпадений слов между русским вопросом и английским текстом'},
   {key:'paraphrase',query:'почему в гарнитуре исчезает уличный гул',target:'paraphrase',evidence:'Активное шумоподавление',retrieved:false,gap:'перефразированный вопрос не имеет совпадений FTS'},
-  {key:'far-tail',query:'акклиматизация',target:'far-tail',evidence:'Акклиматизация на высоте',retrieved:false,gap:'сведения за текущим бюджетом сохранения текста'},
+  {key:'far-tail',query:'акклиматизация',target:'far-tail',evidence:'Акклиматизация на высоте',retrieved:true},
   {key:'missing',query:'нейтринный телескоп',target:null,retrieved:false},
 ];

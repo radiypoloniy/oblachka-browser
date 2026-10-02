@@ -75,10 +75,10 @@ const SPA_SETTLE_DELAY_MS = 1200;
 const SPA_SETTLE_RECHECK_MS = 1000;
 const SPA_SETTLE_GROWTH_RATIO = 1.3;
 
-const HISTORY_CHUNK_SOURCE_MAX_CHARS = 12_000;
+const HISTORY_CHUNK_SOURCE_MAX_CHARS = 28_000;
 const HISTORY_CHUNK_TARGET_CHARS = 1400;
 const HISTORY_CHUNK_OVERLAP_CHARS = 220;
-const HISTORY_CHUNK_MAX = 8;
+const HISTORY_CHUNK_MAX = 24;
 
 export type IndexVisitOpts = {
   /** По умолчанию navigate — did-navigate. title — page-title-updated. sleep — перед выгрузкой. */
@@ -214,10 +214,13 @@ export async function indexVisit(
   const previousNoise = state.lastNoise.get(historyId) ?? null;
   const memoryDone = state.indexedIds.has(historyId);
   const hasContent = hasUsableStoredContent(history, historyId);
+  // Повторно снимаем только живой повторный визит; сон и title-тиканье не запускают обновления.
+  const refresh = hasContent && trigger === 'navigate' && noise === 'none'
+    && Date.now() - history.getContentCheckedAt(historyId) >= 5 * 60_000;
   const decision = decideHistoryIndex({
     trigger,
-    hasContent,
-    memoryDone,
+    hasContent: hasContent && !refresh,
+    memoryDone: memoryDone && !refresh,
     inFlight: state.inFlight.has(historyId),
     noise,
     previousNoise,

@@ -68,7 +68,7 @@ export function prepareHistoryCandidateChunks(chunks: CandidateChunk[], query: s
   for (const chunk of chunks) {
     if (isNoisyForEmbedding(chunk.url, chunk.title)) continue;
     const group = groups.get(chunk.historyId);
-    if (group) group.push(chunk);
+    if (group) { if (group[0].previous === chunk.previous && group[0].indexedAt === chunk.indexedAt) group.push(chunk); }
     else if (groups.size < HISTORY_FTS_PAGE_LIMIT) groups.set(chunk.historyId, [chunk]);
   }
   const snippetFor = createHistorySnippet(query), compactFor = createHistorySnippet(query, 118);

@@ -8,7 +8,7 @@ import { historyFtsTerms, historyNumericPattern, isHistoryNumericPhrase } from '
 import { prepareHistoryCandidateChunks } from './HistorySearchSnippet';
 import { historySearchTopic } from './HistorySearchTopic';
 
-export type CandidateChunk = Pick<HistoryContentChunk, 'historyId' | 'url' | 'title' | 'text' | 'lastVisit' | 'visitCount' | 'indexedAt'> & { snippet?: string };
+export type CandidateChunk = Pick<HistoryContentChunk, 'historyId' | 'url' | 'title' | 'text' | 'lastVisit' | 'visitCount' | 'indexedAt' | 'previous'> & { snippet?: string };
 export interface CandidateRows { lexical: HistoryEntry[]; chunks: CandidateChunk[]; prepared?: boolean }
 export type HistoryReadRequest =
   | { kind: 'page'; page: HistoryPageRequest }
@@ -46,20 +46,34 @@ export function buildFtsQuery(query: string, allWords = false): string {
 export function readFts(db: Database, query: string, version: string, limit: number, filters?: HistorySearchFilters): HistoryContentChunk[] {
   const match = buildFtsQuery(query);
   if (!match) return [];
-  const run = (matchQuery: string, budget: number, excluded: number[] = []) => db.prepare(`
+  const run = (matchQuery: string, budget: number, excluded: number[] = [], previous = false) => {
+    const table = previous ? 'history_previous_chunks' : 'history_content_chunks';
+    return db.prepare(`
     SELECT c.id AS chunkId, c.history_id AS historyId, c.chunk_index AS chunkIndex,
-      c.url, h.title AS title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
-      c.vector, c.dims, c.indexed_at AS indexedAt, c.model_version AS modelVersion, bm25(history_content_chunks_fts, 1, 2, 0.5) AS rank
-    FROM history_content_chunks_fts
-    JOIN history_content_chunks c ON c.id = history_content_chunks_fts.rowid
+      c.url, ${previous ? 'c.title' : 'h.title'} AS title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
+      c.vector, c.dims, c.indexed_at AS indexedAt, c.model_version AS modelVersion, bm25(${table}_fts, 1, 2, 0.5) AS rank
+    FROM ${table}_fts
+    JOIN ${table} c ON c.id = ${table}_fts.rowid
     JOIN history h ON h.id = c.history_id
-    WHERE history_content_chunks_fts MATCH ? AND c.model_version = ?
+    WHERE ${table}_fts MATCH ? AND c.model_version = ?
       AND c.id NOT IN (SELECT value FROM json_each(?))${historyFilterSql(filters, 'h.').sql}
     ORDER BY rank ASC LIMIT ?`).all(matchQuery, version, JSON.stringify(excluded), ...historyFilterSql(filters, 'h.').args, budget) as HistoryContentChunk[];
+  };
   // Сначала совместные совпадения, затем мягкий добор; суммарно читаем прежнее число чанков.
+  let previous: HistoryContentChunk[] = [];
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='history_previous_chunks_fts'").get()) {
+    previous = run(match, Math.floor(limit / 3), [], true).map(row => ({ ...row, previous: true }));
+  }
+  const currentLimit = limit - previous.length;
   const strict = buildFtsQuery(query, true);
-  const first = strict !== match ? run(strict, Math.floor(limit / 3)) : [];
-  const rows = [...first, ...run(match, limit - first.length, first.map(row => row.chunkId))];
+  const first = strict !== match ? run(strict, Math.floor(currentLimit / 3)) : [];
+  const current = [...first, ...run(match, currentLimit - first.length, first.map(row => row.chunkId))];
+  // Чередуем источники по рангам: один URL выбирает один снимок, даты и доказательства не смешиваются.
+  const rows: HistoryContentChunk[] = [];
+  for (let i = 0; i < Math.max(current.length, previous.length); i++) {
+    if (current[i]) rows.push(current[i]);
+    if (previous[i]) rows.push(previous[i]);
+  }
   const numbers = historyFtsTerms(query).filter(isHistoryNumericPhrase).map(term => historyNumericPattern(term));
   return numbers.length ? rows.filter(row => numbers.every(pattern =>
     [row.text, row.title, row.url].some(text => pattern.test(text)))) : rows;

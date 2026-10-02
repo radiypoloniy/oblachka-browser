@@ -31,15 +31,10 @@ function chunkToResult(chunk: CandidateChunk, score: number): SemanticSearchResu
 const SMART_CANDIDATE_LIMIT = 20;
 const SMART_LEXICAL_CANDIDATE_LIMIT = 8;
 
-// Одна страница обычно разбита на несколько чанков (до HISTORY_CHUNK_MAX=8, см. HistoryIndexer.ts) —
-// SQL-запрос к FTS идёт по чанкам, не по страницам, поэтому топ-N строк bm25 может оказаться
-// несколькими чанками ОДНОЙ страницы (живая проверка на "apple": 4 из 12 строк — один и тот же
-// историId). SMART_FTS_SQL_LIMIT — запас по чанкам, из которого дедуп по historyId ниже
-// (prepareHistoryCandidateChunks) достаёт уже SMART_FTS_CANDIDATE_LIMIT РАЗНЫХ страниц.
+// В модель передаём разные страницы; SQL читает ограниченный запас чанков для дедупликации.
 const SMART_FTS_CANDIDATE_LIMIT = HISTORY_FTS_PAGE_LIMIT;
-// До восьми чанков одной страницы могут подряд занять выдачу FTS. Бюджет строк
-// гарантирует место для 12 разных страниц даже при таком худшем порядке.
-const SMART_FTS_SQL_LIMIT = SMART_FTS_CANDIDATE_LIMIT * 8;
+// Полный извлечённый текст занимает до 24 чанков; контекст остаётся ограничен 20 страницами.
+const SMART_FTS_SQL_LIMIT = SMART_FTS_CANDIDATE_LIMIT * 24;
 
 function historyEntryToSemanticResult(entry: HistoryEntry, score: number): SemanticSearchResult {
   return {

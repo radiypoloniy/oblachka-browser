@@ -1,3 +1,4 @@
+import { setupHistoryContentStore, saveHistoryContent, deletePreviousHistoryContent } from './HistoryContentStore';
 import { installHistoryFunctions } from './HistoryFilters';
 import { app } from 'electron';
 import path from 'node:path';
@@ -47,6 +48,7 @@ export interface HistoryContentChunk {
   dims: number;
   modelVersion: string;
   indexedAt?: number;
+  previous?: boolean;
 }
 
 export class HistoryManager {
@@ -182,40 +184,18 @@ export class HistoryManager {
     }
   }
 
+  getContentCheckedAt(historyId: number): number {
+    if (!this.#db) return 0;
+    const row = this.#db.prepare('SELECT checked_at FROM history_content_state WHERE history_id = ?').get(historyId) as { checked_at: number } | undefined;
+    if (row) return row.checked_at;
+    return (this.#db.prepare('SELECT MAX(indexed_at) AS time FROM history_content_chunks WHERE history_id = ?').get(historyId) as { time: number | null }).time ?? 0;
+  }
+
   saveContentChunks(historyId: number, chunks: ContentChunkInput[], modelVersion: string): boolean {
     if (!this.#db || chunks.length === 0) return false;
     const db = this.#db;
     try {
-      const run = db.transaction(() => {
-        const oldIds = db.prepare(`
-          SELECT id FROM history_content_chunks WHERE history_id = ? AND model_version = ?
-        `).all(historyId, modelVersion) as Array<{ id: number }>;
-        const deleteFts = db.prepare(`DELETE FROM history_content_chunks_fts WHERE rowid = ?`);
-        for (const row of oldIds) deleteFts.run(row.id);
-        db.prepare(`DELETE FROM history_content_chunks WHERE history_id = ? AND model_version = ?`).run(historyId, modelVersion);
-
-        const insertChunk = db.prepare(`
-          INSERT INTO history_content_chunks
-            (history_id, chunk_index, url, title, text, vector, dims, model_version, indexed_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        const insertFts = db.prepare(`
-          INSERT INTO history_content_chunks_fts(rowid, text, title, url) VALUES (?, ?, ?, ?)
-        `);
-        const indexedAt = Date.now();
-        for (const chunk of chunks) {
-          const buf = Buffer.from(chunk.vector.buffer, chunk.vector.byteOffset, chunk.vector.byteLength);
-          const info = insertChunk.run(
-            historyId, chunk.chunkIndex, chunk.url, chunk.title, chunk.text,
-            buf, chunk.dims, modelVersion, indexedAt,
-          );
-          // Стеммим ТОЛЬКО копию для FTS — chunk.text/chunk.title выше в history_content_chunks
-          // остаются как есть (сниппеты, промпт Qwen). url не стеммим — не проза, стеммер на нём
-          // не навредит (латиница проходит без изменений), но и пользы нет, лишний повод для сомнений.
-          insertFts.run(Number(info.lastInsertRowid), stemText(chunk.text), stemText(chunk.title), chunk.url);
-        }
-      });
-      run();
+      saveHistoryContent(db, historyId, chunks, modelVersion);
       return true;
     } catch (e) {
       console.warn('[History] saveContentChunks error:', (e as Error).message);
@@ -455,6 +435,8 @@ export class HistoryManager {
           // history_content_chunks.history_id → history(id) БЕЗ ON DELETE CASCADE, а foreign_keys=ON
           // (#setup) — DELETE FROM history без предварительной чистки детей падает на FK constraint.
           // Порядок обязателен: сначала дети, потом родители.
+          db.prepare('DELETE FROM history_previous_chunks_fts').run();
+          db.prepare('DELETE FROM history_previous_chunks').run();
           try { db.prepare(`DELETE FROM history_content_chunks_fts`).run(); } catch { /* FTS может быть недоступен */ }
           db.prepare(`DELETE FROM history_content_chunks`).run();
           db.prepare(`DELETE FROM history`).run();
@@ -518,6 +500,7 @@ export class HistoryManager {
         value TEXT NOT NULL
       );
     `);
+    setupHistoryContentStore(db);
     try {
       db.exec(`
         CREATE VIRTUAL TABLE IF NOT EXISTS history_content_chunks_fts
@@ -649,6 +632,7 @@ export class HistoryManager {
     const db = this.#db;
     const select = db.prepare(`SELECT id FROM history_content_chunks WHERE history_id = ?`);
     let deleteFts: import('better-sqlite3').Statement | null = null;
+    deletePreviousHistoryContent(db, ids);
     try { deleteFts = db.prepare(`DELETE FROM history_content_chunks_fts WHERE rowid = ?`); } catch { /* FTS может быть недоступен */ }
     const deleteChunks = db.prepare(`DELETE FROM history_content_chunks WHERE history_id = ?`);
     for (const id of ids) {
