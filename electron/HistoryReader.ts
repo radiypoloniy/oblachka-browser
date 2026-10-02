@@ -3,6 +3,8 @@ import { Worker } from 'node:worker_threads';
 import path from 'node:path';
 import type { HistoryManager } from './HistoryManager';
 import type { HistoryReadRequest, HistoryReadResults } from './HistoryReadQueries';
+import { historySearchTopic } from './HistorySearchTopic';
+import { prepareHistoryCandidateChunks } from './HistorySearchSnippet';
 
 class HistoryReader {
   #worker: Worker | null = null;
@@ -79,10 +81,13 @@ function readMemory(history: HistoryManager, request: HistoryReadRequest): Histo
     case 'recent': return history.getRecent(request.limit);
     case 'search': return history.search(request.query, request.limit);
     case 'coverage': return history.getContentCoverage();
-    case 'candidates': return {
-      chunks: history.searchContentChunksFts(request.query, request.version, request.ftsLimit),
-      lexical: history.search(request.query, request.lexicalLimit),
-    };
+    case 'candidates': {
+      const topic = historySearchTopic(request.query);
+      return {
+        chunks: prepareHistoryCandidateChunks(history.searchContentChunksFts(topic, request.version, request.ftsLimit), topic),
+        lexical: history.search(request.query, request.lexicalLimit),
+      };
+    }
   }
 }
 

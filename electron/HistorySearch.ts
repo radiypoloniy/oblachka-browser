@@ -6,6 +6,7 @@ import type { HistoryContentChunk, HistoryManager } from './HistoryManager';
 import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
 import { rerankHistoryCandidates } from './TranslationService';
 import { HISTORY_FTS_PAGE_LIMIT, prepareHistoryCandidateChunks } from './HistorySearchSnippet';
+import { historySearchTopic } from './HistorySearchTopic';
 import { normalizeForOmnibox } from '../shared/frecency';
 import { readHistory } from './HistoryReader';
 import type { CandidateChunk, CandidateRows } from './HistoryReadQueries';
@@ -66,17 +67,18 @@ export function collectHistoryCandidateSet(history: HistoryManager, query: strin
   const q = query.trim();
   if (!q) return { candidates: [], lexicalKeys: new Set() };
 
+  const topic = historySearchTopic(q);
   let chunks: HistoryContentChunk[] = [];
   try {
     // Фильтр шума — до дедупа (не после), чтобы шумная страница не отъедала слот у
     // SMART_FTS_CANDIDATE_LIMIT впустую. h.title (см. коммит "заголовок из history, не из
     // чанка") — без него isNoisyForEmbedding почти всегда сработал бы по isBareDomainTitle:
     // заголовок-URL выглядит как «домен целиком», что выкосило бы валидные результаты, а не только шум.
-    chunks = history.searchContentChunksFts(q, TEXT_EXTRACTION_VERSION, SMART_FTS_SQL_LIMIT);
+    chunks = history.searchContentChunksFts(topic, TEXT_EXTRACTION_VERSION, SMART_FTS_SQL_LIMIT);
   } catch (e) {
     console.warn('[HistorySearch] FTS для smart search не удался:', (e as Error).message);
   }
-  return mergeCandidateRows({ chunks, lexical: history.search(q, SMART_LEXICAL_CANDIDATE_LIMIT) }, q);
+  return mergeCandidateRows({ chunks, lexical: history.search(q, SMART_LEXICAL_CANDIDATE_LIMIT) }, topic);
 }
 
 export async function collectHistoryCandidateSetAsync(history: HistoryManager, query: string): Promise<HistoryCandidateSet> {

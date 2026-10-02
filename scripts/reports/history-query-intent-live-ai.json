@@ -1,0 +1,127 @@
+{
+  "measuredAt": "2026-10-02T15:26:07.189Z",
+  "model": "Qwen3.5 4B Q4_K_M",
+  "runs": [
+    {
+      "key": "battery",
+      "variant": "before",
+      "candidates": [],
+      "chosen": [],
+      "targetRank": null,
+      "degraded": false,
+      "ms": 0.07610000000204309
+    },
+    {
+      "key": "battery",
+      "variant": "after",
+      "candidates": [
+        1,
+        5
+      ],
+      "chosen": [
+        1
+      ],
+      "targetRank": 1,
+      "degraded": false,
+      "ms": 528.2876999999971
+    },
+    {
+      "key": "dns",
+      "variant": "after",
+      "candidates": [
+        2,
+        7,
+        11,
+        4,
+        1,
+        3,
+        5,
+        6,
+        9,
+        8,
+        10
+      ],
+      "chosen": [
+        2
+      ],
+      "targetRank": 1,
+      "degraded": false,
+      "ms": 562.6010999999999
+    },
+    {
+      "key": "dns",
+      "variant": "before",
+      "candidates": [
+        10,
+        1,
+        4,
+        6,
+        5,
+        2,
+        3,
+        9,
+        8
+      ],
+      "chosen": [
+        2
+      ],
+      "targetRank": 1,
+      "degraded": false,
+      "ms": 516.4925999999978
+    },
+    {
+      "key": "backup",
+      "variant": "before",
+      "candidates": [],
+      "chosen": [],
+      "targetRank": null,
+      "degraded": false,
+      "ms": 0.006799999995564576
+    },
+    {
+      "key": "backup",
+      "variant": "after",
+      "candidates": [
+        3
+      ],
+      "chosen": [
+        3
+      ],
+      "targetRank": 1,
+      "degraded": false,
+      "ms": 253.8507000000027
+    },
+    {
+      "key": "missing",
+      "variant": "after",
+      "candidates": [],
+      "chosen": [],
+      "targetRank": null,
+      "degraded": false,
+      "ms": 0.01029999999445863
+    },
+    {
+      "key": "missing",
+      "variant": "before",
+      "candidates": [
+        10,
+        1,
+        4,
+        6,
+        5,
+        2,
+        3,
+        9,
+        8
+      ],
+      "chosen": [
+        8
+      ],
+      "targetRank": null,
+      "degraded": false,
+      "ms": 526.9690999999948
+    }
+  ],
+  "loadMs": 31536.0082,
+  "diagnostic": "\r\nDebugger listening on ws://127.0.0.1:50773/a7228eb1-5313-4ce3-866c-1512e180872e\r\nFor help, see: https://nodejs.org/learn/getting-started/debugging\r\n[gen] limits: translateSegment=300 action=2000 chat=3072 pageBatch=4000 (максимум токенов на выход, на прогон)\n\r\nDevTools listening on ws://127.0.0.1:50772/devtools/browser/06f725cc-5757-4189-9ace-d4abd567fb5d\r\n[AppProtocol] oblako-model:// → C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-9bLgqW\\models (userData) → C:\\Users\\arkie\\Desktop\\oblako\\resources\\models (бандл, фолбэк)\n[AppProtocol] oblako-chrome:// → C:\\Users\\arkie\\Desktop\\oblako\\dist\n[Tracking] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-9bLgqW\\tracking.sqlite\n[History] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-9bLgqW\\history.sqlite\n[Bookmarks] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-9bLgqW\\bookmarks.sqlite\n[Graph] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-9bLgqW\\graphs.sqlite\n[Passwords] сейф инициализирован: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-9bLgqW\\passwords.sqlite\n[Autofill] хранилище инициализировано: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-9bLgqW\\autofill.sqlite\n[HubChat] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-9bLgqW\\chats.sqlite\n[Permissions] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-9bLgqW\\permissions.sqlite\n[AdBlock] кэша движка нет — качаем в фоне, окно не ждёт\nDebugger attached.\r\n[History] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-9bLgqW\\live-intent.sqlite\n[startup] window 448ms\n(node:5648) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 closed listeners added to [BrowserWindow]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit\n(Use `electron --trace-warnings ...` to show where the warning was created)\n[startup] show reason=ui-ready 561ms\n[inference] [gen] llama backend: gpu=vulkan\n[inference] [gen] llama backend: gpu=vulkan\n[AdBlock] движок загружен (Ghostery prebuilt, сеть + косметика)\n[AdBlock] Ghostery активен (сеть + косметика)\n[popover:site] документ готов за 182 мс\n[startup] modelLoadMode=on-demand — прогрев Qwen отложен до открытия AI\n[popover:downloads] документ готов за 170 мс\n[inference] [gen] chat wrapper: QwenChatWrapper\n[inference] [gen] context: n_ctx=16384 trainContextSize=262144\n[inference] [gen] модель держит видеопамяти: 7143 МБ\n[gen] модель загружена в отдельном процессе: gpu=vulkan n_ctx=16384 за 31381мс\n[inference] [perf] segment: inputTokens=373 setup/prefill=460ms generation=59ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=528ms outTokens=1\n[inference] [perf] segment: inputTokens=930 setup/prefill=494ms generation=48ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=562ms outTokens=1\n[inference] [perf] segment: inputTokens=826 setup/prefill=452ms generation=46ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=516ms outTokens=1\n[inference] [perf] segment: inputTokens=306 setup/prefill=200ms generation=48ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=254ms outTokens=1\n[inference] [perf] segment: inputTokens=831 setup/prefill=459ms generation=48ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=527ms outTokens=1\n[inference] [gen] модель выгружена из VRAM\n"
+}

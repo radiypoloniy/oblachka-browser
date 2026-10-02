@@ -21,18 +21,21 @@ await withStand(async ctx=>{
       const id=history.getIdByUrl(url);ids.set(page.key,id);
       history.saveContentChunks(id,buildTextChunks(page.text).map((text,chunkIndex)=>({chunkIndex,url,title:page.title,text,vector:new Float32Array(0),dims:0})),version);
     }
-    const cases=[];let calls=0,lastQuery;
+    const cases=[];let calls=0,lastQuery,reads=0;
+    const originalRead=reader.readHistory;
+    reader.readHistory=async(h,r)=>{if(h===history && r.kind==='candidates')reads++;return originalRead(h,r);};
     service.rerankHistoryCandidates=async(q,rows)=>{calls++;lastQuery=q;return rows.map((_,i)=>i);};
     for(const test of ${JSON.stringify(intentCases)}){
-      calls=0;lastQuery=null;
+      calls=0;lastQuery=null;reads=0;
       const start=performance.now(), collected=await search.collectHistoryCandidateSetAsync(history,test.query);
       const preparationMs=performance.now()-start;
       req('node:assert/strict').deepEqual(collected,search.collectHistoryCandidateSet(history,test.query));
       await search.rerankCollectedHistoryCandidates(test.query,collected);
+      const candidateReads=reads;
       const target=collected.candidates.find(c=>c.id===ids.get(test.target));
       const rows=await reader.readHistory(history,{kind:'candidates',query:test.query,version,lexicalLimit:8,ftsLimit:96});
       cases.push({key:test.key,query:test.query,target:test.target,retrieved:!!target,visibleEvidence:!!test.evidence && !!target?.snippet?.slice(0,240).includes(test.evidence),
-        candidates:collected.candidates.map(c=>({id:c.id,url:c.url})),modelCalls:calls,modelQuery:lastQuery,preparationMs,workerChunks:rows.chunks.length,originalMatch:queries.buildFtsQuery(test.query)});
+        candidates:collected.candidates.map(c=>({id:c.id,url:c.url})),candidateReads,modelCalls:calls,modelQuery:lastQuery,preparationMs,workerChunks:rows.chunks.length,originalMatch:queries.buildFtsQuery(test.query)});
     }
     let topicPreparation;
     if(${after || check}){
@@ -52,6 +55,7 @@ if(after || check){
     if(test.evidence)assert.equal(c.visibleEvidence,true,test.key);
     if(test.target===null)assert.equal(c.candidates.length,0);
     assert.ok(c.modelCalls<=1);
+    assert.equal(c.candidateReads,1);
     if(c.modelCalls)assert.equal(c.modelQuery,test.query);
     assert.ok(c.workerChunks<=12);
   }

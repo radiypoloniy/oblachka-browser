@@ -4,6 +4,7 @@ import { isNoisyForEmbedding } from '../shared/historyIndex';
 import type { HistoryContentChunk } from './HistoryManager';
 import { historyFtsTerms } from './textStemming';
 import { prepareHistoryCandidateChunks } from './HistorySearchSnippet';
+import { historySearchTopic } from './HistorySearchTopic';
 
 export type CandidateChunk = Pick<HistoryContentChunk, 'historyId' | 'url' | 'title' | 'text' | 'lastVisit' | 'visitCount'> & { snippet?: string };
 export interface CandidateRows { lexical: HistoryEntry[]; chunks: CandidateChunk[] }
@@ -53,7 +54,8 @@ export function executeHistoryRead(db: Database, request: HistoryReadRequest): H
     case 'candidates': return db.transaction(() => {
       // Оба источника видят один снимок при параллельной записи индекса в main.
       let chunks: CandidateChunk[] = [], lexical: HistoryEntry[] = [];
-      try { chunks = prepareHistoryCandidateChunks(readFts(db, request.query, request.version, request.ftsLimit), request.query); }
+      const topic = historySearchTopic(request.query);
+      try { chunks = prepareHistoryCandidateChunks(readFts(db, topic, request.version, request.ftsLimit), topic); }
       catch (error) { console.warn('[HistoryReader] FTS:', error); }
       try { lexical = readSearch(db, request.query, request.lexicalLimit); }
       catch (error) { console.warn('[HistoryReader] lexical:', error); }
