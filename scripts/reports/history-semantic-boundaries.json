@@ -1,0 +1,25 @@
+{
+  "measuredAt": "2026-10-02T16:29:09.207Z",
+  "crowding": {
+    "baseCount": 20,
+    "extraContainsTarget": true,
+    "mergedCount": 21,
+    "boundedCount": 20,
+    "boundedContainsTarget": false
+  },
+  "tail": {
+    "sourceChars": 16531,
+    "markerOffset": 16500,
+    "chunks": 8,
+    "storedContainsMarker": false,
+    "candidateCount": 0
+  },
+  "emptyRerankFallback": {
+    "stubbed": true,
+    "candidates": 1,
+    "chosen": [
+      "https://boundary.test/article/lexical-refused"
+    ],
+    "degraded": false
+  }
+}
