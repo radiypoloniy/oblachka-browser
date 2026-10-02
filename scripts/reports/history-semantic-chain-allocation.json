@@ -1,0 +1,11 @@
+{
+  "measuredAt": "2026-10-02T16:48:53.662Z",
+  "fixedAdditionalQuery": true,
+  "baseCount": 20,
+  "extraContainsTarget": true,
+  "appendedContainsTarget": false,
+  "balancedContainsTarget": true,
+  "balancedCount": 20,
+  "preservedLexical": 8,
+  "lexicalCount": 8
+}
