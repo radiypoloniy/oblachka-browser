@@ -31,9 +31,10 @@ await withStand(async ctx => {
     history.recordVisit('https://bench.test/other','unrelated');
     globalThis.__queries=[];globalThis.__holdQuery=null;globalThis.__queryWaiting=false;
     reader.readHistory=async(h,r)=>{
-      if(r.kind==='search')globalThis.__queries.push(r.query);
+      const query=r.kind==='page'?r.page.query:r.query;
+      if(r.kind==='search'||(r.kind==='page'&&query))globalThis.__queries.push(query);
       const result=await original(h,r);
-      if(r.kind==='search' && r.query===globalThis.__holdQuery){
+      if((r.kind==='search'||r.kind==='page') && query===globalThis.__holdQuery){
         globalThis.__queryWaiting=true;
         await new Promise(resolve=>{globalThis.__releaseQuery=resolve;});
       }

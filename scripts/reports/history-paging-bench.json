@@ -1,0 +1,76 @@
+{
+  "records": 500000,
+  "runs": [
+    {
+      "page": {
+        "query": ""
+      },
+      "ms": 7.861199999999826,
+      "rows": 500,
+      "hasNext": true
+    },
+    {
+      "page": {
+        "query": "",
+        "before": {
+          "lastVisit": 250000,
+          "id": 250001
+        }
+      },
+      "ms": 10.215700000000197,
+      "rows": 500,
+      "hasNext": true
+    },
+    {
+      "page": {
+        "query": "",
+        "before": {
+          "lastVisit": 1000,
+          "id": 1001
+        }
+      },
+      "ms": 2.6284999999998035,
+      "rows": 500,
+      "hasNext": true
+    },
+    {
+      "page": {
+        "query": "common"
+      },
+      "ms": 1.7348000000001775,
+      "rows": 500,
+      "hasNext": true
+    },
+    {
+      "page": {
+        "query": "common 0"
+      },
+      "ms": 256.0300000000002,
+      "rows": 1,
+      "hasNext": false
+    },
+    {
+      "page": {
+        "query": "absent-term"
+      },
+      "ms": 659.5138000000002,
+      "rows": 0,
+      "hasNext": false
+    }
+  ],
+  "maxMainTimerGapMs": 28.990200000000186,
+  "plan": [
+    {
+      "id": 4,
+      "parent": 0,
+      "notused": 188,
+      "detail": "SEARCH history USING COVERING INDEX idx_history_last_visit (last_visit<?)"
+    },
+    {
+      "id": 30,
+      "parent": 0,
+      "notused": 0,
+      "detail": "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+    }
+  ]
+}

@@ -82,7 +82,7 @@ await withStand(async ctx => {
     globalThis.__holdHistory=a; globalThis.__historyWaiting=false;
     reader.readHistory=async (history,request)=>{
       const value=await original(history,request);
-      if (request.kind==='recent' && history===globalThis.__holdHistory) {
+      if ((request.kind==='recent'||request.kind==='page') && history===globalThis.__holdHistory) {
         globalThis.__historyWaiting=true;
         await new Promise(resolve=>{globalThis.__releaseHistory=resolve;});
       }

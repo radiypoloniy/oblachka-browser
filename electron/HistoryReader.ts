@@ -78,6 +78,7 @@ export async function readHistory<R extends HistoryReadRequest>(history: History
 
 function readMemory(history: HistoryManager, request: HistoryReadRequest): HistoryReadResults[keyof HistoryReadResults] {
   switch (request.kind) {
+    case 'page': return history.getPage(request.page);
     case 'recent': return history.getRecent(request.limit);
     case 'search': return history.search(request.query, request.limit);
     case 'coverage': return history.getContentCoverage();

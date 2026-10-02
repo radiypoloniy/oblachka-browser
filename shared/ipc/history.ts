@@ -12,6 +12,10 @@ export interface HistoryEntry {
 
 export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
 
+export interface HistoryCursor { lastVisit: number; id: number }
+export interface HistoryPageRequest { query: string; before?: HistoryCursor }
+export interface HistoryPage { entries: HistoryEntry[]; next?: HistoryCursor }
+
 // «Итоги дня» (electron/DayDigest.ts). 'empty' с причиной, а не пустой список: виджету нужно
 // сказать человеку разное — «сегодня ещё нечего обобщать» и «итог просто не собирали».
 export interface DayDigestData {

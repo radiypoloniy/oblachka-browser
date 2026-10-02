@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { X, Trash2, Wand2, Loader2 } from 'lucide-react';
-import type { HistoryEntry, HistoryClearPeriod, SmartSearchResponse } from '../../shared/ipc';
+import type { HistoryEntry, HistoryClearPeriod, SmartSearchResponse, HistoryPage } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import { TEXT, RADIUS, motion, pad, sp } from '../styles/system';
 import { GroupCap, Row, Rows, SideNav, SplitView, type LibrarySummary } from './library/kit';
@@ -9,7 +9,8 @@ import SiteFavicon from './SiteFavicon';
 import { EmptyState } from './EmptyState';
 import { ClockGlyph, SearchGlyph } from './glyphs';
 import { sectionCache } from './library/sectionCache'; import { useLanguage } from '../i18n';
-import { useHistoryLoad, useHistoryQuery } from './library/useHistoryLoad';
+import { useHistoryPages } from './library/useHistoryPages';
+import HistoryPagination from './library/HistoryPagination';
 
 interface HistoryProps {
   /** Строка поиска — общая на всю библиотеку, живёт в оболочке (LibraryShell). */
@@ -143,22 +144,18 @@ export default function History({ query, onSummary }: HistoryProps) {
   // напечатать/запустить новый, пока предыдущий Qwen-вызов ещё летел) мог молча перезаписать
   // уже показанные свежие результаты — тот самый «один результат из прошлого поиска затесался».
   const searchSeqRef = useRef(0);
-  const readQuery = useHistoryQuery(searchSeqRef);
   // Скролл к секции дня по клику в левой навигации — ключ дня → DOM-узел заголовка группы.
   const dayRefs = useRef(new Map<string, HTMLDivElement>());
 
-  const load = useCallback(async () => {
-    const seq = ++searchSeqRef.current;
-    const result = await readQuery(query, seq);
-    if (result === undefined || searchSeqRef.current !== seq) return;
-    if (!query.trim()) cachedEntries.set(result);
-    setEntries(result);
+  const acceptPage = useCallback((page: HistoryPage, first: boolean) => {
+    if (!query.trim() && first) cachedEntries.set(page.entries);
+    setEntries(page.entries);
     setSmartResultsShown(false);
     setSmartDegraded(false);
     setFallbackReason(undefined);
-  }, [query, readQuery]);
-
-  useHistoryLoad(load, searchSeqRef);
+  }, [query]);
+  const paging = useHistoryPages(query, searchSeqRef, acceptPage);
+  const { load } = paging;
   useEffect(() => {
     searchRef.current?.focus();
   }, []);
@@ -299,6 +296,7 @@ export default function History({ query, onSummary }: HistoryProps) {
         </span>
       )}
 
+      {!smartResultsShown && <HistoryPagination paging={paging} />}
       {entries.length === 0 ? (
         <EmptyState
           icon={query ? <SearchGlyph size={22} /> : <ClockGlyph size={22} />}

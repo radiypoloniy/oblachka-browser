@@ -41,6 +41,7 @@ export const CONTENT = {
 
   // История посещений
   HISTORY_GET:    'history:get',     // renderer → main: последние N записей
+  HISTORY_PAGE:   'history:page',    // renderer → main: следующая порция истории/совпадений
   HISTORY_SEARCH: 'history:search',  // renderer → main: поиск по url/title (string)
   HISTORY_DELETE: 'history:delete',  // renderer → main: удалить запись (id: number)
   HISTORY_CLEAR:  'history:clear',   // renderer → main: очистить за период ('hour'|'day'|'week'|'all')

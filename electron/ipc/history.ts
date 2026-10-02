@@ -44,6 +44,7 @@ export function registerHistoryIpc(d: IpcDeps): void {
 
   // История посещений
   ipcMain.handle(IPC.HISTORY_GET,    (_e, limit = 500)              => readHistory(history(), { kind: 'recent', limit }));
+  ipcMain.handle(IPC.HISTORY_PAGE, (_e, page: import('../../shared/ipc').HistoryPageRequest) => readHistory(history(), { kind: 'page', page }));
   ipcMain.handle(IPC.HISTORY_SEARCH, (_e, query: string)            => readHistory(history(), { kind: 'search', query, limit: 500 }));
   ipcMain.handle(IPC.HISTORY_DELETE, (_e, id: number)               => history().deleteEntry(id));
   ipcMain.handle(IPC.HISTORY_CLEAR,  (_e, period: HistoryClearPeriod) => history().clearHistory(period));

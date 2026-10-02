@@ -264,6 +264,7 @@ export interface CoreApi {
 
   // История посещений
   getHistory(limit?: number): Promise<HistoryEntry[]>;
+  getHistoryPage(request: import('./history').HistoryPageRequest): Promise<import('./history').HistoryPage>;
   searchHistory(query: string): Promise<HistoryEntry[]>;
   deleteHistoryEntry(id: number): Promise<void>;
   clearHistory(period: HistoryClearPeriod): Promise<boolean>; // false — очистка не выполнилась, см. HistoryManager.ts::clearHistory

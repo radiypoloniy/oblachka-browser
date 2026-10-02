@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
-import type { HistoryEntry, HistoryContentCoverage } from '../shared/ipc';
+import type { HistoryEntry, HistoryContentCoverage, HistoryPage, HistoryPageRequest } from '../shared/ipc';
+import { readHistoryPage } from './HistoryPaging';
 import { isNoisyForEmbedding } from '../shared/historyIndex';
 import type { HistoryContentChunk } from './HistoryManager';
 import { historyFtsTerms, historyNumericPattern, isHistoryNumericPhrase } from './textStemming';
@@ -9,11 +10,13 @@ import { historySearchTopic } from './HistorySearchTopic';
 export type CandidateChunk = Pick<HistoryContentChunk, 'historyId' | 'url' | 'title' | 'text' | 'lastVisit' | 'visitCount'> & { snippet?: string };
 export interface CandidateRows { lexical: HistoryEntry[]; chunks: CandidateChunk[] }
 export type HistoryReadRequest =
+  | { kind: 'page'; page: HistoryPageRequest }
   | { kind: 'recent'; limit: number }
   | { kind: 'search'; query: string; limit: number }
   | { kind: 'candidates'; query: string; version: string; lexicalLimit: number; ftsLimit: number }
   | { kind: 'coverage' };
 export interface HistoryReadResults {
+  page: HistoryPage;
   recent: HistoryEntry[];
   search: HistoryEntry[];
   candidates: CandidateRows;
@@ -57,6 +60,7 @@ export function readFts(db: Database, query: string, version: string, limit: num
 }
 export function executeHistoryRead(db: Database, request: HistoryReadRequest): HistoryReadResults[keyof HistoryReadResults] {
   switch (request.kind) {
+    case 'page': return readHistoryPage(db, request.page);
     case 'recent': return readRecent(db, request.limit);
     case 'search': return readSearch(db, request.query, request.limit);
     case 'candidates': return db.transaction(() => {

@@ -1,21 +1,21 @@
 import type { HistoryEntry } from '../../../shared/ipc';
 
-interface QueryJob {
-  query: string;
+interface QueryJob<T, Q> {
+  query: Q;
   isCurrent: () => boolean;
-  resolve: (entries: HistoryEntry[] | undefined) => void;
+  resolve: (entries: T | undefined) => void;
   reject: (error: unknown) => void;
 }
 
 // Очередь принадлежит одному разделу истории: чужой поиск и AI не отменяются.
 // undefined означает устаревший запрос, а [] остаётся настоящим пустым результатом.
-export class LatestHistoryQuery {
+export class LatestHistoryQuery<T = HistoryEntry[], Q = string> {
   #running = false;
-  #waiting: QueryJob | null = null;
+  #waiting: QueryJob<T, Q> | null = null;
 
-  constructor(private readonly read: (query: string) => Promise<HistoryEntry[]>) {}
+  constructor(private readonly read: (query: Q) => Promise<T>) {}
 
-  run(query: string, isCurrent: () => boolean): Promise<HistoryEntry[] | undefined> {
+  run(query: Q, isCurrent: () => boolean): Promise<T | undefined> {
     return new Promise((resolve, reject) => {
       const job = { query, isCurrent, resolve, reject };
       if (this.#running) {
@@ -27,7 +27,7 @@ export class LatestHistoryQuery {
     });
   }
 
-  async #dispatch(job: QueryJob): Promise<void> {
+  async #dispatch(job: QueryJob<T, Q>): Promise<void> {
     this.#running = true;
     try {
       // Размонтирование, смена профиля или запуск AI инвалидируют поколение даже без

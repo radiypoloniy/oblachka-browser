@@ -7,6 +7,7 @@ import { coverageFromCounts, isIdleCatchupRow, isNoisyForEmbedding, IDLE_CATCHUP
 import { stemText, STEM_VERSION } from './textStemming';
 import { buildFtsQuery, readFts, readRecent, readSearch } from './HistoryReadQueries';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
+import { readHistoryPage } from './HistoryPaging';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, чтобы браузер запускался даже без C++ инструментов.
@@ -387,6 +388,10 @@ export class HistoryManager {
     } catch (e) {
       console.warn('[History] updateTitle error:', (e as Error).message);
     }
+  }
+
+  getPage(request: import('../shared/ipc').HistoryPageRequest): import('../shared/ipc').HistoryPage {
+    return this.#db ? readHistoryPage(this.#db, request) : { entries: [] };
   }
 
   getRecent(limit = RECENT_LIMIT): HistoryEntry[] {

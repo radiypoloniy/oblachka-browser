@@ -258,6 +258,7 @@ const api: OblakoApi = {
 
   // История посещений
   getHistory:         (limit?: number)              => ipcRenderer.invoke(IPC.HISTORY_GET, limit) as Promise<HistoryEntry[]>,
+  getHistoryPage: (request) => ipcRenderer.invoke(IPC.HISTORY_PAGE, request),
   searchHistory:      (query: string)               => ipcRenderer.invoke(IPC.HISTORY_SEARCH, query) as Promise<HistoryEntry[]>,
   deleteHistoryEntry: (id: number)                  => ipcRenderer.invoke(IPC.HISTORY_DELETE, id),
   clearHistory:       (period: HistoryClearPeriod)  => ipcRenderer.invoke(IPC.HISTORY_CLEAR, period),
@@ -268,7 +269,6 @@ const api: OblakoApi = {
   },
   searchHistorySmart: (query: string) =>
     ipcRenderer.invoke(IPC.HISTORY_SEARCH_SMART, query) as Promise<SmartSearchResponse>,
-
   // Закладки
   addBookmark: (url: string, title: string) =>
     ipcRenderer.invoke(IPC.BOOKMARK_ADD, url, title) as Promise<BookmarkEntry | null>,
