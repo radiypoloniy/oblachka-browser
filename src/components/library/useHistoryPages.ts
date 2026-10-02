@@ -4,7 +4,7 @@ import type { HistoryCursor, HistoryPage, HistoryPageRequest } from '../../../sh
 import { LatestHistoryQuery } from './LatestHistoryQuery';
 
 export function useHistoryPages(query: string, sequence: MutableRefObject<number>,
-  accept: (page: HistoryPage, first: boolean) => void) {
+  accept: (page: HistoryPage, first: boolean) => void, filters?: import('../../../shared/ipc').HistorySearchFilters) {
   const queue = useMemo(() => new LatestHistoryQuery<HistoryPage, HistoryPageRequest>(
     request => window.oblako.getHistoryPage(request)), []);
   // Храним только границы страниц. Сами записи предыдущих страниц не копятся в памяти.
@@ -15,7 +15,7 @@ export function useHistoryPages(query: string, sequence: MutableRefObject<number
     const generation = ++sequence.current;
     setLoading(true); setError(false);
     try {
-      const page = await queue.run({ query, before }, () => sequence.current === generation);
+      const page = await queue.run({ query, before, filters }, () => sequence.current === generation);
       if (!page) return;
       accept(page, position === 0); setIndex(position); setNext(page.next);
       // При возврате записи могли измениться: следующие переходы строим по свежей границе.
@@ -26,7 +26,7 @@ export function useHistoryPages(query: string, sequence: MutableRefObject<number
     } finally {
       if (sequence.current === generation) setLoading(false);
     }
-  }, [query, sequence, queue, accept]);
+  }, [query, sequence, queue, accept, filters]);
   const load = useCallback(() => {
     cursors.current = [undefined]; setIndex(0); setNext(undefined);
     return read(0);

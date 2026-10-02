@@ -13,7 +13,8 @@ export interface HistoryEntry {
 export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
 
 export interface HistoryCursor { lastVisit: number; id: number }
-export interface HistoryPageRequest { query: string; before?: HistoryCursor }
+export interface HistorySearchFilters { domain?: string; from?: number; to?: number }
+export interface HistoryPageRequest { query: string; before?: HistoryCursor; filters?: HistorySearchFilters }
 export interface HistoryPage { entries: HistoryEntry[]; next?: HistoryCursor }
 
 // «Итоги дня» (electron/DayDigest.ts). 'empty' с причиной, а не пустой список: виджету нужно
@@ -145,6 +146,7 @@ export interface SemanticSearchResult {
   visitCount: number;
   score: number;
   snippet?: string;
+  capturedAt?: number;
 }
 
 /** Ответ «вы это уже читали». `pending` — это FTS, реранк ещё идёт; такие results на экран не кладут. */

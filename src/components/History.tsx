@@ -11,6 +11,7 @@ import { ClockGlyph, SearchGlyph } from './glyphs';
 import { sectionCache } from './library/sectionCache'; import { useLanguage } from '../i18n';
 import { useHistoryPages } from './library/useHistoryPages';
 import HistoryPagination from './library/HistoryPagination';
+import HistoryFilters from './library/HistoryFilters';
 
 interface HistoryProps {
   /** Строка поиска — общая на всю библиотеку, живёт в оболочке (LibraryShell). */
@@ -131,6 +132,7 @@ export default function History({ query, onSummary }: HistoryProps) {
   const [smartOn, setSmartOn] = useState(false);
   const [smartLoading, setSmartLoading] = useState(false);
   const [smartStage, setSmartStage] = useState<'expanding' | 'retrieving' | 'ranking'>('retrieving');
+  const [filters, setFilters] = useState<import('../../shared/ipc').HistorySearchFilters>({});
   // Запасную выдачу нельзя подписывать «По смыслу»: модель её не подтвердила.
   const [smartDegraded, setSmartDegraded] = useState(false);
   const [fallbackReason, setFallbackReason] = useState<SmartSearchResponse['fallbackReason']>();
@@ -154,7 +156,7 @@ export default function History({ query, onSummary }: HistoryProps) {
     smartRequest.current = undefined;
     setSmartLoading(false);
   }, []);
-  useEffect(() => { cancelSmart(); return cancelSmart; }, [query, cancelSmart]);
+  useEffect(() => { cancelSmart(); return cancelSmart; }, [query, filters, cancelSmart]);
   useEffect(() => window.oblako.onProfilesChanged(() => {
     searchSeqRef.current++; cancelSmart();
   }), [cancelSmart]);
@@ -168,7 +170,7 @@ export default function History({ query, onSummary }: HistoryProps) {
     setSmartDegraded(false);
     setFallbackReason(undefined);
   }, [query]);
-  const paging = useHistoryPages(query, searchSeqRef, acceptPage);
+  const paging = useHistoryPages(query, searchSeqRef, acceptPage, filters);
   const { load } = paging;
   useEffect(() => {
     searchRef.current?.focus();
@@ -204,7 +206,7 @@ export default function History({ query, onSummary }: HistoryProps) {
     setSmartLoading(true);
     setSmartStage('retrieving');
     try {
-      const response = await window.oblako.searchHistorySmart(q, requestId);
+      const response = await window.oblako.searchHistorySmart(q, requestId, filters);
       if (searchSeqRef.current === seq && !response.cancelled) {
         setEntries(response.results); setSmartResultsShown(true);
         setSmartDegraded(response.degraded); setFallbackReason(response.fallbackReason);
@@ -243,6 +245,7 @@ export default function History({ query, onSummary }: HistoryProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+      <HistoryFilters filters={filters} onChange={setFilters} />
       {/* Управление разделом. Крестика тут больше нет — он один и стоит в шапке библиотеки. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), flexWrap: 'wrap', position: 'relative' }}>
         {/* ⚠️ «Найти по смыслу» — СТРОКА-ДЕЙСТВИЕ, а не спрятанная палочка в поле ввода. Кнопка
@@ -386,14 +389,14 @@ export default function History({ query, onSummary }: HistoryProps) {
 // ⚠️ Адрес переехал ПОД заголовок. Раньше домен стоял справа от него в одной строке и отъедал
 // ширину: длинные заголовки обрезались вдвое раньше, чем нужно, при том что сайт и так виден
 // по значку.
-function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: string }; onDelete: (id: number) => void }) { const { t } = useLanguage();
+function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: string; capturedAt?: number }; onDelete: (id: number) => void }) { const { t } = useLanguage();
   return (
     <Row
       lead={timeOf(entry.lastVisit)}
       icon={<SiteFavicon url={entry.url} size={22} />}
       title={entry.title || entry.url}
       subtitle={entry.snippet ? `${domainOf(entry.url)} · ${entry.snippet}` : domainOf(entry.url)}
-      title2={entry.url}
+      title2={entry.capturedAt ? `${entry.url}\n${t('Текст сохранён')}: ${new Date(entry.capturedAt).toLocaleString()}` : entry.url}
       onClick={() => { void window.oblako.createTab(entry.url); }}
       actions={(
         <button

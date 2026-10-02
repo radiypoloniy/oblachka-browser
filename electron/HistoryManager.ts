@@ -1,3 +1,4 @@
+import { installHistoryFunctions } from './HistoryFilters';
 import { app } from 'electron';
 import path from 'node:path';
 import type { HistoryEntry, HistoryClearPeriod, HistoryContentCoverage } from '../shared/ipc';
@@ -45,6 +46,7 @@ export interface HistoryContentChunk {
   vector: Buffer;
   dims: number;
   modelVersion: string;
+  indexedAt?: number;
 }
 
 export class HistoryManager {
@@ -73,6 +75,7 @@ export class HistoryManager {
 
     try {
       this.#db = new SqliteConstructor(this.#dbPath);
+      installHistoryFunctions(this.#db);
       this.#setup();
       this.#migrateContentChunksToTextVersion();
       this.#rebuildFtsWithStemming();
@@ -354,10 +357,10 @@ export class HistoryManager {
     return result;
   }
 
-  searchContentChunksFts(query: string, modelVersion: string, limit: number): HistoryContentChunk[] {
+  searchContentChunksFts(query: string, modelVersion: string, limit: number, filters?: import('../shared/ipc').HistorySearchFilters): HistoryContentChunk[] {
     if (!this.#db) return [];
     try {
-      return readFts(this.#db, query, modelVersion, limit);
+      return readFts(this.#db, query, modelVersion, limit, filters);
     } catch (e) {
       console.warn('[History] searchContentChunksFts error:', (e as Error).message);
       return [];
@@ -421,10 +424,10 @@ export class HistoryManager {
     }
   }
 
-  search(query: string, limit = RECENT_LIMIT): HistoryEntry[] {
+  search(query: string, limit = RECENT_LIMIT, filters?: import('../shared/ipc').HistorySearchFilters): HistoryEntry[] {
     if (!this.#db) return [];
     try {
-      return readSearch(this.#db, query, limit);
+      return readSearch(this.#db, query, limit, filters);
     } catch (e) {
       console.warn('[History] search error:', (e as Error).message);
       return [];

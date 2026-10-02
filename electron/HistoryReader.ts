@@ -85,8 +85,9 @@ function readMemory(history: HistoryManager, request: HistoryReadRequest): Histo
     case 'candidates': {
       const topic = historySearchTopic(request.query);
       return {
-        chunks: prepareHistoryCandidateChunks(history.searchContentChunksFts(topic, request.version, request.ftsLimit), topic),
-        lexical: history.search(request.query, request.lexicalLimit),
+        prepared: true,
+        chunks: prepareHistoryCandidateChunks(history.searchContentChunksFts(topic, request.version, request.ftsLimit, request.filters), topic),
+        lexical: history.search(request.query, request.lexicalLimit, request.filters),
       };
     }
   }

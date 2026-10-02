@@ -267,8 +267,8 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.HISTORY_OPEN, handler);
     return () => ipcRenderer.removeListener(IPC.HISTORY_OPEN, handler);
   },
-  searchHistorySmart: (query: string, requestId?: string) =>
-    ipcRenderer.invoke(IPC.HISTORY_SEARCH_SMART, query, requestId) as Promise<SmartSearchResponse>,
+  searchHistorySmart: (query: string, requestId?: string, filters?: import('../shared/ipc').HistorySearchFilters) =>
+    ipcRenderer.invoke(IPC.HISTORY_SEARCH_SMART, query, requestId, filters) as Promise<SmartSearchResponse>,
   cancelHistorySearch: (requestId: string) => ipcRenderer.send(IPC.HISTORY_SEARCH_CANCEL, requestId),
   onHistorySearchProgress: (cb) => {
     const handler = (_e: Electron.IpcRendererEvent, progress: import('../shared/ipc').HistorySearchProgress) => cb(progress);

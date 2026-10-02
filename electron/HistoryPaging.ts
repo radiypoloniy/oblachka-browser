@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import type { HistoryEntry, HistoryPage, HistoryPageRequest } from '../shared/ipc';
+import { historyFilterSql } from './HistoryFilters';
 
 export function readHistoryPage(db: Database, request: HistoryPageRequest): HistoryPage {
   const { query, before } = request;
@@ -18,8 +19,8 @@ export function readHistoryPage(db: Database, request: HistoryPageRequest): Hist
     args.push(before.lastVisit, before.lastVisit, before.id);
   }
   const rows = db.prepare(`SELECT id, url, title, last_visit AS lastVisit, visit_count AS visitCount
-    FROM history ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
-    ORDER BY last_visit DESC, id DESC LIMIT 501`).all(...args) as HistoryEntry[];
+    FROM history WHERE ${conditions.length ? conditions.join(' AND ') : '1'}${historyFilterSql(request.filters).sql}
+    ORDER BY last_visit DESC, id DESC LIMIT 501`).all(...args, ...historyFilterSql(request.filters).args) as HistoryEntry[];
   const entries = rows.slice(0, 500), last = entries.at(-1);
   return { entries, ...(rows.length > 500 && last ? { next: { lastVisit: last.lastVisit, id: last.id } } : {}) };
 }

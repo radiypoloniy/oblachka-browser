@@ -11,7 +11,7 @@ import { normalizeForOmnibox } from '../shared/frecency';
 import { readHistory } from './HistoryReader';
 import { mergeExpandedHistory } from '../shared/historyExpansion';
 import type { CandidateChunk, CandidateRows } from './HistoryReadQueries';
-import type { HistoryEntry, SemanticSearchResult, SmartSearchResponse } from '../shared/ipc';
+import type { HistoryEntry, SemanticSearchResult, SmartSearchResponse, HistorySearchFilters } from '../shared/ipc';
 
 function chunkToResult(chunk: CandidateChunk, score: number): SemanticSearchResult {
   return {
@@ -22,6 +22,7 @@ function chunkToResult(chunk: CandidateChunk, score: number): SemanticSearchResu
     visitCount: chunk.visitCount,
     score,
     snippet: chunk.snippet,
+    capturedAt: chunk.indexedAt,
   };
 }
 
@@ -82,18 +83,18 @@ export function collectHistoryCandidateSet(history: HistoryManager, query: strin
   return mergeCandidateRows({ chunks, lexical: history.search(q, SMART_LEXICAL_CANDIDATE_LIMIT) }, topic);
 }
 
-export async function collectHistoryCandidateSetAsync(history: HistoryManager, query: string): Promise<HistoryCandidateSet> {
+export async function collectHistoryCandidateSetAsync(history: HistoryManager, query: string, filters?: HistorySearchFilters): Promise<HistoryCandidateSet> {
   const q = query.trim();
   if (!q) return { candidates: [], lexicalKeys: new Set() };
   const rows = await readHistory(history, {
     kind: 'candidates', query: q, version: TEXT_EXTRACTION_VERSION,
-    lexicalLimit: SMART_LEXICAL_CANDIDATE_LIMIT, ftsLimit: SMART_FTS_SQL_LIMIT,
+    lexicalLimit: SMART_LEXICAL_CANDIDATE_LIMIT, ftsLimit: SMART_FTS_SQL_LIMIT, filters,
   });
   return mergeCandidateRows(rows, q);
 }
 
 function mergeCandidateRows(rows: CandidateRows, query: string): HistoryCandidateSet {
-  const ftsCandidates = prepareHistoryCandidateChunks(rows.chunks, query)
+  const ftsCandidates = (rows.prepared ? rows.chunks : prepareHistoryCandidateChunks(rows.chunks, query))
     .map((chunk, index) => chunkToResult(chunk, 1 / (60 + index + 1)));
   const lexicalCandidates = rows.lexical.map((entry, index) => historyEntryToSemanticResult(entry, 1 / (60 + index + 1)));
 
@@ -122,14 +123,14 @@ export async function searchHistorySmart(
   // background — поиск, которого человек не заказывал (подсказка «вы это уже читали»).
   // related — та же труба, но пустой реранк не должен гасить FTS: для headline это «не та
   // статья», для темы — как раз соседние материалы.
-  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal; expand?: boolean; onStage?: (stage: 'expanding' | 'retrieving' | 'ranking') => void },
+  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal; filters?: HistorySearchFilters; expand?: boolean; onStage?: (stage: 'expanding' | 'retrieving' | 'ranking') => void },
 ): Promise<SmartSearchResponse> {
   const q = query.trim();
   if (!q) return { results: [], degraded: false };
 
   opts?.abort?.throwIfAborted();
   opts?.onStage?.('retrieving');
-  let collected = await collectHistoryCandidateSetAsync(history, q);
+  let collected = await collectHistoryCandidateSetAsync(history, q, opts?.filters);
   if (opts?.expand) {
     try {
       opts.onStage?.('expanding');
@@ -138,7 +139,7 @@ export async function searchHistorySmart(
       opts.onStage?.('retrieving');
       for (const variant of variants) {
         opts.abort?.throwIfAborted();
-        extra.push(await collectHistoryCandidateSetAsync(history, variant));
+        extra.push(await collectHistoryCandidateSetAsync(history, variant, opts.filters));
       }
       if (extra.length) collected = mergeExpandedHistory(collected, extra);
     } catch (error) {
@@ -155,7 +156,7 @@ export async function rerankCollectedHistoryCandidates(
   query: string,
   collected: HistoryCandidateSet,
   limit = 8,
-  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal; expand?: boolean; onStage?: (stage: 'expanding' | 'retrieving' | 'ranking') => void },
+  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal; filters?: HistorySearchFilters; expand?: boolean; onStage?: (stage: 'expanding' | 'retrieving' | 'ranking') => void },
 ): Promise<SmartSearchResponse> {
   const q = query.trim();
   const { candidates, lexicalKeys } = collected;

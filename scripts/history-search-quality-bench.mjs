@@ -72,7 +72,7 @@ if(after){
   for(const actual of report.cases){
     const old=before.cases.find(c=>c.key===actual.key);
     // Визиты создаются настоящим recordVisit: их время отличается между запусками стенда.
-    const identity=rows=>rows.map(({lastVisit,score,...candidate})=>candidate).sort((a,b)=>a.id-b.id);
+    const identity=rows=>rows.map(({lastVisit,score,capturedAt,...candidate})=>candidate).sort((a,b)=>a.id-b.id);
     // Новый отбор намеренно меняет ранги. Проверяем сохранность находок и доказательств.
     if(actual.key!=='backup-number')assert.deepEqual(identity(actual.candidates),identity(old.candidates),`${actual.key}: candidate set changed`);
     assert.deepEqual(actual.lexicalKeys,old.lexicalKeys);

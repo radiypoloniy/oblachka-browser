@@ -52,13 +52,13 @@ export function registerHistoryIpc(d: IpcDeps): void {
   // Умный поиск — Qwen-реранк, только по явному Enter (см. HistorySearch.ts::searchHistorySmart).
   const searches = new HistorySearchTasks();
   ipcMain.on(IPC.HISTORY_SEARCH_CANCEL, (e, id: string) => searches.cancel(e.sender.id, id));
-  ipcMain.handle(IPC.HISTORY_SEARCH_SMART, async (e, query: string, requestId?: string) => {
+  ipcMain.handle(IPC.HISTORY_SEARCH_SMART, async (e, query: string, requestId?: string, filters?: import('../../shared/ipc').HistorySearchFilters) => {
     const id = requestId ?? `${Date.now()}`;
     const owner = e.sender.id, source = history(), abort = searches.start(owner, id);
     const destroy = () => searches.cancel(owner, id);
     e.sender.once('destroyed', destroy);
     try {
-      const response = await searchHistorySmart(source, query, 8, { abort: abort.signal, expand: true,
+      const response = await searchHistorySmart(source, query, 8, { abort: abort.signal, expand: true, filters,
         onStage: stage => {
           if (history() !== source) abort.abort();
           if (!abort.signal.aborted && !e.sender.isDestroyed()) e.sender.send(IPC.HISTORY_SEARCH_PROGRESS, { requestId: id, stage });
