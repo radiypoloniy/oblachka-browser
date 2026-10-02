@@ -23,6 +23,7 @@ import * as FileStore from './ai/FileStore'
 import { isQwenBusy, withQwenQueue, withQwenQueueBackground } from './QwenQueue'
 import { buildRelatedRerankPrompt } from '../shared/relatedHistory'
 import { parseRerankIndices } from '../shared/rerankOutput'
+import { assertSearchGenerationComplete } from '../shared/searchGeneration'
 import { LOCAL_CONNECTION_ID } from '../shared/aiProviders'
 export { withQwenQueueBackground }
 import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
@@ -371,9 +372,12 @@ async function runPrompt(
   opts: { role: AiRole; background?: boolean; signal?: { aborted: boolean }; schema?: JsonSchema; abort?: AbortSignal },
 ): Promise<{ out: string; tokens: number; stopReason: string }> {
   const model = modelFor(opts.role, ensureLoaded, getLoadedModelId)
-  const run = () => runPromptQueued(model, prompt, maxTokens, onChunk, opts?.schema, opts?.abort)
+  const run = () => {
+    opts.abort?.throwIfAborted()
+    return runPromptQueued(model, prompt, maxTokens, onChunk, opts?.schema, opts?.abort)
+  }
   if (model.connection.kind !== 'local') return run()
-  return opts?.background ? withQwenQueueBackground(run, opts.signal) : withQwenQueue(run)
+  return opts?.background ? withQwenQueueBackground(run, opts.signal ?? opts.abort) : withQwenQueue(run, opts.abort)
 }
 
 async function runPromptQueued(model: Provider, prompt: string, maxTokens: number, onChunk: ((text: string) => void) | undefined, schema?: JsonSchema, abort?: AbortSignal): Promise<{ out: string; tokens: number; stopReason: string }> {
@@ -447,12 +451,14 @@ export async function rerankHistoryCandidates(
   candidates: RerankCandidate[],
   // background — переранжирование, которого человек не заказывал (подсказка «вы это уже читали»
   // при клике в омнибокс). Ждёт, пока пользовательская полоса не опустеет (см. QwenQueue.ts).
-  opts?: { background?: boolean; related?: boolean },
+  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal },
 ): Promise<number[]> {
   if (candidates.length === 0) return []
   // Загрузка принадлежит выбранному provider: локальный поднимет модель сам,
   // внешний не должен зависеть от наличия GGUF и занимать локальную память.
-  const { out } = await runPrompt(buildRerankPrompt(query, candidates, opts?.related), RERANK_MAX_TOKENS, undefined, { ...opts, role: 'search' })
+  const { out, stopReason } = await runPrompt(buildRerankPrompt(query, candidates, opts?.related), RERANK_MAX_TOKENS, undefined, { ...opts, role: 'search' })
+  opts?.abort?.throwIfAborted()
+  assertSearchGenerationComplete(stopReason)
   return parseRerankIndices(out, candidates.length)
 }
 

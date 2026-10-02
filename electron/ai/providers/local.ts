@@ -34,7 +34,9 @@ export function createLocalProvider(deps: LocalDeps): Provider {
     },
 
     async generate(prompt: string, opts?: GenOpts): Promise<GenResult> {
+      opts?.abort?.throwIfAborted();
       await deps.ensureLoaded();
+      opts?.abort?.throwIfAborted();
       try {
         const { out, tokens, stopReason } = await Inference.runPrompt(
           prompt, opts?.maxTokens ?? 512, opts?.onChunk, opts?.schema, opts?.abort,

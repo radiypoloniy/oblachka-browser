@@ -8,6 +8,7 @@ import { suggestBookmarkFolders } from '../BookmarkOrganizer';
 import { cancelContentBackfill, setContentBackfillProgressListener, startContentBackfill } from '../HistoryContentBackfill';
 import { startHistoryIdleCatchup } from '../HistoryIdleCatchup';
 import { searchHistorySmart } from '../HistorySearch';
+import { HistorySearchTasks } from '../HistorySearchTasks';
 import { readHistory } from '../HistoryReader';
 import { fetchSearchSuggestions } from '../SearchSuggestFetcher';
 import { broadcastToChrome, contextFromSender, mainContext } from '../WindowRegistry';
@@ -49,7 +50,21 @@ export function registerHistoryIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.HISTORY_DELETE, (_e, id: number)               => history().deleteEntry(id));
   ipcMain.handle(IPC.HISTORY_CLEAR,  (_e, period: HistoryClearPeriod) => history().clearHistory(period));
   // Умный поиск — Qwen-реранк, только по явному Enter (см. HistorySearch.ts::searchHistorySmart).
-  ipcMain.handle(IPC.HISTORY_SEARCH_SMART, (_e, query: string) => searchHistorySmart(history(), query));
+  const searches = new HistorySearchTasks();
+  ipcMain.on(IPC.HISTORY_SEARCH_CANCEL, (e, id: string) => searches.cancel(e.sender.id, id));
+  ipcMain.handle(IPC.HISTORY_SEARCH_SMART, async (e, query: string, requestId?: string) => {
+    const id = requestId ?? `${Date.now()}`;
+    const owner = e.sender.id, source = history(), abort = searches.start(owner, id);
+    const destroy = () => searches.cancel(owner, id);
+    e.sender.once('destroyed', destroy);
+    try {
+      const response = await searchHistorySmart(source, query, 8, { abort: abort.signal });
+      return abort.signal.aborted || history() !== source ? { results: [], degraded: false, cancelled: true } : response;
+    } catch (error) {
+      if (abort.signal.aborted || history() !== source) return { results: [], degraded: false, cancelled: true };
+      throw error;
+    } finally { e.sender.removeListener('destroyed', destroy); searches.finish(owner, abort); }
+  });
 
   // Закладки — пуш BOOKMARK_CHANGED во все окна после каждой успешной мутации, тот же
   // приём, что уже используется для PASSWORDS_CHANGED (инлайн, не через конструктор-колбэк).

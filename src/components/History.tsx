@@ -144,6 +144,16 @@ export default function History({ query, onSummary }: HistoryProps) {
   // напечатать/запустить новый, пока предыдущий Qwen-вызов ещё летел) мог молча перезаписать
   // уже показанные свежие результаты — тот самый «один результат из прошлого поиска затесался».
   const searchSeqRef = useRef(0);
+  const smartRequest = useRef<string>();
+  const cancelSmart = useCallback(() => {
+    if (smartRequest.current) window.oblako.cancelHistorySearch(smartRequest.current);
+    smartRequest.current = undefined;
+    setSmartLoading(false);
+  }, []);
+  useEffect(() => { cancelSmart(); return cancelSmart; }, [query, cancelSmart]);
+  useEffect(() => window.oblako.onProfilesChanged(() => {
+    searchSeqRef.current++; cancelSmart();
+  }), [cancelSmart]);
   // Скролл к секции дня по клику в левой навигации — ключ дня → DOM-узел заголовка группы.
   const dayRefs = useRef(new Map<string, HTMLDivElement>());
 
@@ -185,10 +195,12 @@ export default function History({ query, onSummary }: HistoryProps) {
     const q = query.trim();
     if (!q || smartLoading) return;
     const seq = ++searchSeqRef.current;
+    const requestId = crypto.randomUUID();
+    smartRequest.current = requestId;
     setSmartLoading(true);
     try {
-      const response = await window.oblako.searchHistorySmart(q);
-      if (searchSeqRef.current === seq) {
+      const response = await window.oblako.searchHistorySmart(q, requestId);
+      if (searchSeqRef.current === seq && !response.cancelled) {
         setEntries(response.results); setSmartResultsShown(true);
         setSmartDegraded(response.degraded); setFallbackReason(response.fallbackReason);
       } // иначе — устарело, юзер уже дальше
@@ -199,7 +211,7 @@ export default function History({ query, onSummary }: HistoryProps) {
       // только если этот запрос всё ещё актуален.
       if (searchSeqRef.current === seq) void load();
     } finally {
-      setSmartLoading(false);
+      if (smartRequest.current === requestId) { smartRequest.current = undefined; setSmartLoading(false); }
     }
   }
 

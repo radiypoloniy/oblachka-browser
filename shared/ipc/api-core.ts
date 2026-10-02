@@ -271,7 +271,8 @@ export interface CoreApi {
   onHistoryOpen(cb: () => void): () => void;
   // Умный поиск — Qwen-реранк top-k кандидатов, только по явному Enter (см. HistorySearch.ts).
   // degraded:true — запасные находки без подтверждения AI; fallbackReason объясняет причину.
-  searchHistorySmart(query: string): Promise<SmartSearchResponse>;
+  searchHistorySmart(query: string, requestId?: string): Promise<SmartSearchResponse>;
+  cancelHistorySearch(requestId: string): void;
 
   // Закладки — плоский список (parentId всегда null в Feature 1)
   addBookmark(url: string, title: string): Promise<BookmarkEntry | null>;

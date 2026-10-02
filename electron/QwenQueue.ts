@@ -86,11 +86,24 @@ function pump(): void {
 export function enqueueQwen<T>(fn: () => Promise<T>, lane: QueueLane = 'user', signal?: { aborted: boolean }): Promise<T> {
   if (lane === 'user') lastUserRequestAt = Date.now();
   return new Promise<T>((resolve, reject) => {
-    lanes[lane].push({
+    const abort = signal instanceof AbortSignal ? signal : undefined;
+    const cancel = () => {
+      const position = lanes[lane].indexOf(job);
+      if (position >= 0) {
+        lanes[lane].splice(position, 1);
+        job.settle({ ok: false, error: new QueueCancelled() });
+      }
+    };
+    const job: Job = {
       run: fn as () => Promise<unknown>,
       signal,
-      settle: (r) => (r.ok ? resolve(r.value as T) : reject(r.error)),
-    });
+      settle: (r) => {
+        abort?.removeEventListener('abort', cancel);
+        return r.ok ? resolve(r.value as T) : reject(r.error);
+      },
+    };
+    lanes[lane].push(job);
+    abort?.addEventListener('abort', cancel, { once: true });
     pump();
   });
 }
@@ -124,8 +137,8 @@ export function queueDepth(lane: QueueLane): number {
 // FIFO — то есть любая фоновая затея вставала перед человеком, нажавшим «перевести». Вынесена
 // отдельным модулем не ради красоты: без импортов node-llama-cpp её можно прогнать прямыми
 // вызовами и доказать порядок, а не надеяться на него.
-export function withQwenQueue<T>(fn: () => Promise<T>): Promise<T> {
-  return enqueueQwen(fn, 'user')
+export function withQwenQueue<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  return enqueueQwen(fn, 'user', signal)
 }
 
 /**

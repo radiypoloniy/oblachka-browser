@@ -159,6 +159,7 @@ export interface SmartSearchResponse {
   results: SemanticSearchResult[];
   degraded: boolean;
   fallbackReason?: 'unavailable' | 'no-semantic-match';
+  cancelled?: boolean;
 }
 
 // Заход G, блок 5 — прогресс разового бэкфилла истории.

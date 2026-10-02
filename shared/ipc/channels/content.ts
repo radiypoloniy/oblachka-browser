@@ -49,6 +49,7 @@ export const CONTENT = {
   // Умный поиск (лексика + FTS по тексту чанков, Qwen-реранк top-k кандидатов) — только по явному
   // действию (Enter), НЕ на каждый keystroke, см. HistorySearch.ts::searchHistorySmart.
   HISTORY_SEARCH_SMART: 'history:search-smart', // renderer → main: query -> SmartSearchResponse
+  HISTORY_SEARCH_CANCEL: 'history:search-cancel',
 
   // Закладки — плоский список (parentId всегда null в Feature 1, см. BookmarkManager.ts)
   BOOKMARK_ADD:           'bookmark:add',            // renderer → main: (url, title) -> BookmarkEntry | null

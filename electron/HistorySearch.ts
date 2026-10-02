@@ -124,12 +124,15 @@ export async function searchHistorySmart(
   // background — поиск, которого человек не заказывал (подсказка «вы это уже читали»).
   // related — та же труба, но пустой реранк не должен гасить FTS: для headline это «не та
   // статья», для темы — как раз соседние материалы.
-  opts?: { background?: boolean; related?: boolean },
+  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal },
 ): Promise<SmartSearchResponse> {
   const q = query.trim();
   if (!q) return { results: [], degraded: false };
 
-  return rerankCollectedHistoryCandidates(q, await collectHistoryCandidateSetAsync(history, q), limit, opts);
+  opts?.abort?.throwIfAborted();
+  const collected = await collectHistoryCandidateSetAsync(history, q);
+  opts?.abort?.throwIfAborted();
+  return rerankCollectedHistoryCandidates(q, collected, limit, opts);
 }
 
 // Связанные страницы передают уже собранный снимок, чтобы не повторять SQL и FTS перед Qwen.
@@ -137,7 +140,7 @@ export async function rerankCollectedHistoryCandidates(
   query: string,
   collected: HistoryCandidateSet,
   limit = 8,
-  opts?: { background?: boolean; related?: boolean },
+  opts?: { background?: boolean; related?: boolean; abort?: AbortSignal },
 ): Promise<SmartSearchResponse> {
   const q = query.trim();
   const { candidates, lexicalKeys } = collected;

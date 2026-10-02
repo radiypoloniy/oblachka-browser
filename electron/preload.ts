@@ -267,8 +267,9 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.HISTORY_OPEN, handler);
     return () => ipcRenderer.removeListener(IPC.HISTORY_OPEN, handler);
   },
-  searchHistorySmart: (query: string) =>
-    ipcRenderer.invoke(IPC.HISTORY_SEARCH_SMART, query) as Promise<SmartSearchResponse>,
+  searchHistorySmart: (query: string, requestId?: string) =>
+    ipcRenderer.invoke(IPC.HISTORY_SEARCH_SMART, query, requestId) as Promise<SmartSearchResponse>,
+  cancelHistorySearch: (requestId: string) => ipcRenderer.send(IPC.HISTORY_SEARCH_CANCEL, requestId),
   // Закладки
   addBookmark: (url: string, title: string) =>
     ipcRenderer.invoke(IPC.BOOKMARK_ADD, url, title) as Promise<BookmarkEntry | null>,
