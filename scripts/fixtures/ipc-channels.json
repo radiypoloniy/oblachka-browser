@@ -205,6 +205,8 @@
   "HISTORY_PAGE=history:page",
   "HISTORY_RELATED=history:related",
   "HISTORY_SEARCH=history:search",
+  "HISTORY_SEARCH_CANCEL=history:search-cancel",
+  "HISTORY_SEARCH_PROGRESS=history:search-progress",
   "HISTORY_SEARCH_SMART=history:search-smart",
   "HOLIDAY_GET=holiday:get",
   "HUB_CHAT_CHUNK=hub-chat:chunk",

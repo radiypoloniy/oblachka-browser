@@ -1,15 +1,5 @@
-﻿// Продовый переводчик: Qwen3.5-9B (GGUF Q4_K_M) через node-llama-cpp — единый генеративный слой
-// вместо специализированного EuroLLM-1.7B (заменён после сравнения качества/скорости, см. изолированные
-// тесты translategemma-test.ts/qwen35-test.ts, уже удалены). Единственный источник правды для
-// перевода — используется и боевой фичей (ПКМ → «Перевести», см. TabManager.ts/main.ts), и ручным
-// тест-мостом (translateTestBridge.ts), чтобы не дублировать.
-// ⚠️ САМА МОДЕЛЬ ЖИВЁТ В ДРУГОМ ПРОЦЕССЕ (electron/inference/worker.ts, Electron utilityProcess).
-// Этот файл остался слоем СМЫСЛА: промпты, разбор ответов, лимиты, очередь, коды ошибок — всё, что
-// правится по итогам замеров. Через границу процессов ходят только строки.
-// Почему так: нативные вызовы llama.cpp не уступают event-loop своего процесса, и пока модель
-// грузилась здесь, замер давал 15.4 с блокировок main за 15 с наблюдения — первое обращение к AI
-// подвешивало весь браузер. После выноса — 0 мс. Подробности и спайк — в InferenceHost.ts.
-// Ленивая загрузка сохранена: модель поднимается по первому реальному вызову, не при старте.
+// Единый AI-слой: промпты, очередь и провайдеры. Локальный инференс живёт в utilityProcess,
+// чтобы загрузка и вычисления не блокировали main; модели выбираются через ModelRegistry.
 import { uiLanguage } from './uiText'; import fs from 'node:fs'
 import { getTargetLang } from './TranslationConfig'
 import * as ModelRegistry from './ModelRegistry'
@@ -440,7 +430,7 @@ export async function expandHistorySearchQuery(query: string, abort?: AbortSigna
   const schema: JsonSchema = { type: 'object', properties: { first: { type: 'string' }, second: { type: 'string' } }, required: ['first', 'second'], additionalProperties: false }
   const { out, stopReason } = await runPrompt(HISTORY_EXPANSION_PROMPT + JSON.stringify(query.slice(0, 1200)), 256, undefined, { role: 'search', abort, schema })
   abort?.throwIfAborted()
-  assertSearchGenerationComplete(stopReason)
+  assertSearchGenerationComplete(stopReason, true)
   return parseHistoryExpansion(out, query)
 }
 

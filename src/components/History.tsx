@@ -1,3 +1,4 @@
+import { useHistorySearchTask } from './library/useHistorySearchTask';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { X, Trash2, Wand2, Loader2 } from 'lucide-react';
 import type { HistoryEntry, HistoryClearPeriod, SmartSearchResponse, HistoryPage } from '../../shared/ipc';
@@ -130,8 +131,6 @@ export default function History({ query, onSummary }: HistoryProps) {
   // умолчанию — генеративный вызов небесплатный. НЕ участвует в live-фильтрации по keystroke
   // ниже (load() как был) — включается только по явному Enter (см. handleSearchKeyDown).
   const [smartOn, setSmartOn] = useState(false);
-  const [smartLoading, setSmartLoading] = useState(false);
-  const [smartStage, setSmartStage] = useState<'expanding' | 'retrieving' | 'ranking'>('retrieving');
   const [filters, setFilters] = useState<import('../../shared/ipc').HistorySearchFilters>({});
   // Запасную выдачу нельзя подписывать «По смыслу»: модель её не подтвердила.
   const [smartDegraded, setSmartDegraded] = useState(false);
@@ -147,19 +146,8 @@ export default function History({ query, onSummary }: HistoryProps) {
   // напечатать/запустить новый, пока предыдущий Qwen-вызов ещё летел) мог молча перезаписать
   // уже показанные свежие результаты — тот самый «один результат из прошлого поиска затесался».
   const searchSeqRef = useRef(0);
-  const smartRequest = useRef<string>();
-  useEffect(() => window.oblako.onHistorySearchProgress(progress => {
-    if (progress.requestId === smartRequest.current) setSmartStage(progress.stage);
-  }), []);
-  const cancelSmart = useCallback(() => {
-    if (smartRequest.current) window.oblako.cancelHistorySearch(smartRequest.current);
-    smartRequest.current = undefined;
-    setSmartLoading(false);
-  }, []);
-  useEffect(() => { cancelSmart(); return cancelSmart; }, [query, filters, cancelSmart]);
-  useEffect(() => window.oblako.onProfilesChanged(() => {
-    searchSeqRef.current++; cancelSmart();
-  }), [cancelSmart]);
+  const smartTask = useHistorySearchTask(query, filters, searchSeqRef);
+  const { loading: smartLoading, stage: smartStage } = smartTask;
   // Скролл к секции дня по клику в левой навигации — ключ дня → DOM-узел заголовка группы.
   const dayRefs = useRef(new Map<string, HTMLDivElement>());
 
@@ -201,10 +189,7 @@ export default function History({ query, onSummary }: HistoryProps) {
     const q = query.trim();
     if (!q || smartLoading) return;
     const seq = ++searchSeqRef.current;
-    const requestId = crypto.randomUUID();
-    smartRequest.current = requestId;
-    setSmartLoading(true);
-    setSmartStage('retrieving');
+    const requestId = smartTask.start();
     try {
       const response = await window.oblako.searchHistorySmart(q, requestId, filters);
       if (searchSeqRef.current === seq && !response.cancelled) {
@@ -218,7 +203,7 @@ export default function History({ query, onSummary }: HistoryProps) {
       // только если этот запрос всё ещё актуален.
       if (searchSeqRef.current === seq) void load();
     } finally {
-      if (smartRequest.current === requestId) { smartRequest.current = undefined; setSmartLoading(false); }
+      smartTask.finish(requestId);
     }
   }
 

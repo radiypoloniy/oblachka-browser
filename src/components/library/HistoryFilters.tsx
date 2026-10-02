@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { HistorySearchFilters } from '../../../shared/ipc';
 import { useLanguage } from '../../i18n';
 import { btnGhost } from '../settings/kit';
-import { sp, RADIUS } from '../../styles/system';
+import { sp, RADIUS, TEXT } from '../../styles/system';
 
 export default function HistoryFilters({ filters, onChange }: { filters: HistorySearchFilters; onChange: (value: HistorySearchFilters) => void }) {
   const { t } = useLanguage();
@@ -25,6 +25,6 @@ export default function HistoryFilters({ filters, onChange }: { filters: History
     </select>
     <button style={btnGhost} onClick={() => apply()}>{t('Применить')}</button>
     {(filters.domain || filters.from) && <button style={btnGhost} onClick={() => { setDomain(''); setPeriod('all'); onChange({}); }}>{t('Сбросить фильтры')}</button>}
-    <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>{t('Период — по последнему посещению')}</span>
+    <span style={{ color: 'var(--text-faint)', ...TEXT.caption }}>{t('Период — по последнему посещению')}</span>
   </div>;
 }

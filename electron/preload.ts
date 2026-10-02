@@ -1,8 +1,9 @@
+import { createHistoryApi } from './preload-history';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { ProfilesState, ProfileSettings, ProfileAvatar, ProfileLook } from '../shared/profiles';
 import { IPC } from '../shared/ipc';
 import { aiBridge, updatesBridge, mcpBridge, flightBridge, tabSearchBridge, compareBridge, contentBoundsBridge } from './preload/bridges';
-import type { OblakoApi, AiActivityState, PageLength, SpecialTabKind, SyncState, ContentBounds, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, OmniboxResume, RecommendedSite, PageChangesResult, RelatedPagesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordHealthItem, PasswordBreachCheckResult, PasswordIndicatorState, PasswordPreferences, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, DayDigestState, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, GenSpecOutcome, GenProgress, GenWebResult } from '../shared/ipc';
+import type { OblakoApi, AiActivityState, PageLength, SpecialTabKind, SyncState, ContentBounds, FindResult, AdBlockState, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, OmniboxResume, RecommendedSite, PageChangesResult, RelatedPagesResult, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordHealthItem, PasswordBreachCheckResult, PasswordIndicatorState, PasswordPreferences, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, DayDigestState, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, GenSpecOutcome, GenProgress, GenWebResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../shared/graph';
 import type { ImagePreset } from '../shared/imagePresets';
@@ -256,25 +257,7 @@ const api: OblakoApi = {
   getSiteBlockedCount: (d: string) => ipcRenderer.invoke(IPC.ADBLOCK_GET_SITE_BLOCK_COUNT, d) as Promise<number>,
   isAdblockAllowed:    (d: string) => ipcRenderer.invoke(IPC.ADBLOCK_IS_WHITELISTED, d) as Promise<boolean>,
 
-  // История посещений
-  getHistory:         (limit?: number)              => ipcRenderer.invoke(IPC.HISTORY_GET, limit) as Promise<HistoryEntry[]>,
-  getHistoryPage: (request) => ipcRenderer.invoke(IPC.HISTORY_PAGE, request),
-  searchHistory:      (query: string)               => ipcRenderer.invoke(IPC.HISTORY_SEARCH, query) as Promise<HistoryEntry[]>,
-  deleteHistoryEntry: (id: number)                  => ipcRenderer.invoke(IPC.HISTORY_DELETE, id),
-  clearHistory:       (period: HistoryClearPeriod)  => ipcRenderer.invoke(IPC.HISTORY_CLEAR, period),
-  onHistoryOpen: (cb: () => void) => {
-    const handler = () => cb();
-    ipcRenderer.on(IPC.HISTORY_OPEN, handler);
-    return () => ipcRenderer.removeListener(IPC.HISTORY_OPEN, handler);
-  },
-  searchHistorySmart: (query: string, requestId?: string, filters?: import('../shared/ipc').HistorySearchFilters) =>
-    ipcRenderer.invoke(IPC.HISTORY_SEARCH_SMART, query, requestId, filters) as Promise<SmartSearchResponse>,
-  cancelHistorySearch: (requestId: string) => ipcRenderer.send(IPC.HISTORY_SEARCH_CANCEL, requestId),
-  onHistorySearchProgress: (cb) => {
-    const handler = (_e: Electron.IpcRendererEvent, progress: import('../shared/ipc').HistorySearchProgress) => cb(progress);
-    ipcRenderer.on(IPC.HISTORY_SEARCH_PROGRESS, handler);
-    return () => ipcRenderer.removeListener(IPC.HISTORY_SEARCH_PROGRESS, handler);
-  },
+  ...createHistoryApi(),
   // Закладки
   addBookmark: (url: string, title: string) =>
     ipcRenderer.invoke(IPC.BOOKMARK_ADD, url, title) as Promise<BookmarkEntry | null>,

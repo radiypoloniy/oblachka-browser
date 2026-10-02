@@ -20,6 +20,8 @@ assert.equal(queueDepth('user'), 0); assert.equal(ran, false);
 release(); await busy;
 assert.equal(await enqueueQwen(async () => 'next'), 'next');
 for (const reason of ['stop', 'end_turn', 'STOP', 'eogToken']) assert.doesNotThrow(() => assertSearchGenerationComplete(reason));
+assert.doesNotThrow(() => assertSearchGenerationComplete('tool_use', true));
+assert.throws(() => assertSearchGenerationComplete('tool_use'));
 for (const reason of ['length', 'MAX_TOKENS', 'maxTokens', 'abort', 'content_filter', 'unknown']) {
   assert.throws(() => assertSearchGenerationComplete(reason));
 }

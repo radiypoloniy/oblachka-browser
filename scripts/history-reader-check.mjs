@@ -46,7 +46,7 @@ await withStand(async ctx => {
     assert.equal(found.candidates.length,1);
     const newId=found.candidates[0].id;
     add(a,'https://bench.test/new','Новый визит','маркерзаменённоготекста');
-    assert.equal((await collectHistoryCandidateSetAsync(a,'маркерновойиндексации')).candidates.length,0);
+    assert.equal((await collectHistoryCandidateSetAsync(a,'маркерновойиндексации')).candidates[0].id,newId); // Предыдущий снимок остаётся доступен.
     assert.equal((await collectHistoryCandidateSetAsync(a,'маркерзаменённоготекста')).candidates[0].id,newId);
     // Запись в main во время запросов читателя: снимки могут различаться, последующий обязан быть свежим.
     const pending=collectHistoryCandidateSetAsync(a,'машина');
