@@ -1,0 +1,276 @@
+{
+  "measuredAt": "2026-10-02T15:16:40.989Z",
+  "cases": [
+    {
+      "key": "battery",
+      "query": "Найди пожалуйста ту статью которую я недавно читал в браузере про литиевые батареи",
+      "target": "battery",
+      "retrieved": false,
+      "visibleEvidence": false,
+      "candidates": [],
+      "modelCalls": 0,
+      "modelQuery": null,
+      "preparationMs": 79.55500000000006,
+      "workerChunks": 0,
+      "originalMatch": "\"найд\" OR \"пожалуйст\" OR \"ту\" OR \"стат\" OR \"котор\" OR \"недавн\" OR \"чита\" OR \"браузер\""
+    },
+    {
+      "key": "dns",
+      "query": "Где найти тот материал который я раньше смотрел в браузере о DNS over HTTPS",
+      "target": "dns",
+      "retrieved": true,
+      "visibleEvidence": false,
+      "candidates": [
+        {
+          "id": 10,
+          "url": "https://quality.test/article/far-tail"
+        },
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery"
+        },
+        {
+          "id": 4,
+          "url": "https://quality.test/article/camera"
+        },
+        {
+          "id": 6,
+          "url": "https://quality.test/article/english"
+        },
+        {
+          "id": 5,
+          "url": "https://quality.test/article/density"
+        },
+        {
+          "id": 2,
+          "url": "https://quality.test/article/dns"
+        },
+        {
+          "id": 3,
+          "url": "https://quality.test/article/backup"
+        },
+        {
+          "id": 9,
+          "url": "https://quality.test/article/title"
+        },
+        {
+          "id": 8,
+          "url": "https://quality.test/article/start"
+        }
+      ],
+      "modelCalls": 1,
+      "modelQuery": "Где найти тот материал который я раньше смотрел в браузере о DNS over HTTPS",
+      "preparationMs": 21.0634,
+      "workerChunks": 9,
+      "originalMatch": "\"где\" OR \"найт\" OR \"тот\" OR \"материа\" OR \"котор\" OR \"раньш\" OR \"смотрел\" OR \"браузер\""
+    },
+    {
+      "key": "backup",
+      "query": "Покажи пожалуйста ту страницу которую я недавно открывал в браузере про резервное копирование",
+      "target": "backup",
+      "retrieved": false,
+      "visibleEvidence": false,
+      "candidates": [],
+      "modelCalls": 0,
+      "modelQuery": null,
+      "preparationMs": 17.222699999999918,
+      "workerChunks": 0,
+      "originalMatch": "\"покаж\" OR \"пожалуйст\" OR \"ту\" OR \"страниц\" OR \"котор\" OR \"недавн\" OR \"открыва\" OR \"браузер\""
+    },
+    {
+      "key": "camera",
+      "query": "Где та статья которую я читал на прошлой неделе об экспозиции",
+      "target": "camera",
+      "retrieved": false,
+      "visibleEvidence": false,
+      "candidates": [
+        {
+          "id": 3,
+          "url": "https://quality.test/article/backup"
+        }
+      ],
+      "modelCalls": 1,
+      "modelQuery": "Где та статья которую я читал на прошлой неделе об экспозиции",
+      "preparationMs": 2.801399999999944,
+      "workerChunks": 1,
+      "originalMatch": "\"где\" OR \"та\" OR \"стат\" OR \"котор\" OR \"чита\" OR \"на\" OR \"прошл\" OR \"недел\""
+    },
+    {
+      "key": "plants",
+      "query": "Найди тот материал который я недавно читал в браузере про суккуленты",
+      "target": "short",
+      "retrieved": false,
+      "visibleEvidence": false,
+      "candidates": [
+        {
+          "id": 10,
+          "url": "https://quality.test/article/far-tail"
+        },
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery"
+        },
+        {
+          "id": 4,
+          "url": "https://quality.test/article/camera"
+        },
+        {
+          "id": 6,
+          "url": "https://quality.test/article/english"
+        },
+        {
+          "id": 5,
+          "url": "https://quality.test/article/density"
+        },
+        {
+          "id": 2,
+          "url": "https://quality.test/article/dns"
+        },
+        {
+          "id": 3,
+          "url": "https://quality.test/article/backup"
+        },
+        {
+          "id": 9,
+          "url": "https://quality.test/article/title"
+        },
+        {
+          "id": 8,
+          "url": "https://quality.test/article/start"
+        }
+      ],
+      "modelCalls": 1,
+      "modelQuery": "Найди тот материал который я недавно читал в браузере про суккуленты",
+      "preparationMs": 35.699299999999994,
+      "workerChunks": 9,
+      "originalMatch": "\"найд\" OR \"тот\" OR \"материа\" OR \"котор\" OR \"недавн\" OR \"чита\" OR \"браузер\" OR \"про\""
+    },
+    {
+      "key": "english",
+      "query": "Find the article that I read a few days ago about lithium battery",
+      "target": "english",
+      "retrieved": true,
+      "visibleEvidence": false,
+      "candidates": [
+        {
+          "id": 7,
+          "url": "https://quality.test/article/short"
+        },
+        {
+          "id": 11,
+          "url": "https://quality.test/article/paraphrase"
+        },
+        {
+          "id": 4,
+          "url": "https://quality.test/article/camera"
+        },
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery"
+        },
+        {
+          "id": 2,
+          "url": "https://quality.test/article/dns"
+        },
+        {
+          "id": 3,
+          "url": "https://quality.test/article/backup"
+        },
+        {
+          "id": 5,
+          "url": "https://quality.test/article/density"
+        },
+        {
+          "id": 6,
+          "url": "https://quality.test/article/english"
+        },
+        {
+          "id": 9,
+          "url": "https://quality.test/article/title"
+        },
+        {
+          "id": 8,
+          "url": "https://quality.test/article/start"
+        },
+        {
+          "id": 10,
+          "url": "https://quality.test/article/far-tail"
+        }
+      ],
+      "modelCalls": 1,
+      "modelQuery": "Find the article that I read a few days ago about lithium battery",
+      "preparationMs": 7.893599999999992,
+      "workerChunks": 11,
+      "originalMatch": "\"find\" OR \"the\" OR \"article\" OR \"that\" OR \"read\" OR \"few\" OR \"days\" OR \"ago\""
+    },
+    {
+      "key": "aurora",
+      "query": "Show me the page that I read earlier in the browser about полярное сияние",
+      "target": "start",
+      "retrieved": false,
+      "visibleEvidence": false,
+      "candidates": [],
+      "modelCalls": 0,
+      "modelQuery": null,
+      "preparationMs": 1.0522999999999456,
+      "workerChunks": 0,
+      "originalMatch": "\"show\" OR \"me\" OR \"the\" OR \"page\" OR \"that\" OR \"read\" OR \"earlier\" OR \"in\""
+    },
+    {
+      "key": "missing",
+      "query": "Найди тот материал который я недавно читал в браузере про нейтринный телескоп",
+      "target": null,
+      "retrieved": false,
+      "visibleEvidence": false,
+      "candidates": [
+        {
+          "id": 10,
+          "url": "https://quality.test/article/far-tail"
+        },
+        {
+          "id": 1,
+          "url": "https://quality.test/article/battery"
+        },
+        {
+          "id": 4,
+          "url": "https://quality.test/article/camera"
+        },
+        {
+          "id": 6,
+          "url": "https://quality.test/article/english"
+        },
+        {
+          "id": 5,
+          "url": "https://quality.test/article/density"
+        },
+        {
+          "id": 2,
+          "url": "https://quality.test/article/dns"
+        },
+        {
+          "id": 3,
+          "url": "https://quality.test/article/backup"
+        },
+        {
+          "id": 9,
+          "url": "https://quality.test/article/title"
+        },
+        {
+          "id": 8,
+          "url": "https://quality.test/article/start"
+        }
+      ],
+      "modelCalls": 1,
+      "modelQuery": "Найди тот материал который я недавно читал в браузере про нейтринный телескоп",
+      "preparationMs": 4.113999999999919,
+      "workerChunks": 9,
+      "originalMatch": "\"найд\" OR \"тот\" OR \"материа\" OR \"котор\" OR \"недавн\" OR \"чита\" OR \"браузер\" OR \"про\""
+    }
+  ],
+  "summary": {
+    "queries": 8,
+    "positive": 7,
+    "retrieved": 2,
+    "visibleEvidence": 0
+  }
+}
