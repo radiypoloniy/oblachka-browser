@@ -2,7 +2,7 @@ import type { Database } from 'better-sqlite3';
 import type { HistoryEntry, HistoryContentCoverage } from '../shared/ipc';
 import { isNoisyForEmbedding } from '../shared/historyIndex';
 import type { HistoryContentChunk } from './HistoryManager';
-import { historyFtsTerms } from './textStemming';
+import { historyFtsTerms, historyNumericPattern, isHistoryNumericPhrase } from './textStemming';
 import { prepareHistoryCandidateChunks } from './HistorySearchSnippet';
 import { historySearchTopic } from './HistorySearchTopic';
 
@@ -31,13 +31,18 @@ export function readSearch(db: Database, query: string, limit: number): HistoryE
 }
 export function buildFtsQuery(query: string): string {
   // Тот же стемминг, что при записи индекса; исходные тексты чанков не меняются.
-  return historyFtsTerms(query)
-    .map(x => `"${x.replace(/"/g, '""')}"`).join(' OR ');
+  const terms = historyFtsTerms(query);
+  const quote = (term: string) => `"${term.replace(/"/g, '""')}"`;
+  const phrases = terms.filter(isHistoryNumericPhrase);
+  const words = terms.filter(term => !isHistoryNumericPhrase(term)).map(quote).join(' OR ');
+  if (!phrases.length) return words;
+  // Номер обязателен: общие слова не должны возвращать другие версии и правила.
+  return [...phrases.map(quote), ...(words ? [`(${words})`] : [])].join(' AND ');
 }
 export function readFts(db: Database, query: string, version: string, limit: number): HistoryContentChunk[] {
   const match = buildFtsQuery(query);
   if (!match) return [];
-  return db.prepare(`
+  const rows = db.prepare(`
     SELECT c.id AS chunkId, c.history_id AS historyId, c.chunk_index AS chunkIndex,
       c.url, h.title AS title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
       c.vector, c.dims, c.model_version AS modelVersion, bm25(history_content_chunks_fts) AS rank
@@ -46,6 +51,9 @@ export function readFts(db: Database, query: string, version: string, limit: num
     JOIN history h ON h.id = c.history_id
     WHERE history_content_chunks_fts MATCH ? AND c.model_version = ?
     ORDER BY rank ASC LIMIT ?`).all(match, version, limit) as HistoryContentChunk[];
+  const numbers = historyFtsTerms(query).filter(isHistoryNumericPhrase).map(term => historyNumericPattern(term));
+  return numbers.length ? rows.filter(row => numbers.every(pattern =>
+    [row.text, row.title, row.url].some(text => pattern.test(text)))) : rows;
 }
 export function executeHistoryRead(db: Database, request: HistoryReadRequest): HistoryReadResults[keyof HistoryReadResults] {
   switch (request.kind) {

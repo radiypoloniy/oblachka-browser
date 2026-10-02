@@ -49,6 +49,32 @@ export function stemQuery(query: string): string {
 
 // Токены MATCH и выбора фрагмента должны совпадать; правила самого стеммера не меняются.
 export function historyFtsTerms(query: string): string[] {
-  return stemQuery(query).toLowerCase().split(/[\s\-_/|·•,.:;!?()[\]{}'"«»—–]+/)
-    .map(x => x.trim()).filter(x => x.length >= 2).slice(0, 8);
+  const stemmed = stemQuery(query).toLowerCase();
+  const split = (text: string) => text.split(/[\s\-_/|·•,.:;!?()[\]{}'"«»—–]+/).filter(x => x.length >= 2);
+  if (!/\d+[-./]\d+/.test(stemmed)) return split(stemmed).slice(0, 8);
+  const result: string[] = [];
+  let remaining = 8;
+  for (const raw of stemmed.split(/[\s_|·•,:;!?()[\]{}'"«»—–]+/)) {
+    const group = raw.replace(/^[-./]+|[-./]+$/g, '');
+    if (/^\d+(?:[-./]\d+)+$/.test(group)) {
+      const parts = group.split(/[-./]/);
+      // Цифры уже есть в индексе: сохраняем последовательность как одну FTS-фразу.
+      // Лимит считаем по её токенам; обрезанная версия/правило даст чужое совпадение.
+      if (parts.length > remaining) break;
+      result.push(parts.join(' ')); remaining -= parts.length;
+    } else {
+      const terms = split(group).slice(0, remaining);
+      result.push(...terms); remaining -= terms.length;
+    }
+    if (!remaining) break;
+  }
+  return result;
+}
+
+export function isHistoryNumericPhrase(term: string): boolean { return /^\d+(?: \d+)+$/.test(term); }
+
+// FTS видит соседние цифры, но не границы составного номера: 1.2.3 ≠ 1.2.3.4.
+// Применяем к уже ограниченным строкам чтения, индекс и токенизацию записи не меняем.
+export function historyNumericPattern(term: string, flags = 'u'): RegExp {
+  return new RegExp(`(?<![\\p{L}\\p{N}])(?<!\\d[-./])${term.split(' ').join('[-./\\s]+')}(?![\\p{L}\\p{N}]|[-./]\\d)`, flags);
 }

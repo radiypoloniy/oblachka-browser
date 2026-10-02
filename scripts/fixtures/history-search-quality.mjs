@@ -21,7 +21,7 @@ export const qualityQueries=[
   {key:'dns-phrase',query:'DNS over HTTPS',target:'dns',evidence:'DNS over HTTPS шифрует запросы',retrieved:true},
   {key:'dns-punctuation',query:'DNS-over-HTTPS',target:'dns',evidence:'DNS over HTTPS шифрует запросы',retrieved:true},
   {key:'backup-morphology',query:'резервного копирования',target:'backup',evidence:'Резервное копирование по правилу 3-2-1',retrieved:true},
-  {key:'backup-number',query:'3-2-1',target:'backup',evidence:'Резервное копирование по правилу 3-2-1',retrieved:false,gap:'FTS исключает односимвольные части запроса'},
+  {key:'backup-number',query:'3-2-1',target:'backup',evidence:'Резервное копирование по правилу 3-2-1',retrieved:true},
   {key:'camera-phrase',query:'компенсация экспозиции',target:'camera',evidence:'Компенсация экспозиции помогает сохранить детали снега',retrieved:true},
   {key:'camera-morphology',query:'экспозицию',target:'camera',evidence:'Компенсация экспозиции помогает сохранить детали снега',retrieved:true},
   {key:'density',query:'охлаждение батарей',target:'density',evidence:'Охлаждение батарей снижает нагрев',retrieved:true},

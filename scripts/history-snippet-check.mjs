@@ -28,11 +28,11 @@ assert.equal(empty,text.slice(0,360).trim()+'...');
 const tail=createHistorySnippet('маркер')('Вступление. '.repeat(80)+'Маркер в конце.');
 assert.ok(tail.includes('Маркер в конце.'));assert.ok(tail.length<=240);
 console.log('ok пустой запрос и совпадение в конце текста');
-for(const query of ['DNS-over-HTTPS','3-2-1','"машины"','процент_%','раз два три четыре пять шесть семь восемь девять','']){
+for(const query of ['DNS-over-HTTPS','"машины"','процент_%','раз два три четыре пять шесть семь восемь девять','']){
   const previous=stemQuery(query).toLowerCase().split(/[\s\-_/|·•,.:;!?()[\]{}'"«»—–]+/).map(x=>x.trim()).filter(x=>x.length>=2).slice(0,8).map(x=>`"${x.replace(/"/g,'""')}"`).join(' OR ');
   assert.equal(buildFtsQuery(query),previous);
 }
-console.log('ok правила MATCH, пунктуация, числовой запрос и лимит восьми частей сохранены');
+console.log('ok прежние правила MATCH для слов, пунктуация и лимит восьми частей сохранены');
 const chunks=Array.from({length:13},(_,i)=>({historyId:i,url:`https://quality.test/${i}`,title:'Полезная статья',text:intro+evidence}));
 const noisy={...chunks[0],url:'https://quality.test/login',title:'Вход'};
 const prepared=prepareHistoryCandidateChunks([noisy,...chunks.flatMap(c=>Array.from({length:8},()=>c))],'экспозиция');

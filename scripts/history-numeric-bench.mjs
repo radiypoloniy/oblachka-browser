@@ -14,6 +14,8 @@ await withStand(async ctx=>{
     const {buildTextChunks}=req(${p('HistoryIndexer')});
     const search=req(${p('HistorySearch')}), reader=req(${p('HistoryReader')}), service=req(${p('TranslationService')});
     const {buildFtsQuery}=req(${p('HistoryReadQueries')});
+    const stemming=req(${p('textStemming')}),currentTerms=stemming.historyFtsTerms;
+    const oldTerms=q=>stemming.stemQuery(q).toLowerCase().split(/[\\s\\-_/|·•,.:;!?()[\\]{}'"«»—–]+/).filter(x=>x.length>=2).slice(0,8);
     const history=new HistoryManager(${JSON.stringify(path.join(ctx.profile,'numeric.sqlite'))});await history.initialize();
     const keys=new Map();
     for(const page of ${JSON.stringify(numericPages)}){
@@ -29,6 +31,10 @@ await withStand(async ctx=>{
       reads=0;calls=0;modelQuery=null;input=[];
       const collected=await search.collectHistoryCandidateSetAsync(history,test.query);
       assert.deepEqual(collected,search.collectHistoryCandidateSet(history,test.query));
+      if(test.unchanged){
+        try{stemming.historyFtsTerms=oldTerms;assert.deepEqual(collected,search.collectHistoryCandidateSet(history,test.query));}
+        finally{stemming.historyFtsTerms=currentTerms;}
+      }
       await search.rerankCollectedHistoryCandidates(test.query,collected);
       const page=${JSON.stringify(numericPages)}.find(p=>p.key===test.evidence);
       const snippet=input.find(c=>keys.get(c.id)===test.evidence)?.snippet || '';
@@ -46,7 +52,7 @@ if(after || check){
     const actual=report.cases.find(c=>c.key===test.key);
     assert.deepEqual([...actual.keys].sort(),[...test.expected].sort(),test.key);
     if(test.evidence)assert.equal(actual.visibleEvidence,true,test.key);
-    if(test.unchanged)assert.deepEqual(actual.keys,before.cases.find(c=>c.key===test.key).keys,test.key);
+    if(test.unchanged)assert.deepEqual([...actual.keys].sort(),[...before.cases.find(c=>c.key===test.key).keys].sort(),test.key);
   }
 }
 report.summary={queries:report.cases.length,exactCandidateSets:report.cases.filter(c=>{

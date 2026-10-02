@@ -73,7 +73,8 @@ if(after){
     const old=before.cases.find(c=>c.key===actual.key);
     // Визиты создаются настоящим recordVisit: их время отличается между запусками стенда.
     const identity=rows=>rows.map(({lastVisit,...candidate})=>candidate);
-    assert.deepEqual(identity(actual.candidates),identity(old.candidates),`${actual.key}: candidate set/order changed`);
+    // Единственное намеренное изменение baseline: числовая фраза теперь находит статью.
+    if(actual.key!=='backup-number')assert.deepEqual(identity(actual.candidates),identity(old.candidates),`${actual.key}: candidate set/order changed`);
     assert.deepEqual(actual.lexicalKeys,old.lexicalKeys);
     if(old.visibleEvidence)assert.equal(actual.visibleEvidence,true,`${actual.key}: evidence regressed`);
   }

@@ -7,7 +7,7 @@ for(const test of intentCases)assert.equal(historySearchTopic(test.query),test.t
 console.log('ok тема восьми естественных вопросов выделяется дословно');
 for(const query of ['DNS over HTTPS','Настройка маршрутизатора','почему в гарнитуре исчезает уличный гул',
   'разрушение аккумулятора','как работает экспозиция','3-2-1','find article','найди статью про ',
-  'найди статью про ...','найди статью про 3-2-1','найди не статью про батареи',
+  'найди статью про ...','найди не статью про батареи',
   'find an article not about batteries','"найди статью про батареи"',
   'найди «статью» про батареи','find article https://example.test/about/batteries',
   'найди '+ 'ту '.repeat(80)+'статью про батареи']){
@@ -16,6 +16,7 @@ for(const query of ['DNS over HTTPS','Настройка маршрутизат�
 console.log('ok короткие/точные запросы, объяснение, отрицание, кавычки, URL и длинный префикс сохранены');
 assert.equal(historySearchTopic('НАЙДИ СТАТЬЮ ПРО литиевые батареи без графитового анода'),'литиевые батареи без графитового анода');
 assert.equal(historySearchTopic('Как найти прочитанную статью об экспозиции'),'экспозиции');
+assert.equal(historySearchTopic('найди статью про 3-2-1'),'3-2-1');
 assert.equal(historySearchTopic('Where did I read the article about "DNS over HTTPS"'),'"DNS over HTTPS"');
 console.log('ok регистр, ограничения темы и кавычки внутри темы сохранены');
 process.argv.push('--check');
