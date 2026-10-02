@@ -46,3 +46,9 @@ export function stemText(text: string): string {
 export function stemQuery(query: string): string {
   return stemWords(query);
 }
+
+// Токены MATCH и выбора фрагмента должны совпадать; правила самого стеммера не меняются.
+export function historyFtsTerms(query: string): string[] {
+  return stemQuery(query).toLowerCase().split(/[\s\-_/|·•,.:;!?()[\]{}'"«»—–]+/)
+    .map(x => x.trim()).filter(x => x.length >= 2).slice(0, 8);
+}

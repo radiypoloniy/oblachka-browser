@@ -126,14 +126,20 @@ await withStand(async ctx => {
     const worker=new Worker(${JSON.stringify(path.join(archive,'electron/history-read-worker.js'))},{
       workerData:{dbPath:${JSON.stringify(path.join(ctx.profile,'reader-b.sqlite'))}},
     });
-    try { return await new Promise((resolve,reject)=>{
+    const read=(id,request)=>new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>reject(Error('ASAR worker timeout')),15000);
       worker.once('error',error=>{clearTimeout(timer);reject(error);});
       worker.once('message',message=>{clearTimeout(timer);if(message.error)reject(Error(message.error));else resolve(message.value);});
-      worker.postMessage({id:1,request:{kind:'recent',limit:500}});
-    }); } finally { await worker.terminate(); }
+      worker.postMessage({id,request});
+    });
+    try { return {
+      recent:await read(1,{kind:'recent',limit:500}),
+      candidates:await read(2,{kind:'candidates',query:'Машины',version:process.mainModule.require(${JSON.stringify(path.resolve('dist-electron/electron/HistoryManager.js'))}).TEXT_EXTRACTION_VERSION,lexicalLimit:8,ftsLimit:96}),
+    }; } finally { await worker.terminate(); }
   })().catch(error=>({error:String(error.message),stack:String(error.stack)}))`);
   if (packed.error) throw new Error(JSON.stringify(packed));
-  assert.equal(packed[0].url,'https://bench.test/b');
+  assert.equal(packed.recent[0].url,'https://bench.test/b');
+  assert.equal(packed.candidates.chunks[0].url,'https://bench.test/b');
+  assert.equal(packed.candidates.chunks[0].snippet,packed.candidates.chunks[0].text);
   console.log('ok read-only history worker: выдача, стемминг, профили, запись/замена текста, удаление/очистка и перезапуск');
 }, {main:true});

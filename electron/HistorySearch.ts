@@ -5,17 +5,11 @@
 import type { HistoryContentChunk, HistoryManager } from './HistoryManager';
 import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
 import { rerankHistoryCandidates } from './TranslationService';
-import { isNoisyForEmbedding } from './HistoryNoiseFilter';
+import { HISTORY_FTS_PAGE_LIMIT, prepareHistoryCandidateChunks } from './HistorySearchSnippet';
 import { normalizeForOmnibox } from '../shared/frecency';
 import { readHistory } from './HistoryReader';
 import type { CandidateChunk, CandidateRows } from './HistoryReadQueries';
 import type { HistoryEntry, SemanticSearchResult, SmartSearchResponse } from '../shared/ipc';
-
-function makeSnippet(text: string, max = 360): string {
-  const compact = text.replace(/\s+/g, ' ').trim();
-  if (compact.length <= max) return compact;
-  return `${compact.slice(0, max).trim()}...`;
-}
 
 function chunkToResult(chunk: CandidateChunk, score: number): SemanticSearchResult {
   return {
@@ -25,7 +19,7 @@ function chunkToResult(chunk: CandidateChunk, score: number): SemanticSearchResu
     lastVisit: chunk.lastVisit,
     visitCount: chunk.visitCount,
     score,
-    snippet: makeSnippet(chunk.text),
+    snippet: chunk.snippet,
   };
 }
 
@@ -38,25 +32,11 @@ const SMART_LEXICAL_CANDIDATE_LIMIT = 8;
 // SQL-запрос к FTS идёт по чанкам, не по страницам, поэтому топ-N строк bm25 может оказаться
 // несколькими чанками ОДНОЙ страницы (живая проверка на "apple": 4 из 12 строк — один и тот же
 // историId). SMART_FTS_SQL_LIMIT — запас по чанкам, из которого дедуп по historyId ниже
-// (dedupChunksByHistoryId) достаёт уже SMART_FTS_CANDIDATE_LIMIT РАЗНЫХ страниц.
-const SMART_FTS_CANDIDATE_LIMIT = 12;
+// (prepareHistoryCandidateChunks) достаёт уже SMART_FTS_CANDIDATE_LIMIT РАЗНЫХ страниц.
+const SMART_FTS_CANDIDATE_LIMIT = HISTORY_FTS_PAGE_LIMIT;
 // До восьми чанков одной страницы могут подряд занять выдачу FTS. Бюджет строк
 // гарантирует место для 12 разных страниц даже при таком худшем порядке.
 const SMART_FTS_SQL_LIMIT = SMART_FTS_CANDIDATE_LIMIT * 8;
-
-// Строки уже отсортированы по bm25 (searchContentChunksFts::ORDER BY rank ASC) — первое
-// вхождение historyId в порядке обхода и есть лучший по релевантности чанк этой страницы.
-function dedupChunksByHistoryId(chunks: CandidateChunk[], limit: number): CandidateChunk[] {
-  const seen = new Set<number>();
-  const result: CandidateChunk[] = [];
-  for (const chunk of chunks) {
-    if (seen.has(chunk.historyId)) continue;
-    seen.add(chunk.historyId);
-    result.push(chunk);
-    if (result.length >= limit) break;
-  }
-  return result;
-}
 
 function historyEntryToSemanticResult(entry: HistoryEntry, score: number): SemanticSearchResult {
   return {
@@ -96,7 +76,7 @@ export function collectHistoryCandidateSet(history: HistoryManager, query: strin
   } catch (e) {
     console.warn('[HistorySearch] FTS для smart search не удался:', (e as Error).message);
   }
-  return mergeCandidateRows({ chunks, lexical: history.search(q, SMART_LEXICAL_CANDIDATE_LIMIT) });
+  return mergeCandidateRows({ chunks, lexical: history.search(q, SMART_LEXICAL_CANDIDATE_LIMIT) }, q);
 }
 
 export async function collectHistoryCandidateSetAsync(history: HistoryManager, query: string): Promise<HistoryCandidateSet> {
@@ -106,11 +86,11 @@ export async function collectHistoryCandidateSetAsync(history: HistoryManager, q
     kind: 'candidates', query: q, version: TEXT_EXTRACTION_VERSION,
     lexicalLimit: SMART_LEXICAL_CANDIDATE_LIMIT, ftsLimit: SMART_FTS_SQL_LIMIT,
   });
-  return mergeCandidateRows(rows);
+  return mergeCandidateRows(rows, q);
 }
 
-function mergeCandidateRows(rows: CandidateRows): HistoryCandidateSet {
-  const ftsCandidates = dedupChunksByHistoryId(rows.chunks.filter(chunk => !isNoisyForEmbedding(chunk.url, chunk.title)), SMART_FTS_CANDIDATE_LIMIT)
+function mergeCandidateRows(rows: CandidateRows, query: string): HistoryCandidateSet {
+  const ftsCandidates = prepareHistoryCandidateChunks(rows.chunks, query)
     .map(chunk => chunkToResult(chunk, 1.12));
   const lexicalCandidates = rows.lexical.map(entry => historyEntryToSemanticResult(entry, 1));
 

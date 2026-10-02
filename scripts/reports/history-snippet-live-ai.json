@@ -1,0 +1,69 @@
+{
+  "measuredAt": "2026-10-02T15:00:06.961Z",
+  "model": "Qwen3.5 4B Q4_K_M",
+  "runs": [
+    {
+      "key": "battery-phrase",
+      "variant": "before",
+      "ms": 608.3664999999964,
+      "chosen": [
+        1,
+        5
+      ],
+      "targetRank": 1,
+      "valid": true
+    },
+    {
+      "key": "battery-phrase",
+      "variant": "after",
+      "ms": 315.7708000000057,
+      "chosen": [
+        1
+      ],
+      "targetRank": 1,
+      "valid": true
+    },
+    {
+      "key": "dns-phrase",
+      "variant": "after",
+      "ms": 596.4939999999988,
+      "chosen": [
+        2
+      ],
+      "targetRank": 1,
+      "valid": true
+    },
+    {
+      "key": "dns-phrase",
+      "variant": "before",
+      "ms": 583.7788,
+      "chosen": [
+        9
+      ],
+      "targetRank": null,
+      "valid": true
+    },
+    {
+      "key": "camera-phrase",
+      "variant": "before",
+      "ms": 272.2758000000031,
+      "chosen": [
+        4
+      ],
+      "targetRank": 1,
+      "valid": true
+    },
+    {
+      "key": "camera-phrase",
+      "variant": "after",
+      "ms": 282.9062000000049,
+      "chosen": [
+        4
+      ],
+      "targetRank": 1,
+      "valid": true
+    }
+  ],
+  "loadMs": 33457.886699999995,
+  "diagnostic": "\r\nDebugger listening on ws://127.0.0.1:60661/ad3d0a5e-17c1-4e4e-95e4-ac3f6dc02f56\r\nFor help, see: https://nodejs.org/learn/getting-started/debugging\r\n[gen] limits: translateSegment=300 action=2000 chat=3072 pageBatch=4000 (максимум токенов на выход, на прогон)\n\r\nDevTools listening on ws://127.0.0.1:60660/devtools/browser/fb6155f5-0888-4188-9598-29b121bffcb5\r\n[AppProtocol] oblako-model:// → C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-aNpNYo\\models (userData) → C:\\Users\\arkie\\Desktop\\oblako\\resources\\models (бандл, фолбэк)\n[AppProtocol] oblako-chrome:// → C:\\Users\\arkie\\Desktop\\oblako\\dist\n[Tracking] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-aNpNYo\\tracking.sqlite\n[History] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-aNpNYo\\history.sqlite\n[Bookmarks] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-aNpNYo\\bookmarks.sqlite\n[Graph] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-aNpNYo\\graphs.sqlite\n[Passwords] сейф инициализирован: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-aNpNYo\\passwords.sqlite\n[Autofill] хранилище инициализировано: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-aNpNYo\\autofill.sqlite\n[HubChat] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-aNpNYo\\chats.sqlite\n[Permissions] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-aNpNYo\\permissions.sqlite\n[AdBlock] кэша движка нет — качаем в фоне, окно не ждёт\nDebugger attached.\r\n[History] база инициализирована: C:\\Users\\arkie\\AppData\\Local\\Temp\\oblako-stand-aNpNYo\\live-quality.sqlite\n[startup] window 507ms\n[inference] [gen] llama backend: gpu=vulkan\n[inference] [gen] llama backend: gpu=vulkan\n(node:5568) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 closed listeners added to [BrowserWindow]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit\n(Use `electron --trace-warnings ...` to show where the warning was created)\n[startup] show reason=ui-ready 1338ms\n[AdBlock] движок загружен (Ghostery prebuilt, сеть + косметика)\n[AdBlock] Ghostery активен (сеть + косметика)\n[popover:site] документ готов за 205 мс\n[startup] modelLoadMode=on-demand — прогрев Qwen отложен до открытия AI\n[popover:downloads] документ готов за 185 мс\n[inference] [gen] chat wrapper: QwenChatWrapper\n[inference] [gen] context: n_ctx=16384 trainContextSize=262144\n[inference] [gen] модель держит видеопамяти: 7172 МБ\n[gen] модель загружена в отдельном процессе: gpu=vulkan n_ctx=16384 за 33276мс\n[inference] [perf] segment: inputTokens=349 setup/prefill=500ms generation=100ms (genTokens=3) finalOutTokens=3\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=3)\n[perf] segment: всего=608ms outTokens=3\n[inference] [perf] segment: inputTokens=357 setup/prefill=248ms generation=59ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=316ms outTokens=1\n[inference] [perf] segment: inputTokens=915 setup/prefill=521ms generation=54ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=596ms outTokens=1\n[inference] [perf] segment: inputTokens=903 setup/prefill=510ms generation=53ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=584ms outTokens=1\n[inference] [perf] segment: inputTokens=283 setup/prefill=208ms generation=57ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=272ms outTokens=1\n[inference] [perf] segment: inputTokens=289 setup/prefill=217ms generation=59ms (genTokens=1) finalOutTokens=1\n[inference] [gen] stopped: stop token (eogToken) (limit=512, genTokens=1)\n[perf] segment: всего=283ms outTokens=1\n[inference] [gen] модель выгружена из VRAM\n"
+}

@@ -2,9 +2,10 @@ import type { Database } from 'better-sqlite3';
 import type { HistoryEntry, HistoryContentCoverage } from '../shared/ipc';
 import { isNoisyForEmbedding } from '../shared/historyIndex';
 import type { HistoryContentChunk } from './HistoryManager';
-import { stemQuery } from './textStemming';
+import { historyFtsTerms } from './textStemming';
+import { prepareHistoryCandidateChunks } from './HistorySearchSnippet';
 
-export type CandidateChunk = Pick<HistoryContentChunk, 'historyId' | 'url' | 'title' | 'text' | 'lastVisit' | 'visitCount'>;
+export type CandidateChunk = Pick<HistoryContentChunk, 'historyId' | 'url' | 'title' | 'text' | 'lastVisit' | 'visitCount'> & { snippet?: string };
 export interface CandidateRows { lexical: HistoryEntry[]; chunks: CandidateChunk[] }
 export type HistoryReadRequest =
   | { kind: 'recent'; limit: number }
@@ -29,8 +30,7 @@ export function readSearch(db: Database, query: string, limit: number): HistoryE
 }
 export function buildFtsQuery(query: string): string {
   // Тот же стемминг, что при записи индекса; исходные тексты чанков не меняются.
-  return stemQuery(query).toLowerCase().split(/[\s\-_/|·•,.:;!?()[\]{}'"«»—–]+/)
-    .map(x => x.trim()).filter(x => x.length >= 2).slice(0, 8)
+  return historyFtsTerms(query)
     .map(x => `"${x.replace(/"/g, '""')}"`).join(' OR ');
 }
 export function readFts(db: Database, query: string, version: string, limit: number): HistoryContentChunk[] {
@@ -52,8 +52,8 @@ export function executeHistoryRead(db: Database, request: HistoryReadRequest): H
     case 'search': return readSearch(db, request.query, request.limit);
     case 'candidates': return db.transaction(() => {
       // Оба источника видят один снимок при параллельной записи индекса в main.
-      let chunks: HistoryContentChunk[] = [], lexical: HistoryEntry[] = [];
-      try { chunks = readFts(db, request.query, request.version, request.ftsLimit); }
+      let chunks: CandidateChunk[] = [], lexical: HistoryEntry[] = [];
+      try { chunks = prepareHistoryCandidateChunks(readFts(db, request.query, request.version, request.ftsLimit), request.query); }
       catch (error) { console.warn('[HistoryReader] FTS:', error); }
       try { lexical = readSearch(db, request.query, request.lexicalLimit); }
       catch (error) { console.warn('[HistoryReader] lexical:', error); }

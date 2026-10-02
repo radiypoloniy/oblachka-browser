@@ -5,7 +5,8 @@ import path from 'node:path';
 import {withStand} from './isolated-stand.mjs';
 import {qualityPages,qualityQueries} from './fixtures/history-search-quality.mjs';
 
-const after=process.argv.includes('--after');
+const check=process.argv.includes('--check');
+const after=process.argv.includes('--after') || check;
 const report={measuredAt:new Date().toISOString(),cases:[]};
 await withStand(async ctx=>{
   const p=name=>JSON.stringify(path.resolve(`dist-electron/electron/${name}.js`));
@@ -44,7 +45,19 @@ await withStand(async ctx=>{
     const synthetic={searchContentChunksFts:()=>rows,search:()=>[]};
     const samples=[];
     for(let i=0;i<120;i++){const t=performance.now();search.collectHistoryCandidateSet(synthetic,'охлаждение батарей');if(i>=20)samples.push(performance.now()-t);}
-    return {cases,preparationMs:samples,versions:process.versions};
+    let preparedMergeMs,wire;
+    if(${after}){
+      const {prepareHistoryCandidateChunks}=req(${p('HistorySearchSnippet')});
+      const prepared=prepareHistoryCandidateChunks(rows,'охлаждение батарей');
+      const mergeSamples=[];
+      const ready={searchContentChunksFts:()=>prepared,search:()=>[]};
+      for(let i=0;i<120;i++){const t=performance.now();search.collectHistoryCandidateSet(ready,'охлаждение батарей');if(i>=20)mergeSamples.push(performance.now()-t);}
+      preparedMergeMs=mergeSamples;
+      const repeated=rows.flatMap(c=>Array.from({length:8},()=>c));
+      const compactRows=prepareHistoryCandidateChunks(repeated,'охлаждение батарей');
+      wire={oldChunks:repeated.length,newChunks:compactRows.length,oldBytes:Buffer.byteLength(JSON.stringify(repeated)),newBytes:Buffer.byteLength(JSON.stringify(compactRows))};
+    }
+    return {cases,preparationMs:samples,preparedMergeMs,wire,versions:process.versions};
   })()`);
   Object.assign(report,result);
 },{main:true});
@@ -58,14 +71,18 @@ if(after){
   const before=JSON.parse(fs.readFileSync('scripts/reports/history-search-quality-before.json','utf8'));
   for(const actual of report.cases){
     const old=before.cases.find(c=>c.key===actual.key);
-    assert.deepEqual(actual.candidates,old.candidates,`${actual.key}: candidate set/order changed`);
+    // Визиты создаются настоящим recordVisit: их время отличается между запусками стенда.
+    const identity=rows=>rows.map(({lastVisit,...candidate})=>candidate);
+    assert.deepEqual(identity(actual.candidates),identity(old.candidates),`${actual.key}: candidate set/order changed`);
     assert.deepEqual(actual.lexicalKeys,old.lexicalKeys);
     if(old.visibleEvidence)assert.equal(actual.visibleEvidence,true,`${actual.key}: evidence regressed`);
   }
 }
 const eligible=report.cases.filter(c=>c.target && c.retrieved && c.indexedEvidence);
 report.summary={queries:report.cases.length,evidenceQueries:eligible.length,visibleEvidence:eligible.filter(c=>c.visibleEvidence).length};
+if(after)assert.equal(report.summary.visibleEvidence,report.summary.evidenceQueries,'visible evidence missing');
 const sorted=[...report.preparationMs].sort((a,b)=>a-b);
 report.preparation={medianMs:sorted[50],p95Ms:sorted[94]};
-fs.writeFileSync(`scripts/reports/history-search-quality-${after?'after':'before'}.json`,JSON.stringify(report,null,2)+'\n');
-console.log(JSON.stringify({summary:report.summary,preparation:report.preparation}));
+if(report.preparedMergeMs){const a=[...report.preparedMergeMs].sort((x,y)=>x-y);report.mainMerge={medianMs:a[50],p95Ms:a[94]};}
+if(!check)fs.writeFileSync(`scripts/reports/history-search-quality-${after?'after':'before'}.json`,JSON.stringify(report,null,2)+'\n');
+console.log(JSON.stringify({summary:report.summary,preparation:report.preparation,mainMerge:report.mainMerge,wire:report.wire}));
