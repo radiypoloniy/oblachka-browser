@@ -56,7 +56,7 @@ async function waitTitle(page, title, tries = 20) {
 }
 
 function sessionBlob(profile) {
-  const p = path.join(profile, 'session.json');
+  const p = path.join(profile, 'session-v6.json');
   try { return fs.readFileSync(p, 'utf8'); } catch { return ''; }
 }
 
@@ -262,10 +262,10 @@ try {
     }
 
     const sess = sessionBlob(ctx.profile);
-    if (!sess.includes(privMark)) ok('session.json не содержит адрес инкогнито');
+    if (!sess.includes(privMark)) ok('session-v6.json не содержит адрес инкогнито');
     else {
       const line = sess.split(/\r?\n/).find((l) => l.includes(privMark)) ?? sess.slice(0, 240);
-      fail('инкогнито попало в session.json', line.slice(0, 240));
+      fail('инкогнито попало в session-v6.json', line.slice(0, 240));
     }
 
     await chrome.evaluate(

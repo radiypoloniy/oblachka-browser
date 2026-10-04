@@ -32,7 +32,7 @@ await withStand(async (ctx) => {
   assert.equal(nodes.find((node) => node.type === 'group')?.children.length, 2, 'остальные вкладки ушли из группы');
 
   await wait(3500);
-  const session = JSON.parse(fs.readFileSync(path.join(ctx.profile, 'session.json'), 'utf8'));
+  const session = JSON.parse(fs.readFileSync(path.join(ctx.profile, 'session-v6.json'), 'utf8'));
   const savedUrls = [];
   const visit = (items) => { for (const node of items) {
     if (node.type === 'single') savedUrls.push(node.url);

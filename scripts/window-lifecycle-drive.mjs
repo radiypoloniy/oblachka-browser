@@ -39,7 +39,7 @@ await withStand(async (ctx) => {
   assert.deepEqual(await ctx.evalMain(`({ windows: lifecycleStand.registry.allContexts().length, stopping: lifecycleStand.main.makeWindowDeps().isShuttingDown(), stops: lifecycleStand.stops, inferenceStops: lifecycleStand.inferenceStops })`), {
     windows: 1, stopping: false, stops: 0, inferenceStops: 0,
   });
-  const saved = JSON.parse(await fs.readFile(path.join(ctx.profile, 'session.json'), 'utf8'));
+  const saved = JSON.parse(await fs.readFile(path.join(ctx.profile, 'session-v6.json'), 'utf8'));
   assert.equal(saved.version, 6);
   assert.ok(saved.closedWindows.some(w => w.snapshot.pinnedTabs.some(t => t.url === savedUrl)));
   const added = await inB(`window.oblako.createTab(${JSON.stringify(ctx.echoUrl('/after-main-close'))})`);

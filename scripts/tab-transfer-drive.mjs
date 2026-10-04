@@ -118,9 +118,9 @@ await withStand(async ctx => {
   assert.equal(await move('c', 'a', newId), true); await wait(250);
   assert.equal(await sync('transferStand.c.win.isDestroyed()'), true);
   await wait(2100);
-  const saved = JSON.parse(fs.readFileSync(path.join(ctx.profile, 'session.json'), 'utf8'));
+  const saved = JSON.parse(fs.readFileSync(path.join(ctx.profile, 'session-v6.json'), 'utf8'));
   assert.ok(!JSON.stringify(saved).includes(privateUrl));
-  const backup = path.join(ctx.profile, 'session.json.bak');
+  const backup = path.join(ctx.profile, 'session-v6.json.bak');
   if (fs.existsSync(backup)) assert.ok(!fs.readFileSync(backup, 'utf8').includes(privateUrl));
   const sleepySaved = saved.windows.flatMap(w => w.snapshot.pinnedTabs).find(t => t.url === sleepyUrl);
   assert.equal(sleepySaved.profileId, profile);

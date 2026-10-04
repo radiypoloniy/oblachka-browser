@@ -17,7 +17,7 @@ await withStand(async ctx => {
   const states = () => ctx.evalMainSync(`sessionStand.registry.allContexts().map(c => ({ id: c.sessionId, tabs: c.tabs.snapshot(), nodes: c.tabs.sidebarNodesSnapshot(), bounds: c.win.getNormalBounds() }))`);
   const readSession = async () => {
     for (let attempt = 0; attempt < 60; attempt++) {
-      try { return JSON.parse(await fs.readFile(path.join(ctx.profile, 'session.json'), 'utf8')); }
+      try { return JSON.parse(await fs.readFile(path.join(ctx.profile, 'session-v6.json'), 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw error; await wait(100); }
     }
     throw Error('Сессия не записана: ' + ctx.appLog.join('').slice(-3000));
@@ -77,7 +77,17 @@ await withStand(async ctx => {
   assert.equal(restored.find(w => w.id === aId).bounds.height, 730);
   await wait(1800);
   assert.equal((await readSession()).closedWindows.length, 0);
-  for (const filename of ['session.json', 'session.json.bak']) assert.ok(!(await fs.readFile(path.join(ctx.profile, filename), 'utf8')).includes(privateUrl));
+  for (const filename of ['session-v6.json', 'session-v6.json.bak']) assert.ok(!(await fs.readFile(path.join(ctx.profile, filename), 'utf8')).includes(privateUrl));
+
+  // Прежний установленный exe пишет v5 по старому пути на том же профиле.
+  // Имитируем именно запись на диск, затем запускаем текущий Electron заново.
+  const oldEmpty = JSON.stringify({ version: 5, savedAt: 'date', pinnedTabs: [], nodes: [], activeRef: { type: 'hub' } });
+  await fs.writeFile(path.join(ctx.profile, 'session.json'), oldEmpty);
+  await ctx.restart(0);
+  await load();
+  assert.deepEqual((await states()).map(w => w.id).sort(), [aId, bId].sort());
+  assert.equal((await states()).find(w => w.id === bId).tabs.filter(t => t.isPinned).length, 1);
+  assert.equal(await fs.readFile(path.join(ctx.profile, 'session.json'), 'utf8'), oldEmpty);
 
   await inWindow(aId, 'window.oblako.openWindow()');
   await wait(600);
@@ -108,6 +118,8 @@ await withStand(async ctx => {
   // Настоящий запуск на v5: файл должен уцелеть побайтово до первой записи v6.
   const legacy = JSON.stringify({ version: 5, savedAt: 'date', pinnedTabs: [{ url: pinUrl }], nodes: [{ type: 'single', url: duplicatesUrl }], activeRef: { type: 'url', url: duplicatesUrl } });
   await fs.writeFile(path.join(ctx.profile, 'session.json'), legacy);
+  await fs.rm(path.join(ctx.profile, 'session-v6.json'));
+  await fs.rm(path.join(ctx.profile, 'session-v6.json.bak'));
   await ctx.restart(0);
   await load();
   await wait(1800);

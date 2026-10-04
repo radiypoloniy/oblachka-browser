@@ -20,7 +20,8 @@ const legacy = new module.exports.SessionManager();
 const snapshot = (suffix, pinned = false) => ({ pinnedTabs: pinned ? [{ url: `https://example.com/pin-${suffix}` }] : [], nodes: [{ type: 'single', key: suffix, url: `https://example.com/${suffix}`, profileId: 'work' }], activeRef: { type: 'key', key: suffix } });
 const window = (id, pinned = false) => ({ id, snapshot: snapshot(id, pinned), bounds: { x: 10, y: 20, width: 1000, height: 700 } });
 const store = () => new AppSessionStore(dir, 'test', d => legacy.decode(d));
-const file = path.join(dir, 'session.json');
+const file = path.join(dir, 'session-v6.json');
+const legacyFile = path.join(dir, 'session.json');
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log('  ok   ' + name); };
 const quietWarn = console.warn;
@@ -30,20 +31,37 @@ try {
     const tab = { url: 'https://example.com/legacy', title: 'Legacy', profileId: 'work' };
     const data = { version, savedAt: 'date', pinnedTabs: [tab], tabs: [tab], nodes: [{ type: 'single', ...tab }], activeTabIndex: 0, activeTabType: 'normal', activeRef: { type: 'url', url: tab.url } };
     const raw = JSON.stringify(data);
-    fs.writeFileSync(file, raw);
+    fs.rmSync(file, { force: true });
+    fs.writeFileSync(legacyFile, raw);
     const s = store(); const loaded = s.load();
     check(`миграция v${version} и исходник до первой записи`, () => {
       assert.equal(loaded.windows.length, 1);
       assert.equal(loaded.windows[0].snapshot.pinnedTabs[0].profileId, 'work');
       assert.equal(s.save(loaded), true, s.lastError ?? 'save');
       assert.equal(JSON.parse(fs.readFileSync(file)).version, 6);
+      assert.equal(fs.readFileSync(legacyFile, 'utf8'), raw);
       assert.ok(fs.readdirSync(dir).filter(n => n.includes('pre-v6')).some(n => fs.readFileSync(path.join(dir, n), 'utf8') === raw));
     });
   }
-  const s = store(); s.load();
   const a = { windows: [window('a')], closedWindows: [] };
   const b = { windows: [window('b', true)], closedWindows: [] };
+  check('прежняя многооконная v6 импортируется без изменения исходника', () => {
+    fs.rmSync(file);
+    const raw = JSON.stringify({ version: 6, savedAt: 'date', ...b });
+    fs.writeFileSync(legacyFile, raw);
+    const imported = store();
+    assert.deepEqual(imported.load(), b);
+    assert.equal(imported.save(b), true);
+    assert.equal(fs.readFileSync(legacyFile, 'utf8'), raw);
+  });
+  const s = store(); s.load();
   s.save(a); s.save(b);
+  check('старый exe не заменяет многооконную сессию и закрепления', () => {
+    const before = fs.readFileSync(file, 'utf8');
+    fs.writeFileSync(legacyFile, JSON.stringify({ version: 5, savedAt: 'date', pinnedTabs: [], nodes: [], activeRef: { type: 'hub' } }));
+    assert.deepEqual(store().load(), b);
+    assert.equal(fs.readFileSync(file, 'utf8'), before);
+  });
   fs.writeFileSync(file, '{corrupt');
   const recovery = store();
   check('битый основной файл восстанавливается из последнего хорошего backup', () => {

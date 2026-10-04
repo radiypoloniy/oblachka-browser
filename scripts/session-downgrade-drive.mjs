@@ -1,7 +1,7 @@
 // Откат на старую версию не уничтожает открытые вкладки. Не *-check.mjs — поднимает приложение.
 //
 // ⚠️ ЗАЧЕМ, и почему именно сейчас. Автообновление в браузере есть, а значит появляется сценарий,
-// которого раньше физически не было: человек получил новую версию, та записала session.json нового
+// которого раньше физически не было: человек получил новую версию, та записала session-v6.json нового
 // формата, человек откатился на старую сборку. Она формата не знает — и до этой правки поступала
 // так: не восстанавливала ничего (полбеды, «вкладки не открылись»), а потом первое же закрытие
 // окна ПЕРЕЗАПИСЫВАЛО файл своим форматом. Вкладки исчезали навсегда, включая те, что вернулись бы
@@ -41,17 +41,17 @@ await withStand(async (ctx) => {
   console.log('профиль:', ctx.profile, '\n');
   await wait(4000);
 
-  const sessionFile = path.join(ctx.profile, 'session.json');
+  const sessionFile = path.join(ctx.profile, 'session-v6.json');
 
   // Кладём файл «из будущего» и перезапускаем приложение на том же профиле — это и есть откат.
   fs.writeFileSync(sessionFile, JSON.stringify(FUTURE, null, 2), 'utf8');
   const before = fs.readFileSync(sessionFile, 'utf8');
-  console.log('  положен session.json версии 99, перезапускаем…\n');
+  console.log('  положен session-v6.json версии 99, перезапускаем…\n');
 
   await ctx.restart();
   await wait(6000);
 
-  const copies = fs.readdirSync(ctx.profile).filter((f) => f.startsWith('session.json.from-v99.'));
+  const copies = fs.readdirSync(ctx.profile).filter((f) => f.startsWith('session-v6.json.from-v99.'));
   check('копия непонятого файла сделана', copies.length === 1, copies.join(', ') || 'копий нет');
 
   if (copies.length === 1) {

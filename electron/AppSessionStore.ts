@@ -6,17 +6,20 @@ import type { AppSessionSnapshot, SessionSnapshot } from '../shared/session';
 
 type LegacyDecoder = (data: Record<string, unknown>) => SessionSnapshot | null;
 
-// Единственный писатель session.json. Сначала сохраняем исходник/последний хороший файл,
+// Старые exe продолжают писать session.json, поэтому новый формат живёт отдельно.
+// Сначала сохраняем исходник/последний хороший файл,
 // затем заменяем основной через rename; ошибка диска не превращается в пустую сессию.
 export class AppSessionStore {
   readonly filePath: string;
+  #sourcePath: string;
   #lastGood: string | null = null;
   #blocked = false;
   #preserveOriginal: string | null = null;
   lastError: string | null = null;
 
   constructor(dir: string, private readonly appVersion: string, private readonly decodeLegacy: LegacyDecoder, private readonly onIssue?: (message: string) => void) {
-    this.filePath = path.join(dir, 'session.json');
+    this.filePath = path.join(dir, 'session-v6.json');
+    this.#sourcePath = this.filePath;
   }
 
   #decode(raw: string): AppSessionSnapshot | null {
@@ -30,20 +33,23 @@ export class AppSessionStore {
   }
 
   load(): AppSessionSnapshot | null {
+    // Прежний файл импортируется один раз. После первой записи старый браузер
+    // не может подменить многооконную сессию своим пустым снимком v5.
+    this.#sourcePath = fs.existsSync(this.filePath) ? this.filePath : path.join(path.dirname(this.filePath), 'session.json');
     let raw: string | null = null;
     try {
-      raw = fs.readFileSync(this.filePath, 'utf8');
+      raw = fs.readFileSync(this.#sourcePath, 'utf8');
       const version = (JSON.parse(raw) as { version?: unknown } | null)?.version;
       if (typeof version === 'number' && version > 6) {
         this.#blocked = true;
-        fs.copyFileSync(this.filePath, `${this.filePath}.from-v${version}.${Date.now()}`);
+        fs.copyFileSync(this.#sourcePath, `${this.#sourcePath}.from-v${version}.${Date.now()}`);
         this.#report('Неизвестная версия сессии: исходный файл защищён от перезаписи.');
         return null;
       }
       const decoded = this.#decode(raw);
       if (decoded) {
         this.#lastGood = raw;
-        if (version !== 6) this.#preserveOriginal = `${this.filePath}.pre-v6.${Date.now()}`;
+        if (version !== 6) this.#preserveOriginal = `${this.#sourcePath}.pre-v6.${Date.now()}`;
         return decoded;
       }
       this.#report('Некорректная сессия: пробую резервную копию, исходник будет сохранён отдельно.');
@@ -55,9 +61,9 @@ export class AppSessionStore {
         this.#report(error);
       }
     }
-    if (raw !== null) this.#preserveOriginal = `${this.filePath}.corrupt.${Date.now()}`;
+    if (raw !== null) this.#preserveOriginal = `${this.#sourcePath}.corrupt.${Date.now()}`;
     try {
-      const backup = fs.readFileSync(`${this.filePath}.bak`, 'utf8');
+      const backup = fs.readFileSync(`${this.#sourcePath}.bak`, 'utf8');
       const decoded = this.#decode(backup);
       if (decoded) { this.#lastGood = backup; this.#report('Сессия восстановлена из резервной копии.'); return decoded; }
     } catch (error) {
@@ -76,7 +82,7 @@ export class AppSessionStore {
     const tmp = `${this.filePath}.tmp`;
     try {
       if (this.#preserveOriginal) {
-        fs.copyFileSync(this.filePath, this.#preserveOriginal, fs.constants.COPYFILE_EXCL);
+        fs.copyFileSync(this.#sourcePath, this.#preserveOriginal, fs.constants.COPYFILE_EXCL);
         this.#preserveOriginal = null;
       }
       const fd = fs.openSync(tmp, 'w');
