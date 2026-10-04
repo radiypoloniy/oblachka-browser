@@ -6,7 +6,7 @@
     "ipc": 0
   },
   "electron/TabManager.ts": {
-    "lines": 3365,
+    "lines": 3370,
     "fn": 106,
     "effects": 0,
     "ipc": 0
@@ -24,13 +24,13 @@
     "ipc": 0
   },
   "electron/main.ts": {
-    "lines": 1638,
-    "fn": 189,
+    "lines": 1639,
+    "fn": 191,
     "effects": 0,
     "ipc": 0
   },
   "electron/preload-content.ts": {
-    "lines": 1672,
+    "lines": 1799,
     "fn": 63,
     "effects": 0,
     "ipc": 0
@@ -180,10 +180,10 @@
     "ipc": 0
   },
   "src/components/settings/PasswordsSection.tsx": {
-    "lines": 666,
-    "fn": 455,
+    "lines": 884,
+    "fn": 640,
     "effects": 3,
-    "ipc": 15
+    "ipc": 22
   },
   "src/components/settings/ProfilesSection.tsx": {
     "lines": 504,
