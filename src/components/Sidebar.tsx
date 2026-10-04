@@ -328,13 +328,12 @@ export default function Sidebar({
       <ModeSwitch mode={mode} onChange={setMode} />
 
       {mode === 'bookmarks' && (
-        <SidebarBookmarks onOpen={(url) => {
-          void window.oblako.createTab(url);
-          // ⚠️ Возврат к вкладкам сразу после открытия — ЗДЕСЬ, одной строкой, намеренно: в
-          // режиме закладок не видно ни полосы вкладок, ни того, какая активна, и без возврата
-          // человек теряет из виду, куда он вообще попал. Поведение пробное (открыть несколько
-          // закладок подряд станет дороже на клик) — если не приживётся, убирается эта строка.
-          setMode('tabs');
+        <SidebarBookmarks onOpen={async (url, background = false) => {
+          const id = await window.oblako.createTab(url, background);
+          if (!id) throw new Error('Окно закрылось до открытия вкладки');
+          // СКМ оставляет список на месте, чтобы можно было открыть следующие закладки.
+          if (!background) setMode('tabs');
+          return id;
         }} />
       )}
 

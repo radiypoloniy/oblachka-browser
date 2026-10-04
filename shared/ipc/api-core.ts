@@ -22,7 +22,7 @@ export interface CoreApi {
   onSyncChanged(cb: (state: SyncState) => void): () => void;
 
   getAllTabs(): Promise<TabState[]>;
-  createTab(url?: string): Promise<string>;       // вернёт id новой вкладки
+  createTab(url?: string, background?: boolean): Promise<string>; // вернёт id новой вкладки
   createIncognitoTab(url?: string): Promise<string>; // приватная вкладка (in-memory сессия, без истории)
   // Псевдо-вкладка (История/Настройки) — та же жизнь (закрытие/активация), что у обычной,
   // просто без WebContentsView. См. shared/ipc.ts::TabState.kind, TabManager.createSpecialTab.

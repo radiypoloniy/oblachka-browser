@@ -66,15 +66,15 @@ export function registerTabsIpc(d: IpcDeps): void {
   // и стартует сразу после первого, поэтому окно считаем от КОНЦА создания, не от начала.
   // Двойной клик по одной ссылке за это время схлопывается в одну вкладку; следующий
   // осознанный заход на тот же адрес уже позже и проходит.
-  const recentCreate = new Map<number, { url: string; id: string; at: number }>();
-  ipcMain.handle(IPC.TAB_CREATE, (e, url?: string) => {
+  const recentCreate = new Map<number, { url: string; background: boolean; id: string; at: number }>();
+  ipcMain.handle(IPC.TAB_CREATE, (e, url?: string, background = false) => {
     const tabs = tabsOf(e);
     if (!tabs) return;
     const key = url ?? '';
     const prev = recentCreate.get(e.sender.id);
-    if (prev && prev.url === key && Date.now() - prev.at < 250) return prev.id;
-    const id = tabs.createTab(url);
-    recentCreate.set(e.sender.id, { url: key, id, at: Date.now() });
+    if (prev && prev.url === key && prev.background === background && Date.now() - prev.at < 250) return prev.id;
+    const id = tabs.createTab(url, background === true);
+    recentCreate.set(e.sender.id, { url: key, background, id, at: Date.now() });
     return id;
   });
   ipcMain.handle(IPC.TAB_CREATE_INCOGNITO, (e, url?: string) => tabsOf(e)?.createTab(url, false, false, true));

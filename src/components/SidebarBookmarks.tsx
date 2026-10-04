@@ -12,6 +12,7 @@ import type { BookmarkNode } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import FolderGlyph from './FolderGlyph';
 import { RADIUS } from '../styles/system';
+import { BookmarkOpenFeedback, useBookmarkOpen } from './sidebar/useBookmarkOpen';
 
 // Режим «Закладки» в сайдбаре — содержимое, которое встаёт на место полосы вкладок.
 //
@@ -30,7 +31,7 @@ import { RADIUS } from '../styles/system';
 
 interface Props {
   /** Открыть закладку. Что делать с режимом дальше — решает сайдбар (см. onOpened). */
-  onOpen: (url: string) => void;
+  onOpen: (url: string, background?: boolean) => Promise<string>;
   // ⚠️ Флага «цветной сайдбар» тут больше нет и не нужно: подкраска приезжает CSS-переменными,
   // которые ставит сам сайдбар (--sidebar-inner-*), и наследуется сюда сама.
 }
@@ -47,6 +48,7 @@ function findNode(nodes: BookmarkNode[], id: number): BookmarkNode | null {
 
 export default function SidebarBookmarks({ onOpen }: Props) {
   const [tree, setTree] = useState<BookmarkNode[]>([]);
+  const { opened, openError, openBookmark } = useBookmarkOpen(onOpen);
   // null — корень. Выбранная папка живёт здесь, а не в адресе/сессии: это состояние взгляда,
   // а не данных, и переживать перезапуск ему незачем.
   const [folderId, setFolderId] = useState<number | null>(null);
@@ -231,6 +233,7 @@ export default function SidebarBookmarks({ onOpen }: Props) {
         {creating && <NameInput placeholder="Название папки" onDone={(v) => void createFolder(v)} onCancel={() => setCreating(false)} />}
       </div>
 
+      <BookmarkOpenFeedback opened={opened} openError={openError} />
       <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', flex: 1 }}>
         {items.length === 0 && (
           <div style={{ padding: '8px 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
@@ -239,13 +242,11 @@ export default function SidebarBookmarks({ onOpen }: Props) {
         )}
         <SortableContext items={items.map((n) => n.id)} strategy={verticalListSortingStrategy}>
           {items.map((node) => (
-            <SortableRow key={node.id} node={node} depth={0} expanded={expanded} onToggle={toggle}
-            zone="list"
-              onOpen={onOpen} renameId={renameId} setRenameId={setRenameId} onRemove={removeNode} />
+            <SortableRow key={node.id} node={node} depth={0} expanded={expanded} onToggle={toggle} zone="list"
+              onOpen={(node, background) => void openBookmark(node, background)} opened={opened} renameId={renameId} setRenameId={setRenameId} onRemove={removeNode} />
           ))}
         </SortableContext>
       </div>
-
       {/* Призрак — как у вкладок: оригинал гасится, за курсором едет копия строки. */}
       <DragOverlay>
         {dragNode && (dragNode.kind === 'folder' ? (
@@ -297,12 +298,13 @@ function SortableRow({ zone, ...props }: RowProps & { zone: 'list' }) {
 
 interface RowProps {
   node: BookmarkNode; depth: number; expanded: Set<number>;
-  onToggle: (id: number) => void; onOpen: (url: string) => void;
+  onToggle: (id: number) => void; onOpen: (node: BookmarkNode, background?: boolean) => void;
+  opened: { nodeId: number; serial: number } | null;
   renameId: number | null; setRenameId: (id: number | null) => void;
   onRemove: (node: BookmarkNode) => void;
 }
 
-function Row({ node, depth, expanded, onToggle, onOpen, renameId, setRenameId, onRemove }: RowProps) {
+function Row({ node, depth, expanded, onToggle, onOpen, opened, renameId, setRenameId, onRemove }: RowProps) {
   const isFolder = node.kind === 'folder';
   const open = expanded.has(node.id);
   const count = node.children?.length ?? 0;
@@ -328,7 +330,7 @@ function Row({ node, depth, expanded, onToggle, onOpen, renameId, setRenameId, o
           display: 'flex', alignItems: 'center', gap: 8, width: '100%',
           padding: '6px 8px', paddingLeft: 8 + depth * 14,
           borderRadius: 'var(--radius-sm)',
-          background: hover ? 'var(--surface-hover)' : 'transparent',
+          background: opened?.nodeId === node.id ? 'var(--accent-soft)' : hover ? 'var(--surface-hover)' : 'transparent',
           transition: 'background var(--dur-fast) var(--ease-standard)',
         }}
         onMouseEnter={() => setHover(true)}
@@ -336,8 +338,15 @@ function Row({ node, depth, expanded, onToggle, onOpen, renameId, setRenameId, o
       >
         <button
           className="no-drag"
-          onClick={() => (isFolder ? onToggle(node.id) : onOpen(node.url))}
-          title={isFolder ? node.title : `${node.title}\n${node.url}`}
+          onClick={() => (isFolder ? onToggle(node.id) : onOpen(node))}
+          onMouseDown={(e) => { if (e.button === 1 && !isFolder) e.preventDefault(); }}
+          onAuxClick={(e) => {
+            if (e.button !== 1 || isFolder) return;
+            e.preventDefault();
+            e.stopPropagation();
+            onOpen(node, true);
+          }}
+          title={isFolder ? node.title : `${node.title}\n${node.url}\nСКМ — открыть в фоне`}
           style={{
             display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0,
             border: 'none', background: 'transparent', cursor: 'default', padding: 0, textAlign: 'left',
@@ -356,6 +365,9 @@ function Row({ node, depth, expanded, onToggle, onOpen, renameId, setRenameId, o
             <span style={{ width: 12, flex: 'none' }} />
           )}
           <BookmarkIcon node={node} />
+          {opened?.nodeId === node.id && (
+            <Check key={opened.serial} size={14} className="oblako-bookmark-confirm" style={{ flex: 'none' }} />
+          )}
           <span style={{
             flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
@@ -395,7 +407,7 @@ function Row({ node, depth, expanded, onToggle, onOpen, renameId, setRenameId, o
       </div>
 
       {isFolder && open && node.children?.map((child) => (
-        <Row key={child.id} {...{ node: child, depth: depth + 1, expanded, onToggle, onOpen, renameId, setRenameId, onRemove }} />
+        <Row key={child.id} {...{ node: child, depth: depth + 1, expanded, onToggle, onOpen, opened, renameId, setRenameId, onRemove }} />
       ))}
     </>
   );

@@ -39,6 +39,23 @@ button, input, textarea, select { font-family: inherit; }
    не грузящих index.html (aipanel.tsx и т.п.), см. заход D: индикатор фактчека. */
 @keyframes oblako-spin { to { transform: rotate(360deg); } }
 
+/* Галочка и счётчик подтверждают открытие даже при скрытом списке вкладок. */
+.oblako-bookmark-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  animation: oblako-bookmark-confirm 420ms var(--ease-standard);
+}
+@keyframes oblako-bookmark-confirm {
+  from { opacity: 0; transform: translateY(5px) scale(0.85); }
+  65% { opacity: 1; transform: translateY(0) scale(1.08); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oblako-bookmark-confirm { animation: none; }
+}
+
 /* Метка «внешний агент» в тулбаре: появляется в момент обращения снаружи (см. useMcpAgent.ts).
    ⚠️ Короткое проявление, а не выезд: метка возникает рядом с постоянными кнопками, и движение
    сильнее пары кадров читалось бы как «что-то сломалось», а не «кто-то обратился». */
