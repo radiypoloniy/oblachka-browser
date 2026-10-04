@@ -24,7 +24,6 @@ interface HubProps {
   onOpenSettings: () => void;
   // Роль окна: в лёгком окне новая вкладка остаётся плитками — большие режимы (блокнот, граф)
   // обслуживаются службами полного окна.
-  isLightWindow?: boolean;
 }
 
 // Режим хаба глобальный (живёт в SettingsManager главного процесса), но приезжает сюда
@@ -35,7 +34,7 @@ interface HubProps {
 // вкладок в обычной модульной переменной: со второго открытия он известен уже к первому кадру.
 let cachedHubMode: HubMode | null = null;
 
-export default function Hub({ tabId, onSubmit, onOpenSettings, isLightWindow = false }: HubProps) {
+export default function Hub({ tabId, onSubmit, onOpenSettings }: HubProps) {
   const [tiles, setTiles] = useState<TileSite[]>([]);
   // null — режим в этом запуске ещё ни разу не отвечал (единственный такой маунт за процесс).
   // Тогда не рисуем ничего: пустой кадр честнее заведомо неверного экрана.
@@ -74,7 +73,7 @@ export default function Hub({ tabId, onSubmit, onOpenSettings, isLightWindow = f
   // ⚠️ Лёгкое окно всегда на плитках, каким бы ни был сохранённый режим: и блокнот, и холст
   // графа обслуживаются службами полного окна (см. WindowRegistry.ts), здесь они показывали бы
   // чужие данные. Настройку при этом не переписываем — полное окно откроется как и раньше.
-  const effectiveMode: HubMode = isLightWindow ? 'tiles' : mode;
+  const effectiveMode: HubMode = mode;
 
   return (
     // position:absolute/inset:0 — тот же приём, что у TabError.tsx: родитель (contentRef в
@@ -91,7 +90,6 @@ export default function Hub({ tabId, onSubmit, onOpenSettings, isLightWindow = f
           onOpenAi={() => pickMode('ai')}
           onOpenGraph={() => pickMode('graph')}
           tiles={tiles}
-          isLightWindow={isLightWindow}
           onOpenApp={(appId) => { void window.oblako.openPanelApp(appId); }}
         />
       : effectiveMode === 'graph'

@@ -1,10 +1,9 @@
 import { WebContentsView, app } from 'electron';
-import { registerPageContents } from './WindowRegistry';
+import { registerPageContents, contextForWindow } from './WindowRegistry';
 import type { BrowserWindow, Rectangle } from 'electron';
 import path from 'node:path';
 import fsp from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import type { TabManager } from './TabManager';
 import {
   SELECTION_SCRIPT, IMAGE_CAPTURE_SCRIPT, buildInsertScript, buildLastAnswerScript, profileForUrl,
 } from './graphWebApps';
@@ -28,14 +27,9 @@ interface Entry {
   visible: boolean;
 }
 
-// Ключ — `${graphId}:${nodeId}`. Открытых окон может быть несколько: сравнивать ответы двух
+// Ключ включает окно: один и тот же узел не должен отбирать живую страницу у соседнего окна.
 // моделей рядом — обычный сценарий графа, ради него всё и затевалось.
 const views = new Map<string, Entry>();
-
-let tabManagerRef: TabManager | null = null;
-export function setTabManager(tm: TabManager): void {
-  tabManagerRef = tm;
-}
 
 const HTTP_SCHEME = /^https?:\/\//i;
 
@@ -43,12 +37,12 @@ const HTTP_SCHEME = /^https?:\/\//i;
 // и мобильная вёрстка чата в ней выглядела бы обрезком. UA окна и так уже подменён на
 // настоящий Chrome в BrowserIdentity.ts — отдельно ничего не выставляем.
 
-function keyOf(graphId: number, nodeId: string): string {
-  return `${graphId}:${nodeId}`;
+function keyOf(win: BrowserWindow, graphId: number, nodeId: string): string {
+  return `${win.id}:${graphId}:${nodeId}`;
 }
 
 function ensureView(win: BrowserWindow, key: string, url: string): Entry | null {
-  if (!HTTP_SCHEME.test(url)) return null;
+  if (win.isDestroyed() || !HTTP_SCHEME.test(url)) return null;
   const existing = views.get(key);
   if (existing) {
     registerPageContents(win, existing.view.webContents);
@@ -81,14 +75,18 @@ function ensureView(win: BrowserWindow, key: string, url: string): Entry | null 
     if (!HTTP_SCHEME.test(target)) e.preventDefault();
   });
   view.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (HTTP_SCHEME.test(target)) tabManagerRef?.createTab(target);
+    if (HTTP_SCHEME.test(target)) contextForWindow(win)?.tabs.createTab(target);
     return { action: 'deny' };
   });
 
   view.webContents.loadURL(url).catch(() => { /* покажет сама страница */ });
   const entry: Entry = { view, url, visible: false };
   views.set(key, entry);
-  void win;
+  win.once('closed', () => {
+    if (views.get(key) !== entry) return;
+    views.delete(key);
+    try { view.webContents.close(); } catch { /* уже закрыто */ }
+  });
   return entry;
 }
 
@@ -103,7 +101,7 @@ function hideEntry(win: BrowserWindow, entry: Entry): void {
 export function showGraphWebApp(
   win: BrowserWindow, graphId: number, nodeId: string, url: string, bounds: Rectangle,
 ): void {
-  const entry = ensureView(win, keyOf(graphId, nodeId), url);
+  const entry = ensureView(win, keyOf(win, graphId, nodeId), url);
   if (!entry) return;
   if (!entry.visible) {
     win.contentView.addChildView(entry.view);
@@ -115,7 +113,7 @@ export function showGraphWebApp(
 export function setGraphWebAppBounds(
   win: BrowserWindow, graphId: number, nodeId: string, bounds: Rectangle,
 ): void {
-  const entry = views.get(keyOf(graphId, nodeId));
+  const entry = views.get(keyOf(win, graphId, nodeId));
   if (!entry) return;
   // Нулевой прямоугольник — сентинел «окно закрыто», тот же приём, что у контента вкладок.
   if (bounds.width < 2 || bounds.height < 2) { hideEntry(win, entry); return; }
@@ -131,14 +129,14 @@ export function setGraphWebAppBounds(
 // одного окна с сайтом другого. addChildView для уже добавленной вью переносит её в конец,
 // то есть наверх; renderer в тот же момент переставляет своё окно последним в списке.
 export function raiseGraphWebApp(win: BrowserWindow, graphId: number, nodeId: string): void {
-  const entry = views.get(keyOf(graphId, nodeId));
+  const entry = views.get(keyOf(win, graphId, nodeId));
   if (!entry || !entry.visible || win.isDestroyed()) return;
   try { win.contentView.addChildView(entry.view); } catch { /* окно закрылось */ }
 }
 
 // Узел удалили с холста — вью больше не нужна.
 export function closeGraphWebApp(win: BrowserWindow, graphId: number, nodeId: string): void {
-  const key = keyOf(graphId, nodeId);
+  const key = keyOf(win, graphId, nodeId);
   const entry = views.get(key);
   if (!entry) return;
   hideEntry(win, entry);
@@ -148,15 +146,15 @@ export function closeGraphWebApp(win: BrowserWindow, graphId: number, nodeId: st
 
 // ── Обмен через руку человека ────────────────────────────────────────────────
 
-function activeContents(graphId: number, nodeId: string) {
-  const entry = views.get(keyOf(graphId, nodeId));
+function activeContents(win: BrowserWindow, graphId: number, nodeId: string) {
+  const entry = views.get(keyOf(win, graphId, nodeId));
   if (!entry || entry.view.webContents.isDestroyed()) return null;
   return entry.view.webContents;
 }
 
 // Кладём готовый промпт в поле ввода страницы. Отправку НЕ жмём — это делает человек.
-export async function insertPrompt(graphId: number, nodeId: string, text: string): Promise<boolean> {
-  const wc = activeContents(graphId, nodeId);
+export async function insertPrompt(win: BrowserWindow, graphId: number, nodeId: string, text: string): Promise<boolean> {
+  const wc = activeContents(win, graphId, nodeId);
   if (!wc || !text.trim()) return false;
   try {
     const res = await wc.executeJavaScript(buildInsertScript(text), true);
@@ -173,9 +171,9 @@ export async function insertPrompt(graphId: number, nodeId: string, text: string
 // ⚠️ Скачивает main той же session.defaultSession, в которой живёт вью: ссылки на картинки
 // у ChatGPT подписанные и с проверкой куки — «голый» запрос получил бы 403.
 export async function captureImage(
-  graphId: number, nodeId: string,
+  win: BrowserWindow, graphId: number, nodeId: string,
 ): Promise<{ ok: boolean; path?: string; error?: string }> {
-  const wc = activeContents(graphId, nodeId);
+  const wc = activeContents(win, graphId, nodeId);
   if (!wc) return { ok: false, error: 'Окно чата закрыто' };
 
   let found: { url?: string; dataUrl?: string; error?: string };
@@ -217,9 +215,9 @@ export async function captureImage(
 // Забираем ответ. Сначала пробуем выделение — оно универсально и всегда означает явное
 // намерение человека («вот этот кусок»). Если не выделено, пробуем селектор профиля.
 export async function captureAnswer(
-  graphId: number, nodeId: string, mode: 'selection' | 'last',
+  win: BrowserWindow, graphId: number, nodeId: string, mode: 'selection' | 'last',
 ): Promise<string> {
-  const wc = activeContents(graphId, nodeId);
+  const wc = activeContents(win, graphId, nodeId);
   if (!wc) return '';
   try {
     const selected = await wc.executeJavaScript(SELECTION_SCRIPT, true) as string;

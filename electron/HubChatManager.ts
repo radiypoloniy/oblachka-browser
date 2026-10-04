@@ -20,6 +20,8 @@ export interface HubChatSessionMeta { id: number; title: string; updatedAt: numb
 
 interface TabChatCtx {
   sessionId: number | null;
+  abort: AbortController;
+  pending: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   history: any[]; // ChatHistoryItem[] node-llama-cpp — тот же opaque-формат, что у AiPanelManager.tabContexts
 }
@@ -95,12 +97,31 @@ export class HubChatManager {
     role: AiRole = 'chat',
   ): Promise<{ outcome: ChatOutcome; sessionId: number | null }> {
     const ctx = this.#getOrCreateCtx(tabId);
+    if (ctx.pending) return { outcome: { ok: false, error: 'Ответ уже готовится' }, sessionId: ctx.sessionId };
+    ctx.pending = true;
     // ⚠️ Ответ по источникам считается долго — в блокноте контекст доходит до 24 000 знаков.
     // Поэтому он тоже заявляется в общий реестр: светодиод в AI-панели и кнопка «Стоп» должны
     // работать и здесь, а не только на генерации документа.
     const act = beginActivity('Отвечаю по источникам', role);
-    const outcome = await runChatMessage(grounding?.promptText ?? text, ctx.history, onChunk, act.signal, role);
-    act.done();
+    const combined = new AbortController();
+    const cancel = () => combined.abort();
+    act.signal.addEventListener('abort', cancel, { once: true });
+    ctx.abort.signal.addEventListener('abort', cancel, { once: true });
+    if (act.signal.aborted || ctx.abort.signal.aborted) cancel();
+    const signal = combined.signal;
+    const current = () => this.#tabContexts.get(tabId) === ctx && !signal.aborted;
+    let outcome: ChatOutcome;
+    try {
+      outcome = await runChatMessage(grounding?.promptText ?? text, ctx.history,
+        chunk => { if (current()) onChunk?.(chunk); }, signal, role);
+    } catch (error) {
+      outcome = { ok: false, error: String(error) };
+    } finally {
+      ctx.pending = false; act.done();
+      act.signal.removeEventListener('abort', cancel);
+      ctx.abort.signal.removeEventListener('abort', cancel);
+    }
+    if (!current()) return { outcome: { ok: false, error: 'Запрос отменён' }, sessionId: null };
     if (outcome.ok) {
       ctx.history = outcome.history;
       // Источники-ссылки приклеиваем только у web-grounding (SearXNG). У грунтинга блокнота
@@ -124,7 +145,8 @@ export class HubChatManager {
 
   // «Новый чат» — сбрасывает живой контекст вкладки, следующее сообщение создаст новую сессию.
   newSession(tabId: string): void {
-    this.#tabContexts.set(tabId, { sessionId: null, history: [] });
+    this.#tabContexts.get(tabId)?.abort.abort();
+    this.#tabContexts.set(tabId, { sessionId: null, history: [], abort: new AbortController(), pending: false });
   }
 
   // Продолжение старого диалога: подгружает сохранённый history_json в контекст вкладки
@@ -136,7 +158,8 @@ export class HubChatManager {
       if (!row) return [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const history = JSON.parse(row.history_json) as any[];
-      this.#tabContexts.set(tabId, { sessionId, history });
+      this.#tabContexts.get(tabId)?.abort.abort();
+      this.#tabContexts.set(tabId, { sessionId, history, abort: new AbortController(), pending: false });
       return this.getSession(sessionId);
     } catch (e) {
       console.warn('[HubChat] resumeSession error:', (e as Error).message);
@@ -180,7 +203,7 @@ export class HubChatManager {
       });
       run();
       for (const [tabId, ctx] of this.#tabContexts) {
-        if (ctx.sessionId === sessionId) this.#tabContexts.set(tabId, { sessionId: null, history: [] });
+        if (ctx.sessionId === sessionId) this.newSession(tabId);
       }
     } catch (e) {
       console.warn('[HubChat] deleteSession error:', (e as Error).message);
@@ -190,7 +213,7 @@ export class HubChatManager {
   // Закрытые вкладки не нужно держать в памяти — сами сессии в БД это не трогает.
   pruneClosedTabs(liveIds: Set<string>): void {
     for (const tabId of this.#tabContexts.keys()) {
-      if (!liveIds.has(tabId)) this.#tabContexts.delete(tabId);
+      if (!liveIds.has(tabId)) { this.#tabContexts.get(tabId)?.abort.abort(); this.#tabContexts.delete(tabId); }
     }
   }
 
@@ -199,7 +222,7 @@ export class HubChatManager {
   #getOrCreateCtx(tabId: string): TabChatCtx {
     let ctx = this.#tabContexts.get(tabId);
     if (!ctx) {
-      ctx = { sessionId: null, history: [] };
+      ctx = { sessionId: null, history: [], abort: new AbortController(), pending: false };
       this.#tabContexts.set(tabId, ctx);
     }
     return ctx;

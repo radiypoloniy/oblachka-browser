@@ -167,15 +167,20 @@ export function registerGraphIpc(d: IpcDeps): void {
     const w = winOf(e);
     if (w) closeGraphWebApp(w, graphId, nodeId);
   });
-  ipcMain.handle(IPC.GRAPH_WEBAPP_INSERT, (_e, graphId: number, nodeId: string) => {
+  ipcMain.handle(IPC.GRAPH_WEBAPP_INSERT, (e, graphId: number, nodeId: string) => {
     const doc = graphs.get(graphId);
     if (!doc) return false;
-    return insertPrompt(graphId, nodeId, composeWebAppPrompt(doc, nodeId));
+    const w = winOf(e);
+    return w ? insertPrompt(w, graphId, nodeId, composeWebAppPrompt(doc, nodeId)) : false;
   });
-  ipcMain.handle(IPC.GRAPH_WEBAPP_CAPTURE_IMAGE, (_e, graphId: number, nodeId: string) =>
-    captureImage(graphId, nodeId));
+  ipcMain.handle(IPC.GRAPH_WEBAPP_CAPTURE_IMAGE, (e, graphId: number, nodeId: string) => {
+    const w = winOf(e);
+    return w ? captureImage(w, graphId, nodeId) : { ok: false };
+  });
   ipcMain.handle(IPC.GRAPH_WEBAPP_CAPTURE, async (e, graphId: number, nodeId: string, mode: 'selection' | 'last') => {
-    const text = await captureAnswer(graphId, nodeId, mode === 'last' ? 'last' : 'selection');
+    const w = winOf(e);
+    if (!w) return '';
+    const text = await captureAnswer(w, graphId, nodeId, mode === 'last' ? 'last' : 'selection');
     if (!text) return '';
     // Результат пишет main, а не renderer: инвариант «результаты узлов принадлежат движку»
     // (см. шапку GraphStore.ts) держится и здесь, просто источник ответа — человек.

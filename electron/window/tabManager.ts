@@ -10,6 +10,7 @@ import { WebContentsView } from 'electron';
 import type { BrowserWindow } from 'electron';
 import { IPC } from '../../shared/ipc';
 import { TabManager } from '../TabManager';
+import { syncHubChats } from '../hubChatOwnership';
 import { restackUpdatePrompt } from '../UpdatePromptManager';
 import type { FindResult } from '../../shared/ipc';
 import { DEFAULT_PROFILE_ID } from '../../shared/profiles';
@@ -102,7 +103,7 @@ export function createWindowTabManager(
       if (!isShuttingDown()) onPageTranslateTabsSynced(win);
       // Тот же снапшот — чистка in-memory контекстов AI-чата Hub по закрытым вкладкам
       // (см. HubChatManager.ts::pruneClosedTabs, тот же принцип, что onTabsSynced выше).
-      hubChat.pruneClosedTabs(new Set(tabsSnapshot.map((t) => t.id)));
+      syncHubChats(win, hubChat);
       // Координатор собирает все живые окна в один снимок после дебаунса.
       onSessionChanged();
     },

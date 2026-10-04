@@ -1,6 +1,6 @@
 import { WebContentsView } from 'electron';
 import type { BrowserWindow } from 'electron';
-import type { TabManager } from './TabManager';
+import { contextForWindow } from './WindowRegistry';
 import { BACKGROUND_WEB_PREFERENCES, markBackground, unmarkBackground } from './BackgroundWebContents';
 import { extractEnrichedText } from './HistoryIndexer';
 
@@ -20,13 +20,6 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([p, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))]);
 }
 
-// Ссылка на менеджер вкладок — ставится из main. Нужна, чтобы сперва поискать УЖЕ открытую
-// вкладку с этим адресом (см. ниже), а не лезть в сеть повторно.
-let tabsRef: TabManager | null = null;
-export function setTabManager(tm: TabManager): void {
-  tabsRef = tm;
-}
-
 export async function extractUrlText(win: BrowserWindow, url: string): Promise<{ ok: boolean; title?: string; text?: string }> {
   if (win.isDestroyed()) return { ok: false };
   const target = /^https?:\/\//i.test(url) ? url : `https://${url}`;
@@ -35,7 +28,10 @@ export async function extractUrlText(win: BrowserWindow, url: string): Promise<{
   // дорисована и ничего не стоит. Скрытая вью ниже открывает страницу ЗАНОВО, и магазины
   // встречают её защитой от ботов — проблема не в разборе, а в том, что мы сами создаём
   // себе второй заход. Живую вкладку при этом не трогаем: только читаем DOM.
-  const open = tabsRef?.getWebContentsForUrl(target) ?? null;
+  const tabs = contextForWindow(win)?.tabs;
+  const candidate = tabs?.getWebContentsForUrl(target) ?? null;
+  const id = candidate ? tabs?.tabIdForWebContents(candidate.id) : null;
+  const open = id && !tabs?.isIncognito(id) ? candidate : null;
   if (open && !open.isDestroyed()) {
     try {
       const text = await extractEnrichedText(open, open.getURL(), { allowNavigation: true });
@@ -45,10 +41,14 @@ export async function extractUrlText(win: BrowserWindow, url: string): Promise<{
     } catch { /* читать из чужой вкладки не вышло — идём штатным путём */ }
   }
 
+  if (win.isDestroyed()) return { ok: false };
   const view = new WebContentsView({
     webPreferences: { ...BACKGROUND_WEB_PREFERENCES },
   });
   markBackground(view.webContents);
+  const wc = view.webContents;
+  const closed = () => { if (!wc.isDestroyed()) wc.close(); };
+  win.once('closed', closed);
   win.contentView.addChildView(view);
   // ⚠️ Размер НАСТОЯЩИЙ, вью просто уведена за левый край окна. С нулевыми bounds у страницы
   // нет раскладки: innerText пуст, ленивые блоки не рисуются, и SPA магазинов отдавали пустоту.
@@ -67,7 +67,8 @@ export async function extractUrlText(win: BrowserWindow, url: string): Promise<{
   } catch {
     return { ok: false }; // DNS/HTTP/редирект/таймаут — источник не извлёкся, UI покажет ошибку
   } finally {
-    unmarkBackground(view.webContents.id);
+    win.removeListener('closed', closed);
+    unmarkBackground(wc.id);
     try { if (!win.isDestroyed()) win.contentView.removeChildView(view); } catch { /* окно закрылось */ }
     try { if (!view.webContents.isDestroyed()) view.webContents.close(); } catch { /* уже закрыт */ }
   }

@@ -27,7 +27,7 @@ async function prepareActive(): Promise<void> {
   const active = new Set<number>();
   for (const ctx of allContexts()) {
     if (!insightsConfig().enabled) break;
-    if (ctx.role !== 'main' || ctx.win.isDestroyed() || !ctx.win.isVisible() || ctx.win.isMinimized()) continue;
+    if (ctx.win.isDestroyed() || !ctx.win.isVisible() || ctx.win.isMinimized()) continue;
     const tab = ctx.tabs.snapshot().find(t => t.isActive);
     const wc = tab ? ctx.tabs.getActiveWebContents(tab.id) : null;
     if (!tab || !wc || wc.isDestroyed() || !eligibleInsightPage(tab.url)) continue;

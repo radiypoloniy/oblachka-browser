@@ -15,9 +15,7 @@ import { closeDownloadsPopover } from '../DownloadsPopoverManager';
 import { faviconService } from '../FaviconService';
 import { setTabManager as setFindBarTabManager } from '../FindBarManager';
 import { buildAddToGraphMenuItem } from '../GraphInbox';
-import { setTabManager as setGraphWebAppTabManager } from '../GraphWebAppManager';
 import * as ModelRegistry from '../ModelRegistry';
-import { setTabManager as setNotebookExtractTabManager } from '../NotebookExtract';
 import { readPageSelection } from '../PageSelection';
 import { closePasswordPopover } from '../PasswordPopoverManager';
 import { applyRules } from '../RuleEngine';
@@ -173,17 +171,6 @@ export function wireTabs(
 
     });
 
-    // Узлу-веб-приложению графа — только чтобы target=_blank со стороннего сайта уходил
-
-    // обычной вкладкой Oblako, а не отдельным Chromium-окном (как у WebAppManager).
-
-    setGraphWebAppTabManager(tabs);
-
-    // Извлечению — доступ к открытым вкладкам: страница, уже открытая пользователем, прошла
-
-    // антибот и дорисована, и читать надо её, а не открывать сайт вторым заходом.
-
-    setNotebookExtractTabManager(tabs);
 
   }
 

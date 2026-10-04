@@ -37,7 +37,6 @@ interface Props {
   onOpenAi: () => void;
   onOpenGraph: () => void;
   tiles: TileSite[];
-  isLightWindow?: boolean;
   /** Открыть локальное приложение (калькулятор и т.п.) — их слоты живут в AI-панели. */
   onOpenApp: (appId: string) => void;
 }
@@ -103,7 +102,7 @@ const LIGHT_PALETTE: Record<string, string> = {
 };
 
 
-export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, isLightWindow = false, onOpenApp }: Props) {
+export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, onOpenApp }: Props) {
   const [settings, setSettings] = useState<NewTabSettings>(() => loadNewTabSettings());
   const [layout, setLayout] = useState<DesktopLayout>(() => loadDesktop());
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -228,7 +227,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
       </div>
 
       <DesktopCorner
-        editing={editing} compact={compactCorner} isLightWindow={isLightWindow}
+        editing={editing} compact={compactCorner}
         onAdd={() => setSheetOpen(true)}
         onDone={() => { setEditing(false); setSheetOpen(false); }}
         onPanel={() => setPanelOpen(true)}
@@ -274,10 +273,9 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
  * экрана упёрлась в порог structure-check (200 строк). Угол — самодостаточный кусок: он ничего
  * не знает ни о раскладке, ни о виджетах, только о том, какие действия сейчас уместны.
  */
-function DesktopCorner({ editing, compact, isLightWindow, onAdd, onDone, onPanel, onOpenGraph, onOpenAi }: {
+function DesktopCorner({ editing, compact, onAdd, onDone, onPanel, onOpenGraph, onOpenAi }: {
   editing: boolean;
   compact: boolean;
-  isLightWindow?: boolean;
   onAdd: () => void;
   onDone: () => void;
   onPanel: () => void;
@@ -323,7 +321,7 @@ function DesktopCorner({ editing, compact, isLightWindow, onAdd, onDone, onPanel
           <CornerButton title="Настроить экран" onClick={onPanel}>
             <SlidersHorizontal size={18} />
           </CornerButton>
-          {!isLightWindow && (
+
             <CornerPair compact={compact}>
               <CornerPairButton
                 title="Граф-воркспейс" label="Граф" compact={compact}
@@ -334,7 +332,6 @@ function DesktopCorner({ editing, compact, isLightWindow, onAdd, onDone, onPanel
                 onClick={onOpenAi}
               ><Sparkles size={16} /></CornerPairButton>
             </CornerPair>
-          )}
         </>
       )}
     </div>

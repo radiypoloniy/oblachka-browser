@@ -368,7 +368,7 @@ export default function App() {
         sidebarNodes={sidebarNodes}
         onDropOnContent={enterSplit}
         returnHint={panelDrag?.zone === 'sidebar'}
-        organizeTabsCount={isLightWindow ? 0 : organizeTabsCount}
+        organizeTabsCount={organizeTabsCount}
         organizeState={organizeState}
         organizeLongWait={organizeLongWait}
         organizeProposal={organizeProposal}
@@ -547,7 +547,7 @@ export default function App() {
                остров-подложка позади неё (см. TAB_FRAME_STYLE) плюс ошибка поверх, если есть. */
             isHub
               ? <Hub
-                  tabId={activeId} onSubmit={submit} isLightWindow={isLightWindow}
+                  tabId={activeId} onSubmit={submit}
                   onOpenHistory={() => void openSpecial('history')}
                   onOpenSettings={() => void openSpecial('settings')}
                 />

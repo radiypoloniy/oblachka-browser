@@ -13,11 +13,8 @@ import type { AiRole } from '../../shared/aiRouting';
 import { IPC } from '../../shared/ipc';
 import * as aiKeyStore from '../AiKeyStore';
 import * as searxngKeyStore from '../SearxngKeyStore';
-import { buildGroundingPrompt, searxngSearch } from '../SearxngSearch';
 import * as skillsStore from '../SkillsStore';
-import type { ChatOutcome } from '../TranslationService';
 import { broadcastToChrome } from '../WindowRegistry';
-import { uiLanguage } from '../uiText';
 import { dialog, ipcMain } from 'electron';
 import fsp from 'node:fs/promises';
 import * as FileStore from '../ai/FileStore';
@@ -26,71 +23,14 @@ import { extForMime } from '../../shared/aiAttachments';
 import { sanitizeFileNameBase } from '../../shared/fileNameSafety';
 import { randomUUID } from 'node:crypto';
 import type { IpcDeps } from './deps';
+import { registerHubChatIpc } from './hubChat';
 
 export function registerAiHubIpc(d: IpcDeps): void {
   registerPageInsightsIpc();
   registerTabCompareIpc(d.settings);
-  const { chromeOf, hubChat, sendTo, winOf } = d;
+  const { winOf } = d;
 
-  // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
-  // send — fire-and-forget (не invoke): ответ идёт стримом чанков + финальным результатом,
-  // так проще, чем тащить длинный запрос через invoke (тот же приём, что у AI-панели).
-  ipcMain.on(IPC.HUB_CHAT_SEND, (e, payload: { tabId: string; text: string; grounding: boolean; sourcesContext?: string; notebook?: boolean }) => {
-    const { tabId, text, grounding, sourcesContext } = payload;
-    // Блокнот целиком (беседа, Студия, страницы) идёт своей ролью — см. HubChatManager.sendMessage.
-    const role: AiRole = payload.notebook ? 'notebook' : 'chat';
-    // Адресат ответа фиксируется в момент запроса: стрим приходит асинхронно, и к его концу
-    // фокус может быть уже в другом окне — искать окно заново было бы поздно и неверно.
-    const target = chromeOf(e);
-    const sendResult = (sessionId: number | null, outcome: ChatOutcome) => {
-      sendTo(target, IPC.HUB_CHAT_RESULT, {
-        tabId,
-        sessionId,
-        outcome: outcome.ok ? { ok: true, out: outcome.out } : { ok: false, error: outcome.error },
-      });
-    };
-    const onChunk = (chunkText: string) => {
-      sendTo(target, IPC.HUB_CHAT_CHUNK, { tabId, text: chunkText });
-    };
-    void (async () => {
-      // Web-grounding (SearXNG) — ОТДЕЛЬНАЯ ветка перед обычным путём ниже, целиком независимая
-      // (тот же приём, что в AiPanelManager.ts::ai-panel:chat-send): риск сломать обычный
-      // хаб-чат/персистентность сессий сведён к этому одному if с ранним return, сам обычный
-      // путь (hubChat.sendMessage(tabId, text, onChunk) без 4-го аргумента) не тронут ни строкой.
-      // Нет извлечения страницы, в отличие от AI-панели — в Hub её физически нет (это не вкладка
-      // сайта), запрос = сырой текст пользователя как есть.
-      if (grounding) {
-        const search = await searxngSearch(text);
-        if (!search.ok) {
-          sendResult(null, { ok: false, error: search.error });
-          return;
-        }
-        const promptText = buildGroundingPrompt(text, search.results);
-        const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, { promptText, sources: search.results }, role);
-        sendResult(sessionId, outcome);
-        return;
-      }
-      // Грунтинг блокнота: подмешиваем текст выбранных источников в промпт (модель отвечает по ним),
-      // но в истории/показе остаётся сырой вопрос пользователя. sources пуст → ссылки не дописываются.
-      if (sourcesContext && sourcesContext.trim()) {
-        const promptText = (uiLanguage() === 'en'
-          ? 'Answer from the sources below. If they do not contain the answer, say so — do not invent.\n\n'
-          : 'Отвечай, опираясь на приведённые источники. Если ответа в них нет — так и скажи, не выдумывай.\n\n')
-          + sourcesContext + '\n\n' + (uiLanguage() === 'en' ? 'Question: ' : 'Вопрос: ') + text;
-        const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, { promptText, sources: [] }, role);
-        sendResult(sessionId, outcome);
-        return;
-      }
-      const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, undefined, role);
-      sendResult(sessionId, outcome);
-    })();
-  });
-  ipcMain.handle(IPC.HUB_CHAT_LIST_SESSIONS, () => hubChat.listSessions());
-  ipcMain.handle(IPC.HUB_CHAT_GET_SESSION, (_e, sessionId: number) => hubChat.getSession(sessionId));
-  ipcMain.handle(IPC.HUB_CHAT_NEW_SESSION, (_e, tabId: string) => hubChat.newSession(tabId));
-  ipcMain.handle(IPC.HUB_CHAT_RESUME_SESSION, (_e, tabId: string, sessionId: number) =>
-    hubChat.resumeSession(tabId, sessionId));
-  ipcMain.handle(IPC.HUB_CHAT_DELETE_SESSION, (_e, sessionId: number) => hubChat.deleteSession(sessionId));
+  registerHubChatIpc(d);
 
   // Заход D — ключ Gemini (AI-фактчек). Сам ключ не возвращается в renderer, только статус.
   ipcMain.handle(IPC.AI_GET_KEY_STATUS, () => aiKeyStore.getKeyStatus());
