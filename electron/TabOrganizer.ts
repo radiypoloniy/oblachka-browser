@@ -9,11 +9,6 @@ import { groupNameFromDomain } from '../shared/rules';
 import { getLoadedModelId, runTabOrganizePrompt } from './TranslationService';
 import { parse as parseTld } from 'tldts-experimental';
 
-let tabManagerRef: TabManager | null = null;
-export function setTabManager(tm: TabManager): void {
-  tabManagerRef = tm;
-}
-
 // ⚠️ Геттер, а не инстанс: история теперь живёт на профиль (ProfileData.ts), и сохранённая
 // здесь ссылка указывала бы на базу того профиля, который был активен при запуске.
 let historyRef: (() => HistoryManager) | null = null;
@@ -250,14 +245,13 @@ function parseMembers(out: string, tabCount: number): number[] {
   return picked;
 }
 
-export async function suggestGroups(): Promise<OrganizeProposal> {
+export async function suggestGroups(tabs: TabManager | null, abort?: AbortSignal): Promise<OrganizeProposal> {
   // modelWasCold фиксируется ДО вызова модели (не после) — UI использует его, чтобы решить, было ли
   // это холодным стартом (ensureLoaded() внутри runTabOrganizePrompt ниже сама грузит модель, если
   // её ещё нет — гейта MODEL_NOT_LOADED больше нет, группировка теперь такой же явный триггер
   // загрузки, как открытие AI-панели, пользователь сам нажал кнопку).
   const modelWasCold = getLoadedModelId() === null;
 
-  const tabs = tabManagerRef;
   const history = historyRef?.() ?? null;
   if (!tabs || !history) return { ok: true, clusters: [], modelWasCold };
 
@@ -282,11 +276,12 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
     // видеопамять — и в каждом из этих случаев собрать вкладки одного сайта мы всё равно можем.
     // Ошибку возвращаем только если в итоге не набралось НИ ОДНОЙ группы (см. конец функции).
     const maxTopics = topicBudget(unique.length);
-    const topicsRes = await runTabOrganizePrompt(buildTopicsPrompt(lines, maxTopics), { role: 'organize' });
+    const topicsRes = await runTabOrganizePrompt(buildTopicsPrompt(lines, maxTopics), { role: 'organize', abort });
     if (!topicsRes.ok) {
       console.warn('[organize] модель недоступна, остаётся группировка по сайту:', topicsRes.error);
       modelError = { error: topicsRes.error, errorCode: topicsRes.errorCode };
     }
+    if (abort?.aborted) return { ok: true, clusters: [], modelWasCold };
     const rawTopics = topicsRes.ok ? topicsRes.out.trim() : '';
     const topics = parseTopics(rawTopics, maxTopics);
     console.log(`[organize] темы (${unique.length} вкладок, бюджет ${maxTopics}, ${duplicates.length} дублей): ${JSON.stringify(topics)}, ответ модели: ${JSON.stringify(rawTopics.slice(0, 160))}`);
@@ -300,7 +295,8 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
       // тема, которой вкладка принадлежит по-настоящему, приходила второй и оставалась ни с чем.
       const claims = new Map<number, string[]>(); // номер вкладки → темы, которые её просят
       for (const topic of topics) {
-        const res = await runTabOrganizePrompt(buildTopicMembersPrompt(topic, topics, lines), { role: 'organize' });
+        if (abort?.aborted) return { ok: true, clusters: [], modelWasCold };
+        const res = await runTabOrganizePrompt(buildTopicMembersPrompt(topic, topics, lines), { role: 'organize', abort });
         if (!res.ok) {
           // Одна упавшая тема не отменяет остальные.
           console.warn(`[organize] тема «${topic}» не разобрана:`, res.error);

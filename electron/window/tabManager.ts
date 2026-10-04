@@ -99,7 +99,7 @@ export function createWindowTabManager(
       if (!isShuttingDown()) onTabsSynced(win);
       // Тот же снапшот — привязка полностраничного перевода к активной вкладке (сброс состояния
       // на навигацию/закрытие, см. PageTranslateManager.ts::onTabsSynced), тот же принцип.
-      if (!isShuttingDown()) onPageTranslateTabsSynced(tabsSnapshot);
+      if (!isShuttingDown()) onPageTranslateTabsSynced(win);
       // Тот же снапшот — чистка in-memory контекстов AI-чата Hub по закрытым вкладкам
       // (см. HubChatManager.ts::pruneClosedTabs, тот же принцип, что onTabsSynced выше).
       hubChat.pruneClosedTabs(new Set(tabsSnapshot.map((t) => t.id)));

@@ -18,7 +18,8 @@ import { togglePageTranslate, getActiveState as getPageTranslateActiveState } fr
 import { relayoutScreenshot } from '../ScreenshotManager';
 import { relayoutSearchPopover } from '../SearchPopoverManager';
 import { HUB_ID, TabManager } from '../TabManager';
-import { suggestGroupName, suggestGroups } from '../TabOrganizer';
+import { suggestGroupName } from '../TabOrganizer';
+import { suggestWindowGroups } from '../window/organize';
 import { suggestTabTitle } from '../TabRenamer';
 import { getLoadedModelId, isModelWarm, unloadModel } from '../TranslationService';
 import { broadcastToChrome, contextFromSender } from '../WindowRegistry';
@@ -33,7 +34,7 @@ export function registerMenusIpc(d: IpcDeps): void {
   // AI-группировка вкладок (Phase 4)
   ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (e, clusters: OrganizeCluster[]) => tabsOf(e)?.applyOrganize(clusters));
   ipcMain.handle(IPC.TABS_ORGANIZE_ROLLBACK, (e)                                => tabsOf(e)?.rollbackOrganize());
-  ipcMain.handle(IPC.TABS_SUGGEST_GROUPS,    ()                                => suggestGroups());
+  ipcMain.handle(IPC.TABS_SUGGEST_GROUPS,    (e)                               => suggestWindowGroups(e.sender));
   ipcMain.handle(IPC.TABS_RENAME_ROLLBACK,   (e)                               => tabsOf(e)?.rollbackRenames());
   // Массовое переименование — вторая половина «навести порядок».
   //
@@ -97,8 +98,8 @@ export function registerMenusIpc(d: IpcDeps): void {
 
   // Полностраничный перевод (см. PageTranslateManager.ts) — fire-and-forget, актуальное
   // состояние приходит push'ем через onPageTranslateStateChanged (см. выше).
-  ipcMain.on(IPC.PAGE_TRANSLATE_TOGGLE, () => { void togglePageTranslate(); });
-  ipcMain.handle(IPC.PAGE_TRANSLATE_GET_STATE, () => getPageTranslateActiveState());
+  ipcMain.on(IPC.PAGE_TRANSLATE_TOGGLE, (e) => { const t = tabsOf(e); if (t) void togglePageTranslate(t); });
+  ipcMain.handle(IPC.PAGE_TRANSLATE_GET_STATE, (e) => getPageTranslateActiveState(tabsOf(e)));
 
   // Меню «⋯» в адресной строке — действия НАД ЭТОЙ СТРАНИЦЕЙ, которым не нужна постоянная кнопка.
   //
@@ -109,7 +110,7 @@ export function registerMenusIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.OMNIBOX_MORE_MENU, async (e) => {
     const w = winOf(e);
     if (!w) return;
-    const state = getPageTranslateActiveState();
+    const state = getPageTranslateActiveState(tabsOf(e));
     const items: MenuItemConstructorOptions[] = [{
       label: state === 'translating' ? tr('Перевожу страницу…')
         : state === 'translated' ? tr('Показать оригинал')
@@ -117,7 +118,7 @@ export function registerMenusIpc(d: IpcDeps): void {
       // Пока идёт перевод, жать нечего — но пункт ВИДЕН: пустое меню ровно в тот момент, когда
       // человек пришёл проверить, что происходит, читалось бы как поломка.
       enabled: state !== 'translating',
-      click: () => { void togglePageTranslate(); },
+      click: () => { const t = tabsOf(e); if (t) void togglePageTranslate(t); },
     }];
     // Цены на странице нет — и пунктов про неё нет. Обещать отслеживание там, где оно не
     // сработает, нельзя (тот же принцип, что у самого индикатора товара, см. PRICE-TRACKING.md).

@@ -6,7 +6,6 @@
 // проводку «по доменам», — в шапке electron/ipc/deps.ts.
 import type { BrowserWindow, WebContentsView } from 'electron';
 import { applyBangTemplate } from '../../shared/bangs';
-import { IPC } from '../../shared/ipc';
 import { initializeChat, setModelStateProvider as setAiPanelModelStateProvider, setOnChatIntent as setOnAiPanelChatIntent, setOnPanelFocus as setOnAiPanelFocus } from '../AiPanelManager';
 import { mapFormFields, type FormFieldDescriptor } from '../AutofillFieldMapper';
 import { closeAutofillPopover } from '../AutofillPopoverManager';
@@ -20,7 +19,6 @@ import { setTabManager as setGraphWebAppTabManager } from '../GraphWebAppManager
 import * as ModelRegistry from '../ModelRegistry';
 import { setTabManager as setNotebookExtractTabManager } from '../NotebookExtract';
 import { readPageSelection } from '../PageSelection';
-import { onProgressChanged as onPageTranslateProgressChanged, onStateChanged as onPageTranslateStateChanged, setTabManager as setPageTranslateTabManager } from '../PageTranslateManager';
 import { closePasswordPopover } from '../PasswordPopoverManager';
 import { applyRules } from '../RuleEngine';
 import { translateTabByRule } from '../PageTranslateManager';
@@ -28,7 +26,6 @@ import { captureTabScreenshot, closeScreenshot, saveCurrentScreenshot, setScreen
 import { showSearchPopover } from '../SearchPopoverManager';
 import { buildSearchTargets } from '../SearchTargets';
 import { closeSitePopover } from '../SitePopoverManager';
-import { setTabManager as setOrganizerTabManager } from '../TabOrganizer';
 import { getLoadedModelId } from '../TranslationService';
 import { allContexts } from '../WindowRegistry';
 import type { TabManager } from '../TabManager';
@@ -45,7 +42,7 @@ export function wireTabs(
   },
   deps: WindowDeps,
 ): void {
-  const { win, chromeView, isMain, tabs } = shell;
+  const { win, isMain, tabs } = shell;
   const {
     adblock, bangs, createWindow, ensureVpnOnForRules, graphs,
     maybeLazyWarmupOnDemand, moveTabToExistingWindow, notifyGraphChanged, rules,
@@ -374,43 +371,6 @@ export function wireTabs(
     })();
 
   });
-
-  // Тоже служба в одном экземпляре — только полное окно (см. оговорку выше).
-
-  if (isMain) {
-
-    // Аналогично — PageTranslateManager читает WebContents активной вкладки для обхода DOM/
-
-    // применения перевода (executeJavaScript), не управляет вкладками.
-
-    setPageTranslateTabManager(tabs);
-
-    // TabOrganizer.ts (Qwen-группировка вкладок) — читает sidebarNodesSnapshot()/snapshot(),
-
-    // управлением вкладок не занимается (применение — через уже существующий organizeApply/
-
-    // TabManager.applyOrganize()).
-
-    setOrganizerTabManager(tabs);
-
-    onPageTranslateStateChanged((state) => {
-
-      // Служба переживает окно: его закрытая вью больше не принимает обновления.
-      if (win.isDestroyed() || chromeView.webContents.isDestroyed()) return;
-      chromeView?.webContents.send(IPC.PAGE_TRANSLATE_STATE_CHANGED, state);
-
-    });
-
-    onPageTranslateProgressChanged((progress) => {
-
-      if (win.isDestroyed() || chromeView.webContents.isDestroyed()) return;
-      chromeView?.webContents.send(IPC.PAGE_TRANSLATE_PROGRESS_CHANGED, progress);
-
-    });
-
-  }
-
-
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).
 }

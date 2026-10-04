@@ -10,102 +10,13 @@
 // ES5-стиль (var, без стрелочных функций) — тот же стиль, что у остальных инжектируемых скриптов
 // в проекте, исполняются в контексте ПРОИЗВОЛЬНОГО чужого сайта.
 import type { WebContents } from 'electron'
-import type { TabState, PageTranslateState, PageTranslateProgress } from '../shared/ipc'
 import type { TabManager } from './TabManager'
 import { resolveDirection } from './TranslationService'
 import { getActiveEngine, ensureActiveEngineWarm } from './TranslationEngineRegistry'
 import type { TranslationResult } from './TranslationEngine'
 
-let tabManagerRef: TabManager | null = null
-export function setTabManager(tm: TabManager): void {
-  tabManagerRef = tm
-}
-
-// Единственный подписчик (main.ts) — тот же приём, что aiKeyStore.onKeyStatusChanged/
-// adblock.initialize(cb): main сам решает, куда слать (chromeView?.webContents.send(...)),
-// этот модуль ничего не знает про chromeView.
-let onStateChangedCb: ((state: PageTranslateState) => void) | null = null
-export function onStateChanged(cb: (state: PageTranslateState) => void): void {
-  onStateChangedCb = cb
-}
-
-// Тот же приём, что onStateChangedCb выше, но для прогресса внутри 'translating' (см.
-// PageTranslateProgress в shared/ipc.ts) — отдельный колбэк, не переиспользует onStateChangedCb:
-// прогресс меняется на порядок чаще состояния (троттлится в runTranslation, но всё равно чаще,
-// чем idle/translating/translated), смешивать в один канал/тип незачем.
-let onProgressChangedCb: ((progress: PageTranslateProgress | null) => void) | null = null
-export function onProgressChanged(cb: (progress: PageTranslateProgress | null) => void): void {
-  onProgressChangedCb = cb
-}
-
-// ── Состояние по вкладке ──────────────────────────────────────────────────────────────────────
-const tabStates = new Map<string, PageTranslateState>()
-// Монотонный счётчик НА ВКЛАДКУ (не общий на процесс!) — общий счётчик отменял бы фоновый перевод
-// вкладки A только потому, что пользователь переключился на вкладку B и запустил перевод там.
-// Переключение вкладок само по себе НЕ отменяет фоновый перевод — он доводится до конца в фоне,
-// применяясь к DOM неактивной вкладки (Electron это позволяет), просто onStateChangedCb не зовётся,
-// пока эта вкладка не активна (см. pushState). Отменяется только навигацией ЭТОЙ ЖЕ вкладки на
-// новый документ (см. onTabsSynced) — старый window.__oblakoTr всё равно потерян вместе с ней.
-const runSeqByTab = new Map<string, number>()
-let activeTabId: string | null = null
-let activeTabUrl = ''
-
-function bumpSeq(tabId: string): number {
-  const next = (runSeqByTab.get(tabId) ?? 0) + 1
-  runSeqByTab.set(tabId, next)
-  return next
-}
-
-function getState(id: string): PageTranslateState {
-  return tabStates.get(id) ?? 'idle'
-}
-
-// Явный запрос состояния активной вкладки — на монтирование Toolbar.tsx (гонка старта: push из
-// onStateChanged мог уйти ДО того, как renderer подписался), тот же приём, что getAdBlockState.
-export function getActiveState(): PageTranslateState {
-  return activeTabId ? getState(activeTabId) : 'idle'
-}
-
-function pushState(id: string, state: PageTranslateState): void {
-  tabStates.set(id, state)
-  if (id === activeTabId) onStateChangedCb?.(state)
-}
-
-// Прогресс — не хранится в tabStates (не переживает между запросами, незачем): только пуш активной
-// вкладке, тот же гейт id===activeTabId, что у pushState.
-function pushProgress(id: string, progress: PageTranslateProgress | null): void {
-  if (id === activeTabId) onProgressChangedCb?.(progress)
-}
-
-// Единственная точка входа из main.ts — тот же onChange-хук, что уже вызывает
-// AiPanelManager.onTabsSynced (см. main.ts). Снимок вкладок — источник правды по live-id/URL,
-// отдельных колбэков в TabManager.ts не заводим.
-export function onTabsSynced(tabsSnapshot: TabState[]): void {
-  const liveIds = new Set(tabsSnapshot.map((t) => t.id))
-  for (const id of tabStates.keys()) {
-    if (!liveIds.has(id)) { tabStates.delete(id); runSeqByTab.delete(id) }
-  }
-
-  const active = tabsSnapshot.find((t) => t.isActive)
-  if (!active) return
-
-  const switched = active.id !== activeTabId
-  const urlChanged = active.id === activeTabId && active.url !== activeTabUrl
-  activeTabId = active.id
-  activeTabUrl = active.url
-
-  // Навигация активной вкладки на новый документ — старый JS-realm (и window.__oblakoTr вместе
-  // с ним) пропал сам собой, состояние сбрасываем вслед за ним. bumpSeq отменяет ещё не
-  // применённые батчи прежнего запуска — их apply-скрипт иначе попал бы в уже другой документ.
-  if (urlChanged) {
-    bumpSeq(active.id)
-    tabStates.set(active.id, 'idle')
-  }
-
-  // Переключение на другую вкладку (или смена её URL) — если это активная вкладка, тулбар должен
-  // немедленно увидеть её актуальное состояние, а не последнее состояние прежней активной вкладки.
-  if (switched || urlChanged) onStateChangedCb?.(getState(active.id))
-}
+import { bumpSeq, getState, pushState, pushProgress, runSeqByTab, signalFor, tabsFor } from './pageTranslationState'
+export { getActiveState, onTabsSynced } from './pageTranslationState'
 
 // ── Скрипты, исполняемые в контексте вкладки ─────────────────────────────────────────────────
 
@@ -538,6 +449,7 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
   let completedBatches = 0
   let lastProgressPushAt = 0
   const pushProgressThrottled = (force?: boolean) => {
+    if (mySeq !== runSeqByTab.get(tabId)) return
     const now = Date.now()
     if (!force && now - lastProgressPushAt < PROGRESS_THROTTLE_MS) return
     lastProgressPushAt = now
@@ -549,7 +461,7 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
   const isCancelled = () => mySeq !== runSeqByTab.get(tabId) || crashedFlag
 
   async function applyAndCheckCrash(entries: Array<{ id: number; text: string }>): Promise<boolean> {
-    if (wc.isDestroyed()) return false
+    if (wc.isDestroyed() || isCancelled()) return false
     await wc.executeJavaScript(buildApplyScript(entries), true).catch((e) => {
       console.error('[page-translate] apply упал:', e)
     })
@@ -588,6 +500,7 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
   // ⚠️ Момент, когда Bergamot поднимает свой воркер: человек нажал «перевести страницу». На старте
   // он больше не греется — см. разбор у ensureActiveEngineWarm и showWhenReady.ts.
   await ensureActiveEngineWarm(src, tgt)
+  if (isCancelled()) return false
   const engine = getActiveEngine(src, tgt)
   if (!engine) {
     throw new Error('Перевод недоступен: нет готового движка')
@@ -596,13 +509,13 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
     engine.translateBatch(
       batches[i]!.map((u) => ({ id: u.id, text: u.text })),
       src, tgt,
-      undefined, // signal — отмена уже покрыта isCancelled()/bumpSeq на уровне оркестрации ниже
+      signalFor(tabId),
       (charsSoFar) => {
         charsByBatch[i] = charsSoFar
         pushProgressThrottled()
       },
-    )
-  let nextTranslate: Promise<TranslationResult[]> | null = batches.length > 0 ? startBatch(0) : null
+    ).then(result => ({ result }), error => ({ error }))
+  let nextTranslate: ReturnType<typeof startBatch> | null = batches.length > 0 ? startBatch(0) : null
 
   for (let i = 0; i < batches.length; i++) {
     if (isCancelled()) break
@@ -612,7 +525,10 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
 
     let result: TranslationResult[]
     try {
-      result = await current
+      const settled = await current
+      if (isCancelled()) break
+      if ('error' in settled) throw settled.error
+      result = settled.result
     } catch (e) {
       console.error(`[page-translate] батч упал: ${e}`)
       completedBatches++
@@ -631,7 +547,7 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
     pushProgressThrottled(true) // граница батча — всегда видна, не только раз в PROGRESS_THROTTLE_MS
   }
 
-  if (mySeq !== runSeqByTab.get(tabId)) { pushProgress(tabId, null); return true } // отменено (навигация/повторный клик/переключение и новый запуск этой же вкладки)
+  if (mySeq !== runSeqByTab.get(tabId)) { return true } // отменено (навигация/повторный клик/переключение и новый запуск этой же вкладки)
   pushProgress(tabId, null)
   return !crashedFlag
 }
@@ -644,19 +560,19 @@ async function restoreOriginal(wc: WebContents): Promise<void> {
 }
 
 // Единственная точка входа из main.ts (см. IPC.PAGE_TRANSLATE_TOGGLE) — тоггл для активной вкладки.
-export async function togglePageTranslate(): Promise<void> {
-  const tabId = activeTabId
+export async function togglePageTranslate(tabs: TabManager): Promise<void> {
+  const tabId = tabs.getActiveId()
   if (!tabId) return
-  const wc = tabManagerRef?.getActiveWebContents() ?? null
+  const wc = tabs.getActiveWebContents() ?? null
   if (!wc || wc.isDestroyed()) return
 
   const state = getState(tabId)
   if (state === 'translating') return // уже идёт — кнопка в тулбаре и так должна быть неактивна
 
   if (state === 'translated') {
-    bumpSeq(tabId)
+    const seq = bumpSeq(tabId)
     await restoreOriginal(wc)
-    pushState(tabId, 'idle')
+    if (seq === runSeqByTab.get(tabId)) pushState(tabId, 'idle')
     return
   }
 
@@ -673,6 +589,8 @@ async function startTranslation(wc: WebContents, tabId: string): Promise<void> {
   } catch (e) {
     console.error('[page-translate] упало:', e)
     if (mySeq === runSeqByTab.get(tabId)) pushState(tabId, 'idle')
+  } finally {
+    if (mySeq === runSeqByTab.get(tabId)) pushProgress(tabId, null)
   }
 }
 
@@ -684,7 +602,7 @@ async function startTranslation(wc: WebContents, tabId: string): Promise<void> {
  * означало бы снять уже сделанный перевод. Здесь только запуск и только из состояния 'idle'.
  */
 export function translateTabByRule(tabId: string): void {
-  const wc = tabManagerRef?.getWebContentsForTab(tabId) ?? null
+  const wc = tabsFor(tabId)?.getWebContentsForTab(tabId) ?? null
   if (!wc || wc.isDestroyed()) return
   if (getState(tabId) !== 'idle') return
   void startTranslation(wc, tabId)
