@@ -8,6 +8,8 @@
 import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow, WebContents } from 'electron';
 import path from 'node:path';
+import { registerWindowContents } from './WindowRegistry';
+import { closeWindowView } from './viewTeardown';
 import type { ContentBounds, DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision } from '../shared/ipc';
 import { IPC } from '../shared/ipc';
 import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
@@ -23,6 +25,8 @@ let popoverView: WebContentsView | null = null;
 let attachedWin: BrowserWindow | null = null;
 let resizeBoundWin: BrowserWindow | null = null;
 let ipcRegistered = false;
+const anchors = new WeakMap<BrowserWindow, ContentBounds>();
+const cleanupBound = new WeakSet<BrowserWindow>();
 let lastAnchorBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
 let currentHeight = INITIAL_HEIGHT;
 let isOpen = false;
@@ -44,7 +48,7 @@ export function initDownloadsPopover(
 }
 
 function isAttached(): boolean {
-  return !!popoverView && !!attachedWin && attachedWin.contentView.children.includes(popoverView);
+  return !!popoverView && !popoverView.webContents.isDestroyed() && !!attachedWin && !attachedWin.isDestroyed() && attachedWin.contentView.children.includes(popoverView);
 }
 
 function computeBounds(): { x: number; y: number; width: number; height: number } {
@@ -69,7 +73,9 @@ function layoutPopover(): void {
   popoverView!.setBounds(computeBounds());
 }
 
-export function syncDownloadsPopoverAnchorBounds(b: ContentBounds): void {
+export function syncDownloadsPopoverAnchorBounds(win: BrowserWindow, b: ContentBounds): void {
+  anchors.set(win, b);
+  if (attachedWin !== win) return;
   lastAnchorBounds = b;
   layoutPopover();
 }
@@ -77,19 +83,21 @@ export function syncDownloadsPopoverAnchorBounds(b: ContentBounds): void {
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
-  ipcMain.on(IPC.DOWNLOADS_POPOVER_CLOSE, () => closeDownloadsPopover());
-  ipcMain.on('downloads-popover:height', (_e, px: number) => {
+  ipcMain.on(IPC.DOWNLOADS_POPOVER_CLOSE, (e) => { if (e.sender === popoverView?.webContents) closeDownloadsPopover(); });
+  ipcMain.on('downloads-popover:height', (e, px: number) => {
+    if (e.sender !== popoverView?.webContents || !Number.isFinite(px)) return;
     currentHeight = Math.max(1, px);
     layoutPopover();
   });
-  ipcMain.on(IPC.DOWNLOADS_POPOVER_OPEN_ALL, () => {
+  ipcMain.on(IPC.DOWNLOADS_POPOVER_OPEN_ALL, (e) => {
+    if (e.sender !== popoverView?.webContents) return;
     const win = attachedWin;
     closeDownloadsPopover();
     if (win) onOpenAllCb?.(win);
   });
-  ipcMain.handle(IPC.DOWNLOAD_DUPLICATE_PROMPT, () => pendingPrompt);
-  ipcMain.on(IPC.DOWNLOAD_DUPLICATE_DECIDE, (_e, decision: DuplicateDownloadDecision) => {
-    resolveDuplicatePrompt(decision);
+  ipcMain.handle(IPC.DOWNLOAD_DUPLICATE_PROMPT, (e) => e.sender === popoverView?.webContents ? pendingPrompt : null);
+  ipcMain.on(IPC.DOWNLOAD_DUPLICATE_DECIDE, (e, decision: DuplicateDownloadDecision) => {
+    if (e.sender === popoverView?.webContents) resolveDuplicatePrompt(decision);
   });
 }
 
@@ -105,7 +113,9 @@ function ensurePopoverView(): WebContentsView {
   });
   popoverView.setBackgroundColor('#00000000');
   const startedAt = Date.now();
-  popoverView.webContents.once('did-finish-load', () => {
+  const view = popoverView;
+  view.webContents.once('did-finish-load', () => {
+    if (view !== popoverView || view.webContents.isDestroyed()) return;
     popoverLoaded = true;
     console.log(`[popover:downloads] документ готов за ${Date.now() - startedAt} мс`);
     if (isOpen) popoverView?.webContents.send(IPC.DOWNLOADS_POPOVER_SHOW);
@@ -142,13 +152,15 @@ export function prewarmDownloadsPopover(): void {
 }
 
 export function showDownloadsPopover(win: BrowserWindow): void {
-  attachedWin = win;
+  prepareOwner(win);
+  lastAnchorBounds = anchors.get(win) ?? { x: 0, y: 0, width: 0, height: 0 };
   isOpen = true;
   if (resizeBoundWin !== win) {
     win.on('resize', layoutPopover);
     resizeBoundWin = win;
   }
   const view = ensurePopoverView();
+  registerWindowContents(win, view.webContents);
   // После OS-drag вью могла остаться спрятанной (см. beginDownloadsFileDrag) — иначе следующий
   // клик прикреплял невидимую карточку, и поповер «открывался с задержкой».
   try { view.setVisible(true); } catch { /* вью могла уже сняться */ }
@@ -176,7 +188,8 @@ export function setDuplicateDecisionHandler(fn: (askId: string, decision: Duplic
   onDecisionCb = fn;
 }
 
-export function setDuplicatePrompt(prompt: DuplicateDownloadPrompt | null): void {
+export function setDuplicatePrompt(prompt: DuplicateDownloadPrompt | null, win?: BrowserWindow): void {
+  if (win) prepareOwner(win);
   pendingPrompt = prompt;
   if (!popoverView || popoverView.webContents.isDestroyed()) return;
   if (popoverLoaded) popoverView.webContents.send(IPC.DOWNLOAD_DUPLICATE_PROMPT, prompt);
@@ -195,7 +208,8 @@ export function resolveDuplicatePrompt(decision: DuplicateDownloadDecision): voi
   closeDownloadsPopover();
 }
 
-export function closeDownloadsPopover(): void {
+export function closeDownloadsPopover(owner?: BrowserWindow | null): void {
+  if (owner !== undefined && owner !== attachedWin) return;
   const wasOpen = isOpen;
   isOpen = false;
   if (popoverView && !popoverView.webContents.isDestroyed()) {
@@ -240,3 +254,20 @@ export function beginDownloadsFileDrag(sender: WebContents): void {
   if (win && !win.isDestroyed()) onClosedCb?.(win);
 }
 
+
+// При смене владельца старая вью уничтожается: её запоздалый IPC не управляет новым окном.
+function releasePopover(): void {
+  closeDownloadsPopover();
+  if (resizeBoundWin) resizeBoundWin.removeListener('resize', layoutPopover);
+  resizeBoundWin = null;
+  if (popoverView) closeWindowView(popoverView);
+  popoverView = null; attachedWin = null; popoverLoaded = false; currentHeight = INITIAL_HEIGHT;
+}
+function prepareOwner(win: BrowserWindow): void {
+  if (attachedWin && attachedWin !== win) releasePopover();
+  attachedWin = win;
+  if (!cleanupBound.has(win)) {
+    cleanupBound.add(win);
+    win.once('closed', () => { if (attachedWin === win) releasePopover(); });
+  }
+}

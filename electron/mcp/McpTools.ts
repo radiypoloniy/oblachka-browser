@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron';
-import { contextForWindow, mainContext } from '../WindowRegistry';
+import { preferredContext } from '../WindowRegistry';
 import { activeBookmarks, activeTracking } from '../ProfileData';
 import { extractPageText } from '../AiPanelManager';
 import { extractUrlText } from '../NotebookExtract';
@@ -52,7 +52,7 @@ export interface McpTabView {
  * вопрос про текущую работу. Берём то, куда человек смотрит; окна как понятие — отдельная задача.
  */
 function activeContext() {
-  return contextForWindow(BrowserWindow.getFocusedWindow()) ?? mainContext();
+  return preferredContext();
 }
 
 /**
@@ -473,7 +473,7 @@ export async function readUrl(
   const allowed = targets.urls.filter((u) => domainAllowed(u, domains));
   if (allowed.length === 0) return { pages: [], dropped: targets.dropped, error: OUT_OF_SCOPE };
   const blocked = targets.urls.length - allowed.length;
-  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+  const win = preferredContext()?.win ?? null;
   if (!win) return { pages: [], dropped: targets.dropped, error: 'No browser window is open.' };
 
   const limit = batchTextLimit(allowed.length);

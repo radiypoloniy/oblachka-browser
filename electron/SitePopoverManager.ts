@@ -17,6 +17,8 @@
 import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
+import { registerWindowContents } from './WindowRegistry';
+import { closeWindowView } from './viewTeardown';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds } from '../shared/ipc';
 import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
@@ -32,6 +34,8 @@ let popoverView: WebContentsView | null = null;
 let attachedWin: BrowserWindow | null = null;
 let resizeBoundWin: BrowserWindow | null = null;
 let ipcRegistered = false;
+const anchors = new WeakMap<BrowserWindow, ContentBounds>();
+const cleanupBound = new WeakSet<BrowserWindow>();
 let lastAnchorBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
 let currentHeight = INITIAL_HEIGHT;
 let isOpen = false;
@@ -45,7 +49,7 @@ export function initSitePopover(onClosed: (win: BrowserWindow) => void): void {
 }
 
 function isAttached(): boolean {
-  return !!popoverView && !!attachedWin && attachedWin.contentView.children.includes(popoverView);
+  return !!popoverView && !popoverView.webContents.isDestroyed() && !!attachedWin && !attachedWin.isDestroyed() && attachedWin.contentView.children.includes(popoverView);
 }
 
 // Поповер прижимается к ЛЕВОМУ краю якоря (замок стоит слева в омнибоксе), в отличие от загрузок
@@ -72,7 +76,9 @@ function layoutPopover(): void {
   popoverView!.setBounds(computeBounds());
 }
 
-export function syncSitePopoverAnchorBounds(b: ContentBounds): void {
+export function syncSitePopoverAnchorBounds(win: BrowserWindow, b: ContentBounds): void {
+  anchors.set(win, b);
+  if (attachedWin !== win) return;
   lastAnchorBounds = b;
   layoutPopover();
 }
@@ -80,8 +86,9 @@ export function syncSitePopoverAnchorBounds(b: ContentBounds): void {
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
-  ipcMain.on('site-popover:close', () => closeSitePopover());
-  ipcMain.on('site-popover:height', (_e, px: number) => {
+  ipcMain.on('site-popover:close', (e) => { if (e.sender === popoverView?.webContents) closeSitePopover(); });
+  ipcMain.on('site-popover:height', (e, px: number) => {
+    if (e.sender !== popoverView?.webContents || !Number.isFinite(px)) return;
     currentHeight = Math.max(1, px);
     layoutPopover();
   });
@@ -99,7 +106,9 @@ function ensurePopoverView(): WebContentsView {
   });
   popoverView.setBackgroundColor('#00000000');
   const startedAt = Date.now();
-  popoverView.webContents.once('did-finish-load', () => {
+  const view = popoverView;
+  view.webContents.once('did-finish-load', () => {
+    if (view !== popoverView || view.webContents.isDestroyed()) return;
     popoverLoaded = true;
     console.log(`[popover:site] документ готов за ${Date.now() - startedAt} мс`);
     if (isOpen) popoverView?.webContents.send('site-popover:show');
@@ -134,13 +143,15 @@ export function prewarmSitePopover(): void {
 }
 
 export function showSitePopover(win: BrowserWindow): void {
-  attachedWin = win;
+  prepareOwner(win);
+  lastAnchorBounds = anchors.get(win) ?? { x: 0, y: 0, width: 0, height: 0 };
   isOpen = true;
   if (resizeBoundWin !== win) {
     win.on('resize', layoutPopover);
     resizeBoundWin = win;
   }
   const view = ensurePopoverView();
+  registerWindowContents(win, view.webContents);
   view.setBounds(computeBounds());
   if (!isAttached()) win.contentView.addChildView(view);
   // ⚠️ Показ — это ещё и сигнал «перечитай всё заново»: содержимое зависит от того, какая
@@ -148,7 +159,8 @@ export function showSitePopover(win: BrowserWindow): void {
   if (popoverLoaded) view.webContents.send('site-popover:show');
 }
 
-export function closeSitePopover(): void {
+export function closeSitePopover(owner?: BrowserWindow | null): void {
+  if (owner !== undefined && owner !== attachedWin) return;
   if (!isOpen) return;
   isOpen = false;
   const win = attachedWin;
@@ -158,8 +170,8 @@ export function closeSitePopover(): void {
   if (win && !win.isDestroyed()) onClosedCb?.(win);
 }
 
-export function isSitePopoverOpen(): boolean {
-  return isOpen;
+export function isSitePopoverOpen(win: BrowserWindow): boolean {
+  return isOpen && attachedWin === win;
 }
 
 /**
@@ -172,4 +184,21 @@ export function isSitePopoverOpen(): boolean {
 export function broadcastVpnState(state: unknown): void {
   if (!isOpen || !popoverView || popoverView.webContents.isDestroyed()) return;
   popoverView.webContents.send(IPC.VPN_CONNECTION_STATE_CHANGED, state);
+}
+
+// При смене владельца старая вью уничтожается: её запоздалый IPC не управляет новым окном.
+function releasePopover(): void {
+  closeSitePopover();
+  if (resizeBoundWin) resizeBoundWin.removeListener('resize', layoutPopover);
+  resizeBoundWin = null;
+  if (popoverView) closeWindowView(popoverView);
+  popoverView = null; attachedWin = null; popoverLoaded = false; currentHeight = INITIAL_HEIGHT;
+}
+function prepareOwner(win: BrowserWindow): void {
+  if (attachedWin && attachedWin !== win) releasePopover();
+  attachedWin = win;
+  if (!cleanupBound.has(win)) {
+    cleanupBound.add(win);
+    win.once('closed', () => { if (attachedWin === win) releasePopover(); });
+  }
 }

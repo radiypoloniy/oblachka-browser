@@ -31,16 +31,17 @@ import type { WindowDeps } from './deps';
 import { wireQuickSearch } from './quickSearch';
 import { toggleTaskManager } from '../TaskManagerWindow';
 
+let sharedAiWired = false;
+
 export function wireTabs(
   shell: {
     win: BrowserWindow;
     chromeView: WebContentsView;
-    isMain: boolean;
     tabs: TabManager;
   },
   deps: WindowDeps,
 ): void {
-  const { win, isMain, tabs } = shell;
+  const { win, tabs } = shell;
   const {
     adblock, bangs, createWindow, ensureVpnOnForRules, graphs,
     maybeLazyWarmupOnDemand, moveTabToExistingWindow, notifyGraphChanged, rules,
@@ -111,21 +112,9 @@ export function wireTabs(
 
   tabs.setOnScreenshotClose(() => closeScreenshot(win));
 
-  // ⚠️ Ниже — служба, которая существует в приложении в ОДНОМ экземпляре и помнит ровно один
-
-  // менеджер вкладок. Регистрирует её только полное окно: лёгкое, записавшись последним, увело
-
-  // бы службу себе и направило извлечение страницы из главного окна в лёгкое.
-
-  // Развязка по окнам — следующий срез.
-
-  if (isMain) {
-
-    // Единственная точка, где AiPanelManager получает доступ к вкладкам — только для чтения
-
-    // WebContents активной вкладки при извлечении текста страницы в чат (Заход 4), см.
-
-    // TabManager.getActiveWebContents(). Не влияет на управление вкладками.
+  // Общие callback-и AI ставятся один раз; каждое действие передаёт своего владельца.
+  if (!sharedAiWired) {
+    sharedAiWired = true;
 
     initializeChat();
 
@@ -155,7 +144,7 @@ export function wireTabs(
 
     // висел над панелью, и привычное «щёлкнуть мимо» там просто не работало. Тот же набор, что при
 
-    // клике по странице (см. onContentFocus выше) — панель принадлежит полному окну.
+    // клике по странице (см. onContentFocus выше) — панель передаёт окно своего владельца.
 
     setOnAiPanelFocus((owner) => {
 
@@ -163,9 +152,9 @@ export function wireTabs(
 
       closeAutofillPopover(owner);
 
-      closeDownloadsPopover();
+      closeDownloadsPopover(owner);
 
-      closeSitePopover();
+      closeSitePopover(owner);
 
       closeClipboardPopover(owner);
 
@@ -220,7 +209,7 @@ export function wireTabs(
 
   });
 
-  // Новое окно по Ctrl+N — из любого окна; создаётся всегда лёгкое (полное ровно одно).
+  // Ctrl+N создаёт равноправное окно со своим деревом вкладок.
 
   tabs.setOnNewWindow(() => { createWindow('light'); });
   // Диспетчер задач по Shift+Esc. ⚠️ Окно одно на приложение, поэтому колбэк у каждого окна свой,
@@ -243,17 +232,12 @@ export function wireTabs(
 
   tabs.setOnOpenInNewWindow((url) => { createWindow('light').tabs.createTab(url); });
 
-  // Ctrl+Shift+M — вернуть активную вкладку в другое окно. Цель выбираем сами: из лёгкого окна
-
-  // это всегда главное (обратный жест к «вытащил по ошибке»), из главного — единственное лёгкое,
-
-  // если оно одно. Когда лёгких несколько, гадать не нужно — для выбора есть меню.
-
+  // Ctrl+Shift+M переносит в единственное другое окно; при нескольких цель выбирают в меню.
   tabs.setOnReturnTab((tabId) => {
 
     const others = allContexts().filter((c) => c.win.id !== win?.id && !c.win.isDestroyed());
 
-    const target = others.find((c) => c.role === 'main') ?? (others.length === 1 ? others[0] : null);
+    const target = (others.length === 1 ? others[0] : null);
 
     if (target && tabs) moveTabToExistingWindow(tabs, tabId, target.win.id);
 

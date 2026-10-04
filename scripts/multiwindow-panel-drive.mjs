@@ -20,6 +20,7 @@ await withStand(async ctx => {
   await ctx.chrome.evaluate('window.oblako.openWindow()'); await wait(650);
   await sync('panelStand.a = panelStand.registry.allContexts()[0]; panelStand.b = panelStand.registry.allContexts()[1]; true');
   const inWindow = (which, code) => ctx.evalMain(`panelStand.${which}.chromeView.webContents.executeJavaScript(${JSON.stringify(code)})`);
+  await inWindow('a', 'window.oblako.createTab("about:blank")');
   const aId = await inWindow('a', `window.oblako.createTab(${JSON.stringify(ctx.echoUrl('/ai-a'))})`);
   const bId = await inWindow('b', `window.oblako.createTab(${JSON.stringify(ctx.echoUrl('/ai-b'))})`);
   await wait(250);

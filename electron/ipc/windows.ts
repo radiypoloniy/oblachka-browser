@@ -16,7 +16,7 @@ import { sendFindResult, showFindBar } from '../FindBarManager';
 
 // И для смыслового Ctrl+F (см. SmartFind.ts). Второй Enter, пока идёт первый поиск, не должен
 // вставать в очередь генерации: человек получил бы ответ на позапрошлый вопрос.
-let smartFindBusy = false;
+const smartFindBusy = new WeakSet<import('../TabManager').TabManager>();
 
 export function registerWindowsIpc(d: IpcDeps): void {
   const { createWindow, moveTabToExistingWindow, moveTabToNewWindow, rules, tabsOf, winOf } = d;
@@ -78,10 +78,17 @@ export function registerWindowsIpc(d: IpcDeps): void {
     const tabs = tabsOf(e);
     const wc = tabs?.getActiveWebContents() ?? null;
     if (!tabs || !wc) return { ok: false, reason: 'no-text' };
-    if (smartFindBusy) return { ok: false, reason: 'busy' };
-    smartFindBusy = true;
+    if (smartFindBusy.has(tabs)) return { ok: false, reason: 'busy' };
+    smartFindBusy.add(tabs);
+    const abort = new AbortController();
+    const cancel = () => abort.abort();
+    const win = winOf(e);
+    win?.once('closed', cancel);
+    wc.once('did-navigate', cancel);
+    const current = () => !abort.signal.aborted && !wc.isDestroyed() && tabs.getActiveWebContents() === wc;
     try {
-      const pick = await pickFragmentByMeaning(wc, query);
+      const pick = await pickFragmentByMeaning(wc, query, abort.signal);
+      if (!current()) return { ok: false, reason: 'no-text' };
       if (!pick.ok) {
         return { ok: false, reason: pick.reason === 'model-error' ? 'no-model' : pick.reason };
       }
@@ -91,6 +98,7 @@ export function registerWindowsIpc(d: IpcDeps): void {
       const shown: string[] = [];
       let firstMatches = 0;
       for (const quote of pick.quotes) {
+        if (!current()) return { ok: false, reason: 'no-text' };
         const matches = await tabs.findQuoteInPage(highlightCandidates(quote));
         if (matches === 0) continue;
         shown.push(quote);
@@ -104,7 +112,8 @@ export function registerWindowsIpc(d: IpcDeps): void {
       console.warn('[smart-find] ошибка:', err);
       return { ok: false, reason: 'no-model' };
     } finally {
-      smartFindBusy = false;
+      smartFindBusy.delete(tabs);
+      win?.removeListener('closed', cancel); wc.removeListener('did-navigate', cancel);
     }
   });
 

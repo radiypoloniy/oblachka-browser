@@ -44,7 +44,10 @@ await withStand(async ctx => {
   assert.notEqual(await sync('hubStand.a.graphWc.id'), await sync('hubStand.b.graphWc.id'));
   for (const w of ['a','b']) await ctx.evalMain(`hubStand.${w}.graphWc.executeJavaScript(${JSON.stringify(`document.body.textContent='${w} graph answer';const r=document.createRange();r.selectNodeContents(document.body);window.getSelection().removeAllRanges();window.getSelection().addRange(r);`)})`);
   for (const w of ['a','b']) assert.equal(await ctx.evalMain(`hubStand.graph.captureAnswer(hubStand.${w}.win,7,'same-node','selection')`), `${w} graph answer`);
-  await send('a', 'Closing A'); await sync('hubStand.a.win.close(); true'); await wait(100);
+  await send('a', 'Closing A'); await sync('hubStand.a.win.close(); true');
+  for (let n=0;n<40 && !(await sync('hubStand.a.win.isDestroyed()'));n++) await wait(100);
+  assert.equal(await sync('hubStand.a.win.isDestroyed()'), true);
+  await wait(100);
   assert.equal(await sync('hubStand.gates[4].signal.aborted'), true); await finish(4, 'Late closed A');
   assert.equal(await sync('hubStand.a.graphWc.isDestroyed()'), true);
   assert.equal(await sync('hubStand.b.graphWc.isDestroyed()'), false);

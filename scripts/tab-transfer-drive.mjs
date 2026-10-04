@@ -21,6 +21,8 @@ await withStand(async ctx => {
   await sync('transferStand.a = transferStand.registry.allContexts()[0]; transferStand.b = transferStand.registry.allContexts()[1]; true');
   const inWindow = (which, code) => ctx.evalMain(`transferStand.${which}.chromeView.webContents.executeJavaScript(${JSON.stringify(code)})`);
   const keepB = await inWindow('b', `window.oblako.createTab(${JSON.stringify(ctx.echoUrl('/keep-b'))})`);
+  // Пустой источник теперь закрывается в любом окне; для проверки круговых переносов оставляем вкладку.
+  await inWindow('a', 'window.oblako.createTab("about:blank")');
   const profile = await sync(`transferStand.profiles.createProfile('Transfer work', 'purple').profiles.at(-1).id`);
   const liveUrl = ctx.echoUrl('/transfer-live');
   const liveId = await sync(`transferStand.a.tabs.createTab(${JSON.stringify(ctx.echoUrl('/transfer-start'))}, false, false, false, undefined, ${JSON.stringify(profile)})`);

@@ -507,7 +507,7 @@ async function runSegmented(
   segments: string[],
   buildSegPrompt: (segment: string) => string,
   maxTokens: number, role: AiRole,
-  onChunk?: (text: string) => void,
+  onChunk?: (text: string) => void, abort?: AbortSignal,
 ): Promise<{ out: string; ms: number; tokPerSec: number; loadMs: number | null }> {
   const tTotalStart = performance.now()
   const wasLoaded = loadPromise !== null
@@ -522,7 +522,7 @@ async function runSegmented(
     // пробела на границе (onTextChunk отдаёт текст как есть) — пробел между соседними сегментами
     // добавляем явно один раз здесь, а не полагаемся, что модель сама его сгенерирует.
     if (i > 0) onChunk?.(' ')
-    const { out, tokens } = await runPrompt(buildSegPrompt(segments[i]!), maxTokens, onChunk, { role })
+    const { out, tokens } = await runPrompt(buildSegPrompt(segments[i]!), maxTokens, onChunk, { role, abort })
     outs.push(out)
     totalTokens += tokens
   }
@@ -537,7 +537,7 @@ async function runSegmented(
 export async function translate(
   text: string,
   dir: Direction = 'auto',
-  onChunk?: (text: string) => void, role: AiRole = 'page', // фрагмент, а не страница: см. aiRouting
+  onChunk?: (text: string) => void, role: AiRole = 'page', abort?: AbortSignal,
 ): Promise<TranslateResult> {
   try {
     // Направление резолвим один раз по всему тексту — не по каждому предложению отдельно.
@@ -547,7 +547,7 @@ export async function translate(
     const dirUsed: ResolvedDirection = `${src}->${tgt}`
     const segments = splitSentences(text)
 
-    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildPrompt(src, tgt, seg), TRANSLATE_SEGMENT_MAX_TOKENS, role, onChunk)
+    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildPrompt(src, tgt, seg), TRANSLATE_SEGMENT_MAX_TOKENS, role, onChunk, abort)
 
     console.log(
       `[translate] [${dirUsed}] ${segments.length} seg(s): "${text}" -> "${out}" ` +
@@ -624,10 +624,10 @@ export async function runAiAction(
   // Явная цель для перевода — «Перевести на английский» из правки своего текста. Пусто → 'auto'
   // (перевод НА язык человека, как у выделения). Осмыслен только для translate; прочие действия
   // отвечают на языке оригинала и его игнорируют.
-  targetLang?: string,
+  targetLang?: string, abort?: AbortSignal,
 ): Promise<AiActionOutcome> {
   if (action === 'translate') {
-    const result = await translate(text, targetLang ? `auto->${targetLang}` : 'auto', onChunk)
+    const result = await translate(text, targetLang ? `auto->${targetLang}` : 'auto', onChunk, 'page', abort)
     return result.ok ? { ...result, action } : result
   }
 
@@ -640,7 +640,7 @@ export async function runAiAction(
     // Один связный ответ на весь текст (explain/simplify — пересказ длиной с оригинал; summarize —
     // компактнее, но всё равно длиннее одного переводческого предложения) — см. TEXT_ACTION_MAX_TOKENS
     // выше (модульная константа, не локальная — нужна и здесь, и в стартовом логе [gen] limits).
-    const { out: raw, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), TEXT_ACTION_MAX_TOKENS, 'page', onChunk)
+    const { out: raw, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), TEXT_ACTION_MAX_TOKENS, 'page', onChunk, abort)
     const out = EDIT_ACTIONS.has(action) ? cleanEditOutput(raw) : raw
 
     console.log(

@@ -89,19 +89,19 @@ export function registerOverlaysIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.PASSWORD_POPOVER_CLOSE, (e) => {
     closePasswordPopover(winOf(e));
   });
-  ipcMain.handle(IPC.DOWNLOADS_POPOVER_SET_BOUNDS, (_e, b: ContentBounds) => {
-    syncDownloadsPopoverAnchorBounds(b);
+  ipcMain.handle(IPC.DOWNLOADS_POPOVER_SET_BOUNDS, (e, b: ContentBounds) => {
+    const w = winOf(e); if (w) syncDownloadsPopoverAnchorBounds(w, b);
   });
   ipcMain.handle(IPC.DOWNLOADS_POPOVER_SHOW, (e) => {
     const w = winOf(e);
     if (w) showDownloadsPopover(w);
   });
-  ipcMain.handle(IPC.DOWNLOADS_POPOVER_CLOSE, () => {
-    closeDownloadsPopover();
+  ipcMain.handle(IPC.DOWNLOADS_POPOVER_CLOSE, (e) => {
+    const w = winOf(e); if (w) closeDownloadsPopover(w);
   });
   // ── Поповер сведений о сайте (замочек в омнибоксе) ──
-  ipcMain.handle(IPC.SITE_POPOVER_BOUNDS, (_e, b: ContentBounds) => {
-    syncSitePopoverAnchorBounds(b);
+  ipcMain.handle(IPC.SITE_POPOVER_BOUNDS, (e, b: ContentBounds) => {
+    const w = winOf(e); if (w) syncSitePopoverAnchorBounds(w, b);
   });
   // Один канал на открыть/закрыть: кнопка-замок работает переключателем, и держать для этого два
   // канала значит однажды разъехаться в том, кто из них считает состояние (тот же приём, что у
@@ -109,7 +109,7 @@ export function registerOverlaysIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.SITE_POPOVER_TOGGLE, (e) => {
     const w = winOf(e);
     if (!w) return false;
-    if (isSitePopoverOpen()) { closeSitePopover(); return false; }
+    if (isSitePopoverOpen(w)) { closeSitePopover(w); return false; }
     showSitePopover(w);
     return true;
   });

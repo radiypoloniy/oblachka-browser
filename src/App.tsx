@@ -234,10 +234,8 @@ export default function App() {
     select, newTab, close, submit, openSpecial, enterSplit, setSplitRatio,
   } = useBrowserModel();
 
-  // Роль своего окна (см. shared/ipc.ts::WindowRole). Спрашивается один раз: окно не меняет роль
-  // за свою жизнь. До ответа считаем окно полным — это состояние живёт доли секунды и только в
-  // главном окне выглядит правильно; в лёгком лишние кнопки просто исчезнут первым же ответом.
-  const [isLightWindow, setIsLightWindow] = useState(false);
+  // Стартовый выбор профиля показываем один раз; возможности всех окон одинаковы.
+  const [isStartupWindow, setIsStartupWindow] = useState(false);
   const vpnConn = useVpnConnection();
   const { pageTranslateState, pageTranslateProgress } = usePageTranslate();
   const { downloads, downloadsActive, downloadsProgress, downloadStartTick } = useDownloads();
@@ -285,8 +283,8 @@ export default function App() {
 
   useEffect(() => {
     window.oblako.getWindowRole()
-      .then((role) => setIsLightWindow(role === 'light'))
-      .catch(() => { /* роль не пришла — остаёмся полным окном, как было до многооконности */ });
+      .then((role) => setIsStartupWindow(role === 'main'))
+      .catch(() => { /* не показываем повторный стартовый выбор без подтверждения */ });
   }, []);
 
   // Тема, земля окна и полоса системных кнопок — одним хуком: они связаны порядком эффектов
@@ -384,7 +382,7 @@ export default function App() {
         onOrganizeCancel={handleOrganizeCancel}
         onOrganizeRollback={handleOrganizeRollback}
       />
-      {!pickerDone && !isLightWindow && <ProfilePicker onDone={() => setPickerDone(true)} />}
+      {!pickerDone && isStartupWindow && <ProfilePicker onDone={() => setPickerDone(true)} />}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
           tab={active} allTabs={tabs} vpnOn={vpnConn?.state === 'running'}

@@ -284,7 +284,7 @@ function currentThemePrefs(): ThemePrefs {
     systemDark: nativeTheme.shouldUseDarkColors,
   };
 }
-let mainTabs: TabManager | null = null;
+
 // Один координатор пишет деревья всех окон; роли пока нужны прежним AI-контроллерам.
 let appSession: AppSessionCoordinator | null = null;
 
@@ -613,12 +613,7 @@ function notifyGraphChanged(graphId: number): void {
 }
 
 
-// Создание окна. Роль решает, что окну достаётся сверх собственных вкладок: полное окно ('main')
-// владеет сессией и теми менеджерами, что пока существуют в приложении в одном экземпляре
-// (AI-панель, поповеры, быстрый поиск); лёгкое ('light') получает только своё — окно, слой хрома,
-// свой TabManager и хоткеи. Общая проводка сессий (загрузки, разрешения, инкогнито) ставится один
-// раз на приложение, а не на каждое окно, — иначе второе окно навесило бы вторых слушателей и
-// каждая загрузка считалась бы дважды.
+// Каждое окно имеет свой chrome и TabManager. Общие службы ставятся один раз на процесс.
 // Проводка, общая для всего приложения, а не для окна: орфография, перехват загрузок, разрешения
 // сайтов, инкогнито-сессия. ⚠️ Ровно один раз за процесс. Раньше всё это жило в createWindow, и на
 // macOS путь app.on('activate') уже мог позвать её повторно — второй downloads.attach навесил бы
@@ -801,10 +796,9 @@ function wireSharedSessions(): void {
   // загрузок) известен только ему, и открытие мимо обычного пути оставило бы кнопку неподсвеченной
   // и поповер в неверном месте. Main лишь кладёт вопрос и просит открыть — дальше обычный путь.
   downloads.setDuplicatePrompt((wc, prompt) => {
-    setDuplicatePrompt(prompt);
     const win = contextForPageWebContents(wc.id)?.win ?? contextFromSender(wc)?.win ?? null;
     const chrome = win ? chromeOfWin(win) : null;
-    if (chrome) chrome.send(IPC.DOWNLOAD_DUPLICATE_ASK);
+    if (chrome && win) { setDuplicatePrompt(prompt, win); chrome.send(IPC.DOWNLOAD_DUPLICATE_ASK); }
     // Окна не нашли (загрузка из фоновой вью) — вопрос задать некому, честно отменяем.
     else downloads.resolveDuplicate(prompt.askId, 'cancel');
   });
@@ -853,7 +847,6 @@ function wireSharedSessions(): void {
 }
 
 function createWindow(role: WindowRole = 'main', saved?: SavedWindow) {
-  const isMain = role === 'main';
   const win = new BrowserWindow({
     ...restoredWindowBounds(saved),
     minWidth: 900,
@@ -885,7 +878,7 @@ function createWindow(role: WindowRole = 'main', saved?: SavedWindow) {
 
   // Показ окна и staggered-прогревы — в window/showWhenReady.ts.
   showWhenReady({
-    win, chromeView, isMain, startedAt: startT0,
+    win, chromeView, startedAt: startT0,
     // ⚠️ Колбэком, а не значением: tabs объявляется НИЖЕ по файлу, а показ окна случается
     // асинхронно — к тому моменту он уже есть. Раньше это держалось на `tabs?.` и порядке строк.
     getTabs: () => tabs,
@@ -909,7 +902,7 @@ function createWindow(role: WindowRole = 'main', saved?: SavedWindow) {
   // Менеджер вкладок этого окна и его проводка к поповерам — в window/tabManager.ts.
   // ⚠️ Границы взяты по существующему разрыву (до регистрации контекста окна), тело перенесено
   // дословно: та же причина, что у нарезки IPC-обработчиков, см. шапку electron/ipc/deps.ts.
-  const created = createWindowTabManager({ win, chromeView, isMain }, windowDeps());
+  const created = createWindowTabManager({ win, chromeView }, windowDeps());
   // ⚠️ let, а не const: при закрытии окна ссылка обнуляется — на неё смотрят `tabs?.` ниже по
   // файлу. Вторую половину того же обнуления делает created.forget() (разбор — в tabManager.ts).
   let tabs: TabManager | null = created.tabs;
@@ -917,10 +910,9 @@ function createWindow(role: WindowRole = 'main', saved?: SavedWindow) {
   const ctx = { win, chromeView, tabs, role, sessionId: saved?.id ?? randomUUID() };
   registerWindow(ctx);
   wireWindowControls(win);
-  if (isMain) mainTabs = tabs;
 
   // Проводка вкладок и сохранённый поисковик — в window/wireTabs.ts.
-  wireTabs({ win, chromeView, isMain, tabs }, windowDeps());
+  wireTabs({ win, chromeView, tabs }, windowDeps());
 
   // Восстановление дерева — в window/restoreSession.ts; порядок здесь защищает session.json.
   if (saved) restoreSession(saved.snapshot, tabs, startT0);
@@ -965,8 +957,6 @@ function createWindow(role: WindowRole = 'main', saved?: SavedWindow) {
     // вью, и его сайдбар с тулбаром остался бы жить отдельным процессом рендерера (разбор и
     // замер — в viewTeardown.ts).
     closeWindowView(chromeView);
-    // Ссылка пока нужна старому AI-контроллеру и холодному открытию внешней ссылки.
-    if (isMain) mainTabs = null;
 
     // ⚠️ ВЫХОД НЕ ЖДЁТ window-all-closed. Это событие приходит, только когда закрыто КАЖДОЕ окно
     // Electron, а у приложения есть СЛУЖЕБНЫЕ невидимые окна: фоновая проверка отслеживаемых
@@ -992,13 +982,13 @@ function createWindow(role: WindowRole = 'main', saved?: SavedWindow) {
 }
 
 function moveTabToNewWindow(from: TabManager, tabId: string): boolean {
-  return moveTab(from, tabId, () => createWindow('light'), closeIfEmptyLight, true);
+  return moveTab(from, tabId, () => createWindow('light'), closeIfEmptySource, true);
 }
 
 function moveTabToExistingWindow(from: TabManager, tabId: string, targetWindowId: number): boolean {
   const target = allContexts().find(c => c.win.id === targetWindowId && !c.win.isDestroyed());
   if (!target || target.tabs === from) return false;
-  return moveTab(from, tabId, () => target, closeIfEmptyLight);
+  return moveTab(from, tabId, () => target, closeIfEmptySource);
 }
 
 // Запуск переименования из меню.
@@ -1024,18 +1014,16 @@ async function renameTabSmart(tabs: TabManager, tabId: string): Promise<void> {
 }
 
 // Пункты «вернуть вкладку в другое окно» для ПКМ-меню. Одно чужое окно — одна прямая команда;
-// несколько — подменю со списком. Главное окно называем главным, а не по заголовку страницы:
-// заголовок меняется от вкладки к вкладке, а «главное» — устойчивый ориентир.
+// Несколько окон — подменю со списком; ни одно не получает приоритет по роли.
 function buildMoveToWindowItems(
   win: BrowserWindow, from: TabManager, tabId: string, enabled: boolean,
 ): MenuItemConstructorOptions[] {
   const others = allContexts().filter((c) => c.win.id !== win.id && !c.win.isDestroyed());
   if (others.length === 0) return [];
-  const nameOf = (c: { role: WindowRole; win: BrowserWindow }, i: number): string =>
-    c.role === 'main' ? t('главное окно') : tf('окно {n}', { n: i + 1 });
+  const nameOf = (_c: { win: BrowserWindow }, i: number): string => tf('окно {n}', { n: i + 1 });
   if (others.length === 1) {
     return [{
-      label: tf('Вернуть в {name}', { name: nameOf(others[0], 0) }),
+      label: tf('Перенести в {name}', { name: nameOf(others[0], 0) }),
       enabled,
       click: () => { moveTabToExistingWindow(from, tabId, others[0].win.id); },
     }];
@@ -1065,12 +1053,10 @@ function buildMoveToWindowItems(
 // модели нужен ДО показа. Задержка возникает только на тёплой модели (иначе гейт возвращает null
 // сразу), и сама закладка сохраняется ДО ожидания — звезда загорается мгновенно, ждёт только меню.
 
-// Лёгкое окно, из которого унесли последнюю страницу, закрываем: пустое окно с одним хабом на
-// экране — мусор, которого никто не просил (так же ведёт себя Chrome). Полное окно не трогаем
-// пока сохраняется роль main: её AI-контексты будут разделены следующим этапом.
-function closeIfEmptyLight(from: TabManager): void {
+// После успешного переноса последней вкладки источник закрывается независимо от порядка создания.
+function closeIfEmptySource(from: TabManager): void {
   const ctx = allContexts().find((c) => c.tabs === from);
-  if (!ctx || ctx.role !== 'light' || ctx.win.isDestroyed()) return;
+  if (!ctx || ctx.win.isDestroyed()) return;
   if (ctx.tabs.hasTabs()) return;
   ctx.win.close();
 }
@@ -1485,7 +1471,7 @@ app.whenReady().then(async () => {
   // вкладка-гостья появилась бы раньше, чем вернулись свои, и осталась бы в конце списка.
   const startUrl = pendingStartUrl ?? firstUrlFromArgv(process.argv);
   pendingStartUrl = null;
-  if (startUrl) mainTabs?.createTab(startUrl);
+  if (startUrl) preferredContext()?.tabs.createTab(startUrl);
 
   // Сторож простоя модели. ⚠️ Здесь, в самом конце whenReady, а не рядом с прочей инициализацией:
   // ветки LLAMA_TEST/TRANSLATE_TEST выходят раньше, и стендам этот таймер не нужен вовсе.

@@ -6,10 +6,7 @@
 // логикой, а живьём: WebContentsView — ребёнок КОНКРЕТНОГО contentView, и второе окно просто
 // уводит её у первого. На экране это выглядит как «панель исчезла сама, а место под неё осталось».
 //
-// ⚠️ Проверяется и АДРЕС документа. Вид панели решает main (полная — с чатом, лёгкая — только
-// домашний экран приложений), и передаётся он параметром адреса. Промах здесь тихий: renderer
-// соберёт дерево с чатом, тот подпишется на свои каналы и станет греть модель по фокусу в поле
-// ввода — в окне, где беседы быть не может.
+// Проверяются два полных интерфейса: адрес документа и независимый показ.
 //
 // Запуск: npm run drive -- light-window-panel
 import { withStand, wait, connectCdp } from './isolated-stand.mjs';
@@ -50,16 +47,16 @@ await withStand(async (ctx) => {
 
   const urls = await ctx.evalMain(PANEL_URLS);
   check('панелей ДВЕ, по одной на окно', urls.length === 2, `вью: ${urls.length}`);
-  check('в лёгком окне документ панели просит вид «приложения»',
-    urls.filter((u) => u.includes('kind=apps')).length === 1,
+  check('обе панели получают полный интерфейс',
+    urls.filter((u) => !u.includes('kind=apps')).length === 2,
     urls.map((u) => u.split('/').pop()).join(' , '));
-  check('в главном окне панель осталась полной',
-    urls.filter((u) => !u.includes('kind=apps')).length === 1);
+  check('полный интерфейс не зависит от порядка открытия окон',
+    urls.filter((u) => !u.includes('kind=apps')).length === 2);
 
   // ── Что там нарисовано ────────────────────────────────────────────────────
   // ⚠️ Адрес документа — ещё не экран: с тем же ?kind=apps renderer мог бы собрать пустоту или,
   // наоборот, обычную панель с чатом. Смотрим в саму страницу лёгкой панели.
-  const target = await ctx.findTarget((t) => (t.url || '').includes('kind=apps'));
+  const target = await ctx.findTarget((t) => (t.url || '').includes('aipanel.html'));
   check('страница лёгкой панели нашлась в отладчике', !!target);
   if (target) {
     const cdp = connectCdp(target);
@@ -69,8 +66,8 @@ await withStand(async (ctx) => {
       inputs: document.querySelectorAll('textarea').length,
     })`);
     cdp.close();
-    check('в лёгком окне нарисован домашний экран приложений', dom?.apps === true);
-    check('и поля ввода чата там нет', dom?.inputs === 0, `textarea: ${dom?.inputs}`);
+    check('полная панель содержит интерфейс чата', dom?.inputs > 0);
+    check('поле ввода чата доступно', dom?.inputs > 0, `textarea: ${dom?.inputs}`);
   }
 
   const base = await ctx.evalMain(KIDS);

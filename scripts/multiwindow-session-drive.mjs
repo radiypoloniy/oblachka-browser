@@ -7,14 +7,14 @@ import { withStand, wait } from './isolated-stand.mjs';
 await withStand(async ctx => {
   const load = async () => {
     await wait(900);
-    await ctx.evalMain(`globalThis.sessionStand = {
+    await ctx.evalMainSync(`globalThis.sessionStand = {
       registry: Object.values(process.mainModule.require('module')._cache).find(m => (m.filename ?? '').replaceAll(String.fromCharCode(92), '/').endsWith('/WindowRegistry.js')).exports,
       electron: process.mainModule.require('electron'),
       main: Object.values(process.mainModule.require('module')._cache).find(m => (m.filename ?? '').replaceAll(String.fromCharCode(92), '/').endsWith('/main.js')).exports,
     }; undefined`);
   };
   const inWindow = (id, code) => ctx.evalMain(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(id)}).chromeView.webContents.executeJavaScript(${JSON.stringify(code)})`);
-  const states = () => ctx.evalMain(`sessionStand.registry.allContexts().map(c => ({ id: c.sessionId, tabs: c.tabs.snapshot(), nodes: c.tabs.sidebarNodesSnapshot(), bounds: c.win.getNormalBounds() }))`);
+  const states = () => ctx.evalMainSync(`sessionStand.registry.allContexts().map(c => ({ id: c.sessionId, tabs: c.tabs.snapshot(), nodes: c.tabs.sidebarNodesSnapshot(), bounds: c.win.getNormalBounds() }))`);
   const readSession = async () => {
     for (let attempt = 0; attempt < 60; attempt++) {
       try { return JSON.parse(await fs.readFile(path.join(ctx.profile, 'session.json'), 'utf8')); }
@@ -43,7 +43,7 @@ await withStand(async ctx => {
   const privatePin = await inWindow(bId, `window.oblako.createIncognitoTab(${JSON.stringify(privateUrl)})`);
   await inWindow(bId, `window.oblako.togglePinTab(${JSON.stringify(privatePin)})`);
   await inWindow(aId, `window.oblako.activateTab(${JSON.stringify(second)})`);
-  await ctx.evalMain(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(aId)}).win.setBounds({ x: 45, y: 55, width: 1030, height: 730 })`);
+  await ctx.evalMainSync(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(aId)}).win.setBounds({ x: 45, y: 55, width: 1030, height: 730 })`);
   await wait(2100);
   const initial = await readSession();
   assert.equal(initial.version, 6);
@@ -56,10 +56,10 @@ await withStand(async ctx => {
   await wait(500);
   const privateWindowId = (await states()).find(w => ![aId, bId].includes(w.id)).id;
   await inWindow(privateWindowId, `window.oblako.createIncognitoTab(${JSON.stringify(privateUrl)})`);
-  await ctx.evalMain(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(privateWindowId)}).win.close()`);
+  await ctx.evalMainSync(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(privateWindowId)}).win.close()`);
   await wait(200);
   assert.ok(!(await readSession()).closedWindows.some(w => w.id === privateWindowId));
-  await ctx.evalMain(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(bId)}).win.close()`);
+  await ctx.evalMainSync(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(bId)}).win.close()`);
   await wait(300);
   const afterB = await readSession();
   assert.deepEqual(afterB.windows.map(w => w.id), [aId]);
@@ -84,20 +84,20 @@ await withStand(async ctx => {
   const manualId = (await states()).find(w => ![aId, bId].includes(w.id)).id;
   await inWindow(manualId, `window.oblako.createTab(${JSON.stringify(ctx.echoUrl('/manual-restore'))})`);
   await wait(500);
-  await ctx.evalMain(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(manualId)}).win.close()`);
+  await ctx.evalMainSync(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(manualId)}).win.close()`);
   await wait(300);
-  await ctx.evalMain('sessionStand.manualMenu = sessionStand.main.makeIpcDeps().closedWindowMenu(); undefined');
-  assert.equal(await ctx.evalMain('sessionStand.manualMenu.length'), 1);
-  await ctx.evalMain('sessionStand.manualMenu[0].click()');
+  await ctx.evalMainSync('sessionStand.manualMenu = sessionStand.main.makeIpcDeps().closedWindowMenu(); undefined');
+  assert.equal(await ctx.evalMainSync('sessionStand.manualMenu.length'), 1);
+  await ctx.evalMainSync('sessionStand.manualMenu[0].click()');
   assert.ok((await states()).some(w => w.id === manualId));
-  await ctx.evalMain('sessionStand.manualMenu[0].click()');
+  await ctx.evalMainSync('sessionStand.manualMenu[0].click()');
   assert.equal((await states()).length, 3, 'устаревшее меню восстановило окно второй раз');
   assert.equal((await readSession()).closedWindows.length, 0);
-  await ctx.evalMain(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(manualId)}).win.close()`);
+  await ctx.evalMainSync(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(manualId)}).win.close()`);
   await wait(300);
 
   // Явный выход сохраняет одновременно открытые окна, а не последнее из закрывшихся.
-  await ctx.evalMain('setTimeout(() => sessionStand.electron.app.quit(), 100); undefined');
+  await ctx.evalMainSync('setTimeout(() => sessionStand.electron.app.quit(), 100); undefined');
   ctx.main.close();
   await wait(600);
   assert.equal((await readSession()).windows.length, 2);

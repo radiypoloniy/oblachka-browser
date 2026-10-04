@@ -45,7 +45,6 @@ import type { WindowDeps } from './deps';
 export interface WindowShell {
   win: BrowserWindow;
   chromeView: WebContentsView;
-  isMain: boolean;
 }
 
 /**
@@ -166,7 +165,7 @@ export function createWindowTabManager(
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
       // Снимок привязан к той вкладке, которую сняли: над чужой страницей карточке не место.
-      closeCompareOffer(win); closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(win); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); closeClipboardPopover(win);
+      closeCompareOffer(win); closeTranslatePopoverOnTabSwitch(win); closeFindBar(win); closeSearchPopover(win); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(win); closeSitePopover(win); closeScreenshot(win); closeClipboardPopover(win);
       // Вопрос о разрешении привязан к конкретной странице — над чужой вкладкой ему не место.
       if (win) for (const id of dropPermissionRequests(win)) permissions.cancel(id);
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
@@ -177,7 +176,7 @@ export function createWindowTabManager(
     },
     (wc, tabId) => {
       forgetOpenTabContent(wc.id);
-      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); passwordAutofill.onTabClosed(tabId); forgetMediaTab(tabId);
+      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(win); closeSitePopover(win); closeScreenshot(win); passwordAutofill.onTabClosed(tabId); forgetMediaTab(tabId);
       // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
       // хранилище), Chrome-подобно. takeIncognitoClearIfDone сам знает, когда это уместно (работает
       // и для кнопки, и для хоткея Ctrl+Shift+N).
@@ -189,11 +188,11 @@ export function createWindowTabManager(
       chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS);
       closePasswordPopover(win);
       closeAutofillPopover(win);
-      closeDownloadsPopover();
+      closeDownloadsPopover(win);
       // ⚠️ Без этой строки поповер сайта не закрывался кликом по странице: слушатель «клика мимо»
       // живёт в слое хрома, а клики по странице до него не доходят вовсе — страница это отдельная
       // нативная вью. Закрывать такие поповеры умеет только main, по этому самому сигналу.
-      closeSitePopover();
+      closeSitePopover(win);
       closeClipboardPopover(win);
     },
     // Менеджер паролей, шаг 2, коммит 2 — сигналы content-preload идут в PasswordAutofillManager,
@@ -304,9 +303,6 @@ export function createWindowTabManager(
 
   scheduleOpenTabIndexCatchup(tabs, historyFor);
 
-  // Регистрируем окно в реестре — с этого момента его находят по отправителю IPC. Владелец
-  // сессии ставится тут же: дерево вкладок принадлежит полному окну, и только его снимок имеет
-  // право попасть в session.json (см. SessionManager.setOwner) — чужой отбрасывается молча.
-
+  // Окно регистрируется после создания менеджера, до восстановления дерева.
   return { tabs, forget: () => { tabs = null } };
 }

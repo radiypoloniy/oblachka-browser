@@ -6,17 +6,16 @@ import type { TabManager } from './TabManager';
 //
 // Оконные команды разрешаются только по явному владельцу вью интерфейса; неизвестный
 // отправитель не выбирает главное окно. Владение страницами и политика внешних ссылок
-// отделены от этого разрешения. Роли main/light пока остаются до миграции сессии и AI.
+// отделены от этого разрешения. Legacy-роли нужны только стартовому выбору профиля, а не функциям окна.
 
-// Тип роли живёт в общем контракте: её знает и renderer (лёгкое окно рисует меньше).
+// Тип роли живёт в общем контракте: renderer использует её только для стартового выбора профиля.
 export type { WindowRole } from '../shared/ipc';
 import type { WindowRole } from '../shared/ipc';
 
 export interface WindowContext {
   sessionId: string;
   win: BrowserWindow;
-  // Слой нашего интерфейса поверх окна. У лёгкого окна он тоже свой — просто рисует
-  // хром без сайдбара.
+  // Собственный слой интерфейса с одинаковыми возможностями в каждом окне.
   chromeView: WebContentsView;
   tabs: TabManager;
   role: WindowRole;
@@ -84,10 +83,9 @@ export function preferredContext(): WindowContext | null {
   return null;
 }
 
-// Полное окно ровно одно — оно владеет деревом вкладок и, что важнее, сессией.
+// Совместимость старых внутренних вызовов: приложение выбирает последнее рабочее окно.
 export function mainContext(): WindowContext | null {
-  for (const ctx of contexts.values()) if (ctx.role === 'main') return ctx;
-  return null;
+  return preferredContext();
 }
 
 export function allContexts(): WindowContext[] {

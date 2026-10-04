@@ -5,7 +5,7 @@ import { withStand, wait } from './isolated-stand.mjs';
 await withStand(async (ctx) => {
   await wait(1000);
   const load = (suffix) => `Object.values(process.mainModule.require('module')._cache).find(m => (m.filename ?? '').replaceAll(String.fromCharCode(92), '/').endsWith(${JSON.stringify(suffix)})).exports`;
-  await ctx.evalMain(`globalThis.routingStand = {
+  await ctx.evalMainSync(`globalThis.routingStand = {
     registry: ${load('/WindowRegistry.js')},
     routing: ${load('/window/ipcRouting.js')},
     electron: process.mainModule.require('electron'),
@@ -13,7 +13,7 @@ await withStand(async (ctx) => {
   await ctx.chrome.evaluate('window.oblako.openWindow()');
   await wait(1000);
   assert.equal(await ctx.evalMain('routingStand.registry.allContexts().length'), 2);
-  await ctx.evalMain(`routingStand.a = routingStand.registry.allContexts()[0]; routingStand.b = routingStand.registry.allContexts()[1]; undefined`);
+  await ctx.evalMainSync(`routingStand.a = routingStand.registry.allContexts()[0]; routingStand.b = routingStand.registry.allContexts()[1]; undefined`);
   const inWindow = (which, code) => ctx.evalMain(`routingStand.${which}.chromeView.webContents.executeJavaScript(${JSON.stringify(code)})`);
   const urlA = ctx.echoUrl('/routing-a');
   const urlB = ctx.echoUrl('/routing-b');

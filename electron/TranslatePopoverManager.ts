@@ -36,6 +36,8 @@ let scrollWc: WebContents | null = null
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let onScrollConsoleMessage: ((event: any) => void) | null = null
 let ipcRegistered = false
+let abort: AbortController | null = null
+const cleanupBound = new WeakSet<BrowserWindow>()
 
 // Позиция: под выделением по умолчанию; флип вверх, если не помещается снизу; флип влево
 // (выравнивание по правому краю выделения), если не помещается справа. Итог клампится в окно.
@@ -112,6 +114,7 @@ function clearEditMark(wc: WebContents | null): void {
 }
 
 function cleanup(): void {
+  abort?.abort(); abort = null
   if (!popoverView) return
   clearEditMark(scrollWc)
   if (attachedWin) {
@@ -131,8 +134,8 @@ function cleanup(): void {
 // Безусловное закрытие — активная вкладка сменилась (см. TabManager.activate/focusSplitPanel),
 // поповер анкорен к прежней и позиционно больше не имеет смысла, независимо от того, какая
 // вкладка стала активной.
-export function closeTranslatePopoverOnTabSwitch(): void {
-  cleanup()
+export function closeTranslatePopoverOnTabSwitch(win: BrowserWindow): void {
+  if (attachedWin === win) cleanup()
 }
 
 // Закрытие только если закрывшаяся вкладка — та самая, на которой поповер висит (сравнение по
@@ -148,18 +151,20 @@ function ensureIpcRegistered(): void {
   ipcRegistered = true
 
   // Рост под контент (репорт из preload поповера) — пересчитываем bounds с тем же якорем.
-  ipcMain.on('translate-popover:height', (_e, px: number) => {
+  ipcMain.on('translate-popover:height', (e, px: number) => {
+    if (e.sender !== popoverView?.webContents || !Number.isFinite(px)) return
     if (!popoverView || !attachedWin || !currentRect) return
     popoverView.setBounds(computeBounds(attachedWin, currentRect, Math.max(INITIAL_HEIGHT, px)))
   })
 
   // Крестик / Esc внутри поповера — надёжные пути закрытия.
-  ipcMain.on('translate-popover:close', () => cleanup())
+  ipcMain.on('translate-popover:close', (e) => { if (e.sender === popoverView?.webContents) cleanup() })
 
   // «Заменить» — вернуть правку в поле и закрыться. ⚠️ Вкладку берём ту же, на которой поповер
   // и висит (scrollWc): за время генерации человек мог кликнуть куда угодно, и искать «активную»
   // вкладку к моменту ответа — верный способ вставить текст в чужую страницу.
-  ipcMain.on('translate-popover:replace', (_e, replacement: string) => {
+  ipcMain.on('translate-popover:replace', (e, replacement: string) => {
+    if (e.sender !== popoverView?.webContents) return
     const wc = scrollWc
     if (!wc || wc.isDestroyed() || typeof replacement !== 'string' || !replacement) { cleanup(); return }
     // userGesture=true: без него Chromium отклоняет команды редактирования из скрипта.
@@ -186,6 +191,11 @@ export function showTranslatePopover(win: BrowserWindow, action: AiAction, text:
   // (см. translatepopover.html) — вместе это даёт «плавающую» карточку без подложки.
   popoverView.setBackgroundColor('#00000000')
   attachedWin = win
+  abort = new AbortController()
+  if (!cleanupBound.has(win)) {
+    cleanupBound.add(win)
+    win.once('closed', () => { if (attachedWin === win) cleanup() })
+  }
   currentRect = rect
 
   popoverView.setBounds(computeBounds(win, rect, INITIAL_HEIGHT))
@@ -206,6 +216,7 @@ export function showTranslatePopover(win: BrowserWindow, action: AiAction, text:
   wc.once('did-finish-load', () => {
     // targetLang доезжает до карточки, чтобы подпись была «Перевожу на английский…», а не общее
     // «Перевожу…»: человек сам выбрал язык и ждёт подтверждения, что услышали именно его.
+    if (popoverView?.webContents !== wc || wc.isDestroyed()) return
     wc.send('translate-popover:open', { text, action, canReplace, targetLang })
     wc.focus()
   })
@@ -249,7 +260,7 @@ export function showTranslatePopover(win: BrowserWindow, action: AiAction, text:
   // действием).
   void runAiAction(action, text, (chunkText) => {
     if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:chunk', chunkText)
-  }, targetLang).then((outcome) => {
+  }, targetLang, abort.signal).then((outcome) => {
     if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:result', outcome)
   })
 }

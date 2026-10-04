@@ -6,7 +6,7 @@ import { shouldShowUpdatePrompt } from '../shared/updateOffer'
 import { closeWindowView } from './viewTeardown'
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics'
 import { restackPermissionPopover } from './PermissionPopoverManager'
-import { allContexts, mainContext } from './WindowRegistry'
+import { preferredContext } from './WindowRegistry'
 
 // Карточка «доступна новая версия» — отдельная WebContentsView поверх страницы, у левого
 // верхнего угла контентной зоны, тем же рецептом, что запрос разрешения сайта.
@@ -96,10 +96,7 @@ function layout(st: WindowUpdatePrompt): void {
 }
 
 function hostWindow(): BrowserWindow | null {
-  const main = mainContext()?.win
-  if (main && !main.isDestroyed()) return main
-  const first = allContexts()[0]?.win
-  return first && !first.isDestroyed() ? first : null
+  return preferredContext()?.win ?? null
 }
 
 export function syncUpdatePromptBounds(win: BrowserWindow, b: ContentBounds): void {

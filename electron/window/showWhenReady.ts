@@ -43,12 +43,13 @@ const DROPZONES_PREWARM_DELAY_MS = 2200;
 const SITE_POPOVER_PREWARM_DELAY_MS = 2600;
 const DOWNLOADS_POPOVER_PREWARM_DELAY_MS = 3600;
 
+let sharedWarmupsScheduled = false;
+
 export function showWhenReady({
-  win, chromeView, isMain, startedAt, getTabs, settings, warmupTranslation, probeBergamot,
+  win, chromeView, startedAt, getTabs, settings, warmupTranslation, probeBergamot,
 }: {
   win: BrowserWindow;
   chromeView: WebContentsView;
-  isMain: boolean;
   startedAt: number;
   /** ⚠️ Колбэк, а не значение: TabManager создаётся ПОСЛЕ этого вызова, а показ окна асинхронен. */
   getTabs: () => TabManager | null;
@@ -80,7 +81,7 @@ export function showWhenReady({
       // Заставка уходит ровно здесь: после неё человек сразу видит готовое окно, без
       // промежуточного кадра с пустотой.
       closeSplash();
-      // Прогрев оверлея перетаскивания — ДО отсечки isMain ниже: вью зон своя у КАЖДОГО окна
+      // Прогрев оверлея перетаскивания — для каждого окна ниже: вью зон своя у КАЖДОГО окна
       // (см. DropZoneManager.ts, perWindow), и вкладку тащат в лёгком окне ровно так же.
       setTimeout(() => {
         if (!thisWin.isDestroyed()) prewarmDropZones(thisWin);
@@ -94,13 +95,13 @@ export function showWhenReady({
       // Прогрев AI-панели — своя, более ранняя задержка (см. AI_PANEL_PREWARM_DELAY_MS): лёгкий
       // прогрев (не модель), staggered отдельно от прогрева Qwen ниже, чтобы не бить оба прогрева
       // в одну точку старта.
-      // ⚠️ ДО отсечки isMain: панель своя у КАЖДОГО окна (см. aipanel/instances.ts), в лёгком она
-      // показывает домашний экран приложений. Без прогрева первый клик там строил бы вью с нуля.
+      // Каждое окно получает полный интерфейс панели; прогрев строит только её вью.
       setTimeout(() => {
         if (!thisWin.isDestroyed()) prewarmPanel(thisWin);
       }, AI_PANEL_PREWARM_DELAY_MS);
       // Прогревы — про приложение, а не про окно: второй показ не должен запускать их заново.
-      if (!isMain) return;
+      if (sharedWarmupsScheduled) return;
+      sharedWarmupsScheduled = true;
       setTimeout(() => {
         if (!thisWin.isDestroyed()) {
           // modelLoadMode==='on-demand' (дефолт, см. SettingsManager.ts) — прогрев на старте
@@ -124,7 +125,7 @@ export function showWhenReady({
         // (ensureActiveEngineWarm в TranslationEngineRegistry.ts).
         probeBergamot();
       }, TRANSLATION_WARMUP_DELAY_MS);
-      // Поповеры — общие на приложение (одна вью на все окна), поэтому под тем же `isMain`, что
+      // Поповеры — общие на приложение (одна вью на все окна), поэтому однократно, что
       // и прогревы выше: второе окно не должно строить их заново.
       setTimeout(() => {
         if (!thisWin.isDestroyed()) prewarmSitePopover();

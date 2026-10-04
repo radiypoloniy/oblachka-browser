@@ -338,6 +338,14 @@ export async function withStand(fn, opts = {}) {
         if (!main) throw new Error('стенд поднят без { main: true } — окна в main-процесс нет');
         return main.evaluate(expr);
       },
+      // Синхронная разведка main без awaitPromise: Inspector иногда теряет пустой результат
+      // инициализации («Promise was collected»), хотя код уже успешно исполнился.
+      evalMainSync: async (expression) => {
+        if (!main) throw new Error('стенд поднят без { main: true }');
+        const r = await main.send('Runtime.evaluate', { expression, returnByValue: true });
+        if (r.error || r.result?.exceptionDetails) throw new Error(JSON.stringify(r));
+        return r.result?.result?.value;
+      },
       findTarget: (pred, tries) => findTarget(cdpPort, pred, tries),
       /**
        * Перезапуск приложения НА ТОМ ЖЕ ПРОФИЛЕ — то, ради чего вообще существует проверка круга

@@ -8,8 +8,7 @@
 // ⚠️ Белый список сайтов действует и здесь: адрес вне его для этой программы не существует, и
 // «нельзя в почту» обязано означать в том числе «нельзя открыть, закрыть и сохранить».
 
-import { BrowserWindow } from 'electron';
-import { contextForWindow, mainContext } from '../WindowRegistry';
+import { preferredContext } from '../WindowRegistry';
 import { activeBookmarks, activeTracking } from '../ProfileData';
 import { detectProduct } from '../ProductDetector';
 import { domainAllowed, visibleTabs } from '../../shared/mcpPolicy';
@@ -26,7 +25,7 @@ import { OUT_OF_SCOPE } from './McpTools';
  * человеку объяснить нельзя.
  */
 function activeContext() {
-  return contextForWindow(BrowserWindow.getFocusedWindow()) ?? mainContext();
+  return preferredContext();
 }
 
 // ── Запись. ⚠️ Сюда попадают только после подтверждения человеком (см. McpConfirm.ts). ──

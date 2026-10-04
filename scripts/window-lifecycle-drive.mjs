@@ -7,7 +7,7 @@ import { withStand, wait } from './isolated-stand.mjs';
 await withStand(async (ctx) => {
   await wait(1000);
   const load = suffix => `Object.values(process.mainModule.require('module')._cache).find(m => (m.filename ?? '').replaceAll(String.fromCharCode(92), '/').endsWith(${JSON.stringify(suffix)})).exports`;
-  await ctx.evalMain(`globalThis.lifecycleStand = {
+  await ctx.evalMainSync(`globalThis.lifecycleStand = {
     registry: ${load('/WindowRegistry.js')}, main: ${load('/main.js')},
     vpn: ${load('/VpnProcess.js')}, inference: ${load('/inference/InferenceHost.js')},
     electron: process.mainModule.require('electron'), stops: 0, inferenceStops: 0,
