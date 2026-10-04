@@ -11,7 +11,7 @@ import { searchHistorySmart } from '../HistorySearch';
 import { HistorySearchTasks } from '../HistorySearchTasks';
 import { readHistory } from '../HistoryReader';
 import { fetchSearchSuggestions } from '../SearchSuggestFetcher';
-import { broadcastToChrome, contextFromSender, mainContext } from '../WindowRegistry';
+import { broadcastToChrome, contextFromSender, preferredContext } from '../WindowRegistry';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
 
@@ -36,7 +36,7 @@ export function registerHistoryIpc(d: IpcDeps): void {
 
   startHistoryIdleCatchup({
     history,
-    getWin: () => mainContext()?.win ?? null,
+    getWin: () => preferredContext()?.win ?? null,
   });
 
   // Заход 10: живые suggest-подсказки — движок берём из settings (тот же источник истины, что

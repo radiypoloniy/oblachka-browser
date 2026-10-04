@@ -1,4 +1,5 @@
 import { WebContentsView, app } from 'electron';
+import { registerPageContents } from './WindowRegistry';
 import type { BrowserWindow, Rectangle } from 'electron';
 import path from 'node:path';
 import fsp from 'node:fs/promises';
@@ -50,6 +51,7 @@ function ensureView(win: BrowserWindow, key: string, url: string): Entry | null 
   if (!HTTP_SCHEME.test(url)) return null;
   const existing = views.get(key);
   if (existing) {
+    registerPageContents(win, existing.view.webContents);
     // Адрес узла поменяли — переезжаем в том же вью, чтобы не плодить процессы.
     if (existing.url !== url) {
       existing.url = url;
@@ -67,6 +69,7 @@ function ensureView(win: BrowserWindow, key: string, url: string): Entry | null 
     },
   });
   view.setBackgroundColor('#FFFFFFFF');
+  registerPageContents(win, view.webContents);
 
   // Навигация внутри панели разрешена (это мини-браузер), но только http(s).
   // will-redirect отдельно: will-navigate не ловит СЕРВЕРНЫЙ редирект, а тот мог бы

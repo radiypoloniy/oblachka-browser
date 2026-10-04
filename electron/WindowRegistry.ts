@@ -1,20 +1,12 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, webContents } from 'electron';
 import type { WebContents, WebContentsView } from 'electron';
 import type { TabManager } from './TabManager';
 
 // ── Реестр окон ───────────────────────────────────────────────────────────────
 //
-// Зачем. Сегодня окно ровно одно, и main.ts держит его вместе с менеджером вкладок и слоем
-// хрома в модульных переменных. Пока окно одно — это работает; как только их станет два,
-// каждый обработчик IPC обязан понимать, ОТ КАКОГО окна пришёл вызов, иначе клик в новом
-// окне будет менять вкладки в старом.
-//
-// Здесь заведён контекст окна и способ найти его по отправителю сообщения. Сам переезд
-// обработчиков на этот способ идёт постепенно: реестр появляется первым, чтобы переходить
-// можно было по одному вызову, а не одним прыжком на шестьдесят.
-//
-// Разделение ролей окна — из замысла: полное окно с сайдбаром и деревом вкладок ровно одно,
-// дополнительные лёгкие — без дерева. Отсюда роль в контексте, а не просто список окон.
+// Оконные команды разрешаются только по явному владельцу вью интерфейса; неизвестный
+// отправитель не выбирает главное окно. Владение страницами и политика внешних ссылок
+// отделены от этого разрешения. Роли main/light пока остаются до миграции сессии и AI.
 
 // Тип роли живёт в общем контракте: её знает и renderer (лёгкое окно рисует меньше).
 export type { WindowRole } from '../shared/ipc';
@@ -30,25 +22,63 @@ export interface WindowContext {
 }
 
 const contexts = new Map<number, WindowContext>();
+// Только вью нашего интерфейса регистрируются как отправители оконных команд.
+// Страницы сайтов разрешаются отдельно и не получают права chrome через владение окном.
+const interfaceOwners = new WeakMap<WebContents, BrowserWindow>();
+const pageOwners = new WeakMap<WebContents, BrowserWindow>();
+const focusOrder: number[] = [];
+
+export function registerWindowContents(win: BrowserWindow, contents: WebContents): void {
+  interfaceOwners.set(contents, win);
+}
+
+// Веб-приложения панели не входят в дерево TabManager, но имеют владельца для разрешений.
+export function registerPageContents(win: BrowserWindow, contents: WebContents): void {
+  pageOwners.set(contents, win);
+}
 
 export function registerWindow(ctx: WindowContext): void {
   contexts.set(ctx.win.id, ctx);
-  ctx.win.once('closed', () => { contexts.delete(ctx.win.id); });
+  registerWindowContents(ctx.win, ctx.chromeView.webContents);
+  focusOrder.push(ctx.win.id);
+  ctx.win.on('focus', () => {
+    const index = focusOrder.indexOf(ctx.win.id);
+    if (index >= 0) focusOrder.splice(index, 1);
+    focusOrder.unshift(ctx.win.id);
+  });
+  ctx.win.once('closed', () => {
+    contexts.delete(ctx.win.id);
+    const index = focusOrder.indexOf(ctx.win.id);
+    if (index >= 0) focusOrder.splice(index, 1);
+  });
 }
 
 export function contextForWindow(win: BrowserWindow | null): WindowContext | null {
-  return win ? contexts.get(win.id) ?? null : null;
+  return win && !win.isDestroyed() ? contexts.get(win.id) ?? null : null;
 }
 
-// Контекст по отправителю IPC. ⚠️ Сообщения приходят не только из окна: слой хрома и все
-// оверлеи (поповеры, панель, выпадашка) живут в собственных WebContents, у которых своё
-// окно-владелец. fromWebContents для дочерней вью возвращает null, поэтому спускаемся к
-// хозяину через сравнение с зарегистрированными слоями хрома.
+// Контекст доверенной вью интерфейса. fromWebContents не определяет права отправителя:
+// в разных версиях Electron он может находить окно и для страницы сайта.
 export function contextFromSender(sender: WebContents): WindowContext | null {
-  const direct = contextForWindow(BrowserWindow.fromWebContents(sender));
-  if (direct) return direct;
-  for (const ctx of contexts.values()) {
-    if (ctx.chromeView.webContents === sender) return ctx;
+  if (sender.isDestroyed()) return null;
+  return contextForWindow(interfaceOwners.get(sender) ?? null);
+}
+
+// Разрешения и загрузки приходят от страницы, даже когда её view не прикреплена к окну.
+export function contextForPageWebContents(wcId: number): WindowContext | null {
+  const tabOwner = allContexts().find((ctx) => !ctx.win.isDestroyed() && ctx.tabs.ownsWebContents(wcId));
+  if (tabOwner) return tabOwner;
+  const contents = webContents.fromId(wcId);
+  return contents ? contextForWindow(pageOwners.get(contents) ?? null) : null;
+}
+
+// Политика для внешних ссылок и общих уведомлений; не fallback для неизвестного IPC.
+export function preferredContext(): WindowContext | null {
+  const focused = contextForWindow(BrowserWindow.getFocusedWindow());
+  if (focused) return focused;
+  for (const id of focusOrder) {
+    const ctx = contexts.get(id);
+    if (ctx && !ctx.win.isDestroyed()) return ctx;
   }
   return null;
 }

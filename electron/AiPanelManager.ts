@@ -24,7 +24,7 @@ import { getWeather } from './WeatherService'
 import * as webApps from './WebAppManager'
 import { IPC, type TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
-import { contextFromSender } from './WindowRegistry'
+import { contextFromSender, registerWindowContents } from './WindowRegistry'
 import type { SettingsManager } from './SettingsManager'
 import { menuIcon } from './MenuIcons'
 import { t as tr } from './uiText'
@@ -426,6 +426,7 @@ function ensurePanelView(st: PanelInstance): WebContentsView {
   // Прозрачный фон вида — страница сама красит себя в токен темы (см. aipanel.tsx), без
   // риска мигнуть белым мимо текущей темы (светлой/тёмной) до применения CSS.
   view.setBackgroundColor('#00000000')
+  registerWindowContents(st.win, view.webContents)
   // Первый показ беседы активной вкладки — только после did-finish-load: раньше renderer ещё не
   // навесил обработчик onContext, сообщение потерялось бы. Статус ключа — тем же приёмом.
   view.webContents.once('did-finish-load', () => { sendCurrentContext(); sendPanelStatuses() })

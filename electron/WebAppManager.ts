@@ -19,7 +19,7 @@
 import { WebContentsView } from 'electron'
 import type { BrowserWindow, Rectangle } from 'electron'
 import { closeWindowView } from './viewTeardown'
-import { contextForWindow } from './WindowRegistry'
+import { contextForWindow, registerPageContents } from './WindowRegistry'
 
 interface WebAppEntry {
   view: WebContentsView
@@ -88,6 +88,7 @@ export function openWebApp(win: BrowserWindow, appId: string, url: string): void
   })
   // Белый фон до первой отрисовки сайта — иначе в дырке мигает прозрачность/обои панели.
   view.setBackgroundColor('#FFFFFFFF')
+  registerPageContents(win, view.webContents)
   view.webContents.setUserAgent(MOBILE_UA) // ДО loadURL — первый же запрос уходит «с телефона»
 
   // Навигация ВНУТРИ слота разрешена (это мини-браузер: клик по ссылке в переводчике легитимен),

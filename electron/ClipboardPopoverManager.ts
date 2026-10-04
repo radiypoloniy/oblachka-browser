@@ -6,6 +6,7 @@
 // принадлежат конкретному окну (в лёгком окне кнопка тоже есть).
 import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
+import { registerWindowContents } from './WindowRegistry';
 import path from 'node:path';
 import type { ContentBounds } from '../shared/ipc';
 import { closeWindowView } from './viewTeardown';
@@ -112,6 +113,7 @@ function ensureView(st: WindowPopover): WebContentsView {
     },
   });
   st.view.setBackgroundColor('#00000000');
+  registerWindowContents(st.win, st.view.webContents);
   st.view.webContents.once('did-finish-load', () => {
     st.loaded = true;
     if (st.open) st.view?.webContents.send('clipboard-popover:show');

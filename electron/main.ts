@@ -8,7 +8,8 @@ import { showWhenReady } from './window/showWhenReady';
 import { createWindowTabManager } from './window/tabManager';
 import { wireTabs } from './window/wireTabs';
 import { restoreSession } from './window/restoreSession';
-import { registerWindow, contextFromSender, contextForWindow, broadcastToChrome, allContexts, mainContext } from './WindowRegistry';
+import { registerWindow, contextFromSender, contextForWindow, contextForPageWebContents, broadcastToChrome, allContexts, preferredContext } from './WindowRegistry';
+import { tabsOf, winOf, chromeOf, sendTo } from './window/ipcRouting';
 import type { WindowRole } from './WindowRegistry';
 
 // ДО app.whenReady() — Electron требует это до события ready.
@@ -191,13 +192,6 @@ let pendingStartUrl: string | null = null;
 // t0 стартовых тайминов: фиксируем в app.whenReady, до createWindow.
 let startT0 = 0;
 
-// Главное окно и его слой хрома. ⚠️ Это НЕ «текущее окно»: с появлением второго окна каждое
-// держит своё в реестре (WindowRegistry.ts), а эти ссылки остаются запасным путём для отправителей,
-// которых в реестре нет (ранние сообщения при старте, изолированные тестовые окна), и адресом
-// финального сохранения сессии. Внутри createWindow одноимённые ПЕРЕМЕННЫЕ локальные — там речь
-// всегда о создаваемом окне.
-let mainWin: BrowserWindow | null = null;
-let mainChromeView: WebContentsView | null = null; // слой нашего React-хрома
 // In-memory сессия инкогнито-вкладок (см. INCOGNITO_PARTITION). Создаётся при старте окна; её
 // storage чистится, когда закрыта последняя инкогнито-вкладка (TabManager.takeIncognitoClearIfDone).
 let incognitoSession: Session | null = null;
@@ -360,7 +354,7 @@ function showTimerToast(): void {
   if (!Notification.isSupported()) return;
   const n = new Notification({ title: 'Таймер', body: 'Время вышло' });
   n.on('click', () => {
-    const ctx = mainContext() ?? allContexts()[0];
+    const ctx = preferredContext();
     if (!ctx || ctx.win.isDestroyed()) return;
     if (ctx.win.isMinimized()) ctx.win.restore();
     ctx.win.focus();
@@ -373,7 +367,7 @@ function showTrackingToast(title: string, url: string, text: string): void {
   if (!Notification.isSupported()) return;
   const n = new Notification({ title: title.slice(0, 80), body: text });
   n.on('click', () => {
-    const ctx = mainContext() ?? allContexts()[0];
+    const ctx = preferredContext();
     if (!ctx || ctx.win.isDestroyed()) return;
     if (ctx.win.isMinimized()) ctx.win.restore();
     ctx.win.focus();
@@ -746,18 +740,15 @@ function wireSharedSessions(): void {
   fileContentIndexFor(getActiveProfile().id).schedule(downloads.getIndexableCompleted());
 
   // Разрешения: хендлер на дефолтной сессии + на инкогнито-сессии (ниже) — обе через один колбэк.
-  // ⚠️ Запрос приходит от вкладки, но PermissionManager не сообщает, от какой именно, — поэтому
-  // приглашение уходит в главное окно. Со вторым окном это станет заметно (запрос камеры из окна
-  // B всплывёт в окне A) и чинится вместе с остальными оверлеями, когда те научатся находить
-  // своё окно.
+  // Вопрос о разрешении адресуется владельцу страницы, включая веб-приложения AI-панели.
   const onPermissionRequest = (req: PermissionRequest, requesterWcId: number | null) => {
     // ⚠️ Окно ищем по САМОЙ странице-просителю, а не берём главное: запрос камеры из второго
     // окна раньше всплывал в первом — человек видел вопрос там, где ничего не нажимал.
     const owner = requesterWcId === null
       ? null
-      : allContexts().find((c) => c.tabs.ownsWebContents(requesterWcId)) ?? null;
-    const win = owner?.win ?? mainWin;
-    if (!win) return;
+      : contextForPageWebContents(requesterWcId);
+    const win = owner?.win;
+    if (!win) { permissions.cancel(req.requestId); return; }
     // FindBar живёт в том же углу контентной зоны — двум оверлеям там тесно.
     owner?.tabs.stopFind();
     closeFindBar(win);
@@ -809,7 +800,7 @@ function wireSharedSessions(): void {
   // и поповер в неверном месте. Main лишь кладёт вопрос и просит открыть — дальше обычный путь.
   downloads.setDuplicatePrompt((wc, prompt) => {
     setDuplicatePrompt(prompt);
-    const win = BrowserWindow.fromWebContents(wc) ?? contextFromSender(wc)?.win ?? null;
+    const win = contextForPageWebContents(wc.id)?.win ?? contextFromSender(wc)?.win ?? null;
     const chrome = win ? chromeOfWin(win) : null;
     if (chrome) chrome.send(IPC.DOWNLOAD_DUPLICATE_ASK);
     // Окна не нашли (загрузка из фоновой вью) — вопрос задать некому, честно отменяем.
@@ -931,7 +922,7 @@ function createWindow(role: WindowRole = 'main') {
   registerWindow(ctx);
   wireWindowControls(win);
   sess?.setOwner(tabs);
-  if (isMain) { mainWin = win; mainChromeView = chromeView; mainTabs = tabs; mainSess = sess; }
+  if (isMain) { mainTabs = tabs; mainSess = sess; }
 
   // Проводка вкладок и сохранённый поисковик — в window/wireTabs.ts.
   wireTabs({ win, chromeView, isMain, tabs }, windowDeps());
@@ -1000,9 +991,8 @@ function createWindow(role: WindowRole = 'main') {
     // вью, и его сайдбар с тулбаром остался бы жить отдельным процессом рендерера (разбор и
     // замер — в viewTeardown.ts).
     closeWindowView(chromeView);
-    // Запасные ссылки на главное окно снимаем только вместе с ним самим — иначе закрытие
-    // лёгкого окна оставило бы приложение без адресата для отправителей вне реестра.
-    if (isMain) { mainWin = null; mainChromeView = null; mainTabs = null; mainSess = null; }
+    // До миграции сессии сохраняем ссылку только на её текущего владельца.
+    if (isMain) { mainTabs = null; mainSess = null; }
 
     // ⚠️ ВЫХОД НЕ ЖДЁТ window-all-closed. Это событие приходит, только когда закрыто КАЖДОЕ окно
     // Electron, а у приложения есть СЛУЖЕБНЫЕ невидимые окна: фоновая проверка отслеживаемых
@@ -1265,27 +1255,6 @@ export function makeWindowDeps() {
 const windowDeps = makeWindowDeps;
 
 export function makeIpcDeps() {
-  // Менеджер вкладок ТОГО окна, из которого пришёл вызов. Пока окно одно, это всегда он же —
-  // но со вторым окном разница станет решающей: без маршрутизации клик в новом окне менял бы
-  // вкладки в старом. Запасной путь на глобальный tabs оставлен для отправителей, которых нет
-  // в реестре (ранние сообщения при старте, изолированные тестовые окна).
-  const tabsOf = (e: { sender: Electron.WebContents }) => contextFromSender(e.sender)?.tabs ?? mainTabs;
-  // Окно отправителя — для диалогов, меню и оверлеев: они обязаны открываться над тем окном,
-  // где человек кликнул, а не над первым попавшимся.
-  const winOf = (e: { sender: Electron.WebContents }) => contextFromSender(e.sender)?.win ?? mainWin;
-  // Слой хрома отправителя — для ОТВЕТНЫХ пушей: стрим чата хаба, прогресс узла графа,
-  // приглашение переименовать папку. Это ответ на конкретный запрос, а не общее состояние
-  // приложения, — рассылать его во все окна (broadcastToChrome) значило бы вписывать чужой
-  // ответ в чат соседнего окна.
-  const chromeOf = (e: { sender: Electron.WebContents }) =>
-    contextFromSender(e.sender)?.chromeView.webContents ?? mainChromeView?.webContents ?? null;
-  // Адресат запоминается в момент запроса, а ответ приходит асинхронно — окно к тому времени
-  // может закрыться, и send по мёртвому webContents бросит. Прежний код от этого защищал `?.`
-  // по обнуляемой глобальной переменной; с захваченной ссылкой нужна явная проверка.
-  const sendTo = (wc: Electron.WebContents | null, channel: string, ...args: unknown[]): void => {
-    if (wc && !wc.isDestroyed()) wc.send(channel, ...args);
-  };
-
   return {
     // Маршрутизация по окну-отправителю
     tabsOf, winOf, chromeOf, sendTo,
@@ -1346,7 +1315,7 @@ app.on('web-contents-created', (_e, contents) => {
   contents.on('will-navigate', (e, url) => {
     if (!isExternalAppUrl(url)) return;
     e.preventDefault();
-    const win = BrowserWindow.fromWebContents(contents) ?? contextFromSender(contents)?.win ?? mainWin;
+    const win = contextForPageWebContents(contents.id)?.win ?? contextFromSender(contents)?.win ?? BrowserWindow.fromWebContents(contents);
     void openExternalWithConsent(win, url, contents.getURL(), contents.id);
   });
   // Любая наша chrome-страница (главный рендерер + все поповеры), догрузившись, получает текущую
@@ -1427,7 +1396,7 @@ function bringToFront(win: BrowserWindow): void {
 // Ссылка из другого приложения при УЖЕ запущенном браузере: открываем вкладку и поднимаем окно.
 app.on('second-instance', (_e, argv) => {
   const url = firstUrlFromArgv(argv);
-  const ctx = mainContext() ?? allContexts()[0];
+  const ctx = preferredContext();
   // ⚠️ Окон может не быть вовсе (все закрыты, а процесс ещё жив — например, доигрывает выход).
   // Молча терять ссылку нельзя: для человека это «браузер не открыл страницу». Поднимаем окно
   // заново и отдаём адрес ему.
@@ -1444,7 +1413,7 @@ app.on('second-instance', (_e, argv) => {
 // macOS отдаёт ссылки не аргументом, а событием. Пути расходятся только здесь.
 app.on('open-url', (e, url) => {
   e.preventDefault();
-  const ctx = mainContext() ?? allContexts()[0];
+  const ctx = preferredContext();
   if (ctx) { bringToFront(ctx.win); ctx.tabs.createTab(url); }
   else pendingStartUrl = url;
 });
