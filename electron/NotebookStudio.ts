@@ -181,29 +181,35 @@ export async function generateStudio(
   // Ход генерации документа: сколько знаков модель уже выдала. Тот же приём, что у сборки
   // виджетов (GenSpecParser.onProgress) — и по той же причине, см. DOC_MAX_TOKENS выше.
   onProgress?: (chars: number) => void,
+  abort?: AbortSignal,
 ): Promise<{ ok: boolean; text?: string; error?: string }> {
   if (!context || !context.trim()) return { ok: false, error: 'Не выбраны источники с текстом' };
-  // ⚠️ Документ идёт мимо общего пути: ему нужна грамматика, а runChatMessage её не принимает.
-  if (kind === 'page') {
-    const act = beginActivity('Пишу страницу', 'notebook');
-    const res = await buildPage(context, sources ?? [], act, (n) => onProgress?.(n), pageLength ?? 'normal');
-    act.done();
-    if (!res.ok) return { ok: false, error: res.error };
-    return { ok: true, text: JSON.stringify(res.page) };
-  }
-  const comparison = kind === 'infographic' && !!items && items.length > 1;
-  const prompt = comparison ? buildComparisonPrompt(items!) : buildPrompt(kind, context);
-  if (prompt === null) return { ok: false, error: 'Этот тип пока не поддерживается' };
-  // Роль «Блокнот, Студия и граф» — та же, что у страниц и подбора запросов рядом.
-  const outcome = await runChatMessage(prompt, [], undefined, undefined, 'notebook');
-  if (!outcome.ok) return { ok: false, error: String(outcome.error) };
-  if (kind === 'quiz') {
-    const json = normalizeQuiz(outcome.out);
-    return json ? { ok: true, text: json } : { ok: false, error: 'Не удалось разобрать тест — попробуйте ещё раз' };
-  }
-  if (kind === 'infographic') {
-    const json = comparison ? normalizeComparison(outcome.out) : normalizeInfographic(outcome.out);
-    return json ? { ok: true, text: json } : { ok: false, error: 'Не удалось разобрать инфографику — попробуйте ещё раз' };
-  }
-  return { ok: true, text: outcome.out };
+  const act = beginActivity(kind === 'page' ? 'Пишу страницу' : 'Готовлю материал Студии', 'notebook', abort);
+  try {
+    // ⚠️ Документ идёт мимо общего пути: ему нужна грамматика, а runChatMessage её не принимает.
+    if (kind === 'page') {
+      const res = await buildPage(context, sources ?? [], act, (n) => onProgress?.(n), pageLength ?? 'normal');
+      if (act.cancelled) return { ok: false, error: 'Сборка остановлена' };
+      if (!res.ok) return { ok: false, error: res.error };
+      return { ok: true, text: JSON.stringify(res.page) };
+    }
+    const comparison = kind === 'infographic' && !!items && items.length > 1;
+    const prompt = comparison ? buildComparisonPrompt(items!) : buildPrompt(kind, context);
+    if (prompt === null) return { ok: false, error: 'Этот тип пока не поддерживается' };
+    // Роль «Блокнот, Студия и граф» — та же, что у страниц и подбора запросов рядом.
+    const outcome = await runChatMessage(prompt, [], undefined, act.signal, 'notebook');
+    if (act.cancelled) return { ok: false, error: 'Сборка остановлена' };
+    if (!outcome.ok) return { ok: false, error: String(outcome.error) };
+    if (kind === 'quiz') {
+      const json = normalizeQuiz(outcome.out);
+      return json ? { ok: true, text: json } : { ok: false, error: 'Не удалось разобрать тест — попробуйте ещё раз' };
+    }
+    if (kind === 'infographic') {
+      const json = comparison ? normalizeComparison(outcome.out) : normalizeInfographic(outcome.out);
+      return json ? { ok: true, text: json } : { ok: false, error: 'Не удалось разобрать инфографику — попробуйте ещё раз' };
+    }
+    return { ok: true, text: outcome.out };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  } finally { act.done(); }
 }

@@ -18,6 +18,7 @@ import { getPhotoOfDay, shufflePhoto } from '../NewTabPhoto';
 import { extractUrlText } from '../NotebookExtract';
 import { extractFileText, SUPPORTED_FILE_EXTENSIONS } from '../FileExtract';
 import { generateStudio } from '../NotebookStudio';
+import { withWindowJob } from '../window/job';
 import { savePageAsPdf } from '../NotebookPdf';
 import type { DocSource } from '../NotebookPage';
 import { cancelActivity, getActivity } from '../AiActivity';
@@ -155,14 +156,16 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   });
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (e, kind: StudioKind, context: string, sources?: DocSource[]) => {
     const sender = e.sender;
+    const win = winOf(e);
+    if (!win) return { ok: false, error: 'Окно недоступно' };
     const list = Array.isArray(sources)
       ? sources.filter((s): s is DocSource => typeof s?.title === 'string' && typeof s?.url === 'string')
       : [];
-    return generateStudio(
+    return withWindowJob(win, signal => generateStudio(
       kind, typeof context === 'string' ? context : '', undefined, list,
       settings.getPageLength(),
-      (chars) => { if (!sender.isDestroyed()) sender.send(IPC.NOTEBOOK_STUDIO_PROGRESS, chars); },
-    );
+      (chars) => { if (!sender.isDestroyed()) sender.send(IPC.NOTEBOOK_STUDIO_PROGRESS, chars); }, signal,
+    ));
   });
   // ⚠️ Два канала, а не один: между ними стоит человек. suggestQueries только ПРЕДЛАГАЕТ, наружу
   // ничего не уходит; runSearch отправляет на SearXNG ровно то, что человек подтвердил.

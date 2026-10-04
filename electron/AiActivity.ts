@@ -61,12 +61,15 @@ export interface ActivityHandle {
  * зелёным «на этой машине» или бирюзовым «облако» — тем же языком, что метка модели в чатах, и
  * соврать здесь нельзя: цвет означает «текст никуда не улетает».
  */
-export function beginActivity(label: string, role: AiRole): ActivityHandle {
+export function beginActivity(label: string, role: AiRole, parent?: AbortSignal): ActivityHandle {
   const run: Run = {
     id: nextId++, label, startedAt: Date.now(), chars: 0,
     local: isLocalRoute(role), ctrl: new AbortController(),
   };
   runs.set(run.id, run);
+  const cancel = () => { cancelActivity(run.id); };
+  parent?.addEventListener('abort', cancel, { once: true });
+  if (parent?.aborted) cancel();
   broadcast();
   return {
     get signal() { return run.ctrl.signal; },
@@ -82,6 +85,7 @@ export function beginActivity(label: string, role: AiRole): ActivityHandle {
       broadcast();
     },
     done() {
+      parent?.removeEventListener('abort', cancel);
       if (!runs.delete(run.id)) return;
       broadcast();
     },

@@ -42,10 +42,8 @@ const CONTEXT_MAX_CHARS = 24_000;
 
 export type ProgressSink = (p: GraphProgress) => void;
 
-// Токен отмены на граф. Прервать УЖЕ ИДУЩУЮ генерацию нельзя — node-llama-cpp не даёт
-// прервать session.prompt(), а рвать общий контекст ради одного узла значит уронить
-// перевод и AI-панель заодно. Поэтому отмена честно означает «не начинать следующий узел».
-const running = new Map<number, { cancelled: boolean }>();
+// Один граф имеет один прогон: его результаты общие на диске. Отмена прерывает только его генерацию.
+const running = new Map<number, { cancelled: boolean; abort: AbortController }>();
 
 export function isGraphRunning(graphId: number): boolean {
   return running.has(graphId);
@@ -53,7 +51,7 @@ export function isGraphRunning(graphId: number): boolean {
 
 export function cancelGraphRun(graphId: number): void {
   const token = running.get(graphId);
-  if (token) token.cancelled = true;
+  if (token) { token.cancelled = true; token.abort.abort(); }
 }
 
 // Вход узла: текст И имя узла, который его дал. Имя нужно шаблону сборки ({Черновик}),
@@ -183,7 +181,7 @@ async function executeNode(
   win: BrowserWindow | null,
   node: GraphNode,
   inputs: NodeInput[],
-  onChunk: (text: string) => void,
+  onChunk: (text: string) => void, abort: AbortSignal,
 ): Promise<NodeOutcome> {
   switch (node.kind) {
     case 'source.note': {
@@ -258,7 +256,7 @@ async function executeNode(
       const prompt = context
         ? `${instruction}\n\nОпирайся ТОЛЬКО на приведённый ниже материал.\n\n${context}`
         : instruction;
-      const outcome = await runChatMessage(prompt, [], onChunk);
+      const outcome = await runChatMessage(prompt, [], onChunk, abort, 'notebook');
       if (!outcome.ok) return { ok: false, error: String(outcome.error) };
       const out = outcome.out.trim();
       return out ? { ok: true, output: out } : { ok: false, error: 'Модель вернула пустой ответ' };
@@ -271,7 +269,7 @@ async function executeNode(
       const preset = resolveImagePreset(presetId);
       if (!preset) return { ok: false, error: 'Пресет не найден — выберите другой' };
       const prompt = buildImagePromptRequest(preset.guidance, node.config.instruction ?? '', material);
-      const outcome = await runChatMessage(prompt, [], onChunk);
+      const outcome = await runChatMessage(prompt, [], onChunk, abort, 'notebook');
       if (!outcome.ok) return { ok: false, error: String(outcome.error) };
       // Модель периодически всё-таки оборачивает ответ в кавычки или дописывает «Prompt:» —
       // подчищаем на нашей стороне, потому что промпт уходит человеку на вставку как есть.
@@ -296,7 +294,7 @@ async function executeNode(
       const kind = node.kind.slice('artifact.'.length) as StudioKind;
       // Источники передаём и поотдельности: инфографика по нескольким входам должна стать
       // сравнением, а не сводкой по одному из них наугад.
-      const res = await generateStudio(kind, context, inputs.map((i) => i.text));
+      const res = await generateStudio(kind, context, inputs.map((i) => i.text), undefined, undefined, undefined, abort);
       return res.ok && res.text
         ? { ok: true, output: res.text }
         : { ok: false, error: res.error ?? 'Не получилось' };
@@ -362,7 +360,11 @@ export async function runGraph(
   targetNodeId: string | null,
   emit: ProgressSink,
 ): Promise<void> {
-  if (running.has(graphId)) return; // повторный запуск того же графа игнорируем
+  if (!win || win.isDestroyed()) return;
+  if (running.has(graphId)) {
+    emit({ graphId, nodeId: targetNodeId ?? '', status: 'error', error: 'Граф уже выполняется в другом запросе' });
+    return;
+  }
   const doc = store.get(graphId);
   if (!doc) return;
 
@@ -390,8 +392,10 @@ export async function runGraph(
     return !!node && node.kind !== 'sticker' && (!scope || scope.has(id));
   });
 
-  const token = { cancelled: false };
+  const token = { cancelled: false, abort: new AbortController() };
   running.set(graphId, token);
+  const closed = () => cancelGraphRun(graphId);
+  win.once('closed', closed);
 
   // Сразу показываем весь план очередью — иначе при последовательном прогоне выглядит,
   // будто работает один узел, а остальные зависли без объяснения.
@@ -485,11 +489,12 @@ export async function runGraph(
       try {
         outcome = await executeNode(win, node, inputs, (chunk) => {
           emit({ graphId, nodeId, status: 'running', chunk });
-        });
+        }, token.abort.signal);
       } catch (e) {
         outcome = { ok: false, error: (e as Error).message || 'Узел упал' };
       }
 
+      if (token.cancelled) { emit({ graphId, nodeId, status: 'idle' }); continue; }
       if (outcome.ok && outcome.output) {
         outputs.set(nodeId, outcome.output);
         // Прошлый результат уезжает в историю ДО перезаписи — иначе сравнить «до и после
@@ -520,6 +525,7 @@ export async function runGraph(
       }
     }
   } finally {
+    win.removeListener('closed', closed);
     running.delete(graphId);
   }
 }

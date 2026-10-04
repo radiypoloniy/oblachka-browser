@@ -201,7 +201,7 @@ export function registerGraphIpc(d: IpcDeps): void {
   });
 
   ipcMain.on(IPC.GRAPH_RUN, (e, graphId: number, nodeId: string | null) => {
-    const w = winOf(e);
+    const w = winOf(e); if (!w) return;
     // Прогон графа — явное намерение поработать с AI, значит модель пора греть (тот же
     // приём, что у AI_PANEL_TOGGLE и SETTINGS_*_HUB_MODE).
     maybeLazyWarmupOnDemand();
