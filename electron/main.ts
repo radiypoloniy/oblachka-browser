@@ -1,3 +1,4 @@
+import { moveTab } from './window/tabMove';
 import { app, BrowserWindow, WebContentsView, Menu, webContents, nativeTheme, Notification } from 'electron';
 import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
@@ -990,55 +991,14 @@ function createWindow(role: WindowRole = 'main', saved?: SavedWindow) {
   return ctx; // вызывающей стороне (перенос вкладки) нужен менеджер вкладок нового окна
 }
 
-// Перенос вкладки в новое окно. Порядок важен: сначала СНИМАЕМ вкладку со старого окна и только
-// потом создаём новое. Наоборот — и при отказе снять (спящая, split, закреплённая) на экране
-// осталось бы пустое окно, которого никто не просил.
 function moveTabToNewWindow(from: TabManager, tabId: string): boolean {
-  const detached = from.detachTabForMove(tabId);
-  if (!detached) return false;
-  const target = createWindow('light');
-  // ⚠️ Засеваем область контента от окна-источника ДО приёма вкладки. Иначе у свежего окна bounds
-  // ещё {0,0,0,0}, и принятая вкладка активируется невидимой (0×0), пока не смонтируется его
-  // renderer и его ResizeObserver не пришлёт настоящие размеры — на экране всё это время пустой
-  // контент, будто открылась новая вкладка (живая жалоба, заметнее на медленной машине). Оценка
-  // приблизительная (окна могут быть разного размера) и уточняется первым же bounds нового окна,
-  // но вкладка видна СРАЗУ.
-  const seed = from.contentBounds;
-  if (seed.width > 0 && seed.height > 0) target.tabs.setContentBounds(seed);
-  if (target.tabs.adoptTab(detached)) {
-    // Источник мог опустеть: вынести единственную вкладку лёгкого окна в новое — значит оставить
-    // за собой пустое окно, которого никто не просил. Та же уборка, что и при возврате вкладки
-    // (closeIfEmptyLight сам проверит роль: главное окно не закрывается никогда).
-    closeIfEmptyLight(from);
-    return true;
-  }
-  // Новое окно вкладку не приняло (страница успела умереть) — не бросаем вью в никуда.
-  if (detached.kind === 'live' && !detached.view.webContents.isDestroyed()) {
-    (detached.view.webContents as unknown as { close?: () => void }).close?.();
-  }
-  return false;
+  return moveTab(from, tabId, () => createWindow('light'), closeIfEmptyLight, true);
 }
 
-// Обратный жест: вернуть вкладку в УЖЕ ОТКРЫТОЕ окно. Нужен, потому что вытащить вкладку легко
-// (и легко случайно), а вернуть было нечем — оставалось закрыть окно вместе со страницей.
-// Тот же порядок, что при выносе: сначала снять, потом отдать.
 function moveTabToExistingWindow(from: TabManager, tabId: string, targetWindowId: number): boolean {
-  const target = allContexts().find((c) => c.win.id === targetWindowId && !c.win.isDestroyed());
+  const target = allContexts().find(c => c.win.id === targetWindowId && !c.win.isDestroyed());
   if (!target || target.tabs === from) return false;
-  const detached = from.detachTabForMove(tabId);
-  if (!detached) return false;
-  if (!target.tabs.adoptTab(detached)) {
-    if (detached.kind === 'live' && !detached.view.webContents.isDestroyed()) {
-      (detached.view.webContents as unknown as { close?: () => void }).close?.();
-    }
-    return false;
-  }
-  // Окно-приёмник поднимаем: вкладка уехала туда, и смотреть человеку теперь надо туда же.
-  if (target.win.isMinimized()) target.win.restore();
-  target.win.focus();
-  console.log(`[window] вкладка переехала в окно ${target.win.id} (${target.role})`);
-  closeIfEmptyLight(from);
-  return true;
+  return moveTab(from, tabId, () => target, closeIfEmptyLight);
 }
 
 // Запуск переименования из меню.
@@ -1107,11 +1067,11 @@ function buildMoveToWindowItems(
 
 // Лёгкое окно, из которого унесли последнюю страницу, закрываем: пустое окно с одним хабом на
 // экране — мусор, которого никто не просил (так же ведёт себя Chrome). Полное окно не трогаем
-// НИКОГДА: оно владеет сессией, и его закрытие — это выход из приложения.
+// пока сохраняется роль main: её AI-контексты будут разделены следующим этапом.
 function closeIfEmptyLight(from: TabManager): void {
   const ctx = allContexts().find((c) => c.tabs === from);
   if (!ctx || ctx.role !== 'light' || ctx.win.isDestroyed()) return;
-  if (ctx.tabs.snapshot().some((t) => !t.isHub)) return;
+  if (ctx.tabs.hasTabs()) return;
   ctx.win.close();
 }
 

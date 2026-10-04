@@ -1,4 +1,6 @@
 import { app, WebContentsView, BrowserWindow, ipcMain, net } from 'electron';
+import type { ManagedTab } from './tabTransferTypes';
+import { detachTab, adoptTab, type DetachedTab, type TabTransferHost } from './tabTransfer';
 import type { LoadURLOptions, MenuItemConstructorOptions, PostBody, Referrer, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -76,67 +78,9 @@ function domainFromUrl(url: string): string {
 export const HUB_ID = 'hub';
 
 // Метаданные, сохраняемые при усыплении вкладки.
-interface SleepingMeta {
-  url: string;
-  title: string;
-  faviconUrl: string | null;   // «живой» URL иконки (сеть) — фоллбэк, если данных ещё нет
-  faviconData: string | null;  // закэшированные байты (data: URL) — приоритетны, работают офлайн
-}
-
 // Прямоугольник (селекшена или фоллбэк-точки клика) в координатах ОКНА — уже с добавленным
 // оффсетом view.getBounds(), готов к использованию для позиционирования поповера в main.ts.
 export interface SelectionRect { x: number; y: number; width: number; height: number }
-
-interface ManagedTab {
-  id: string;
-  view: WebContentsView | null; // null = хаб (sleeping===null) ИЛИ спящая (sleeping!==null) ИЛИ псевдо-вкладка (kind задан)
-  sleeping: SleepingMeta | null;
-  lastActiveAt: number; // Date.now() последней активности — для таймера сна
-  // Короткоживущая вкладка (напр. OAuth-попап из window.open с фичами окна, disposition='new-window'):
-  // не участвует в автосейве/восстановлении сессии — иначе при рестарте «воскреснет» мёртвая страница логина.
-  ephemeral?: boolean;
-  // Приватная (инкогнито) вкладка: своя in-memory сессия (partition INCOGNITO_PARTITION), не пишем
-  // историю, исключена из автосейва, не усыпляется (иначе in-memory сессия потерялась бы).
-  incognito?: boolean;
-  /**
-   * К какому профилю принадлежит вкладка (см. shared/profiles.ts).
-   *
-   * ⚠️ Хранится НА ВКЛАДКЕ, а не берётся из «активного профиля» в момент обращения. Вкладка
-   * живёт долго, активный профиль меняется — и вкладка обязана остаться в своей сессии, иначе
-   * человек, переключившийся в другой профиль, увидит чужие куки в уже открытой вкладке.
-   */
-  profileId?: string;
-  // Звук выключен человеком. ⚠️ Хранится ЗДЕСЬ, а не только в webContents: при усыплении вью
-  // уничтожается вместе со своим состоянием, и проснувшаяся вкладка снова заорала бы.
-  muted?: boolean;
-  // Когда в этой вкладке в последний раз ВИДЕЛИ играющее медиа (звук от Electron или опрос кадров,
-  // см. tabSleepController.ts). Даёт отсрочку MEDIA_GRACE: без неё достаточно паузы на буферизацию
-  // ровно в момент минутной проверки, чтобы выгрузить вкладку посреди просмотра.
-  lastMediaAt?: number;
-  // Псевдо-вкладка (История/Настройки, см. createSpecialTab) — обычная запись в tabMap/nodes
-  // (не синглтон-хаб: свой id, закрываемая, можно открыть несколько), но БЕЗ WebContentsView —
-  // переиспользован только сам приём хаба (view: null). #tabUrl() для такой вкладки вернёт ''
-  // (см. ниже) → savable()===false и isHttpView(null)===false уже естественно исключают её из
-  // сессии/сна без отдельных правок в SessionManager/sleep-таймере (см. диагностику, подтверждено
-  // чтением кода: serializeNodes фильтрует по savable(), sleep-таймер — по isHttpView).
-  kind?: SpecialTabKind;
-  // Начальный раздел для kind==='settings' (см. createSpecialTab ниже) — необязателен, задаётся
-  // только когда вызывающая сторона просит конкретный раздел (напр. кнопка "+" в AI-панели).
-  section?: string;
-  // Имя, придуманное моделью по содержимому страницы (см. electron/TabRenamer.ts). Пустое у
-  // подавляющего большинства вкладок: переименование — явное действие человека, а не фон.
-  // ⚠️ Сбрасывается при уходе на другой адрес: имя описывало ТУ страницу, и на новой оно врёт.
-  aiTitle?: string;
-}
-
-// Вкладка, снятая с окна и ждущая нового владельца (см. detachTabForMove/adoptTab).
-// Два случая, и оба нужны: живая страница переезжает вью (иначе потерялись бы история «назад»,
-// прокрутка и введённое в форму), спящая — своим описанием, потому что вью у неё ещё нет и
-// терять нечего. После перезапуска почти все вкладки спящие, и без второго случая пункт «Открыть
-// в новом окне» был бы неактивен ровно тогда, когда им и хотят воспользоваться.
-export type DetachedTab =
-  | { kind: 'live'; view: WebContentsView; incognito: boolean }
-  | { kind: 'sleeping'; sleeping: SleepingMeta; incognito: boolean };
 
 export class TabManager {
   private win: BrowserWindow;
@@ -808,6 +752,9 @@ export class TabManager {
     return false;
   }
 
+  // UI скрывает вкладки чужого профиля; пустоту окна определяем по полному дереву.
+  hasTabs(): boolean { return this.tabMap.size > 0; }
+
   // Инкогнито ли вкладка — для подавления offer-save паролей/автозаполнения (заход 2).
   isIncognito(tabId: string): boolean {
     return !!this.tabMap.get(tabId)?.incognito;
@@ -1148,6 +1095,7 @@ export class TabManager {
     const url = wc.getURL();
     if (!/^https?:\/\//i.test(url)) return;
     if (!(await prepareSleepUnload(this.onBeforeSleepCb, wc))) return;
+    if (this.tabMap.get(id) !== tab) return; // пока готовился сон, вкладка могла уехать в другое окно
     if (tab.sleeping || id === this.activeId || !this.isHttpView(tab.view)) return;
     const live = tab.view.webContents;
     if (live.isDestroyed() || !/^https?:\/\//i.test(live.getURL())) return;
@@ -1171,7 +1119,8 @@ export class TabManager {
     if (!tab?.sleeping) return;
     const { url, faviconData, faviconUrl } = tab.sleeping;
     const view = new WebContentsView({
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: CONTENT_PRELOAD_PATH, disableHtmlFullscreenWindowResize: true },
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: CONTENT_PRELOAD_PATH, disableHtmlFullscreenWindowResize: true,
+        partition: tab.incognito ? INCOGNITO_PARTITION : (profilePartition(tab.profileId ?? DEFAULT_PROFILE_ID) ?? undefined) },
     });
     const w = view.webContents as unknown as { _oblakoFavicon?: string; _oblakoFaviconData?: string };
     if (faviconData) w._oblakoFavicon = w._oblakoFaviconData = faviconData;
@@ -1236,7 +1185,13 @@ export class TabManager {
     this.pinnedTabs = [];
   }
 
+  private wiredPageViews = new WeakSet<WebContentsView>();
   private wirePageEvents(id: string, view: WebContentsView) {
+    // Единственный window.open-handler заменяется при каждом переезде. Остальные
+    // слушатели этого менеджера переиспользуются при возврате той же живой вью.
+    wireWindowOpenPolicy(this.#windowOpenHost, id, view);
+    if (this.wiredPageViews.has(view)) return;
+    this.wiredPageViews.add(view);
     const wc = view.webContents;
     // ⚠️ Вкладку можно передать другому окну (см. detachTabForMove). Слушатели, навешенные ЭТИМ
     // менеджером, остаются на её webContents навсегда: снять их выборочно нечем, а
@@ -1244,7 +1199,7 @@ export class TabManager {
     // обработчик сначала спрашивает, наша ли это ещё вкладка. Иначе прежнее окно продолжало бы
     // писать её визиты в историю вторым экземпляром, ловить found-in-page в свою панель поиска
     // и раздвигаться на полный экран из чужого видео.
-    const mine = () => this.tabMap.has(id);
+    const mine = () => this.tabMap.get(id)?.view === view;
     const notify = () => { if (mine()) this.onChange(); };
 
 
@@ -1308,7 +1263,6 @@ export class TabManager {
       markAudio: () => { const tab = this.tabMap.get(id); if (tab) tab.lastMediaAt = Date.now(); },
       onFindResult: (result) => this.onFindResultCb(result),
     });
-    wireWindowOpenPolicy(this.#windowOpenHost, id, view);
     wireTabCrashEvents(wc, {
       mine,
       notify,
@@ -1323,7 +1277,7 @@ export class TabManager {
       viewStillCurrent: () => this.tabMap.get(id)?.view === view,
       closeTab: () => this.closeTab(id),
     });
-    wirePageContextMenu(this.#menuHost, id, view);
+    wirePageContextMenu(this.#menuHost, id, view, mine);
 
     this.registerHotkeyHandler(wc);
   }
@@ -1607,94 +1561,28 @@ export class TabManager {
     }
   }
 
-  // ── Перенос вкладки в другое окно ───────────────────────────────────────────
-  //
-  // Отдаём ЖИВУЮ вью, а не адрес. Открыть URL заново в новом окне было бы вдвое проще, но
-  // человек потерял бы всё, ради чего вкладку и вытаскивают: историю «назад», позицию прокрутки,
-  // набранный в форме текст, авторизованное состояние SPA.
-  //
-  // ⚠️ Не переносятся только хаб, псевдо-вкладки (История/Настройки) и участники split: из пары
-  // надо сначала выйти, иначе она осталась бы половиной в одном окне, половиной в другом.
-  // Закреплённая переносится и в новом окне становится обычной — как в Chrome: закреп это место
-  // в полосе конкретного окна, а не свойство самой страницы.
-  detachTabForMove(id: string): DetachedTab | null {
-    if (id === HUB_ID) return null;
-    const pinnedIdx = this.pinnedTabs.findIndex((t) => t.id === id);
-    const tab = pinnedIdx >= 0 ? this.pinnedTabs[pinnedIdx]! : this.tabMap.get(id);
-    if (!tab) return null;
-    if (tab.kind) return null;                 // История/Настройки — не страница, переносить нечего
-    if (this.#pairContaining(id)) return null;
-    const live = this.isLiveHttpView(tab.view) ? tab.view : null;
-    if (!live && !tab.sleeping) return null;   // ни вью, ни описания — переносить нечего
-
+  // Перенос сохраняет запись вкладки; откат и принятие живут в отдельной транзакции.
+  #transferHost: TabTransferHost = {
+    window: () => this.win,
+    state: () => ({ tabs: this.tabMap, nodes: this.nodes, pinned: this.pinnedTabs, errors: this.errors, activeId: this.activeId }),
+    canDetach: (id) => !this.#pairContaining(id),
+    wire: (id, view) => this.wirePageEvents(id, view),
+    activate: (id) => this.activate(id),
+    changed: () => this.onChange(),
+    markPrivate: () => { this.#pendingIncognitoClear = true; },
+    committed: (id) => {
+      this.clearOrganizeSnapshot(); this.splitPairs.forget(id);
+      if (this.activeId === id) this.activate(this.tabsInVisualOrder(true)[0]?.id ?? HUB_ID);
+      else this.onChange();
+    },
+  };
+  detachTabForMove(id: string): DetachedTab | null { return detachTab(this.#transferHost, id); }
+  adoptTab(tab: DetachedTab): string | null {
+    // Старое «Вернуть» группировку не должно удалить принятую вкладку из дерева.
+    const snapshot = this.organizeSnapshot;
     this.clearOrganizeSnapshot();
-
-    if (pinnedIdx >= 0) {
-      this.pinnedTabs.splice(pinnedIdx, 1);
-    } else {
-      // Из дерева узлов — тем же путём, что closeTab (вкладка может лежать внутри группы).
-      const found = this.#findTabParent(id);
-      if (found && found.parent[found.idx]?.type === 'single') {
-        found.parent.splice(found.idx, 1);
-        this.#pruneEmptyGroups(this.nodes);
-      }
-    }
-    this.splitPairs.forget(id);
-    this.tabMap.delete(id);
-    this.errors.delete(id);
-    // Снимаем вью с окна, но НЕ закрываем webContents — она сейчас же встанет в другое окно.
-    if (live) {
-      try { this.win.contentView.removeChildView(live); } catch { /* окно могло уже закрыться */ }
-    }
-
-    // Ушла активная — показываем соседнюю, как при закрытии.
-    if (this.activeId === id) {
-      const ordered = this.tabsInVisualOrder(true);
-      const next = ordered[0] ?? this.hubTab;
-      this.activate(next.id);
-    } else {
-      this.onChange();
-    }
-    const incognito = tab.incognito === true;
-    return live
-      ? { kind: 'live', view: live, incognito }
-      : { kind: 'sleeping', sleeping: tab.sleeping!, incognito };
-  }
-
-  // Принять вкладку, отданную другим окном. Слушатели навешиваются заново — уже на ЭТОТ менеджер
-  // (у прежнего они остались, но молчат: см. mine() в wirePageEvents).
-  adoptTab(d: DetachedTab): string | null {
-    const id = randomUUID(); // свой id: прежний принадлежал дереву того окна
-    if (d.kind === 'sleeping') {
-      // Спящую заводим спящей же и сразу активируем: разбудит её обычный путь activate/wakeTab,
-      // тот самый, что будит восстановленные из сессии.
-      const tab: ManagedTab = {
-        id, view: null, lastActiveAt: Date.now(), sleeping: d.sleeping, incognito: d.incognito,
-      };
-      if (d.incognito) this.#pendingIncognitoClear = true;
-      this.tabMap.set(id, tab);
-      this.nodes.push({ type: 'single', tabId: id });
-      this.activate(id);
-      return id;
-    }
-    if (d.view.webContents.isDestroyed()) return null;
-    const tab: ManagedTab = {
-      id, view: d.view, sleeping: null, lastActiveAt: Date.now(), incognito: d.incognito,
-    };
-    if (d.incognito) this.#pendingIncognitoClear = true;
-    this.tabMap.set(id, tab);
-    this.nodes.push({ type: 'single', tabId: id });
-    // ⚠️ Проводка — под catch, и это не глушение ошибки, а порядок восстановления: вкладка УЖЕ в
-    // дереве этого окна, и не активировать её после этого — худший из исходов (человек видит её
-    // в сайдбаре, а на экране пусто, см. разбор у removeHandler в wirePageEvents). Сбой проводки
-    // стоит части возможностей одной вкладки и громко пишется в лог; пропущенный activate стоит
-    // видимости страницы и уносит с собой хвост вызывающей стороны.
-    try {
-      this.wirePageEvents(id, d.view);
-    } catch (e) {
-      console.error('[TabMgr] проводка принятой вкладки не удалась:', (e as Error).message);
-    }
-    this.activate(id); // activate сам добавит вью в окно и выставит bounds
+    const id = adoptTab(this.#transferHost, tab);
+    if (!id) { this.organizeSnapshot = snapshot; this.onChange(); }
     return id;
   }
 

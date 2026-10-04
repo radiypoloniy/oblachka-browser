@@ -74,7 +74,10 @@ wc.fail(-105);
 wc.emit('destroyed');
 check('старый владелец после переноса не обрабатывает сбой и закрытие', calls.splice(0), []);
 wc.emit('render-process-gone');
-check('проводка краша сохраняет исходное отсутствие mine-гарда', calls.splice(0), [
+check('падение перенесённой страницы не меняет прежнее окно', calls.splice(0), []);
+owned = true;
+wc.emit('render-process-gone');
+check('текущий владелец показывает ошибку падения страницы', calls.splice(0), [
   ['error', { type: 'crash', code: 0, url: wc.url, offline: false }], 'notify',
 ]);
 

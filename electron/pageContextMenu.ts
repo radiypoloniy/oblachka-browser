@@ -356,10 +356,11 @@ function pageSection(wc: WebContents): MenuItemConstructorOptions[] {
 }
 
 /** Подписывает вкладку на ПКМ. Вызывается один раз на вкладку, из wirePageEvents. */
-export function wirePageContextMenu(host: PageContextMenuHost, id: string, view: WebContentsView): void {
+export function wirePageContextMenu(host: PageContextMenuHost, id: string, view: WebContentsView, mine: () => boolean): void {
   const wc = view.webContents;
 
   wc.on('context-menu', (_e, p) => {
+    if (!mine()) return;
     const items: MenuItemConstructorOptions[] = [];
     const engine = getSearchEngine(host.searchEngineId());
     // ⚠️ Всё, что рождается ОТ ЭТОЙ страницы, наследует её приватность. Замерено на стенде
@@ -390,6 +391,16 @@ export function wirePageContextMenu(host: PageContextMenuHost, id: string, view:
       },
     });
 
+    guardMenuOwner(items, mine);
     Menu.buildFromTemplate(items).popup({ window: host.window() });
   });
+}
+
+// Пока меню открыто, страницу можно перенести. Старое меню после этого молчит.
+function guardMenuOwner(items: MenuItemConstructorOptions[], mine: () => boolean): void {
+  for (const item of items) {
+    const click = item.click;
+    if (click) item.click = (...args) => { if (mine()) click(...args); };
+    if (Array.isArray(item.submenu)) guardMenuOwner(item.submenu, mine);
+  }
 }

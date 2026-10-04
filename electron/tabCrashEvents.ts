@@ -44,7 +44,7 @@ export function wireTabCrashEvents(wc: WebContents, host: TabCrashHost): void {
   });
 
   wc.on('render-process-gone', () => {
-    // Исходный обработчик не проверял mine(): сохраняем это поведение при переносе вкладки.
+    if (!host.mine()) return;
     host.reportError({ type: 'crash', code: 0, url: wc.getURL(), offline: false });
     host.notify();
   });
