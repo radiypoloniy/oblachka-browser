@@ -51,8 +51,8 @@ export function registerOverlaysIpc(d: IpcDeps): void {
       syncScreenshotBounds(fbWin, b); // карточка снимка сидит в правом нижнем углу контента
       syncPermissionPopoverBounds(fbWin, b); // и запрос разрешения — он тоже привязан к контенту
       syncUpdatePromptBounds(fbWin, b);      // карточка обновления — тот же угол контента
+      syncSearchPopoverBounds(fbWin, b);
     }
-    syncSearchPopoverBounds(b); // тот же сентинел нулевых bounds — прячем поповер вместе с контентом
   });
   // Прямоугольник омнибокса — двигает нативную вью дропдауна подсказок (см.
   // shared/ipc.ts::IPC.OMNIBOX_SET_BOUNDS, SuggestDropdownManager.ts) — старый chrome-DOM

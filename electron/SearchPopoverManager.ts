@@ -14,7 +14,7 @@ import type { BrowserWindow } from 'electron'
 import path from 'node:path'
 import type { ContentBounds, SearchTarget, QuickHit, QuickQueryResult } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
-import type { TabManager } from './TabManager'
+import { contextForWindow } from './WindowRegistry'
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 // ⚠️ Ширина и базовая высота ДУБЛИРУЮТСЯ в src/searchpopover.tsx (WIDTH) — держать в синхроне.
@@ -41,13 +41,12 @@ export interface SearchRunRequest {
 }
 
 let popoverView: WebContentsView | null = null
+let viewOwner: BrowserWindow | null = null
 let attachedWin: BrowserWindow | null = null
-let resizeBoundWin: BrowserWindow | null = null
 let ipcRegistered = false
-let tabManagerRef: TabManager | null = null
-let onRunCb: ((req: SearchRunRequest) => void) | null = null
-let onQueryCb: ((text: string) => QuickQueryResult) | null = null
-let onOpenCb: ((hit: QuickHit) => void) | null = null
+let onRunCb: ((req: SearchRunRequest, owner: BrowserWindow) => void) | null = null
+let onQueryCb: ((text: string, owner: BrowserWindow) => QuickQueryResult) | null = null
+let onOpenCb: ((hit: QuickHit, owner: BrowserWindow) => void) | null = null
 // Текущая высота карточки. Сбрасывается на базовую при каждом показе: поповер открывается
 // пустым, и висящая с прошлого раза высота дала бы пустой прямоугольник поверх страницы.
 let popoverHeight = POPOVER_BASE_HEIGHT
@@ -56,22 +55,18 @@ let popoverHeight = POPOVER_BASE_HEIGHT
 let pendingContext: SearchPopoverContext | null = null
 let lastContentBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 }
 
-export function setTabManager(tm: TabManager): void {
-  tabManagerRef = tm
-}
-
 // Что делать с введённым запросом, решает main.ts (он владеет вкладками) — менеджер знает
 // только про свою вью.
-export function setOnSearchRun(cb: (req: SearchRunRequest) => void): void {
+export function setOnSearchRun(cb: NonNullable<typeof onRunCb>): void {
   onRunCb = cb
 }
 
 // Поиск по своим данным и открытие находки — тоже main: вкладки, история и закладки живут там.
-export function setOnQuickQuery(cb: (text: string) => QuickQueryResult): void {
+export function setOnQuickQuery(cb: NonNullable<typeof onQueryCb>): void {
   onQueryCb = cb
 }
 
-export function setOnQuickOpen(cb: (hit: QuickHit) => void): void {
+export function setOnQuickOpen(cb: NonNullable<typeof onOpenCb>): void {
   onOpenCb = cb
 }
 
@@ -97,7 +92,8 @@ function computeBounds(): { x: number; y: number; width: number; height: number 
 // Единственный источник истины «открыт ли поповер» — факт прикрепления вью, а не отдельный
 // флаг: тот мог бы разойтись с реальностью (разбор — в шапке FindBarManager.ts).
 function isAttached(): boolean {
-  return !!popoverView && !!attachedWin && attachedWin.contentView.children.includes(popoverView)
+  return !!popoverView && !popoverView.webContents.isDestroyed() && !!attachedWin
+    && !attachedWin.isDestroyed() && attachedWin.contentView.children.includes(popoverView)
 }
 
 function layout(): void {
@@ -107,7 +103,8 @@ function layout(): void {
 
 // Зовётся из main.ts на каждый CONTENT_SET_BOUNDS. Нулевые bounds — сентинел «контент скрыт»
 // (открыты настройки/история/загрузки): поповер прячем вместе со страницей.
-export function syncSearchPopoverBounds(b: ContentBounds): void {
+export function syncSearchPopoverBounds(win: BrowserWindow, b: ContentBounds): void {
+  if (attachedWin !== win) return
   lastContentBounds = b
   if (b.width === 0 && b.height === 0) {
     closeSearchPopover()
@@ -120,27 +117,41 @@ function ensureIpcRegistered(): void {
   if (ipcRegistered) return
   ipcRegistered = true
 
-  ipcMain.on('searchpopover:close', () => {
+  const ownerOf = (sender: Electron.WebContents): BrowserWindow | null =>
+    sender === popoverView?.webContents && isAttached() && contextForWindow(attachedWin)
+      ? attachedWin : null
+
+  ipcMain.on('searchpopover:close', (e) => {
+    const owner = ownerOf(e.sender)
+    if (!owner) return
     closeSearchPopover()
     // Без явного возврата фокуса странице Ctrl+E повторно не сработает: before-input-event
     // молчит на вкладке, у которой нет OS-фокуса (тот же урок, что у FindBar).
-    tabManagerRef?.focusActiveView()
+    contextForWindow(owner)?.tabs.focusActiveView()
   })
 
-  ipcMain.on('searchpopover:run', (_e, req: SearchRunRequest) => {
+  ipcMain.on('searchpopover:run', (e, req: SearchRunRequest) => {
+    const owner = ownerOf(e.sender)
+    if (!owner) return
     closeSearchPopover()
-    onRunCb?.(req)
+    onRunCb?.(req, owner)
   })
 
-  ipcMain.handle('searchpopover:query', (_e, text: string) =>
-    onQueryCb?.(text) ?? { hits: [], bangTarget: null, strippedQuery: text })
+  ipcMain.handle('searchpopover:query', (e, text: string) => {
+    const owner = ownerOf(e.sender)
+    return (owner ? onQueryCb?.(text, owner) : null)
+      ?? { hits: [], bangTarget: null, strippedQuery: text }
+  })
 
-  ipcMain.on('searchpopover:open', (_e, hit: QuickHit) => {
+  ipcMain.on('searchpopover:open', (e, hit: QuickHit) => {
+    const owner = ownerOf(e.sender)
+    if (!owner) return
     closeSearchPopover()
-    onOpenCb?.(hit)
+    onOpenCb?.(hit, owner)
   })
 
-  ipcMain.on('searchpopover:resize', (_e, height: number) => {
+  ipcMain.on('searchpopover:resize', (e, height: number) => {
+    if (!ownerOf(e.sender)) return
     if (typeof height !== 'number' || !Number.isFinite(height)) return
     const next = Math.max(POPOVER_BASE_HEIGHT, Math.round(height))
     if (next === popoverHeight) return
@@ -160,7 +171,9 @@ function ensureView(): WebContentsView {
   })
   // Обязателен на самой вью: без него вокруг карточки виден непрозрачный прямоугольник-подложка.
   popoverView.setBackgroundColor('#00000000')
-  popoverView.webContents.once('did-finish-load', () => {
+  const view = popoverView
+  view.webContents.once('did-finish-load', () => {
+    if (view !== popoverView || !isAttached()) return
     if (pendingContext) popoverView?.webContents.send('searchpopover:show', pendingContext)
     popoverView?.webContents.focus()
   })
@@ -170,16 +183,27 @@ function ensureView(): WebContentsView {
 
 export function showSearchPopover(win: BrowserWindow, ctx: SearchPopoverContext): void {
   ensureIpcRegistered()
-  attachedWin = win
+  const owner = contextForWindow(win)
+  if (!owner) return
+  // Старые сообщения уже закрытого поповера не должны исполняться в другом окне.
+  if (viewOwner !== win || popoverView?.webContents.isDestroyed()) {
+    closeSearchPopover()
+    viewOwner?.removeListener('closed', onOwnerClosed)
+    if (popoverView && !popoverView.webContents.isDestroyed()) popoverView.webContents.close()
+    popoverView = null
+    viewOwner = win
+    win.once('closed', onOwnerClosed)
+  }
+  if (attachedWin !== win) {
+    closeSearchPopover()
+    attachedWin = win
+    win.on('resize', layout)
+  }
+  lastContentBounds = owner.tabs.contentBounds
   pendingContext = ctx
   // Открываемся всегда пустыми — высота с прошлого показа оставила бы поверх страницы
   // пустой прямоугольник до первого ввода.
   popoverHeight = POPOVER_BASE_HEIGHT
-  if (resizeBoundWin !== win) {
-    win.on('resize', layout)
-    resizeBoundWin = win
-  }
-
   if (isAttached()) {
     // Повторный Ctrl+E при открытом поповере — обновить контекст и выделить набранное
     // (тот же UX, что у повторного Ctrl+F). layout() обязателен: высоту мы только что сбросили
@@ -207,7 +231,19 @@ export function relayoutSearchPopover(): void {
   layout()
 }
 
-export function closeSearchPopover(): void {
-  if (!isAttached()) return
-  try { attachedWin!.contentView.removeChildView(popoverView!) } catch { /* окно могло закрыться */ }
+function onOwnerClosed(): void {
+  closeSearchPopover()
+  if (popoverView && !popoverView.webContents.isDestroyed()) popoverView.webContents.close()
+  popoverView = null
+  viewOwner = null
+}
+
+export function closeSearchPopover(win?: BrowserWindow): void {
+  if (win && attachedWin !== win) return
+  if (isAttached()) {
+    try { attachedWin!.contentView.removeChildView(popoverView!) } catch { /* окно могло закрыться */ }
+  }
+  attachedWin?.removeListener('resize', layout)
+  attachedWin = null
+  pendingContext = null
 }

@@ -5,9 +5,8 @@
 // восстановления сессии, — а тело перенесено дословно. Разбор, почему нельзя раскладывать
 // проводку «по доменам», — в шапке electron/ipc/deps.ts.
 import type { BrowserWindow, WebContentsView } from 'electron';
-import { applyBangTemplate, bangHomeUrl, isValidBangTemplate, parseBangCandidate } from '../../shared/bangs';
+import { applyBangTemplate } from '../../shared/bangs';
 import { IPC } from '../../shared/ipc';
-import type { QuickHit, SearchTarget } from '../../shared/ipc';
 import { setTabManager, setModelStateProvider as setAiPanelModelStateProvider, setOnChatIntent as setOnAiPanelChatIntent, setOnPanelFocus as setOnAiPanelFocus } from '../AiPanelManager';
 import { mapFormFields, type FormFieldDescriptor } from '../AutofillFieldMapper';
 import { closeAutofillPopover } from '../AutofillPopoverManager';
@@ -26,7 +25,7 @@ import { closePasswordPopover } from '../PasswordPopoverManager';
 import { applyRules } from '../RuleEngine';
 import { translateTabByRule } from '../PageTranslateManager';
 import { captureTabScreenshot, closeScreenshot, saveCurrentScreenshot, setScreenshotTabManager } from '../ScreenshotManager';
-import { setOnQuickOpen, setOnQuickQuery, setOnSearchRun, setTabManager as setSearchPopoverTabManager, showSearchPopover } from '../SearchPopoverManager';
+import { showSearchPopover } from '../SearchPopoverManager';
 import { buildSearchTargets } from '../SearchTargets';
 import { closeSitePopover } from '../SitePopoverManager';
 import { setTabManager as setOrganizerTabManager } from '../TabOrganizer';
@@ -34,6 +33,7 @@ import { getLoadedModelId } from '../TranslationService';
 import { allContexts } from '../WindowRegistry';
 import type { TabManager } from '../TabManager';
 import type { WindowDeps } from './deps';
+import { wireQuickSearch } from './quickSearch';
 import { toggleTaskManager } from '../TaskManagerWindow';
 
 export function wireTabs(
@@ -47,7 +47,7 @@ export function wireTabs(
 ): void {
   const { win, chromeView, isMain, tabs } = shell;
   const {
-    adblock, bangs, bookmarks, createWindow, ensureVpnOnForRules, graphs, history,
+    adblock, bangs, createWindow, ensureVpnOnForRules, graphs,
     maybeLazyWarmupOnDemand, moveTabToExistingWindow, notifyGraphChanged, rules,
     searchTargets, settings,
   } = deps;
@@ -70,6 +70,7 @@ export function wireTabs(
   // (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
 
   setFindBarTabManager(win, tabs);
+  wireQuickSearch(deps);
 
   // Снимок вкладки (Ctrl+Shift+S) — тоже СВОЙ у каждого окна: снимают ту вкладку, в чьём окне
 
@@ -119,7 +120,7 @@ export function wireTabs(
 
   // менеджер вкладок. Регистрирует её только полное окно: лёгкое, записавшись последним, увело
 
-  // бы службу себе, и, например, Ctrl+E из главного окна открывал бы найденное в лёгком.
+  // бы службу себе и направило извлечение страницы из главного окна в лёгкое.
 
   // Развязка по окнам — следующий срез.
 
@@ -174,12 +175,6 @@ export function wireTabs(
       closeClipboardPopover(win);
 
     });
-
-    // Быстрый поиск (Ctrl+E): поповеру нужен тот же возврат OS-фокуса странице, что и FindBar,
-
-    // а решение «куда открыть найденное» остаётся здесь — вкладками владеет main.
-
-    setSearchPopoverTabManager(tabs);
 
     // Узлу-веб-приложению графа — только чтобы target=_blank со стороннего сайта уходил
 
@@ -241,216 +236,6 @@ export function wireTabs(
 
   });
 
-  // Тоже служба в одном экземпляре — только полное окно (см. оговорку выше).
-
-  if (isMain) {
-
-    setOnSearchRun(({ query, target, sameTab }) => {
-
-      if (!tabs) return;
-
-      // Бэнг в строке главнее выбранного чипа и разбирается ЗДЕСЬ, а не в поповере: BangStore
-
-      // видит все три источника (свои, встроенные, импортированные), а второй парсер в вью
-
-      // неминуемо разъехался бы с этим. Раньше строка уходила в шаблон цели как есть — и
-
-      // «!wb Xiaomi» честно искалось в гугле вместе с самим «!wb».
-
-      const bang = resolvePopoverBang(query);
-
-      const effectiveTarget = bang?.target ?? target;
-
-      const effectiveQuery = bang?.query ?? query;
-
-      // Шаблон приходит из вью поповера. Она наша (не веб-страница), но проверка обязательна:
-
-      // навигация по неподтверждённому шаблону — ровно то, от чего защищается импорт бэнгов.
-
-      if (!isValidBangTemplate(effectiveTarget.template)) return;
-
-      // «!wb» без запроса — на главную сайта, как в омнибоксе: цель названа, искать нечего.
-
-      const url = effectiveQuery
-
-        ? applyBangTemplate(effectiveTarget.template, effectiveQuery)
-
-        : bangHomeUrl({ key: '', name: '', template: effectiveTarget.template });
-
-      searchTargets.noteUse(effectiveTarget.template); // частые цели поднимаются в полосе чипов
-
-
-
-      if (sameTab) tabs.navigate(tabs.getActiveId(), url);
-
-      else tabs.createTab(url);
-
-    });
-
-    // Поиск по своим данным для того же поповера: открытые вкладки, история, закладки.
-
-    // Всё синхронное и дешёвое — LIKE по истории и фильтр по памяти: запрос идёт на каждое
-
-    // нажатие клавиши, тяжёлому умному поиску (FTS5 + переранжирование Qwen, HistorySearch.ts)
-
-    // здесь не место, он живёт в панели истории, где его ждут дольше 100 мс.
-
-    setOnQuickQuery((text) => {
-
-      // Бэнг разбираем на КАЖДЫЙ ввод, чтобы поповер показал цель сразу, как её назвали, а не
-
-      // только после Enter: иначе набравший «!wb» не понимает, услышали его или нет.
-
-      const bang = resolvePopoverBang(text);
-
-      const effective = bang?.query ?? text;
-
-      return {
-
-        hits: quickHits(effective),
-
-        bangTarget: bang?.target ?? null,
-
-        strippedQuery: effective,
-
-      };
-
-    });
-
-  }
-
-  // Разбор бэнга из строки поповера: null — бэнга нет (обычный запрос).
-
-  function resolvePopoverBang(text: string): { target: SearchTarget; query: string } | null {
-
-    const parsed = parseBangCandidate(text);
-
-    if (!parsed) return null;
-
-    const bang = bangs.find(parsed.key);
-
-    if (!bang) return null; // неизвестный ключ бэнгом не считается — как и в омнибоксе
-
-    return {
-
-      target: {
-
-        id: `bang:${bang.key}`, name: bang.name, kind: 'bang',
-
-        template: bang.template, bangKey: bang.key,
-
-      },
-
-      query: parsed.query,
-
-    };
-
-  }
-
-  function quickHits(text: string): QuickHit[] {
-
-    const q = text.trim().toLowerCase();
-
-    if (q.length < 2 || !tabs) return [];
-
-    const hits: QuickHit[] = [];
-
-    const seen = new Set<string>();
-
-    const add = (h: QuickHit): void => {
-
-      const key = h.kind === 'tab' ? `tab:${h.tabId}` : h.url;
-
-      if (seen.has(key)) return;
-
-      seen.add(key);
-
-      hits.push(h);
-
-    };
-
-    const matches = (title: string, url: string): boolean =>
-
-      title.toLowerCase().includes(q) || url.toLowerCase().includes(q);
-
-
-
-    // Открытые вкладки — первыми: «где я это уже видел» чаще всего означает «оно ещё открыто»,
-
-    // и переключение дешевле открытия копии. Инкогнито из выдачи исключаем: приватная вкладка
-
-    // не должна всплывать в общем поиске.
-
-    for (const t of tabs.snapshot()) {
-
-      if (hits.length >= 3) break;
-
-      if (t.isHub || t.incognito || !t.url) continue;
-
-      if (matches(t.title, t.url)) {
-
-        add({ kind: 'tab', tabId: t.id, url: t.url, title: t.title || t.url, faviconUrl: t.faviconUrl });
-
-      }
-
-    }
-
-
-
-    for (const b of bookmarks().list()) {
-
-      if (hits.length >= 6) break;
-
-      if (matches(b.title ?? '', b.url)) {
-
-        add({ kind: 'bookmark', url: b.url, title: b.title || b.url });
-
-      }
-
-    }
-
-
-
-    for (const h of history().search(text.trim())) {
-
-      if (hits.length >= 9) break;
-
-      add({ kind: 'history', url: h.url, title: h.title || h.url });
-
-    }
-
-
-
-    return hits;
-
-  }
-
-  // Тоже служба в одном экземпляре — только полное окно (см. оговорку выше).
-
-  if (isMain) {
-
-    setOnQuickOpen((hit) => {
-
-      if (!tabs) return;
-
-      // Вкладка уже открыта — переключаемся на неё, а не плодим копию. Если её успели закрыть
-
-      // между показом и выбором, открываем адрес заново: пустой клик хуже лишней вкладки.
-
-      if (hit.kind === 'tab' && hit.tabId && tabs.snapshot().some((t) => t.id === hit.tabId)) {
-
-        tabs.activate(hit.tabId);
-
-        return;
-
-      }
-
-      tabs.createTab(hit.url);
-
-    });
-
-  }
-
   // Новое окно по Ctrl+N — из любого окна; создаётся всегда лёгкое (полное ровно одно).
 
   tabs.setOnNewWindow(() => { createWindow('light'); });
@@ -490,13 +275,8 @@ export function wireTabs(
 
   });
 
-  // ⚠️ Быстрый поиск (Ctrl+E) регистрируем только у полного окна: сам поповер — служба-одиночка,
-
-  // и найденное он открывает через setOnQuickOpen, который принадлежит полному окну. В лёгком
-
-  // окне колбэк просто не назначен, и хоткей молча ничего не делает (см. onQuickSearchCb?.()).
-
-  if (isMain) tabs.setOnQuickSearch(() => {
+  // Поповер адресует команды своему окну, поэтому хоткей доступен в каждом окне.
+  tabs.setOnQuickSearch(() => {
 
     void (async () => {
 
@@ -588,6 +368,7 @@ export function wireTabs(
 
       ]);
 
+      if (win.isDestroyed() || wc.isDestroyed() || tabs.getActiveWebContents() !== wc) return;
       showSearchPopover(win, { targets, prefill });
 
     })();
