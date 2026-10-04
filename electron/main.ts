@@ -45,6 +45,13 @@ import path from 'node:path';
 import { TabManager } from './TabManager';
 import { closeWindowView } from './viewTeardown';
 import { SessionManager } from './SessionManager';
+import { AppSessionStore } from './AppSessionStore';
+import { AppSessionCoordinator, windowsToRestore } from './AppSessionCoordinator';
+import { registerWindowSession, restoredWindowBounds, focusRestoredWindow } from './window/windowSession';
+import { sessionWarningReporter } from './window/sessionWarning';
+import { closedWindowMenu } from './window/closedWindowMenu';
+import type { SavedWindow } from '../shared/session';
+import { randomUUID } from 'node:crypto';
 import { AdBlockManager } from './AdBlockManager';
 import { UpdateManager } from './UpdateManager';
 import { BangStore } from './BangStore';
@@ -277,9 +284,8 @@ function currentThemePrefs(): ThemePrefs {
   };
 }
 let mainTabs: TabManager | null = null;
-// Сессия одна на приложение и принадлежит главному окну: дерево вкладок из session.json — его
-// (см. SessionManager.setOwner, срез 1). Лёгкие окна её не пишут и не читают.
-let mainSess: SessionManager | null = null;
+// Один координатор пишет деревья всех окон; роли пока нужны прежним AI-контроллерам.
+let appSession: AppSessionCoordinator | null = null;
 
 // ── Отслеживание товаров (PRICE-TRACKING.md, срез 1) ────────────────────────
 // ⚠️ Список отслеживаемого — НА ПРОФИЛЬ (см. ProfileData.ts), поэтому здесь функция, а не
@@ -845,11 +851,10 @@ function wireSharedSessions(): void {
   );
 }
 
-function createWindow(role: WindowRole = 'main') {
+function createWindow(role: WindowRole = 'main', saved?: SavedWindow) {
   const isMain = role === 'main';
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    ...restoredWindowBounds(saved),
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#F2F2F7', // ровно --app-bg, чтобы не мигало белым и не было шва под шапкой
@@ -897,36 +902,29 @@ function createWindow(role: WindowRole = 'main') {
 
   wireSharedSessions();
 
-  // Сессия — только у главного окна (см. mainSess): дерево вкладок в session.json принадлежит ему.
-  // Лёгкое окно её не читает и не пишет, поэтому и восстанавливать ему нечего.
-  const sess = isMain ? new SessionManager() : null;
-  const restored = sess?.load() ?? null; // загружаем ДО создания TabManager
-
   // Менеджер вкладок — СВОЙ у каждого окна. Обнуляется в win.on('closed'), поэтому let и null:
   // часть вкладок дозакрывается асинхронно уже после закрытия окна, и колбэки ниже обязаны это
   // пережить (см. гарды `tabs?.` внутри).
   // Менеджер вкладок этого окна и его проводка к поповерам — в window/tabManager.ts.
   // ⚠️ Границы взяты по существующему разрыву (до регистрации контекста окна), тело перенесено
   // дословно: та же причина, что у нарезки IPC-обработчиков, см. шапку electron/ipc/deps.ts.
-  const created = createWindowTabManager({ win, chromeView, isMain, sess }, windowDeps());
+  const created = createWindowTabManager({ win, chromeView, isMain }, windowDeps());
   // ⚠️ let, а не const: при закрытии окна ссылка обнуляется — на неё смотрят `tabs?.` ниже по
   // файлу. Вторую половину того же обнуления делает created.forget() (разбор — в tabManager.ts).
   let tabs: TabManager | null = created.tabs;
 
-  const ctx = { win, chromeView, tabs, role };
+  const ctx = { win, chromeView, tabs, role, sessionId: saved?.id ?? randomUUID() };
   registerWindow(ctx);
   wireWindowControls(win);
-  sess?.setOwner(tabs);
-  if (isMain) { mainTabs = tabs; mainSess = sess; }
+  if (isMain) mainTabs = tabs;
 
   // Проводка вкладок и сохранённый поисковик — в window/wireTabs.ts.
   wireTabs({ win, chromeView, isMain, tabs }, windowDeps());
 
   // Восстановление дерева — в window/restoreSession.ts; порядок здесь защищает session.json.
-  if (restored) restoreSession(restored, tabs, startT0);
-
-  // Только после восстановления разрешаем автосейв (у лёгкого окна сессии нет вовсе).
-  sess?.enable();
+  if (saved) restoreSession(saved.snapshot, tabs, startT0);
+  if (appSession) registerWindowSession(appSession, ctx.sessionId, win, tabs);
+  if (saved?.maximized) win.maximize();
 
   // Новый API Electron передаёт console-message через Event; форвардим только логи эмбеддингов.
   const LOG_PREFIXES = ['[embed]'];
@@ -955,17 +953,6 @@ function createWindow(role: WindowRole = 'main') {
     chromeView.webContents.loadURL('oblako-chrome://localhost/index.html');
   }
 
-  // При закрытии последнего окна app.quit вызывается уже после его уничтожения.
-  // Поэтому финальный снимок пишем здесь синхронно; before-quit дополнительно
-  // сохраняет ещё живое дерево при явном выходе из приложения.
-  //
-  // Пока сессией владеет главное окно, сохраняем только его дерево. Общие сервисы
-  // принадлежат приложению: закрытие даже главного окна не означает завершение работы.
-  win.on('close', () => {
-    if (!isMain) return;
-    if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot(), tabs);
-  });
-
   // Контекст наружу — вызывающей стороне (перенос вкладки) нужен менеджер вкладок нового окна.
   // Возврат стоит ДО подписок на закрытие ниже только ради читаемости — они уже навешены выше.
   win.on('closed', () => {
@@ -977,8 +964,8 @@ function createWindow(role: WindowRole = 'main') {
     // вью, и его сайдбар с тулбаром остался бы жить отдельным процессом рендерера (разбор и
     // замер — в viewTeardown.ts).
     closeWindowView(chromeView);
-    // До миграции сессии сохраняем ссылку только на её текущего владельца.
-    if (isMain) { mainTabs = null; mainSess = null; }
+    // Ссылка пока нужна старому AI-контроллеру и холодному открытию внешней ссылки.
+    if (isMain) mainTabs = null;
 
     // ⚠️ ВЫХОД НЕ ЖДЁТ window-all-closed. Это событие приходит, только когда закрыто КАЖДОЕ окно
     // Electron, а у приложения есть СЛУЖЕБНЫЕ невидимые окна: фоновая проверка отслеживаемых
@@ -1234,6 +1221,7 @@ export function makeWindowDeps() {
     createWindow, ensureVpnOnForRules, maybeLazyWarmupOnDemand,
     moveTabToExistingWindow, notifyGraphChanged,
     isShuttingDown: () => appShutdown.isShuttingDown(),
+    onSessionChanged: () => appSession?.scheduleSave(),
     incognitoSession: () => incognitoSession,
     startedAt: startT0,
   };
@@ -1252,6 +1240,7 @@ export function makeIpcDeps() {
     currentThemePrefs, ensurePasswordAuth, escapeHtml, escapeHtmlAttr, maybeLazyWarmupOnDemand,
     moveTabToExistingWindow, moveTabToNewWindow, notifyGraphChanged, pushProductState,
     renameTabSmart, showBookmarkMenu, showProductMenu,
+    closedWindowMenu: () => closedWindowMenu(appSession, saved => { createWindow(allContexts().some(c => c.role === 'main') ? 'light' : 'main', saved); }),
     // Пункты отслеживания цены отдельно от их показа: меню «⋯» в адресной строке вкладывает их
     // подменю, а не строит второй такой же список (см. productMenuTemplate).
     productMenuTemplate,
@@ -1521,7 +1510,15 @@ app.whenReady().then(async () => {
   // это не задерживает ни на миллисекунду. В dev-режиме метод не делает вообще ничего.
   updates.initialize((s) => broadcastToChrome(IPC.UPDATE_CHANGED, s));
 
-  createWindow();
+  const legacySession = new SessionManager();
+  const sessionStore = new AppSessionStore(app.getPath('userData'), app.getVersion(), data => legacySession.decode(data), sessionWarningReporter());
+  const savedSession = sessionStore.load();
+  appSession = new AppSessionCoordinator(sessionStore, savedSession);
+  const savedWindows = windowsToRestore(savedSession);
+  if (savedWindows.length === 0) createWindow();
+  else savedWindows.forEach((saved, index) => createWindow(index === 0 ? 'main' : 'light', saved));
+  focusRestoredWindow(savedSession?.focusedWindowId);
+  appSession.enable();
 
   // Холодный старт по ссылке (кликнули по ссылке в почте, браузер ещё не запущен): адрес
   // приезжает аргументом командной строки. Открываем ПОСЛЕ восстановления сессии — иначе
@@ -1562,7 +1559,7 @@ const CLEARED_STORAGES = [
 ] as const;
 const appShutdown = registerAppShutdown(app, {
   saveSession: () => {
-    if (mainTabs && mainSess) mainSess.saveNow(mainTabs.getSessionSnapshot(), mainTabs);
+    appSession?.beginQuit();
   },
   stopServices: async () => {
     stopModelIdleWatcher();

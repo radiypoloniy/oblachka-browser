@@ -13,6 +13,7 @@ export type { WindowRole } from '../shared/ipc';
 import type { WindowRole } from '../shared/ipc';
 
 export interface WindowContext {
+  sessionId: string;
   win: BrowserWindow;
   // Слой нашего интерфейса поверх окна. У лёгкого окна он тоже свой — просто рисует
   // хром без сайдбара.

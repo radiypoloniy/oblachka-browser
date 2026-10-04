@@ -1,12 +1,11 @@
-// Форма сохранённой сессии (session.json, сейчас версия 5).
+// Дерево одного окна; версия 6 добавляет общий контейнер нескольких окон.
 //
-// ⚠️ Типы живут в shared/, а не рядом с electron/SessionManager.ts, по одной причине: тот тянет
-// `electron`, а значит непригоден для проверок, которые гоняются голым node. Формат сессии — это
-// открытые вкладки человека; его поломка стоит пользователю потерянной работы, и покрыть его
-// тестом важнее, чем держать типы поближе к читателю файла. SessionManager их реэкспортирует,
-// поэтому существующие импорты не изменились.
+// Общий контракт дерева для TabManager, декодера прежних версий и координатора окон.
+// Чистый shared позволяет проверять формат без запуска Electron: поломка сессии
+// стоит человеку потерянных вкладок. SessionManager реэкспортирует прежние типы.
 //
 // История версий (миграции — в SessionManager.ts):
+//   6: окна с постоянными id, геометрией, закрытыми деревьями; activeRef по ключу вкладки.
 //   5: + title?/faviconData? в SavedTab/SavedSingleNode/SavedSplitPairNode — кэш для мгновенного
 //      показа названия и иконки спящей вкладки без пробуждения.
 //   4: nodes[] рекурсивно поддерживает group; activeRef использует type:'url'.
@@ -57,6 +56,8 @@ export interface SavedSplitPairNode {
   rightTitle?: string;
   leftFaviconData?: string;
   rightFaviconData?: string;
+  leftProfileId?: string;
+  rightProfileId?: string;
 }
 
 export interface SavedGroupNode {
@@ -73,6 +74,7 @@ export type SavedNode = SavedSingleNode | SavedSplitPairNode | SavedGroupNode;
 // activeRef v4: 'url' вместо 'normal'/'split' (проще с вложенными группами).
 // 'normal'/'split' оставлены в типе для чтения старых v3-сессий в main.ts.
 export type SavedActiveRef =
+  | { type: 'key'; key: string }
   | { type: 'hub' }
   | { type: 'pinned'; index: number }
   | { type: 'url'; url: string }
@@ -84,4 +86,21 @@ export interface SessionSnapshot {
   pinnedTabs: SavedTab[];
   nodes: SavedNode[];
   activeRef: SavedActiveRef;
+}
+
+export interface SavedWindow {
+  id: string;
+  bounds?: { x: number; y: number; width: number; height: number };
+  maximized?: boolean;
+  snapshot: SessionSnapshot;
+}
+
+export interface SavedClosedWindow extends SavedWindow {
+  closedAt: number;
+}
+
+export interface AppSessionSnapshot {
+  windows: SavedWindow[];
+  closedWindows: SavedClosedWindow[];
+  focusedWindowId?: string;
 }

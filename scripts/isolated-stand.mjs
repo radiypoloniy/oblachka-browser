@@ -93,6 +93,7 @@ export function connectCdp(target) {
   });
   const evaluate = async (expr, ms = 20000) => {
     const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true, timeout: ms });
+    if (r.error) throw new Error('CDP Runtime.evaluate: ' + JSON.stringify(r.error));
     if (r.result?.exceptionDetails) {
       throw new Error(String(r.result.exceptionDetails?.exception?.description ?? 'ошибка в renderer').slice(0, 240));
     }

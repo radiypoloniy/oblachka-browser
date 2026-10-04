@@ -669,7 +669,7 @@ export class TabManager {
   #computeActiveRef(): SavedActiveRef {
     if (this.activeId === HUB_ID) return { type: 'hub' };
 
-    const pinnedIdx = this.pinnedTabs.findIndex((t) => t.id === this.activeId);
+    const pinnedIdx = this.pinnedTabs.filter(t => !t.incognito && !t.ephemeral && /^https?:\/\//i.test(this.#tabUrl(t))).findIndex((t) => t.id === this.activeId);
     if (pinnedIdx !== -1) return { type: 'pinned', index: pinnedIdx };
 
     const tab = this.tabMap.get(this.activeId);
@@ -679,7 +679,7 @@ export class TabManager {
     if (tab?.incognito) return { type: 'hub' };
     // Активный OAuth-попап (ephemeral) сам в сейв не попадает — ссылаться на него в activeRef нельзя,
     // после рестарта такого URL в сохранённых вкладках не будет.
-    if (tab && !tab.ephemeral && /^https?:\/\//i.test(url)) return { type: 'url', url };
+    if (tab && !tab.ephemeral && /^https?:\/\//i.test(url)) return { type: 'key', key: tab.id };
     return { type: 'hub' }; // фоллбэк: about:blank, ephemeral или без реального URL
   }
 

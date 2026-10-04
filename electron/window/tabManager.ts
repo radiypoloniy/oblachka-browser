@@ -11,7 +11,6 @@ import type { BrowserWindow } from 'electron';
 import { IPC } from '../../shared/ipc';
 import { TabManager } from '../TabManager';
 import { restackUpdatePrompt } from '../UpdatePromptManager';
-import type { SessionManager } from '../SessionManager';
 import type { FindResult } from '../../shared/ipc';
 import { DEFAULT_PROFILE_ID } from '../../shared/profiles';
 import { parseAddressBlob } from '../AddressParser';
@@ -46,7 +45,6 @@ export interface WindowShell {
   win: BrowserWindow;
   chromeView: WebContentsView;
   isMain: boolean;
-  sess: SessionManager | null;
 }
 
 /**
@@ -60,16 +58,15 @@ export interface WindowShell {
 export function createWindowTabManager(
   shell: WindowShell, deps: WindowDeps,
 ): { tabs: TabManager; forget: () => void } {
-  const { win, chromeView, isMain, sess } = shell;
+  const { win, chromeView, isMain } = shell;
   const {
     PRODUCT_DETECT_DELAY_MS, downloads, hubChat, incognitoSession, isShuttingDown,
-    permissions, pushProductState, refreshProductForWebContents, refreshFlightForWebContents, searchTargets, startedAt,
+    permissions, pushProductState, refreshProductForWebContents, refreshFlightForWebContents, searchTargets, startedAt, onSessionChanged,
   } = deps;
   let tabs: TabManager | null = null;
 
-  // При любом изменении: обновляем UI и планируем сохранение сессии.
-  // scheduleSave молча игнорирует вызовы до sess.enable() — это защита
-  // от затирания: onChange стреляет во время restore, но сохранять ещё нельзя.
+  // Координатор разрешает сохранение только после восстановления всех окон:
+  // промежуточный onChange не должен заменить ещё не прочитанные деревья.
   tabs = new TabManager(
     win,
     () => {
@@ -109,13 +106,8 @@ export function createWindowTabManager(
       // Тот же снапшот — чистка in-memory контекстов AI-чата Hub по закрытым вкладкам
       // (см. HubChatManager.ts::pruneClosedTabs, тот же принцип, что onTabsSynced выше).
       hubChat.pruneClosedTabs(new Set(tabsSnapshot.map((t) => t.id)));
-      // sess?. — не «отменяет» финальное сохранение: оно гарантированно уже прошло синхронно
-      // в win.on('close') ДО того, как sess обнуляется в win.on('closed') (см. ниже). Этот вызов
-      // подчистую сработает во время закрытия окна — часть вкладок ещё дозакрывается асинхронно
-      // (destroyed-события уже после win.on('closed')) и без ?. падал на null.scheduleSave.
-      // tabs?. в колбэке — scheduleSave стреляет через debounce (1.5с), tabs может обнулиться
-      // МЕЖДУ планированием и срабатыванием таймера (окно закрылось в этот промежуток).
-      sess?.scheduleSave(() => tabs?.getSessionSnapshot() ?? null);
+      // Координатор собирает все живые окна в один снимок после дебаунса.
+      onSessionChanged();
     },
     // FindBar — теперь отдельная WebContentsView (FindBarManager.ts), не React в chromeView.
     // Сам поиск (findInPage/found-in-page) не меняется — меняется только, куда идёт push

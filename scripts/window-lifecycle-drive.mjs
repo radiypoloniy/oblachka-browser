@@ -23,7 +23,7 @@ await withStand(async (ctx) => {
   await ctx.chrome.evaluate(`window.oblako.togglePinTab(${JSON.stringify(mainTab)})`);
   await ctx.chrome.evaluate('window.oblako.openWindow()');
   await wait(800);
-  await ctx.evalMain(`lifecycleStand.a = lifecycleStand.registry.allContexts()[0]; lifecycleStand.b = lifecycleStand.registry.allContexts()[1];`);
+  await ctx.evalMain(`lifecycleStand.a = lifecycleStand.registry.allContexts()[0]; lifecycleStand.b = lifecycleStand.registry.allContexts()[1]; undefined`);
   const inB = code => ctx.evalMain(`lifecycleStand.b.chromeView.webContents.executeJavaScript(${JSON.stringify(code)})`);
   await inB(`window.oblako.createTab(${JSON.stringify(ctx.echoUrl('/survivor'))})`);
 
@@ -34,14 +34,14 @@ await withStand(async (ctx) => {
     windows: 2, stopping: false, stops: 0, inferenceStops: 0,
   });
 
-  await ctx.chrome.evaluate('window.oblako.closeWindow()');
+  await ctx.evalMain('lifecycleStand.electron.ipcMain._invokeHandlers.get("window:close")({ sender: lifecycleStand.a.chromeView.webContents })');
   await wait(300);
   assert.deepEqual(await ctx.evalMain(`({ windows: lifecycleStand.registry.allContexts().length, stopping: lifecycleStand.main.makeWindowDeps().isShuttingDown(), stops: lifecycleStand.stops, inferenceStops: lifecycleStand.inferenceStops })`), {
     windows: 1, stopping: false, stops: 0, inferenceStops: 0,
   });
   const saved = JSON.parse(await fs.readFile(path.join(ctx.profile, 'session.json'), 'utf8'));
-  assert.equal(saved.version, 5);
-  assert.ok(saved.pinnedTabs.some(t => t.url === savedUrl));
+  assert.equal(saved.version, 6);
+  assert.ok(saved.closedWindows.some(w => w.snapshot.pinnedTabs.some(t => t.url === savedUrl)));
   const added = await inB(`window.oblako.createTab(${JSON.stringify(ctx.echoUrl('/after-main-close'))})`);
   assert.ok((await inB('window.oblako.getAllTabs()')).some(t => t.id === added));
 
@@ -50,7 +50,7 @@ await withStand(async (ctx) => {
   assert.equal(await ctx.evalMain('lifecycleStand.main.makeWindowDeps().isShuttingDown()'), false);
   assert.equal(await ctx.evalMain('lifecycleStand.stops + lifecycleStand.inferenceStops'), 0);
   // Служебное окно не должно удерживать приложение после закрытия последнего браузерного.
-  await ctx.evalMain('lifecycleStand.helper = new lifecycleStand.electron.BrowserWindow({ show: false }); setTimeout(() => lifecycleStand.b.win.close(), 100)');
+  await ctx.evalMain('lifecycleStand.helper = new lifecycleStand.electron.BrowserWindow({ show: false }); setTimeout(() => lifecycleStand.b.win.close(), 100); undefined');
   ctx.main.close();
   for (let i = 0; i < 60 && !ctx.appLog.join('').includes('[lifecycle-stand] stop-vpn'); i++) await wait(100);
   const log = ctx.appLog.join('');
@@ -59,5 +59,5 @@ await withStand(async (ctx) => {
   let target = true;
   for (let i = 0; i < 30 && target; i++) { await wait(100); target = await ctx.findTarget(t => t.type === 'page', 1); }
   assert.equal(target, null);
-  console.log('OK: отмена выхода, закрытие главного, работа второго, сохранение v5, финальная остановка сервисов один раз, выход при служебном окне.');
+  console.log('OK: отмена выхода, закрытие главного, работа второго, сохранение закреплений, финальная остановка сервисов один раз, выход при служебном окне.');
 }, { main: true });

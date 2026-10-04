@@ -9,11 +9,11 @@ await withStand(async (ctx) => {
     registry: ${load('/WindowRegistry.js')},
     routing: ${load('/window/ipcRouting.js')},
     electron: process.mainModule.require('electron'),
-  }`);
+  }; undefined`);
   await ctx.chrome.evaluate('window.oblako.openWindow()');
   await wait(1000);
   assert.equal(await ctx.evalMain('routingStand.registry.allContexts().length'), 2);
-  await ctx.evalMain(`routingStand.a = routingStand.registry.allContexts()[0]; routingStand.b = routingStand.registry.allContexts()[1];`);
+  await ctx.evalMain(`routingStand.a = routingStand.registry.allContexts()[0]; routingStand.b = routingStand.registry.allContexts()[1]; undefined`);
   const inWindow = (which, code) => ctx.evalMain(`routingStand.${which}.chromeView.webContents.executeJavaScript(${JSON.stringify(code)})`);
   const urlA = ctx.echoUrl('/routing-a');
   const urlB = ctx.echoUrl('/routing-b');
@@ -65,7 +65,8 @@ await withStand(async (ctx) => {
   assert.equal(await ctx.evalMain('routingStand.registry.preferredContext() === routingStand.a'), true);
 
   // Закрываем второе окно: поведение закрытия первого будет отдельным этапом lifecycle.
-  await inWindow('b', 'window.oblako.closeWindow()');
+  // Не ждём ответа в уничтожаемом renderer: вызываем тот же IPC-handler из main стенда.
+  await ctx.evalMain('routingStand.electron.ipcMain._invokeHandlers.get("window:close")({ sender: routingStand.b.chromeView.webContents })');
   await wait(300);
   assert.equal(await ctx.evalMain('routingStand.registry.allContexts().length'), 1);
   assert.equal(await ctx.evalMain('routingStand.registry.contextFromSender(routingStand.closedOwnerView.webContents) === null'), true);

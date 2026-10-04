@@ -42,8 +42,8 @@ export function restoreSession(restored: SessionSnapshot, tabs: TabManager, star
           const list = urlToIds.get(node.url) ?? [];
           list.push(id); urlToIds.set(node.url, list);
         } else if (node.type === 'split-pair') {
-          const lId = tabs!.createSleepingTab(node.leftUrl, node.leftTitle, node.leftFaviconData);
-          const rId = tabs!.createSleepingTab(node.rightUrl, node.rightTitle, node.rightFaviconData);
+          const lId = tabs!.createSleepingTab(node.leftUrl, node.leftTitle, node.leftFaviconData, node.leftProfileId);
+          const rId = tabs!.createSleepingTab(node.rightUrl, node.rightTitle, node.rightFaviconData, node.rightProfileId);
           if (node.leftKey) keyToId.set(node.leftKey, lId);
           if (node.rightKey) keyToId.set(node.rightKey, rId);
           const lList = urlToIds.get(node.leftUrl)  ?? []; lList.push(lId); urlToIds.set(node.leftUrl,  lList);
@@ -61,7 +61,9 @@ export function restoreSession(restored: SessionSnapshot, tabs: TabManager, star
     // Активная вкладка по activeRef.
     const ref = restored.activeRef;
     let targetId: string | undefined;
-    if (ref.type === 'pinned') {
+    if (ref.type === 'key') {
+      targetId = keyToId.get(ref.key);
+    } else if (ref.type === 'pinned') {
       targetId = pinnedIds[ref.index];
     } else if (ref.type === 'url') {
       // v4-формат: URL уникально идентифицирует вкладку.

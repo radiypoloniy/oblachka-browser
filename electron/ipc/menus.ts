@@ -260,13 +260,14 @@ export function registerMenusIpc(d: IpcDeps): void {
     const w = winOf(e);
     const t = tabsOf(e);
     if (!t || !w) return;
+    const closedWindows = d.closedWindowMenu();
     Menu.buildFromTemplate([
       { label: tr('Новая вкладка'), accelerator: 'Ctrl+T', click: () => t.activate(HUB_ID) },
       { label: tr('Новая вкладка инкогнито'), accelerator: 'Ctrl+Shift+N', click: () => t.createTab(undefined, false, false, true) },
       { type: 'separator' },
-      // Список закрытых — у каждого окна свой: вернуть в этом окне вкладку, закрытую в соседнем,
-      // человек не просил.
+      // Закрытые вкладки принадлежат окну, история целых окон — приложению.
       { label: tr('Открыть закрытую вкладку'), accelerator: 'Ctrl+Shift+T', enabled: t.hasClosedTabs(), click: () => t.reopenLastClosedTab() },
+      { label: tr('Закрытые окна'), enabled: closedWindows.length > 0, submenu: closedWindows },
     ]).popup({ window: w });
   });
 

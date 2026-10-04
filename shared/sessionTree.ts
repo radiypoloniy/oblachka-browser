@@ -96,6 +96,8 @@ function serializeBranch(nodes: SidebarNode[], d: SerializeDeps, singleIds: Set<
         if (right!.title) pairNode.rightTitle = right!.title;
         if (left!.faviconData) pairNode.leftFaviconData = left!.faviconData;
         if (right!.faviconData) pairNode.rightFaviconData = right!.faviconData;
+        if (left!.profileId) pairNode.leftProfileId = left!.profileId;
+        if (right!.profileId) pairNode.rightProfileId = right!.profileId;
         result.push(pairNode);
       } else if (leftOk) {
         result.push(toSavedSingle(left!, node.leftTabId));

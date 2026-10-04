@@ -39,7 +39,7 @@ await withStand(async (ctx) => {
     else if (node.type === 'split-pair') savedUrls.push(node.leftUrl, node.rightUrl);
     else if (node.type === 'group') visit(node.children);
   } };
-  visit(session.nodes);
+  visit(session.windows[0].snapshot.nodes);
   assert.equal(savedUrls.length, 4, `сессия содержит лишнюю вкладку: ${JSON.stringify(savedUrls)}`);
   await ctx.restart();
   await wait(800);

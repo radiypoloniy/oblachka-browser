@@ -1,37 +1,7 @@
-import { app } from 'electron';
-import fs from 'node:fs';
-import path from 'node:path';
-
-// Форма сохранённого — в shared/session.ts (там же история версий). Здесь реэкспорт, чтобы
-// существующие импорты `from './SessionManager'` продолжали работать: сами типы переехали в
-// shared/ ради проверок, которые гоняются голым node и не могут тянуть `electron`.
-import type {
-  SavedTab, SavedSingleNode, SavedSplitPairNode, SavedNode, SavedActiveRef, SessionSnapshot,
-} from '../shared/session';
-export type {
-  SavedTab, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedNode, SavedActiveRef,
-  SessionSnapshot,
-} from '../shared/session';
-
-const SESSION_VERSION = 5;
-const DEBOUNCE_MS = 1500;
-
-
-interface SessionDataV5 {
-  version: 5;
-  /** Версия приложения, записавшего файл. Необязательна: у файлов до 01.09.2026 её нет. */
-  app?: string;
-  savedAt: string;
-  activeRef: SavedActiveRef;
-  pinnedTabs: SavedTab[];
-  nodes: SavedNode[];
-}
-
-// Отдельных типов для v4 и v3 здесь больше нет: ими не пользовалась ни одна строка кода.
-// Старые файлы читают #loadV4/#loadV3, и оба принимают Record<string, unknown> и проверяют форму
-// в рантайме — иначе и нельзя, файл на диске мог быть любым. Чем версии отличались друг от друга,
-// записано в истории форматов (shared/session.ts).
-
+// Декодер прежних сессий v1–v5. Диском владеет AppSessionStore: старый формат
+// больше не записывается, чтобы два писателя не могли затереть многооконную сессию.
+import type { SavedTab, SavedSingleNode, SavedSplitPairNode, SavedNode, SavedActiveRef, SessionSnapshot } from '../shared/session';
+export type { SavedTab, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedNode, SavedActiveRef, SessionSnapshot } from '../shared/session';
 interface SessionDataV2 {
   version: 2;
   savedAt: string;
@@ -51,43 +21,14 @@ interface SessionDataV1 {
 }
 
 export class SessionManager {
-  #enabled = false;
-  #debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  readonly #filePath: string;
-  readonly #tmpPath: string;
-
-  constructor() {
-    const dir = app.getPath('userData');
-    this.#filePath = path.join(dir, 'session.json');
-    this.#tmpPath  = path.join(dir, 'session.json.tmp');
+  decode(d: Record<string, unknown>): SessionSnapshot | null {
+    if (d['version'] === 5) return this.#loadV5(d);
+    if (d['version'] === 4) return this.#loadV4(d);
+    if (d['version'] === 3) return this.#loadV3(d);
+    if (d['version'] === 2) return this.#migrateV2(d as unknown as SessionDataV2);
+    if (d['version'] === 1) return this.#migrateV1(d as unknown as SessionDataV1);
+    return null;
   }
-
-  load(): SessionSnapshot | null {
-    try {
-      const raw = fs.readFileSync(this.#filePath, 'utf8');
-      const data = JSON.parse(raw) as unknown;
-      if (typeof data !== 'object' || data === null) return null;
-      const d = data as Record<string, unknown>;
-
-      if (d['version'] === 5) return this.#loadV5(d);
-      if (d['version'] === 4) return this.#loadV4(d);
-      if (d['version'] === 3) return this.#loadV3(d);
-      if (d['version'] === 2) return this.#migrateV2(d as unknown as SessionDataV2);
-      if (d['version'] === 1) return this.#migrateV1(d as unknown as SessionDataV1);
-      // ⚠️ ФАЙЛ ИЗ БУДУЩЕГО — единственная ветка, где потеря данных РЕАЛЬНА, и включает её ровно
-      // автообновление. Сценарий: человек получил новую версию, та записала session.json нового
-      // формата, человек откатился на старую сборку. Она формата не знает, возвращает null — и
-      // это ещё полбеды («вкладки не восстановились»). Беда дальше: первое же закрытие окна
-      // ПЕРЕЗАПИСЫВАЕТ файл текущим форматом, и вкладки исчезают навсегда, включая те, что
-      // вернулись бы при повторном обновлении. Поэтому непонятый файл уносим в сторону ДО того,
-      // как его затрут.
-      this.#preserveFromFuture(d['version']);
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
   // v5 структурно = v4 + опциональные title/faviconData на узлах/пинах (см. SavedTab/SavedSingleNode/
   // SavedSplitPairNode выше) — отдельный загрузчик только чтобы не трогать #loadV4 (читает старые
   // v4-файлы как есть, без единой правки, см. заход C).
@@ -192,92 +133,11 @@ export class SessionManager {
     }
 
     const pinnedTabs: SavedTab[] = isSavedTabArray(d.pinnedTabs) ? d.pinnedTabs : [];
-    const nodes: SavedSingleNode[] = d.tabs.map((t) => ({ type: 'single', url: t.url }));
+    const nodes: SavedSingleNode[] = d.tabs.map((t) => ({ type: 'single', ...t }));
 
     return { pinnedTabs, nodes, activeRef };
   }
 
-  enable(): void {
-    this.#enabled = true;
-  }
-
-  scheduleSave(getSnapshot: () => SessionSnapshot | null): void {
-    if (!this.#enabled) return;
-    if (this.#debounceTimer !== null) clearTimeout(this.#debounceTimer);
-    this.#debounceTimer = setTimeout(() => {
-      this.#debounceTimer = null;
-      const snap = getSnapshot();
-      if (snap) this.#write(snap);
-    }, DEBOUNCE_MS);
-  }
-
-  // ⚠️ Сессия принадлежит ТОЛЬКО полному окну. Дополнительные (лёгкие) окна в session.json не
-  // сохраняются вовсе — как инкогнито-вкладки. Без этого закрытие лёгкого окна с одной
-  // вкладкой перезаписало бы дерево из десятков вкладок: последний, кто закрылся, тот и прав.
-  //
-  // Владелец фиксируется явно и проверяется здесь, а не держится договорённостью на уровне
-  // вызовов: однажды сохранение позовут не оттуда, и заметим мы это уже после потери дерева.
-  #owner: unknown = null;
-
-  setOwner(owner: unknown): void {
-    this.#owner = owner;
-  }
-
-  saveNow(snapshot: SessionSnapshot | null, from?: unknown): void {
-    if (from !== undefined && this.#owner !== null && from !== this.#owner) {
-      console.log('[session] снимок не от владеющего окна — не сохраняю');
-      return;
-    }
-    if (!this.#enabled || !snapshot) return;
-    if (this.#debounceTimer !== null) {
-      clearTimeout(this.#debounceTimer);
-      this.#debounceTimer = null;
-    }
-    this.#write(snapshot);
-  }
-
-  /**
-   * Сохранить копию файла, который мы не поняли, рядом с ним.
-   *
-   * ⚠️ Копия, а не переименование: если человек тут же вернётся на новую версию, ОРИГИНАЛ должен
-   * остаться на месте и открыться как ни в чём не бывало. Переименовав, мы бы «спасли» данные
-   * ценой того, что нормальный путь их больше не находит.
-   *
-   * ⚠️ Имя с версией и меткой времени: откатов может быть несколько, и затирать прошлую копию
-   * следующей — значит терять ровно тот снимок, который человек и хотел вернуть.
-   */
-  #preserveFromFuture(version: unknown): void {
-    const v = typeof version === 'number' ? version : 'unknown';
-    const dest = `${this.#filePath}.from-v${v}.${Date.now()}`;
-    try {
-      fs.copyFileSync(this.#filePath, dest);
-      console.warn(`[Session] файл сохранён версией ${v} — эта сборка её не знает. Копия: ${dest}`);
-    } catch (e) {
-      console.warn('[Session] копию непонятого файла сделать не удалось:', (e as Error).message);
-    }
-  }
-
-  #write(snapshot: SessionSnapshot): void {
-    const data: SessionDataV5 = {
-      version: SESSION_VERSION as 5,
-      // ⚠️ Версия приложения в файле — не диагностика, а материал для будущего разбора. Формат и
-      // сборка меняются независимо: одна и та же версия формата бывает записана разными сборками,
-      // и когда данные окажутся странными, первый вопрос будет «кто это писал».
-      // Читателей у поля нет намеренно: гадать по нему о формате нельзя, для этого есть version.
-      app: app.getVersion(),
-      savedAt: new Date().toISOString(),
-      activeRef: snapshot.activeRef,
-      pinnedTabs: snapshot.pinnedTabs,
-      nodes: snapshot.nodes,
-    };
-
-    try {
-      fs.writeFileSync(this.#tmpPath, JSON.stringify(data, null, 2), 'utf8');
-      fs.renameSync(this.#tmpPath, this.#filePath);
-    } catch {
-      // Ошибка диска — следующий дебаунс повторит попытку.
-    }
-  }
 }
 
 function isSavedTabArray(v: unknown): v is SavedTab[] {
@@ -289,6 +149,7 @@ function isSavedTabArray(v: unknown): v is SavedTab[] {
     // но если поле есть — оно должно быть строкой (битый тип не должен молча пролезть).
     if (r['title'] !== undefined && typeof r['title'] !== 'string') return false;
     if (r['faviconData'] !== undefined && typeof r['faviconData'] !== 'string') return false;
+    if (r['profileId'] !== undefined && typeof r['profileId'] !== 'string') return false;
     return true;
   });
 }
@@ -297,6 +158,7 @@ function isActiveRef(v: unknown): v is SavedActiveRef {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
   if (r['type'] === 'hub') return true;
+  if (r['type'] === 'key') return typeof r['key'] === 'string';
   if (r['type'] === 'pinned') return typeof r['index'] === 'number';
   if (r['type'] === 'url')    return typeof r['url'] === 'string';
   // v3-форматы: принимаем при чтении старых сессий
@@ -319,6 +181,7 @@ function filterKnownNodes(arr: unknown[]): SavedNode[] {
       if (typeof n['key'] === 'string') node.key = n['key'];
       if (typeof n['title'] === 'string') node.title = n['title'];
       if (typeof n['faviconData'] === 'string') node.faviconData = n['faviconData'];
+      if (typeof n['profileId'] === 'string') node.profileId = n['profileId'];
       result.push(node);
 
     } else if (
