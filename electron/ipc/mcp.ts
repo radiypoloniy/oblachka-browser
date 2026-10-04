@@ -28,7 +28,8 @@ export function registerMcpIpc(d: IpcDeps): void {
   // Канал закрываем явно: иначе он переживёт окно и останется висеть вместе с процессом.
   // ⚠️ Окно вопроса — своё, поверх всего: если его не закрыть, оно переживёт выход и останется
   // висеть на экране без приложения (см. McpPromptManager).
-  app.once('before-quit', () => { stopMcp(); closeMcpPromptWindow(); });
+  // Останавливаем только после согласия всех окон: отменённый выход оставляет сервер доступным.
+  app.once('will-quit', () => { stopMcp(); closeMcpPromptWindow(); });
 
   const state = (): McpServerState => ({
     enabled: settings.getMcpEnabled(),

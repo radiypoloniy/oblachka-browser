@@ -10,6 +10,7 @@ import { wireTabs } from './window/wireTabs';
 import { restoreSession } from './window/restoreSession';
 import { registerWindow, contextFromSender, contextForWindow, contextForPageWebContents, broadcastToChrome, allContexts, preferredContext } from './WindowRegistry';
 import { tabsOf, winOf, chromeOf, sendTo } from './window/ipcRouting';
+import { registerAppShutdown } from './AppShutdown';
 import type { WindowRole } from './WindowRegistry';
 
 // ДО app.whenReady() — Electron требует это до события ready.
@@ -279,12 +280,6 @@ let mainTabs: TabManager | null = null;
 // Сессия одна на приложение и принадлежит главному окну: дерево вкладок из session.json — его
 // (см. SessionManager.setOwner, срез 1). Лёгкие окна её не пишут и не читают.
 let mainSess: SessionManager | null = null;
-// Взводится ДО того, как tabs/sess начинают асинхронно обнуляться/дозакрываться (win.on('close')/
-// before-quit) — сигнал побочным подписчикам onChange (сейчас только AiPanelManager.onTabsSynced)
-// не синкаться во время выхода: AI-панель и так исчезает вместе с окном, а сама TabManager к этому
-// моменту может уже дотла закрывать вкладки асинхронно. НЕ влияет на финальный автосейв — тот
-// синхронный (win.on('close') ниже), от этого флага не зависит.
-let isShuttingDown = false;
 
 // ── Отслеживание товаров (PRICE-TRACKING.md, срез 1) ────────────────────────
 // ⚠️ Список отслеживаемого — НА ПРОФИЛЬ (см. ProfileData.ts), поэтому здесь функция, а не
@@ -960,24 +955,15 @@ function createWindow(role: WindowRole = 'main') {
     chromeView.webContents.loadURL('oblako-chrome://localhost/index.html');
   }
 
-  // Финальный синхронный снапшот СЮДА, а не в app.on('before-quit'): на Windows/Linux
-  // window-all-closed зовёт app.quit() уже ПОСЛЕ того, как это окно закрылось — то есть
-  // before-quit неизбежно видит win/tabs/sess уже обнулёнными (см. win.on('closed') ниже) и
-  // реально ничего не сохраняет. 'close' — единственная точка, где всё ещё гарантированно живо.
+  // При закрытии последнего окна app.quit вызывается уже после его уничтожения.
+  // Поэтому финальный снимок пишем здесь синхронно; before-quit дополнительно
+  // сохраняет ещё живое дерево при явном выходе из приложения.
   //
-  // ⚠️ Всё, что здесь делается, — про ВЫХОД ИЗ ПРИЛОЖЕНИЯ, а не про закрытие окна: сохранение
-  // сессии, флаг остановки, убийство xray.exe. Закрытие лёгкого окна не должно ни ронять VPN,
-  // ни трогать session.json — иначе окно с одной вкладкой унесло бы за собой дерево из десятков.
+  // Пока сессией владеет главное окно, сохраняем только его дерево. Общие сервисы
+  // принадлежат приложению: закрытие даже главного окна не означает завершение работы.
   win.on('close', () => {
-    if (!isMain) { console.log('[shutdown] закрыто лёгкое окно — сессия и VPN не тронуты'); return; }
-    isShuttingDown = true; // до сохранения — далее tabs/sess ещё какое-то время живы, но выходим
-    console.log('[shutdown] win close: старт, isShuttingDown=true, сохраняю сессию');
+    if (!isMain) return;
     if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot(), tabs);
-    console.log('[shutdown] win close: сессия сохранена');
-    // Windows не убивает дочерние процессы автоматически при выходе родителя — без явной
-    // остановки xray.exe продолжил бы висеть в фоне (и туннелировать трафик) уже после
-    // закрытия браузера. Fire-and-forget — не блокируем закрытие окна ожиданием.
-    void vpnProcess.stop();
   });
 
   // Контекст наружу — вызывающей стороне (перенос вкладки) нужен менеджер вкладок нового окна.
@@ -1247,7 +1233,7 @@ export function makeWindowDeps() {
     adblock, bangs, bookmarks, graphs, history, rules, settings,
     createWindow, ensureVpnOnForRules, maybeLazyWarmupOnDemand,
     moveTabToExistingWindow, notifyGraphChanged,
-    isShuttingDown: () => isShuttingDown,
+    isShuttingDown: () => appShutdown.isShuttingDown(),
     incognitoSession: () => incognitoSession,
     startedAt: startT0,
   };
@@ -1549,7 +1535,7 @@ app.whenReady().then(async () => {
   startModelIdleWatcher(() => settings.getUnloadModelOnIdle());
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (allContexts().length === 0 && !appShutdown.isShuttingDown()) createWindow();
   });
 });
 
@@ -1559,25 +1545,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// Синхронная запись перед выходом — никаких await, иначе процесс умрёт раньше.
-// На Windows/Linux это уже избыточно (win.on('close') в createWindow успевает раньше и обнуляет
-// tabs/sess), но на macOS Cmd+Q шлёт before-quit ДО закрытия окна — здесь ещё всё живо, это тот
-// путь, где сработает эта подстраховка. Оставлено ради будущего macOS-порта (см. CLAUDE.md).
-app.on('before-quit', () => {
-  isShuttingDown = true; // macOS Cmd+Q путь — здесь ещё раньше, чем win.on('close') выше
-  if (mainTabs && mainSess) mainSess.saveNow(mainTabs.getSessionSnapshot(), mainTabs);
-  // Процесс инференса — дочерний, и Windows не убивает такие сама (та же причина, по которой
-  // явно останавливается xray.exe): без этого он остался бы висеть с моделью в видеопамяти.
-  stopModelIdleWatcher();
-  shutdownInference();
-});
-
 // ── «Стирать куки при выходе» ────────────────────────────────────────────────────────────
 //
 // ⚠️ Выход ЗАДЕРЖИВАЕТСЯ до конца очистки, и это единственный способ сделать обещание правдой:
-// clearStorageData асинхронный, а процесс, уходящий раньше, оставил бы куки на диске — то есть
-// настройка выглядела бы работающей, ничего не делая. Задержка безопасна для данных: сессия
-// вкладок уже записана синхронно в win.on('close') задолго до этого момента.
+// clearStorageData асинхронный, а процесс, уходящий раньше, оставил бы куки на диске.
+// Подтверждённый выход ждёт очистку и остановку VPN, а отменённый не трогает сервисы/куки.
 //
 // ⚠️ Стираются только ХРАНИЛИЩА САЙТОВ этой партиции (куки, localStorage, IndexedDB, кэши
 // service worker) — история, закладки и пароли профиля НЕ ТРОГАЮТСЯ ВООБЩЕ. Это разные вещи:
@@ -1588,20 +1560,21 @@ app.on('before-quit', () => {
 const CLEARED_STORAGES = [
   'cookies', 'localstorage', 'indexdb', 'websql', 'serviceworkers', 'cachestorage',
 ] as const;
-let exitCleanupDone = false;
-app.on('before-quit', (e) => {
-  if (exitCleanupDone) return;
-  const targets = getProfiles().profiles.filter(profileClearsOnExit);
-  if (targets.length === 0) return;
-  exitCleanupDone = true;
-  e.preventDefault();
-  void Promise.allSettled(
-    targets.map((prof) => sessionForProfile(prof.id).clearStorageData({ storages: [...CLEARED_STORAGES] })),
-  ).then((results) => {
+const appShutdown = registerAppShutdown(app, {
+  saveSession: () => {
+    if (mainTabs && mainSess) mainSess.saveNow(mainTabs.getSessionSnapshot(), mainTabs);
+  },
+  stopServices: async () => {
+    stopModelIdleWatcher();
+    shutdownInference();
+    await vpnProcess.stop();
+  },
+  clearExitData: async () => {
+    const targets = getProfiles().profiles.filter(profileClearsOnExit);
+    const results = await Promise.allSettled(
+      targets.map((prof) => sessionForProfile(prof.id).clearStorageData({ storages: [...CLEARED_STORAGES] })),
+    );
     const failed = results.filter((r) => r.status === 'rejected').length;
     if (failed) console.warn('[profiles] очистка при выходе: не удалось у', failed, 'профилей');
-    // ⚠️ Выходим ВСЕГДА, даже если очистка упала: браузер, который не закрывается из-за
-    // неудавшейся уборки, — худшая беда, чем оставшиеся куки.
-    app.quit();
-  });
+  },
 });

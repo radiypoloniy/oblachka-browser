@@ -284,7 +284,8 @@ export function initTrackingChecker(getStore: () => TrackingStore): void {
   setTimeout(() => { void tick(true); }, FIRST_DELAY_MS);
   timer = setInterval(() => { void tick(); }, TICK_MS);
   // Выход из приложения не должен ждать нашу пачку.
-  app.on('before-quit', () => {
+  // Отменённый выход не должен навсегда отключать фоновую проверку товаров.
+  app.on('will-quit', () => {
     stopped = true;
     if (timer) { clearInterval(timer); timer = null; }
   });

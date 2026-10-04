@@ -61,7 +61,8 @@ class HistoryReader {
 
 const readers = new WeakMap<HistoryManager, HistoryReader>();
 const activeReaders = new Set<HistoryReader>();
-app.on('before-quit', () => { for (const reader of activeReaders) reader.close(); });
+// Отмена закрытия окна не должна обрывать текущий поиск в истории.
+app.on('will-quit', () => { for (const reader of activeReaders) reader.close(); });
 
 export async function readHistory<R extends HistoryReadRequest>(history: HistoryManager, request: R): Promise<HistoryReadResults[R['kind']]> {
   const dbPath = history.readPath();

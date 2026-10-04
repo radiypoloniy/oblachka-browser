@@ -614,12 +614,15 @@ export function wireTabs(
 
     onPageTranslateStateChanged((state) => {
 
+      // Служба переживает окно: его закрытая вью больше не принимает обновления.
+      if (win.isDestroyed() || chromeView.webContents.isDestroyed()) return;
       chromeView?.webContents.send(IPC.PAGE_TRANSLATE_STATE_CHANGED, state);
 
     });
 
     onPageTranslateProgressChanged((progress) => {
 
+      if (win.isDestroyed() || chromeView.webContents.isDestroyed()) return;
       chromeView?.webContents.send(IPC.PAGE_TRANSLATE_PROGRESS_CHANGED, progress);
 
     });
