@@ -16,7 +16,7 @@
 // состояние заводится по требованию, вью закрывается вместе с окном.
 import type { BrowserWindow, WebContents, WebContentsView } from 'electron'
 import { closeWindowView } from '../viewTeardown'
-import { contextForWindow, mainContext } from '../WindowRegistry'
+import { contextForWindow } from '../WindowRegistry'
 import type { TabManager } from '../TabManager'
 
 /**
@@ -48,7 +48,7 @@ export function panelFor(win: BrowserWindow): PanelInstance {
   if (existing) return existing
   const created: PanelInstance = {
     win,
-    kind: contextForWindow(win)?.role === 'light' ? 'apps' : 'full',
+    kind: 'full',
     view: null, open: false, resizeBound: false,
   }
   panels.set(win.id, created)
@@ -126,18 +126,7 @@ export function tabsOf(win: BrowserWindow): TabManager | null {
  * AiPanelManager.onTabsSynced): показывать эту беседу в панели другого окна значило бы
  * рассказывать про чужие вкладки.
  */
-export function chatPanel(): PanelInstance | null {
-  const win = mainContext()?.win
-  return win ? existingPanel(win) : null
-}
-
-/**
- * Панель, приславшая вопрос, всё ещё жива.
- *
- * ⚠️ Ответ модели адресуется КОНКРЕТНОЙ вью: пока шла генерация, панель могли закрыть (вью
- * уничтожена) или закрыть окно целиком. Раньше тем же занималась сверка с единственным
- * модульным panelView — теперь вью ищется в реестре по отправителю.
- */
+/** Ответ можно отправить только живой зарегистрированной панели. */
 export function panelAlive(wc: WebContents): boolean {
   return !wc.isDestroyed() && panelBySender(wc) !== null
 }

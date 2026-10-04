@@ -7,7 +7,7 @@
 import type { BrowserWindow, WebContentsView } from 'electron';
 import { applyBangTemplate } from '../../shared/bangs';
 import { IPC } from '../../shared/ipc';
-import { setTabManager, setModelStateProvider as setAiPanelModelStateProvider, setOnChatIntent as setOnAiPanelChatIntent, setOnPanelFocus as setOnAiPanelFocus } from '../AiPanelManager';
+import { initializeChat, setModelStateProvider as setAiPanelModelStateProvider, setOnChatIntent as setOnAiPanelChatIntent, setOnPanelFocus as setOnAiPanelFocus } from '../AiPanelManager';
 import { mapFormFields, type FormFieldDescriptor } from '../AutofillFieldMapper';
 import { closeAutofillPopover } from '../AutofillPopoverManager';
 import { showBookmarkMenu } from '../BookmarkMenu';
@@ -132,7 +132,7 @@ export function wireTabs(
 
     // TabManager.getActiveWebContents(). Не влияет на управление вкладками.
 
-    setTabManager(tabs);
+    initializeChat();
 
     // Прогрев модели по намерению поговорить (фокус в поле ввода панели). Политика прогрева —
 
@@ -162,17 +162,17 @@ export function wireTabs(
 
     // клике по странице (см. onContentFocus выше) — панель принадлежит полному окну.
 
-    setOnAiPanelFocus(() => {
+    setOnAiPanelFocus((owner) => {
 
-      closePasswordPopover(win);
+      closePasswordPopover(owner);
 
-      closeAutofillPopover(win);
+      closeAutofillPopover(owner);
 
       closeDownloadsPopover();
 
       closeSitePopover();
 
-      closeClipboardPopover(win);
+      closeClipboardPopover(owner);
 
     });
 

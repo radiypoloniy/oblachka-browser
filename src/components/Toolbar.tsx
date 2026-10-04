@@ -90,7 +90,6 @@ interface ToolbarProps {
   // Роль окна: в лёгком окне AI-панели и перевода страниц нет — обе службы живут в приложении
   // в одном экземпляре и принадлежат полному окну (см. WindowRegistry.ts). Показывать кнопку,
   // которая полезет в чужие вкладки, хуже, чем не показывать её вовсе.
-  isLightWindow?: boolean;
 }
 
 // ── Компонент ─────────────────────────────────────────────────────────────────
@@ -119,7 +118,7 @@ export default function Toolbar({
   tab, allTabs, vpnOn, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, downloadsProgress, downloadStartTick, onToggleAiPanel, aiPanelOpen,
-  pageTranslateState, pageTranslateProgress, isLightWindow = false,
+  pageTranslateState, pageTranslateProgress,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
   const [editing, setEditing] = useState(false);
@@ -531,7 +530,6 @@ export default function Toolbar({
       </div>
 
       <RightCluster
-        isLightWindow={isLightWindow}
         aiPanelOpen={aiPanelOpen}
         onToggleAiPanel={onToggleAiPanel}
         clipboardRef={clipboardControlRef}

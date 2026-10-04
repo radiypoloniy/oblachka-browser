@@ -801,7 +801,7 @@ export async function runChatMessage(
   // и верен для Ollama на localhost — но встроенную Qwen ради Ollama греть тоже незачем.
   const model = modelFor(role, ensureLoaded, getLoadedModelId)
   const run = () => runChatMessageQueued(model, userText, history, onChunk, abort)
-  return model.connection.kind === 'local' ? withQwenQueue(run) : run()
+  return model.connection.kind === 'local' ? withQwenQueue(run, abort) : run()
 }
 
 async function runChatMessageQueued(

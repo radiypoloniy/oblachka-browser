@@ -29,7 +29,6 @@ import { useLanguage } from '../../i18n';
  */
 export function RightCluster(props: {
   /** Лёгкое окно: за той же кнопкой открывается панель без чата — только приложения. */
-  isLightWindow: boolean;
   aiPanelOpen: boolean;
   onToggleAiPanel: () => void;
 
@@ -50,7 +49,7 @@ export function RightCluster(props: {
   downloadsProgress: number | null;
 }): React.ReactElement {
   const {
-    isLightWindow, aiPanelOpen, onToggleAiPanel,
+    aiPanelOpen, onToggleAiPanel,
     clipboardRef, clipboardCount, clipboardOpen, onToggleClipboard, onHoverClipboard,
     downloadsRef, downloadsOpen, onToggleDownloads, flying, downloadsActive, downloadsProgress,
   } = props;
@@ -92,7 +91,7 @@ export function RightCluster(props: {
         {/* ⚠️ В лёгком окне кнопка ТА ЖЕ и на том же месте — расходится только подпись. Значок
             один намеренно: место в кластере запоминается рукой, а два разных глифа на одной
             кнопке читались бы как две разные кнопки. */}
-        <button className="chrome-btn" title={isLightWindow ? t('Приложения') : t('AI-панель')}
+        <button className="chrome-btn" title={t('AI-панель')}
           onClick={onToggleAiPanel} style={clusterBtn({ active: aiPanelOpen })}>
           <SparkGlyph size={18} />
         </button>

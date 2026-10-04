@@ -388,7 +388,6 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
           tab={active} allTabs={tabs} vpnOn={vpnConn?.state === 'running'}
-          isLightWindow={isLightWindow}
           omniboxRef={omniboxRef}
           onBack={() => window.oblako.goBack(activeId)}
           onForward={() => window.oblako.goForward(activeId)}

@@ -754,6 +754,12 @@ export class TabManager {
 
   // UI скрывает вкладки чужого профиля; пустоту окна определяем по полному дереву.
   hasTabs(): boolean { return this.tabMap.size > 0; }
+  tabIds(): string[] { return [...this.tabMap.keys()]; }
+  stateForTab(id: string): TabState | null {
+    if (id === HUB_ID) return this.snapshot().find(t => t.isHub) ?? null;
+    const tab = this.tabMap.get(id);
+    return tab ? this.#tabToState(tab, this.isTabPinned(id)) : null;
+  }
 
   // Инкогнито ли вкладка — для подавления offer-save паролей/автозаполнения (заход 2).
   isIncognito(tabId: string): boolean {

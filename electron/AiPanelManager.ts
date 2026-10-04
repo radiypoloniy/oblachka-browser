@@ -22,8 +22,7 @@ import { pausePageInsights } from './aipanel/PageInsights'
 import { getCurrencyRates } from './CurrencyRates'
 import { getWeather } from './WeatherService'
 import * as webApps from './WebAppManager'
-import { IPC, type TabState } from '../shared/ipc'
-import type { TabManager } from './TabManager'
+import { IPC } from '../shared/ipc'
 import { contextFromSender, registerWindowContents } from './WindowRegistry'
 import type { SettingsManager } from './SettingsManager'
 import { menuIcon } from './MenuIcons'
@@ -74,11 +73,10 @@ export function setSettingsManager(sm: SettingsManager): void {
 
 // Используется ТОЛЬКО для чтения (executeJavaScript извлечения текста) — управление
 // вкладками этот модуль не трогает.
-export function setTabManager(tm: TabManager): void {
+export function initializeChat(): void {
   wireTabChat({
     extractPageText,
     buildFirstTurnPrompt,
-    pageWcOf: (tabId) => tm.getActiveWebContents(tabId),
   })
   // Фокус ушёл в сайт веб-слота — сообщаем панели, какой слот стал активным. Панель сама этого не
   // видит: сайт лежит поверх неё отдельной вью и её событий не порождает (см. WebAppManager).
@@ -140,8 +138,8 @@ export function setModelStateProvider(cb: () => PanelModelState): void {
 // ⚠️ Слушаем `focus` вью, а не blur кого-то другого: focus ДРУГОГО webContents — это настоящий
 // OS-фокус от клика, а blur в этом проекте запрещён как механика закрытия (Electron шлёт
 // focus→blur парой после addChildView, см. FindBarManager).
-let onPanelFocusCb: (() => void) | null = null
-export function setOnPanelFocus(cb: () => void): void {
+let onPanelFocusCb: ((win: BrowserWindow) => void) | null = null
+export function setOnPanelFocus(cb: (win: BrowserWindow) => void): void {
   onPanelFocusCb = cb
 }
 
@@ -277,8 +275,8 @@ setPanelViews(panelViews)
 // SYNC_CHANGED в чром), TabManager.ts НЕ трогаем и новых колбэков туда не добавляем. onChange и
 // так стреляет на переключение вкладки, навигацию и закрытие — этого достаточно, чтобы вывести
 // все три события чисто из снапшота, без новых hook'ов в TabManager.
-export function onTabsSynced(tabsSnapshot: TabState[]): void {
-  syncTabChat(tabsSnapshot)
+export function onTabsSynced(win: BrowserWindow): void {
+  syncTabChat(win)
 }
 
 // Заход 3: док пристыкован (flush) к правому краю окна — ширина ровно равна тому, что chrome
@@ -429,10 +427,10 @@ function ensurePanelView(st: PanelInstance): WebContentsView {
   registerWindowContents(st.win, view.webContents)
   // Первый показ беседы активной вкладки — только после did-finish-load: раньше renderer ещё не
   // навесил обработчик onContext, сообщение потерялось бы. Статус ключа — тем же приёмом.
-  view.webContents.once('did-finish-load', () => { sendCurrentContext(); sendPanelStatuses() })
+  view.webContents.once('did-finish-load', () => { sendCurrentContext(st.win); sendPanelStatuses() })
 
   // Клик в панель = «мимо поповера тулбара», см. setOnPanelFocus выше.
-  view.webContents.on('focus', () => { onPanelFocusCb?.() })
+  view.webContents.on('focus', () => { onPanelFocusCb?.(st.win) })
 
   // Чат — отдельная WebContentsView, поэтому меню полей хрома сюда не доходит.
   // Роли Electron сохраняют системные команды, а подписи и иконки задаём сами.
@@ -543,7 +541,7 @@ export function toggleAiPanel(win: BrowserWindow): boolean {
   setOpenState(st, true)
   // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
   // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.
-  if (alreadyLoaded) { sendCurrentContext(); sendPanelStatuses() }
+  if (alreadyLoaded) { sendCurrentContext(st.win); sendPanelStatuses() }
   // ⚠️ Явный фокус на вью панели — обязателен, и это тот же закон, что у запуска приложения и у
   // FindBar: добавление вью в окно НЕ делает её владельцем фокуса, им продолжает владеть страница.
   // Живой случай: открыл панель кнопкой, нажал Esc — ничего, потому что Esc уходил странице, а не

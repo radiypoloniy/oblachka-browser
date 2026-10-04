@@ -156,9 +156,10 @@ export function registerPageInsightsIpc(): void {
     void tick(); return config;
   });
   ipcMain.on(INSIGHTS.watch, (e, visible: boolean) => {
-    if (!panelBySender(e.sender)) return;
+    const panel = panelBySender(e.sender);
+    if (!panel) return;
     // React подписался на контекст: ранний did-finish-load мог обогнать его эффекты.
-    if (visible) sendCurrentContext();
+    if (visible) sendCurrentContext(panel.win);
     const existing = watchers.get(e.sender.id);
     if (!visible) { if (existing) stop(existing); watchers.delete(e.sender.id); }
     else if (!existing) {
