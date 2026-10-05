@@ -11,6 +11,7 @@ export interface ClosedTab {
   url: string;
   title: string;
   closedAt: number;
+  profileId?: string;
 }
 
 /** Новые сверху стека (конец массива) — как у Ctrl+Shift+T: pop снимает последнюю. */

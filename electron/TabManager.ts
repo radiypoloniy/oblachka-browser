@@ -1524,8 +1524,9 @@ export class TabManager {
       // тогда wc уже мёртв, и getURL()/removeChildView()/close() на нём бросят "Object has been destroyed".
       const destroyed = wc.isDestroyed();
       const url = destroyed ? '' : wc.getURL();
-      if (/^https?:\/\//i.test(url)) {
-        this.closedTabs = pushClosed(this.closedTabs, { url, title: this.#tabTitle(tab) || url, closedAt: Date.now() });
+      if (!tab.incognito && !tab.ephemeral && /^https?:\/\//i.test(url)) {
+        // Приватные/OAuth-страницы не должны вернуться в обычную сессию или подсказки.
+        this.closedTabs = pushClosed(this.closedTabs, { url, title: this.#tabTitle(tab) || url, closedAt: Date.now(), profileId: tab.profileId });
       }
       // Поповер перевода анкорится к WebContents конкретной вкладки (см. TranslatePopoverManager.ts) —
       // если закрывается именно она, поповер сравнит ссылку и закроется сам. До removeChildView/close,
@@ -1537,8 +1538,8 @@ export class TabManager {
       }
     } else if (tab.sleeping) {
       const url = tab.sleeping.url;
-      if (/^https?:\/\//i.test(url)) {
-        this.closedTabs = pushClosed(this.closedTabs, { url, title: tab.sleeping.title || url, closedAt: Date.now() });
+      if (!tab.incognito && !tab.ephemeral && /^https?:\/\//i.test(url)) {
+        this.closedTabs = pushClosed(this.closedTabs, { url, title: tab.sleeping.title || url, closedAt: Date.now(), profileId: tab.profileId });
       }
     }
 
@@ -1594,7 +1595,7 @@ export class TabManager {
 
   reopenLastClosedTab(): void {
     const { tab, rest } = popClosed(this.closedTabs); this.closedTabs = rest;
-    if (tab) this.createTab(tab.url);
+    if (tab) this.createTab(tab.url, false, false, false, undefined, tab.profileId);
   }
 
   // Есть ли что восстанавливать — для активности пункта меню «Открыть закрытую вкладку».
