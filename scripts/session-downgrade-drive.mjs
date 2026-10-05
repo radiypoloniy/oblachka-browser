@@ -48,7 +48,8 @@ await withStand(async (ctx) => {
   const before = fs.readFileSync(sessionFile, 'utf8');
   console.log('  положен session-v6.json версии 99, перезапускаем…\n');
 
-  await ctx.restart();
+  // Файл уже подменён: ожидание debounce здесь позволило бы живому автосейву затереть тест.
+  await ctx.restart(0);
   await wait(6000);
 
   const copies = fs.readdirSync(ctx.profile).filter((f) => f.startsWith('session-v6.json.from-v99.'));
@@ -67,6 +68,7 @@ await withStand(async (ctx) => {
   // вкладки обычным путём, а не искать копию. Поэтому файл на месте — либо ещё нетронутый,
   // либо уже перезаписанный текущим форматом; важно, что копия снята ДО этого.
   check('оригинал остался на месте', fs.existsSync(sessionFile));
+  check('оригинал защищён от перезаписи', fs.readFileSync(sessionFile, 'utf8') === before);
 }, { keep: false });
 
 console.log(`\nИтого: ${ok} прошло, ${bad} не прошло\n`);

@@ -9,6 +9,8 @@ await withStand(async ctx => {
     const h=process.mainModule.require(${modulePath('ProfileData')}).activeHistory();
     h.recordVisit('https://fallback.test/alpha','alpha');
     globalThis.__fallbackMode='empty';
+    // Ответы AI полностью управляемые: расширение не должно запускать реальную модель.
+    process.mainModule.require(${modulePath('TranslationService')}).expandHistorySearchQuery=async()=>[];
     process.mainModule.require(${modulePath('TranslationService')}).rerankHistoryCandidates=async()=>{
       if(globalThis.__fallbackMode==='failed')throw Error('synthetic failure');
       return globalThis.__fallbackMode==='ranked'?[0]:[];
