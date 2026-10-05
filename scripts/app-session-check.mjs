@@ -32,6 +32,7 @@ try {
     const data = { version, savedAt: 'date', pinnedTabs: [tab], tabs: [tab], nodes: [{ type: 'single', ...tab }], activeTabIndex: 0, activeTabType: 'normal', activeRef: { type: 'url', url: tab.url } };
     const raw = JSON.stringify(data);
     fs.rmSync(file, { force: true });
+    fs.rmSync(`${file}.bak`, { force: true });
     fs.writeFileSync(legacyFile, raw);
     const s = store(); const loaded = s.load();
     check(`миграция v${version} и исходник до первой записи`, () => {
@@ -47,6 +48,7 @@ try {
   const b = { windows: [window('b', true)], closedWindows: [] };
   check('прежняя многооконная v6 импортируется без изменения исходника', () => {
     fs.rmSync(file);
+    fs.rmSync(`${file}.bak`, { force: true });
     const raw = JSON.stringify({ version: 6, savedAt: 'date', ...b });
     fs.writeFileSync(legacyFile, raw);
     const imported = store();
@@ -61,6 +63,12 @@ try {
     fs.writeFileSync(legacyFile, JSON.stringify({ version: 5, savedAt: 'date', pinnedTabs: [], nodes: [], activeRef: { type: 'hub' } }));
     assert.deepEqual(store().load(), b);
     assert.equal(fs.readFileSync(file, 'utf8'), before);
+  });
+  check('при отсутствии основного файла новая резервная копия важнее прежней сессии', () => {
+    fs.rmSync(file);
+    assert.deepEqual(store().load(), a);
+    assert.equal(s.save(a), true);
+    assert.equal(s.save(b), true);
   });
   fs.writeFileSync(file, '{corrupt');
   const recovery = store();

@@ -35,7 +35,8 @@ export class AppSessionStore {
   load(): AppSessionSnapshot | null {
     // Прежний файл импортируется один раз. После первой записи старый браузер
     // не может подменить многооконную сессию своим пустым снимком v5.
-    this.#sourcePath = fs.existsSync(this.filePath) ? this.filePath : path.join(path.dirname(this.filePath), 'session.json');
+    const hasCurrentSession = fs.existsSync(this.filePath) || fs.existsSync(`${this.filePath}.bak`);
+    this.#sourcePath = hasCurrentSession ? this.filePath : path.join(path.dirname(this.filePath), 'session.json');
     let raw: string | null = null;
     try {
       raw = fs.readFileSync(this.#sourcePath, 'utf8');
