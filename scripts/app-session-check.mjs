@@ -129,6 +129,16 @@ try {
     next.enable(); next.saveNow();
     assert.equal(writes.at(-1).closedWindows.length, 0);
   });
+  check('техническое закрытие не попадает в историю; ручной пустой хаб сохраняется', () => {
+    const coordinator = new AppSessionCoordinator({ save: () => true }, null);
+    const empty = { id: 'empty', snapshot: { pinnedTabs: [], nodes: [], activeRef: { type: 'hub' } } };
+    coordinator.register('empty', () => empty);
+    coordinator.close('empty', empty, false);
+    assert.equal(coordinator.closedWindows().length, 0);
+    coordinator.register('empty', () => empty);
+    coordinator.close('empty', empty);
+    assert.equal(coordinator.closedWindows()[0].id, 'empty');
+  });
   check('нарушенный инвариант не затирает общий снимок; приватное окно исключается', () => {
     const c3 = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
     c3.register('a', () => aLive); c3.register('private', () => false); c3.enable(); c3.saveNow();

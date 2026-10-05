@@ -5,6 +5,15 @@ import type { AppSessionCoordinator } from '../AppSessionCoordinator';
 import type { SavedWindow } from '../../shared/session';
 import { allContexts } from '../WindowRegistry';
 
+const technicalClosures = new WeakSet<BrowserWindow>();
+
+// Уборка пустого окна после переноса не является действием «закрыть мои вкладки».
+export function closeWindowWithoutHistory(win: BrowserWindow): void {
+  technicalClosures.add(win);
+  try { win.close(); }
+  catch (error) { technicalClosures.delete(win); throw error; }
+}
+
 export function focusRestoredWindow(id: string | undefined): void {
   const contexts = allContexts();
   const target = contexts.find(c => c.sessionId === id);
@@ -41,9 +50,14 @@ export function registerWindowSession(coordinator: AppSessionCoordinator, id: st
     captured = coordinator.capture(id);
     // Другие обработчики могут отменить close после нашего. Проверяем итог события,
     // чтобы отменённый выход не заморозил автосейв оставшихся окон.
-    queueMicrotask(() => { if (event.defaultPrevented) coordinator.cancelQuit(); });
+    queueMicrotask(() => {
+      if (event.defaultPrevented) {
+        technicalClosures.delete(win);
+        coordinator.cancelQuit();
+      }
+    });
   });
-  win.on('closed', () => coordinator.close(id, captured));
+  win.on('closed', () => coordinator.close(id, captured, !technicalClosures.has(win)));
   win.on('focus', () => coordinator.focus(id));
   win.on('move', () => coordinator.scheduleSave());
   win.on('resize', () => coordinator.scheduleSave());

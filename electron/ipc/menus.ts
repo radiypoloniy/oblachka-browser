@@ -267,7 +267,7 @@ export function registerMenusIpc(d: IpcDeps): void {
       { label: tr('Новая вкладка инкогнито'), accelerator: 'Ctrl+Shift+N', click: () => t.createTab(undefined, false, false, true) },
       { type: 'separator' },
       // Закрытые вкладки принадлежат окну, история целых окон — приложению.
-      { label: tr('Открыть закрытую вкладку'), accelerator: 'Ctrl+Shift+T', enabled: t.hasClosedTabs(), click: () => t.reopenLastClosedTab() },
+      { label: tr('Восстановить вкладку или окно'), accelerator: 'Ctrl+Shift+T', enabled: d.canReopenClosed(t), click: () => d.reopenLastClosed(t) },
       { label: tr('Закрытые окна'), enabled: closedWindows.length > 0, submenu: closedWindows },
     ]).popup({ window: w });
   });

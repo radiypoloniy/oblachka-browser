@@ -212,6 +212,7 @@ export function wireTabs(
   // Ctrl+N создаёт равноправное окно со своим деревом вкладок.
 
   tabs.setOnNewWindow(() => { createWindow('light'); });
+  tabs.setOnReopenClosed(() => deps.reopenLastClosed(tabs));
   // Диспетчер задач по Shift+Esc. ⚠️ Окно одно на приложение, поэтому колбэк у каждого окна свой,
   // а поднимает он один и тот же экземпляр (см. TaskManagerWindow.ts).
   tabs.onTaskManager(() => { toggleTaskManager(); });

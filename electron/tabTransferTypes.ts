@@ -12,6 +12,8 @@ export interface ManagedTab {
   id: string;
   view: WebContentsView | null; // null = хаб (sleeping===null) ИЛИ спящая (sleeping!==null) ИЛИ псевдо-вкладка (kind задан)
   sleeping: SleepingMeta | null;
+  // Пока Chromium не зафиксировал первую навигацию, автосейв не должен потерять адрес.
+  initialUrl?: string;
   lastActiveAt: number; // Date.now() последней активности — для таймера сна
   // Короткоживущая вкладка (напр. OAuth-попап из window.open с фичами окна, disposition='new-window'):
   // не участвует в автосейве/восстановлении сессии — иначе при рестарте «воскреснет» мёртвая страница логина.

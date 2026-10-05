@@ -43,7 +43,7 @@ const host = {
 };
 for (const name of [
   'openTaskManager', 'reload', 'toggleDevTools', 'goBack', 'goForward', 'openHub',
-  'reopenLastClosedTab', 'openNewWindow', 'newIncognitoTab', 'returnActiveTab',
+  'reopenLastClosed', 'openNewWindow', 'newIncognitoTab', 'returnActiveTab',
   'closeActiveTab', 'selectNext', 'selectPrev', 'zoomIn', 'zoomOut', 'resetZoom',
   'openFind', 'quickSearch', 'openHistory', 'bookmarkPage', 'reloadHard',
   'focusOmnibox', 'captureScreenshot', 'saveScreenshot', 'openBookmarks', 'toggleClipboard',
@@ -51,6 +51,9 @@ for (const name of [
 host.runPageHotkey = (action) => calls.push(['page', action]);
 host.selectByIndex = (index) => calls.push(['index', index]);
 wireTabHotkeys(wc, 'tab', host);
+
+check('Ctrl+Shift+T на странице вызывает общее восстановление',
+  [wc.key('KeyT', { control: true, shift: true }), calls.splice(0)], [true, ['reopenLastClosed']]);
 
 screenshotOpen = true; findBarOpen = true;
 check('Esc сперва закрывает карточку снимка', [wc.key('Escape'), calls.splice(0)], [true, ['closeScreenshot']]);
@@ -87,6 +90,8 @@ check('старый владелец вкладки не реагирует по
 
 const chrome = new FakeWebContents();
 wireTabHotkeys(chrome, 'chrome', host);
+check('Ctrl+Shift+T в chrome вызывает общее восстановление',
+  [chrome.key('KeyT', { control: true, shift: true }), calls.splice(0)], [true, ['reopenLastClosed']]);
 check('chrome обрабатывает спорные клавиши сам',
   [chrome.key('KeyF', { control: true }), chrome.key('KeyD', { control: true }), calls.splice(0)],
   [true, true, ['openFind', 'bookmarkPage']]);

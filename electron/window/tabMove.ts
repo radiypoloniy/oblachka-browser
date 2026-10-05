@@ -1,6 +1,7 @@
 import type { TabManager } from '../TabManager';
 import type { DetachedTab } from '../tabTransfer';
 import type { WindowContext } from '../WindowRegistry';
+import { closeWindowWithoutHistory } from './windowSession';
 
 // Перенос целиком синхронен: между снятием и принятием не может сработать debounce
 // сохранения. Любой отказ приёмника возвращает исходное дерево до следующего тика.
@@ -27,7 +28,7 @@ export function moveTab(
       ticket.restore();
       // Только новое окно, созданное для неудавшегося переноса, можно убрать.
       if (newWindow && target && !target.win.isDestroyed() && !target.tabs.hasTabs()) {
-        target.win.close();
+        closeWindowWithoutHistory(target.win);
       }
     }
   }

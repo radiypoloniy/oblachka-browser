@@ -1,5 +1,6 @@
 import { trimClosedWindows } from '../shared/appSession';
 import type { AppSessionSnapshot, SavedClosedWindow, SavedWindow } from '../shared/session';
+import { closedAtNow } from './closedAt';
 
 interface SessionStore { save(snapshot: AppSessionSnapshot): boolean }
 type Reader = () => SavedWindow | false | null;
@@ -68,7 +69,7 @@ export class AppSessionCoordinator {
 
   capture(id: string): SavedWindow | false | null { return this.#readers.get(id)?.() ?? null; }
 
-  close(id: string, captured: SavedWindow | false | null): void {
+  close(id: string, captured: SavedWindow | false | null, remember = true): void {
     const w = captured === null ? this.#cached.get(id) ?? null : captured;
     if (w === null) {
       // Без корректного дерева закрывшегося окна новая запись могла бы потерять его вкладки.
@@ -77,8 +78,8 @@ export class AppSessionCoordinator {
     }
     this.#readers.delete(id);
     this.#cached.delete(id);
-    if (w) {
-      this.#closed = trimClosedWindows([{ ...w, closedAt: Date.now() }, ...this.#closed.filter(old => old.id !== id)]);
+    if (w && remember) {
+      this.#closed = trimClosedWindows([{ ...w, closedAt: closedAtNow() }, ...this.#closed.filter(old => old.id !== id)]);
       if (this.#readers.size === 0) this.#lastWindows = [w];
     }
     this.saveNow();

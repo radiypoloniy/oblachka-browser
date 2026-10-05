@@ -60,6 +60,7 @@ export const CHROME: Record<string, string> = {
   'Закрыть вкладку': 'Close tab',
   'Новая вкладка инкогнито': 'New private tab',
   'Открыть закрытую вкладку': 'Reopen closed tab',
+  'Восстановить вкладку или окно': 'Reopen tab or window',
   'Без цвета': 'No color',
   'Красный': 'Red',
   'Оранжевый': 'Orange',

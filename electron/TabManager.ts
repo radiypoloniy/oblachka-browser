@@ -45,6 +45,7 @@ import { hostOfUrl } from '../shared/rules';
 import { localPathToFileUrl } from './localFileUrl';
 import { isRussianCaCandidate } from './CertificateTrust';
 import { pushClosed, popClosed, peekClosed, type ClosedTab } from '../shared/closedTabStack';
+import { closedAtNow } from './closedAt';
 // Менеджер паролей, шаг 2 — ПЕРВЫЙ preload на гостевых страницах (сканер форм, см.
 // electron/preload-content.ts). Тот же приём резолва пути, что AiPanelManager.ts использует
 // для preload-aipanel.js (__dirname здесь и там — один и тот же dist-electron/electron после
@@ -530,7 +531,7 @@ export class TabManager {
   // URL вкладки: из sleeping-метаданных или из живого WebContents.
   #tabUrl(tab: ManagedTab): string {
     if (tab.sleeping) return tab.sleeping.url;
-    if (this.isHttpView(tab.view) && !tab.view.webContents.isDestroyed()) return tab.view.webContents.getURL();
+    if (this.isHttpView(tab.view) && !tab.view.webContents.isDestroyed()) return tab.view.webContents.getURL() || tab.initialUrl || '';
     return '';
   }
 
@@ -834,6 +835,7 @@ export class TabManager {
     this.nodes.push({ type: 'single', tabId: id });
     this.wirePageEvents(id, view);
     const target = this.resolveInput(rawUrl ?? 'about:blank');
+    tab.initialUrl = target;
     if (target !== 'about:blank') {
       const opts: LoadURLOptions = {};
       if (postBody) {
@@ -1132,6 +1134,7 @@ export class TabManager {
     if (faviconData) w._oblakoFavicon = w._oblakoFaviconData = faviconData;
     else if (faviconUrl && /^(data:|https?:)/i.test(faviconUrl)) w._oblakoFavicon = faviconUrl;
     tab.sleeping = null;
+    tab.initialUrl = url;
     tab.view = view;
     tab.lastActiveAt = Date.now();
     this.errors.delete(id);
@@ -1523,10 +1526,10 @@ export class TabManager {
       // closeTab может прийти сюда и через 'destroyed' (window.close() из контента, см. wirePageEvents) —
       // тогда wc уже мёртв, и getURL()/removeChildView()/close() на нём бросят "Object has been destroyed".
       const destroyed = wc.isDestroyed();
-      const url = destroyed ? '' : wc.getURL();
+      const url = destroyed ? '' : this.#tabUrl(tab);
       if (!tab.incognito && !tab.ephemeral && /^https?:\/\//i.test(url)) {
         // Приватные/OAuth-страницы не должны вернуться в обычную сессию или подсказки.
-        this.closedTabs = pushClosed(this.closedTabs, { url, title: this.#tabTitle(tab) || url, closedAt: Date.now(), profileId: tab.profileId });
+        this.closedTabs = pushClosed(this.closedTabs, { url, title: this.#tabTitle(tab) || url, closedAt: closedAtNow(), profileId: tab.profileId });
       }
       // Поповер перевода анкорится к WebContents конкретной вкладки (см. TranslatePopoverManager.ts) —
       // если закрывается именно она, поповер сравнит ссылку и закроется сам. До removeChildView/close,
@@ -1539,7 +1542,7 @@ export class TabManager {
     } else if (tab.sleeping) {
       const url = tab.sleeping.url;
       if (!tab.incognito && !tab.ephemeral && /^https?:\/\//i.test(url)) {
-        this.closedTabs = pushClosed(this.closedTabs, { url, title: tab.sleeping.title || url, closedAt: Date.now(), profileId: tab.profileId });
+        this.closedTabs = pushClosed(this.closedTabs, { url, title: tab.sleeping.title || url, closedAt: closedAtNow(), profileId: tab.profileId });
       }
     }
 
@@ -2841,6 +2844,8 @@ export class TabManager {
   setOnBookmarkPage(cb: () => void): void { this.onBookmarkPageCb = cb; }
   setOnBookmarksOpen(cb: () => void): void { this.onBookmarksOpenCb = cb; }
   setOnNewWindow(cb: () => void): void { this.onNewWindowCb = cb; }
+  private onReopenClosedCb: (() => void) | null = null;
+  setOnReopenClosed(cb: () => void): void { this.onReopenClosedCb = cb; }
 
   // ПКМ по ссылке → «Открыть ссылку в новом окне». Тоже отдаём наружу: окно создаёт main.
   private onOpenInNewWindowCb: ((url: string) => void) | null = null;
@@ -2953,7 +2958,10 @@ export class TabManager {
       goBack: () => this.goBack(this.activeId),
       goForward: () => this.goForward(this.activeId),
       openHub: () => this.activate(HUB_ID),
-      reopenLastClosedTab: () => this.reopenLastClosedTab(),
+      reopenLastClosed: () => {
+        if (this.onReopenClosedCb) this.onReopenClosedCb();
+        else this.reopenLastClosedTab();
+      },
       openNewWindow: () => this.onNewWindowCb?.(),
       newIncognitoTab: () => { this.createTab(undefined, false, false, true); },
       returnActiveTab: () => this.onReturnTabCb?.(this.activeId),

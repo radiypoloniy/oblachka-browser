@@ -48,9 +48,10 @@ import { closeWindowView } from './viewTeardown';
 import { SessionManager } from './SessionManager';
 import { AppSessionStore } from './AppSessionStore';
 import { AppSessionCoordinator, windowsToRestore } from './AppSessionCoordinator';
-import { registerWindowSession, restoredWindowBounds, focusRestoredWindow } from './window/windowSession';
+import { registerWindowSession, restoredWindowBounds, focusRestoredWindow, closeWindowWithoutHistory } from './window/windowSession';
 import { sessionWarningReporter } from './window/sessionWarning';
 import { closedWindowMenu } from './window/closedWindowMenu';
+import { reopenLastClosed, reopenTarget } from './window/reopenClosed';
 import type { SavedWindow } from '../shared/session';
 import { randomUUID } from 'node:crypto';
 import { AdBlockManager } from './AdBlockManager';
@@ -1058,7 +1059,15 @@ function closeIfEmptySource(from: TabManager): void {
   const ctx = allContexts().find((c) => c.tabs === from);
   if (!ctx || ctx.win.isDestroyed()) return;
   if (ctx.tabs.hasTabs()) return;
-  ctx.win.close();
+  closeWindowWithoutHistory(ctx.win);
+}
+
+function restoreClosedWindow(saved: SavedWindow): void {
+  createWindow(allContexts().some(c => c.role === 'main') ? 'light' : 'main', saved);
+}
+
+function reopenClosed(tabs: TabManager): void {
+  reopenLastClosed(tabs, appSession, restoreClosedWindow);
 }
 
 // VPN, шаг 3 — единственное место, которое решает, куда идёт ВЕСЬ трафик вкладок
@@ -1165,6 +1174,7 @@ export function makeWindowDeps() {
     pushProductState, refreshProductForWebContents, refreshFlightForWebContents,
     adblock, bangs, bookmarks, graphs, history, rules, settings,
     createWindow, ensureVpnOnForRules, maybeLazyWarmupOnDemand,
+    reopenLastClosed: reopenClosed,
     moveTabToExistingWindow, notifyGraphChanged,
     isShuttingDown: () => appShutdown.isShuttingDown(),
     onSessionChanged: () => appSession?.scheduleSave(),
@@ -1186,7 +1196,9 @@ export function makeIpcDeps() {
     currentThemePrefs, ensurePasswordAuth, escapeHtml, escapeHtmlAttr, maybeLazyWarmupOnDemand,
     moveTabToExistingWindow, moveTabToNewWindow, notifyGraphChanged, pushProductState,
     renameTabSmart, showBookmarkMenu, showProductMenu,
-    closedWindowMenu: () => closedWindowMenu(appSession, saved => { createWindow(allContexts().some(c => c.role === 'main') ? 'light' : 'main', saved); }),
+    closedWindowMenu: () => closedWindowMenu(appSession, restoreClosedWindow),
+    canReopenClosed: (tabs: TabManager) => reopenTarget(tabs, appSession) !== null,
+    reopenLastClosed: reopenClosed,
     // Пункты отслеживания цены отдельно от их показа: меню «⋯» в адресной строке вкладывает их
     // подменю, а не строит второй такой же список (см. productMenuTemplate).
     productMenuTemplate,

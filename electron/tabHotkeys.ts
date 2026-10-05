@@ -15,7 +15,7 @@ export interface TabHotkeyHost {
   goBack(): void;
   goForward(): void;
   openHub(): void;
-  reopenLastClosedTab(): void;
+  reopenLastClosed(): void;
   openNewWindow(): void;
   newIncognitoTab(): void;
   returnActiveTab(): void;
@@ -80,7 +80,7 @@ export function wireTabHotkeys(wc: WebContents, source: 'chrome' | 'tab', host: 
     if (code === 'KeyT' && !shift) {
       event.preventDefault(); host.openHub();
     } else if (code === 'KeyT' && shift) {
-      event.preventDefault(); host.reopenLastClosedTab();
+      event.preventDefault(); host.reopenLastClosed();
     } else if (code === 'KeyN' && !shift) {
       event.preventDefault(); host.openNewWindow();
     } else if (code === 'KeyN' && shift) {
