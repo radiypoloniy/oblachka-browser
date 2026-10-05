@@ -46,10 +46,17 @@ export function nextIndicatorState(
 
   if (!hasLoginForm) return { keep: false, state: null };
 
+  // Пересчёт DOM не должен отзывать уже показанную кнопку генерации. Иначе карточка
+  // остаётся видимой, но main отвергает её действие по новому состоянию вкладки.
+  if (current?.kind === 'offer-generate' && current.origin === origin) return { keep: true };
+  const allowGenerate = current?.kind === 'has-saved' && current.origin === origin
+    && current.allowGenerate === true;
+
   return {
     keep: false,
     state: saved.length > 0
-      ? { kind: 'has-saved', origin, matches: saved.map((m) => ({ id: m.id, username: m.username, path: m.path })) }
+      ? { kind: 'has-saved', origin, matches: saved.map((m) => ({ id: m.id, username: m.username, path: m.path })),
+          ...(allowGenerate ? { allowGenerate: true } : {}) }
       : null,
   };
 }

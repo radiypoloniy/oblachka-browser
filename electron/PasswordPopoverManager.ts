@@ -11,6 +11,7 @@ import path from 'node:path';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds, PasswordIndicatorState } from '../shared/ipc';
 import { closeWindowView } from './viewTeardown';
+import { registerWindowContents } from './WindowRegistry';
 import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN, anchoredCardX, rememberOverlayHeight } from '../shared/overlayMetrics';
 
 const POPOVER_WIDTH = 280;
@@ -127,6 +128,8 @@ function ensurePopoverView(st: WindowPopover): WebContentsView {
     },
   });
   st.view = view;
+  // Без владельца IPC кнопок не находит окно и молча отвергает заполнение и генерацию.
+  registerWindowContents(st.win, view.webContents);
   view.setBackgroundColor('#00000000');
   view.webContents.once('did-finish-load', () => {
     if (st.state) view.webContents.send(IPC.PASSWORD_POPOVER_SHOW, st.state);

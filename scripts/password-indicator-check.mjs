@@ -48,6 +48,22 @@ console.log('\n— предложение сохранить переживае�
 
 console.log('\n— обычные переходы —');
 {
+  const generate = { kind: 'offer-generate', origin: SITE };
+  check('пересчёт формы сохраняет предложение генерации',
+    nextIndicatorState(generate, true, SITE, []), { keep: true });
+  check('исчезнувшая форма снимает генерацию',
+    nextIndicatorState(generate, false, SITE, []), { keep: false, state: null });
+  check('другой сайт не наследует генерацию',
+    nextIndicatorState(generate, true, OTHER, []), { keep: false, state: null });
+  const matches = [{ id: 1, username: 'a' }];
+  check('пересчёт формы смены пароля сохраняет кнопку нового пароля',
+    nextIndicatorState({ ...hasSaved(matches), allowGenerate: true }, true, SITE, matches),
+    { keep: false, state: { ...hasSaved(matches), allowGenerate: true } });
+  check('другой сайт не наследует кнопку смены пароля',
+    nextIndicatorState({ ...hasSaved(matches), allowGenerate: true }, true, OTHER, matches),
+    { keep: false, state: { kind: 'has-saved', origin: OTHER, matches } });
+}
+{
   check('нет формы и нечего предлагать — пусто',
     nextIndicatorState(null, false, SITE, []), { keep: false, state: null });
   check('форма есть, сохранённого нет — пусто',
