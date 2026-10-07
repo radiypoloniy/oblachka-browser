@@ -45,6 +45,7 @@ import type { MenuItemConstructorOptions, Session } from 'electron';
 import path from 'node:path';
 import { TabManager } from './TabManager';
 import { closeWindowView } from './viewTeardown';
+import { takeIncognitoClearIfDone } from './incognitoClear';
 import { SessionManager } from './SessionManager';
 import { AppSessionStore } from './AppSessionStore';
 import { AppSessionCoordinator, windowsToRestore, windowToFocusOnRestore } from './AppSessionCoordinator';
@@ -953,6 +954,11 @@ function createWindow(role: WindowRole = 'main', saved?: SavedWindow) {
     console.log(`[shutdown] win closed (${role}): обнуляю вкладки окна`);
     tabs?.dispose(); // таймер сна + вью всех вкладок окна (см. TabManager.dispose)
     tabs = null;
+    // Закрытие окна не проходит через closeTab, поэтому приватные вкладки окна уходят без
+    // колбэка закрытия. Без этой проверки их куки доживали бы до выхода и доставались
+    // следующей приватной вкладке любого окна.
+    const privateLeft = allContexts().some((c) => c.win !== win && !c.win.isDestroyed() && c.tabs.hasIncognitoTabs());
+    if (takeIncognitoClearIfDone(privateLeft)) void incognitoSession?.clearStorageData();
     created.forget(); // и та же ссылка внутри window/tabManager.ts — её видят колбэки конструктора
     // Слой хрома закрываем сами по той же причине, что и вкладки: окно не уносит с собой дочерние
     // вью, и его сайдбар с тулбаром остался бы жить отдельным процессом рендерера (разбор и

@@ -46,6 +46,7 @@ import { localPathToFileUrl } from './localFileUrl';
 import { isRussianCaCandidate } from './CertificateTrust';
 import { pushClosed, popClosed, peekClosed, type ClosedTab } from '../shared/closedTabStack';
 import { closedAtNow } from './closedAt';
+import { noteIncognitoTab } from './incognitoClear';
 // Менеджер паролей, шаг 2 — ПЕРВЫЙ preload на гостевых страницах (сканер форм, см.
 // electron/preload-content.ts). Тот же приём резолва пути, что AiPanelManager.ts использует
 // для preload-aipanel.js (__dirname здесь и там — один и тот же dist-electron/electron после
@@ -223,8 +224,6 @@ export class TabManager {
   private onMediaReportCb?: (tabId: string, report: MediaSessionReport, url: string) => void;
   // Автозаполнение — отправка формы с данными адреса/карты (offer-save). url — из wc.getURL().
   private onAutofillSubmitCb?: (tabId: string, kind: 'address' | 'card', fields: Record<string, string>, url: string) => void;
-  // Взводится при создании инкогнито-вкладки; см. takeIncognitoClearIfDone (чистка сессии инкогнито).
-  #pendingIncognitoClear = false;
   private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
   private closedTabs: ClosedTab[] = []; // стек закрытых вкладок для Ctrl+Shift+T и панели омнибокса
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
@@ -769,18 +768,6 @@ export class TabManager {
     return !!this.tabMap.get(tabId)?.incognito;
   }
 
-  // Нужно ли ЧИСТИТЬ in-memory сессию инкогнито прямо сейчас (закрылась последняя приватная
-  // вкладка). Взводится при создании инкогнито-вкладки, гасится здесь — main зовёт на закрытии
-  // любой вкладки и, получив true, чистит storage. Так работает и для кнопки, и для хоткея, без
-  // дублирования флага в main.
-  takeIncognitoClearIfDone(): boolean {
-    if (this.#pendingIncognitoClear && !this.hasIncognitoTabs()) {
-      this.#pendingIncognitoClear = false;
-      return true;
-    }
-    return false;
-  }
-
   // ── Создание новой вкладки с реальной страницей ──
   // background=true: вкладка создаётся в фоне, без переключения (средний клик по ссылке).
   // postBody и referrer — тело формы и Referer перехода, оба приходят из setWindowOpenHandler;
@@ -832,7 +819,8 @@ export class TabManager {
       id, view, sleeping: null, lastActiveAt: Date.now(), ephemeral, incognito,
       profileId: incognito ? undefined : profile,
     };
-    if (incognito) this.#pendingIncognitoClear = true; // при закрытии последней приватной — чистим сессию
+    // Партиция приватных вкладок общая на все окна: решение о чистке — в incognitoClear.ts.
+    if (incognito) noteIncognitoTab();
     this.tabMap.set(id, tab);
     this.nodes.push({ type: 'single', tabId: id });
     this.wirePageEvents(id, view);
@@ -1581,7 +1569,7 @@ export class TabManager {
     wire: (id, view) => this.wirePageEvents(id, view),
     activate: (id) => this.activate(id),
     changed: () => this.onChange(),
-    markPrivate: () => { this.#pendingIncognitoClear = true; },
+    markPrivate: () => noteIncognitoTab(),
     committed: (id) => {
       this.clearOrganizeSnapshot(); this.splitPairs.forget(id);
       if (this.activeId === id) this.activate(this.tabsInVisualOrder(true)[0]?.id ?? HUB_ID);

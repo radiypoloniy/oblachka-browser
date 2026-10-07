@@ -39,7 +39,8 @@ import { hideSuggestDropdown } from '../SuggestDropdownManager';
 import { closeTranslatePopoverForClosedTab, closeTranslatePopoverOnTabSwitch, showTranslatePopover } from '../TranslatePopoverManager';
 import { closeSplitStackPopover } from '../SplitStackPopoverManager';
 import { findActiveSplitPairNode } from '../../shared/nodeTree';
-import { broadcastToChrome } from '../WindowRegistry';
+import { allContexts, broadcastToChrome } from '../WindowRegistry';
+import { takeIncognitoClearIfDone } from '../incognitoClear';
 import type { WindowDeps } from './deps';
 
 export interface WindowShell {
@@ -177,10 +178,12 @@ export function createWindowTabManager(
     (wc, tabId) => {
       forgetOpenTabContent(wc.id);
       closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(win); closeSitePopover(win); closeScreenshot(win); passwordAutofill.onTabClosed(tabId); forgetMediaTab(tabId);
-      // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
-      // хранилище), Chrome-подобно. takeIncognitoClearIfDone сам знает, когда это уместно (работает
-      // и для кнопки, и для хоткея Ctrl+Shift+N).
-      if (tabs?.takeIncognitoClearIfDone()) void incognitoSession()?.clearStorageData();
+      // Закрылась последняя инкогнито-вкладка ВО ВСЁМ приложении → стираем in-memory данные
+      // приватной сессии (куки/хранилище), Chrome-подобно. Партиция общая на окна, поэтому живая
+      // приватная вкладка соседнего окна чистку откладывает (см. incognitoClear.ts).
+      if (takeIncognitoClearIfDone(allContexts().some((c) => !c.win.isDestroyed() && c.tabs.hasIncognitoTabs()))) {
+        void incognitoSession()?.clearStorageData();
+      }
     },
     // Заход 5: реальный клик в контент вкладки (не blur омнибокса) — закрывает дропдаун подсказок
     // в chrome, см. shared/ipc.ts::SUGGEST_DROPDOWN_CONTENT_FOCUS, Toolbar.tsx.
