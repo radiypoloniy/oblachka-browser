@@ -226,6 +226,17 @@ try {
     assert.equal(c3.saveNow(), false); assert.equal(writes.length, count);
     c3.close('private', false); c3.close('a', null);
   });
+  check('отказ сохранения из-за сломанного дерева виден человеку', () => {
+    const issues = [];
+    let tree = window('a');
+    const c4 = new AppSessionCoordinator({ save: () => true }, null, m => issues.push(m));
+    c4.register('a', () => tree); c4.enable(); c4.saveNow();
+    assert.equal(issues.length, 0);
+    tree = null; c4.saveNow();
+    assert.equal(issues.length, 1);
+    c4.close('b-never-read', null);
+    assert.equal(issues.length, 2);
+  });
 } finally {
   console.warn = quietWarn;
   fs.rmSync(dir, { recursive: true, force: true });

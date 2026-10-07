@@ -289,6 +289,8 @@ function currentThemePrefs(): ThemePrefs {
 
 // Один координатор пишет деревья всех окон; роли пока нужны прежним AI-контроллерам.
 let appSession: AppSessionCoordinator | null = null;
+// Одно предупреждение за запуск на оба источника: ошибки диска (хранилище) и сломанное дерево окна.
+const reportSessionIssue = sessionWarningReporter();
 
 // ── Отслеживание товаров (PRICE-TRACKING.md, срез 1) ────────────────────────
 // ⚠️ Список отслеживаемого — НА ПРОФИЛЬ (см. ProfileData.ts), поэтому здесь функция, а не
@@ -1478,9 +1480,9 @@ app.whenReady().then(async () => {
   updates.initialize((s) => broadcastToChrome(IPC.UPDATE_CHANGED, s));
 
   const legacySession = new SessionManager();
-  const sessionStore = new AppSessionStore(app.getPath('userData'), app.getVersion(), data => legacySession.decode(data), sessionWarningReporter());
+  const sessionStore = new AppSessionStore(app.getPath('userData'), app.getVersion(), data => legacySession.decode(data), reportSessionIssue);
   const savedSession = sessionStore.load();
-  appSession = new AppSessionCoordinator(sessionStore, savedSession);
+  appSession = new AppSessionCoordinator(sessionStore, savedSession, reportSessionIssue);
   const savedWindows = windowsToRestore(savedSession);
   if (savedWindows.length === 0) createWindow();
   else savedWindows.forEach((saved, index) => createWindow(index === 0 ? 'main' : 'light', saved));

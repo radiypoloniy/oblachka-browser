@@ -18,7 +18,9 @@ export class AppSessionCoordinator {
   #timer: ReturnType<typeof setTimeout> | null = null;
   #focused: string | undefined;
 
-  constructor(private readonly store: SessionStore, restored: AppSessionSnapshot | null) {
+  // onIssue — видимое предупреждение. Отказ записи из-за сломанного дерева раньше уходил только
+  // в консоль: автосейв всех окон молча вставал до конца запуска.
+  constructor(private readonly store: SessionStore, restored: AppSessionSnapshot | null, private readonly onIssue?: (message: string) => void) {
     this.#closed = restored?.closedWindows ?? [];
     this.#focused = restored?.focusedWindowId;
   }
@@ -58,6 +60,7 @@ export class AppSessionCoordinator {
     if (!this.#enabled || this.#unsafeClosed) return false;
     if (this.#timer) { clearTimeout(this.#timer); this.#timer = null; }
     const snapshot = this.#quitCapture ?? this.#snapshot();
+    if (snapshot === null) this.onIssue?.('Дерево вкладок одного из окон не удалось прочитать. Сохранение сессии приостановлено, чтобы не записать неполный набор.');
     return snapshot !== null && this.store.save(snapshot);
   }
 
@@ -79,6 +82,7 @@ export class AppSessionCoordinator {
       // Без корректного дерева закрывшегося окна новая запись могла бы потерять его вкладки.
       this.#unsafeClosed = true;
       console.warn('[session] дерево закрытого окна недоступно; исходная сессия защищена от перезаписи');
+      this.onIssue?.('Дерево закрытого окна не удалось прочитать. До перезапуска сессия не сохраняется, при запуске вернётся последний сохранённый набор окон.');
     }
     this.#readers.delete(id);
     this.#cached.delete(id);
