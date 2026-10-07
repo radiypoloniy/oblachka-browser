@@ -1068,8 +1068,11 @@ function closeIfEmptySource(from: TabManager): void {
   closeWindowWithoutHistory(ctx.win);
 }
 
+// Роль 'main' — только у первого окна запуска: по ней интерфейс показывает выбор профиля.
+// Окно, возвращённое из истории посреди работы, не должно снова спрашивать профиль — выбор там
+// переключил бы профиль во ВСЕХ окнах.
 function restoreClosedWindow(saved: SavedWindow): void {
-  createWindow(allContexts().some(c => c.role === 'main') ? 'light' : 'main', saved);
+  createWindow('light', saved);
 }
 
 function reopenClosed(tabs: TabManager): void {
@@ -1481,7 +1484,8 @@ app.whenReady().then(async () => {
   const savedWindows = windowsToRestore(savedSession);
   if (savedWindows.length === 0) createWindow();
   else savedWindows.forEach((saved, index) => createWindow(index === 0 ? 'main' : 'light', saved));
-  focusRestoredWindow(windowToFocusOnRestore(savedSession));
+  const startupWindowId = windowToFocusOnRestore(savedSession);
+  focusRestoredWindow(startupWindowId);
   appSession.enable();
 
   // Холодный старт по ссылке (кликнули по ссылке в почте, браузер ещё не запущен): адрес
@@ -1489,7 +1493,8 @@ app.whenReady().then(async () => {
   // вкладка-гостья появилась бы раньше, чем вернулись свои, и осталась бы в конце списка.
   const startUrl = pendingStartUrl ?? firstUrlFromArgv(process.argv);
   pendingStartUrl = null;
-  if (startUrl) preferredContext()?.tabs.createTab(startUrl);
+  // Окна ещё не показаны и фокуса нет: адресат — то окно, которому будет отдан фокус.
+  if (startUrl) (allContexts().find(c => c.sessionId === startupWindowId) ?? preferredContext())?.tabs.createTab(startUrl);
 
   // Сторож простоя модели. ⚠️ Здесь, в самом конце whenReady, а не рядом с прочей инициализацией:
   // ветки LLAMA_TEST/TRANSLATE_TEST выходят раньше, и стендам этот таймер не нужен вовсе.
