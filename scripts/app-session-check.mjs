@@ -198,6 +198,16 @@ try {
     coordinator.register('empty', () => empty); coordinator.enable(); coordinator.close('empty', empty);
     assert.deepEqual(windowsToRestore(writes.at(-1)).map(w => w.id), ['empty']);
   });
+  check('убранное из списка закреплённое окно больше не возвращается', () => {
+    const coordinator = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
+    const pinned = window('pinned', true), work = window('work');
+    coordinator.register('pinned', () => pinned); coordinator.register('work', () => work); coordinator.enable();
+    coordinator.close('pinned', pinned);
+    assert.deepEqual(windowsToRestore(writes.at(-1)).map(w => w.id), ['work', 'pinned']);
+    assert.equal(coordinator.forget('pinned'), true);
+    assert.deepEqual(windowsToRestore(writes.at(-1)).map(w => w.id), ['work']);
+    assert.equal(coordinator.forget('pinned'), false);
+  });
   check('снова открытое окно не подменяется своим старым снимком', () => {
     const coordinator = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
     const old = window('a');

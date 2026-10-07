@@ -258,19 +258,16 @@ export function registerMenusIpc(d: IpcDeps): void {
 
   // ПКМ по кнопке «Новая вкладка» — обычная / инкогнито / восстановить закрытую (как в Chrome).
   ipcMain.handle(IPC.NEW_TAB_SHOW_MENU, (e) => {
-    const w = winOf(e);
-    const t = tabsOf(e);
+    const w = winOf(e), t = tabsOf(e), closedWindows = d.closedWindowMenu();
     if (!t || !w) return;
-    const closedWindows = d.closedWindowMenu();
     Menu.buildFromTemplate([
       { label: tr('Новая вкладка'), accelerator: 'Ctrl+T', click: () => t.activate(HUB_ID) },
       { label: tr('Новая вкладка инкогнито'), accelerator: 'Ctrl+Shift+N', click: () => t.createTab(undefined, false, false, true) },
       { type: 'separator' },
       // Закрытые вкладки принадлежат окну, история целых окон — приложению.
       { label: tr('Восстановить вкладку или окно'), accelerator: 'Ctrl+Shift+T', enabled: d.canReopenClosed(t), click: () => d.reopenLastClosed(t) },
-      { label: tr('Закрытые окна'), enabled: closedWindows.length > 0, submenu: closedWindows },
-      { type: 'separator' },
-      // Единственный видимый вход в выход целиком: только он возвращает при запуске все окна.
+      { label: tr('Закрытые окна'), enabled: closedWindows.length > 0, submenu: closedWindows }, { type: 'separator' },
+      // Выход целиком — единственный путь, после которого при запуске возвращаются все окна.
       { label: tr('Выйти из Oblako'), accelerator: 'Ctrl+Shift+Q', click: () => app.quit() },
     ]).popup({ window: w });
   });

@@ -92,6 +92,16 @@ export class AppSessionCoordinator {
   }
 
   closedWindows(): SavedClosedWindow[] { return this.#closed.map(w => structuredClone(w)); }
+
+  // Явное «убрать из списка»: окно с закреплениями иначе возвращалось бы при каждом запуске.
+  forget(id: string): boolean {
+    const before = this.#closed.length;
+    this.#closed = this.#closed.filter(w => w.id !== id);
+    this.#lastWindows = this.#lastWindows.filter(w => w.id !== id);
+    if (this.#closed.length === before) return false;
+    this.saveNow();
+    return true;
+  }
 }
 
 export function windowsToRestore(session: AppSessionSnapshot | null): SavedWindow[] {
