@@ -206,6 +206,8 @@ function filterKnownNodes(arr: unknown[]): SavedNode[] {
       if (typeof n['rightTitle'] === 'string') node.rightTitle = n['rightTitle'];
       if (typeof n['leftFaviconData'] === 'string') node.leftFaviconData = n['leftFaviconData'];
       if (typeof n['rightFaviconData'] === 'string') node.rightFaviconData = n['rightFaviconData'];
+      if (typeof n['leftProfileId'] === 'string') node.leftProfileId = n['leftProfileId'];
+      if (typeof n['rightProfileId'] === 'string') node.rightProfileId = n['rightProfileId'];
       result.push(node);
 
     } else if (

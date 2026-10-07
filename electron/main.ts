@@ -47,7 +47,7 @@ import { TabManager } from './TabManager';
 import { closeWindowView } from './viewTeardown';
 import { SessionManager } from './SessionManager';
 import { AppSessionStore } from './AppSessionStore';
-import { AppSessionCoordinator, windowsToRestore } from './AppSessionCoordinator';
+import { AppSessionCoordinator, windowsToRestore, windowToFocusOnRestore } from './AppSessionCoordinator';
 import { registerWindowSession, restoredWindowBounds, focusRestoredWindow, closeWindowWithoutHistory } from './window/windowSession';
 import { sessionWarningReporter } from './window/sessionWarning';
 import { closedWindowMenu } from './window/closedWindowMenu';
@@ -1475,7 +1475,7 @@ app.whenReady().then(async () => {
   const savedWindows = windowsToRestore(savedSession);
   if (savedWindows.length === 0) createWindow();
   else savedWindows.forEach((saved, index) => createWindow(index === 0 ? 'main' : 'light', saved));
-  focusRestoredWindow(savedSession?.focusedWindowId);
+  focusRestoredWindow(windowToFocusOnRestore(savedSession));
   appSession.enable();
 
   // Холодный старт по ссылке (кликнули по ссылке в почте, браузер ещё не запущен): адрес

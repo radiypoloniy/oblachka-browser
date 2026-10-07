@@ -26,7 +26,8 @@ export class AppSessionCoordinator {
   register(id: string, read: Reader): void {
     this.#readers.set(id, read);
     this.#closed = this.#closed.filter(w => w.id !== id);
-    this.#lastWindows = [];
+    // Снова открытое окно читается живым: его старый снимок не должен вернуться вместо него.
+    this.#lastWindows = this.#lastWindows.filter(w => w.id !== id);
   }
 
   enable(): void { this.#enabled = true; this.scheduleSave(); }
@@ -45,7 +46,8 @@ export class AppSessionCoordinator {
       if (w === null) return null;
       if (w !== false) { windows.push(w); this.#cached.set(id, w); }
     }
-    if (this.#readers.size === 0) windows.push(...this.#lastWindows);
+    // Приватные окна остаются в реестре, но не должны вытеснять последнее обычное.
+    if (windows.length === 0) windows.push(...this.#lastWindows);
     return {
       windows, closedWindows: trimClosedWindows(this.#closed.filter(w => !windows.some(open => open.id === w.id))),
       ...(windows.some(w => w.id === this.#focused) ? { focusedWindowId: this.#focused } : {}),
@@ -80,7 +82,7 @@ export class AppSessionCoordinator {
     this.#cached.delete(id);
     if (w && remember) {
       this.#closed = trimClosedWindows([{ ...w, closedAt: closedAtNow() }, ...this.#closed.filter(old => old.id !== id)]);
-      if (this.#readers.size === 0) this.#lastWindows = [w];
+      this.#lastWindows = [w];
     }
     this.saveNow();
   }
@@ -91,4 +93,13 @@ export class AppSessionCoordinator {
 export function windowsToRestore(session: AppSessionSnapshot | null): SavedWindow[] {
   if (!session) return [];
   return [...session.windows, ...session.closedWindows.filter(w => w.snapshot.pinnedTabs.length > 0)];
+}
+
+export function windowToFocusOnRestore(session: AppSessionSnapshot | null): string | undefined {
+  const windows = windowsToRestore(session);
+  const focused = windows.find(w => w.id === session?.focusedWindowId) ?? windows[0];
+  // Пустое вспомогательное окно не должно скрывать рабочее с закреплениями,
+  // даже если человек закрыл его последним и оно стало стартовым окном.
+  if (focused && (focused.snapshot.pinnedTabs.length || focused.snapshot.nodes.length)) return focused.id;
+  return windows.find(w => w.snapshot.pinnedTabs.length > 0)?.id ?? focused?.id;
 }

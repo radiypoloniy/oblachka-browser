@@ -9,7 +9,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { AppSessionStore } = require('../dist-electron/electron/AppSessionStore.js');
-const { AppSessionCoordinator, windowsToRestore } = require('../dist-electron/electron/AppSessionCoordinator.js');
+const { AppSessionCoordinator, windowsToRestore, windowToFocusOnRestore } = require('../dist-electron/electron/AppSessionCoordinator.js');
 const { decodeAppSession, trimClosedWindows } = require('../dist-electron/shared/appSession.js');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oblako-session-check-'));
 const source = fs.readFileSync(new URL('../electron/SessionManager.ts', import.meta.url), 'utf8');
@@ -45,6 +45,12 @@ try {
     });
   }
   const a = { windows: [window('a')], closedWindows: [] };
+  check('миграция split из v5 сохраняет профили обеих страниц', () => {
+    const decoded = legacy.decode({ version: 5, savedAt: 'date', pinnedTabs: [],
+      nodes: [{ type: 'split-pair', leftUrl: 'https://example.com/left', rightUrl: 'https://example.com/right', ratio: 0.5, leftProfileId: 'work', rightProfileId: 'work' }], activeRef: { type: 'hub' } });
+    assert.equal(decoded.nodes[0].leftProfileId, 'work');
+    assert.equal(decoded.nodes[0].rightProfileId, 'work');
+  });
   const b = { windows: [window('b', true)], closedWindows: [] };
   check('прежняя многооконная v6 импортируется без изменения исходника', () => {
     fs.rmSync(file);
@@ -105,6 +111,15 @@ try {
     assert.equal(trimmed.length, 23);
     assert.equal(trimmed.filter(w => w.snapshot.pinnedTabs.length).length, 3);
   });
+  check('пустое стартовое окно уступает фокус закреплённому, рабочий фокус сохраняется', () => {
+    const empty = { id: 'empty', snapshot: { pinnedTabs: [], nodes: [], activeRef: { type: 'hub' } } };
+    const pinned = window('pinned', true);
+    assert.equal(windowToFocusOnRestore({ windows: [empty], closedWindows: [{ ...pinned, closedAt: 1 }], focusedWindowId: 'empty' }), 'pinned');
+    assert.equal(windowToFocusOnRestore({ windows: [empty, pinned], closedWindows: [] }), 'pinned');
+    assert.equal(windowToFocusOnRestore({ windows: [empty, pinned, window('working')], closedWindows: [], focusedWindowId: 'working' }), 'working');
+    assert.equal(windowToFocusOnRestore({ windows: [empty], closedWindows: [] }), 'empty');
+    assert.equal(windowToFocusOnRestore(null), undefined);
+  });
   const writes = []; const c = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
   let aLive = window('a', true), bLive = window('b');
   c.register('a', () => aLive); c.register('b', () => bLive); c.enable(); c.saveNow();
@@ -138,6 +153,36 @@ try {
     coordinator.register('empty', () => empty);
     coordinator.close('empty', empty);
     assert.equal(coordinator.closedWindows()[0].id, 'empty');
+  });
+  check('последнее приватное окно не вытесняет последнее обычное из восстановления', () => {
+    const coordinator = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
+    const ordinary = window('ordinary');
+    coordinator.register(ordinary.id, () => ordinary);
+    coordinator.register('private', () => false);
+    coordinator.enable(); coordinator.saveNow();
+    coordinator.close(ordinary.id, ordinary);
+    coordinator.beginQuit(); coordinator.close('private', false);
+    assert.deepEqual(windowsToRestore(writes.at(-1)).map(w => w.id), ['ordinary']);
+    assert.ok(!JSON.stringify(writes.at(-1)).includes('private'));
+  });
+  check('новое приватное окно также не сбрасывает последнее обычное', () => {
+    const coordinator = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
+    const ordinary = window('ordinary');
+    coordinator.register(ordinary.id, () => ordinary); coordinator.enable();
+    coordinator.close(ordinary.id, ordinary);
+    coordinator.register('private', () => false); coordinator.saveNow();
+    assert.deepEqual(windowsToRestore(writes.at(-1)).map(w => w.id), ['ordinary']);
+    coordinator.close('private', false);
+  });
+  check('снова открытое окно не подменяется своим старым снимком', () => {
+    const coordinator = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
+    const old = window('a');
+    coordinator.register('a', () => old); coordinator.enable();
+    coordinator.close('a', old);
+    // Окно вернули из меню, а потом в нём остались только приватные вкладки.
+    coordinator.register('a', () => false); coordinator.saveNow();
+    assert.deepEqual(windowsToRestore(writes.at(-1)).map(w => w.id), []);
+    coordinator.close('a', false);
   });
   check('нарушенный инвариант не затирает общий снимок; приватное окно исключается', () => {
     const c3 = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);

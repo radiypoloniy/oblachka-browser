@@ -115,6 +115,33 @@ await withStand(async ctx => {
   await load();
   assert.deepEqual((await states()).map(w => w.id).sort(), [aId, bId].sort());
 
+  // Закрытие крестиком последнего окна проходит другим путём, чем app.quit().
+  await ctx.evalMainSync(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(aId)}).win.close()`);
+  await wait(300);
+  await ctx.evalMainSync(`setTimeout(() => sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(bId)}).win.close(), 100); undefined`);
+  ctx.main.close();
+  await wait(1000);
+  const lastClosed = await readSession();
+  assert.equal(lastClosed.windows.find(w => w.id === bId)?.snapshot.pinnedTabs.length, 1, 'последнее закрытое окно с закреплением потеряно');
+  await ctx.restart(0);
+  await load();
+  assert.equal((await states()).find(w => w.id === bId)?.tabs.filter(t => t.isPinned).length, 1);
+
+  // Пустое окно закрыто последним: оба дерева возвращаются, рабочее получает фокус.
+  await inWindow(bId, 'window.oblako.openWindow()');
+  await wait(700);
+  const emptyId = (await states()).find(w => w.id !== bId).id;
+  await ctx.evalMainSync(`sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(bId)}).win.close()`);
+  await wait(300);
+  await ctx.evalMainSync(`setTimeout(() => sessionStand.registry.allContexts().find(c => c.sessionId === ${JSON.stringify(emptyId)}).win.close(), 100); undefined`);
+  ctx.main.close();
+  await wait(1000);
+  await ctx.restart(0);
+  await load();
+  await wait(2500);
+  assert.equal((await states()).find(w => w.id === bId)?.tabs.filter(t => t.isPinned).length, 1);
+  assert.equal(await ctx.evalMainSync('sessionStand.registry.preferredContext()?.sessionId'), bId, 'пустое окно скрыло рабочее при запуске');
+
   // Настоящий запуск на v5: файл должен уцелеть побайтово до первой записи v6.
   const legacy = JSON.stringify({ version: 5, savedAt: 'date', pinnedTabs: [{ url: pinUrl }], nodes: [{ type: 'single', url: duplicatesUrl }], activeRef: { type: 'url', url: duplicatesUrl } });
   await fs.writeFile(path.join(ctx.profile, 'session.json'), legacy);

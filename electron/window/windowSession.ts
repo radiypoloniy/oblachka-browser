@@ -21,7 +21,11 @@ export function focusRestoredWindow(id: string | undefined): void {
   // Окна показываются после готовности разных renderer: последний show не должен
   // случайно заменить фокус окна, с которым человек закончил предыдущую сессию.
   for (const context of contexts) context.win.once('show', () => {
-    if (!target.win.isDestroyed() && target.win.isVisible()) target.win.focus();
+    // show() и focusActiveView() завершают свою активацию после события show.
+    // Возвращаем фокус после них, иначе поздно показанный пустой хаб забирает его.
+    setImmediate(() => {
+      if (!target.win.isDestroyed() && target.win.isVisible()) target.win.focus();
+    });
   });
 }
 

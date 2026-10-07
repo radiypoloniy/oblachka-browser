@@ -571,6 +571,8 @@ export class TabManager {
       url,
       title: this.#tabTitle(tab),
       faviconData: this.#tabFaviconData(tab),
+      // После перезапуска страница должна попасть в ту же партицию с её логинами.
+      profileId: tab.profileId && tab.profileId !== DEFAULT_PROFILE_ID ? tab.profileId : undefined,
       // Короткоживущие вкладки (OAuth-попапы, см. wirePageEvents/setWindowOpenHandler) в сейв не
       // идут — при рестарте нет смысла «воскрешать» страницу логина. Инкогнито — тем более.
       savable: !tab.ephemeral && !tab.incognito && /^https?:\/\//i.test(url),
