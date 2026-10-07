@@ -18,7 +18,6 @@ import { AppsMode, wallpaperBackground } from './components/aiApps';
 import { installOverlayReveal } from './overlayReveal';
 import { PanelShell, PanelCloseButton } from './aipanel/parts/PanelShell';
 import { useEscapeClose, useWallpaper } from './aipanel/usePanelShell';
-import { AppsPanel } from './aipanel/AppsPanel';
 import { useAiChat } from './aipanel/useAiChat';
 import { ActionsRow } from './aipanel/parts/ActionsRow'
 import { MessageList } from './aipanel/parts/MessageList'
@@ -80,7 +79,7 @@ function AiPanel() {
     setMode('apps')
     setRequestedApp(appId)
   }), [])
-  // Обои острова и закрытие по Escape — общее с панелью лёгкого окна (см. usePanelShell.ts).
+  // Обои острова и закрытие по Escape (см. usePanelShell.ts).
   const { wallpaper, selectWallpaper } = useWallpaper()
   useEscapeClose()
 
@@ -435,18 +434,8 @@ function ModeButton({ active, onClick, icon, label, refCb }: {
 
 installOverlayReveal();
 
-/**
- * Какая панель тут живёт, решает MAIN, а не renderer: документ лёгкого окна грузится с ?kind=apps
- * (см. AiPanelManager.ensurePanelView).
- *
- * ⚠️ Ветка стоит НАД деревом, а не внутри AiPanel: в лёгком окне чат не должен монтироваться
- * вовсе. Иначе он всё равно подписался бы на свои каналы и грел бы модель по фокусу в поле
- * ввода — ради интерфейса, которого там не видно.
- */
-const APPS_ONLY = new URLSearchParams(window.location.search).get('kind') === 'apps';
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <StandaloneLanguageProvider>{APPS_ONLY ? <AppsPanel /> : <AiPanel />}</StandaloneLanguageProvider>
+    <StandaloneLanguageProvider><AiPanel /></StandaloneLanguageProvider>
   </React.StrictMode>,
 );

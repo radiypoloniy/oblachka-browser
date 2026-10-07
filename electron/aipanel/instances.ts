@@ -7,10 +7,8 @@
 // ⚠️ Панель БЫЛА синглтоном на приложение: panelView/attachedWin/isOpen жили модульными
 // переменными, и держалось это ровно до второго окна. Одну WebContentsView нельзя показать в
 // двух окнах — она ребёнок конкретного contentView, поэтому открытие панели во втором окне
-// уводило её из первого, а первое об этом не узнавало: о закрытии сообщалось слою хрома
-// ГЛАВНОГО окна, и резерв ширины под панель оставался висеть в окне, где панели уже нет.
-// Путь туда существовал и без кнопки: плитка приложения на рабочем столе зовёт openPanelApp для
-// СВОЕГО окна (electron/ipc/system.ts), а лёгкое окно рабочий стол показывает.
+// уводило её из первого, а первое об этом не узнавало, и резерв ширины под панель оставался
+// висеть в окне, где панели уже нет.
 //
 // Реестр устроен ровно как у поповеров (ClipboardPopoverManager, FindBarManager): Map по win.id,
 // состояние заводится по требованию, вью закрывается вместе с окном.
@@ -19,19 +17,11 @@ import { closeWindowView } from '../viewTeardown'
 import { contextForWindow } from '../WindowRegistry'
 import type { TabManager } from '../TabManager'
 
-/**
- * Вид панели у окна.
- *
- * ⚠️ Решает РОЛЬ ОКНА, а не человек: 'full' — панель с чатом и приложениями, 'apps' — только
- * домашний экран приложений. В лёгком окне беседы быть не может по устройству: она привязана к
- * вкладкам главного окна (см. AiPanelManager.onTabsSynced), а извлечение страницы и модель
- * обслуживают его же. Приложения при этом ни от чего этого не зависят — они и едут.
- */
-export type PanelKind = 'full' | 'apps'
-
+// Панель у каждого окна одинаковая: чат и приложения. Прежний вид 'apps' (только приложения)
+// жил ради «лёгкого окна» и ушёл вместе с ним — беседы теперь принадлежат вкладкам любого окна
+// (см. aipanel/chatOwnership.ts).
 export interface PanelInstance {
   win: BrowserWindow
-  kind: PanelKind
   /** null — вью ещё не создана: панель ни разу не открывали и прогрев до неё не доехал. */
   view: WebContentsView | null
   /** Показана в окне прямо сейчас (то есть добавлена в contentView). */
@@ -48,7 +38,6 @@ export function panelFor(win: BrowserWindow): PanelInstance {
   if (existing) return existing
   const created: PanelInstance = {
     win,
-    kind: 'full',
     view: null, open: false, resizeBound: false,
   }
   panels.set(win.id, created)
@@ -119,13 +108,6 @@ export function tabsOf(win: BrowserWindow): TabManager | null {
   return contextForWindow(win)?.tabs ?? null
 }
 
-/**
- * Панель, которой принадлежит БЕСЕДА.
- *
- * ⚠️ Чат один на приложение и собран из снапшота вкладок ГЛАВНОГО окна (см.
- * AiPanelManager.onTabsSynced): показывать эту беседу в панели другого окна значило бы
- * рассказывать про чужие вкладки.
- */
 /** Ответ можно отправить только живой зарегистрированной панели. */
 export function panelAlive(wc: WebContents): boolean {
   return !wc.isDestroyed() && panelBySender(wc) !== null

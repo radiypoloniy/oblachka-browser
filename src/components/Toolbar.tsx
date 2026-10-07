@@ -87,9 +87,6 @@ interface ToolbarProps {
   aiPanelOpen: boolean;       // панель открыта — кнопка подсвечена акцентом
   pageTranslateState: PageTranslateState; // см. PageTranslateManager.ts
   pageTranslateProgress: PageTranslateProgress | null; // батч N/M + живой счётчик символов, только пока translating
-  // Роль окна: в лёгком окне AI-панели и перевода страниц нет — обе службы живут в приложении
-  // в одном экземпляре и принадлежат полному окну (см. WindowRegistry.ts). Показывать кнопку,
-  // которая полезет в чужие вкладки, хуже, чем не показывать её вовсе.
 }
 
 // ── Компонент ─────────────────────────────────────────────────────────────────

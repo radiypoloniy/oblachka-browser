@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { loadWallpaper, saveWallpaper } from '../components/aiApps'
 import { subscribeMeshes } from '../newtab/gradients'
 
-// То, что одинаково у обеих панелей — полной (чат + приложения) и облегчённой (только
-// приложения, лёгкое окно): обои острова и закрытие по Escape.
+// Оболочка панели: обои острова и закрытие по Escape.
 
 /**
  * Обои экрана приложений: выбор, сохранение и перерисовка на всё, что меняет картинку.

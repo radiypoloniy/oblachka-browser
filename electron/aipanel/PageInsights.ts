@@ -58,7 +58,7 @@ function route() {
 }
 async function inspect(w: Watcher, explicit = false): Promise<void> {
   const panel = panelBySender(w.sender), config = insightsConfig();
-  if (!panel?.open || panel.kind !== 'full' || panel.win.isMinimized() || !panel.win.isVisible()) { stop(w); return; }
+  if (!panel?.open || panel.win.isMinimized() || !panel.win.isVisible()) { stop(w); return; }
   if (!config.enabled) { stop(w); phase(w, 'off', 'Автоподсказки выключены'); return; }
   const tm = tabsOf(panel.win), tab = tm?.snapshot().find(t => t.isActive);
   const wc = tab ? tm?.getActiveWebContents(tab.id) : null;
