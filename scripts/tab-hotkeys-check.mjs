@@ -43,7 +43,7 @@ const host = {
 };
 for (const name of [
   'openTaskManager', 'reload', 'toggleDevTools', 'goBack', 'goForward', 'openHub',
-  'reopenLastClosed', 'openNewWindow', 'newIncognitoTab', 'returnActiveTab',
+  'reopenLastClosed', 'openNewWindow', 'quitApp', 'newIncognitoTab', 'returnActiveTab',
   'closeActiveTab', 'selectNext', 'selectPrev', 'zoomIn', 'zoomOut', 'resetZoom',
   'openFind', 'quickSearch', 'openHistory', 'bookmarkPage', 'reloadHard',
   'focusOmnibox', 'captureScreenshot', 'saveScreenshot', 'openBookmarks', 'toggleClipboard',
@@ -90,6 +90,8 @@ check('старый владелец вкладки не реагирует по
 
 const chrome = new FakeWebContents();
 wireTabHotkeys(chrome, 'chrome', host);
+check('Ctrl+Shift+Q в chrome выходит из приложения со всеми окнами',
+  [chrome.key('KeyQ', { control: true, shift: true }), calls.splice(0)], [true, ['quitApp']]);
 check('Ctrl+Shift+T в chrome вызывает общее восстановление',
   [chrome.key('KeyT', { control: true, shift: true }), calls.splice(0)], [true, ['reopenLastClosed']]);
 check('chrome обрабатывает спорные клавиши сам',

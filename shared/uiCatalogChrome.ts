@@ -61,6 +61,7 @@ export const CHROME: Record<string, string> = {
   'Новая вкладка инкогнито': 'New private tab',
   'Открыть закрытую вкладку': 'Reopen closed tab',
   'Восстановить вкладку или окно': 'Reopen tab or window',
+  'Выйти из Oblako': 'Quit Oblako',
   'Без цвета': 'No color',
   'Красный': 'Red',
   'Оранжевый': 'Orange',

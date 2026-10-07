@@ -2953,6 +2953,7 @@ export class TabManager {
         else this.reopenLastClosedTab();
       },
       openNewWindow: () => this.onNewWindowCb?.(),
+      quitApp: () => app.quit(),
       newIncognitoTab: () => { this.createTab(undefined, false, false, true); },
       returnActiveTab: () => this.onReturnTabCb?.(this.activeId),
       closeActiveTab: () => this.closeTab(this.activeId),

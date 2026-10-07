@@ -1,4 +1,4 @@
-import { trimClosedWindows } from '../shared/appSession';
+import { hasSavedTabs, trimClosedWindows } from '../shared/appSession';
 import type { AppSessionSnapshot, SavedClosedWindow, SavedWindow } from '../shared/session';
 import { closedAtNow } from './closedAt';
 
@@ -63,7 +63,9 @@ export class AppSessionCoordinator {
 
   beginQuit(): void {
     // Последнее closed само вызывает app.quit: не заменяем захваченный набор пустым.
-    if (this.#readers.size > 0) this.#quitCapture = this.#snapshot();
+    // Повторный вызов (session-end каждого окна, второй before-quit) тоже не переснимает:
+    // часть окон к нему уже закрыта, и новый снимок оказался бы меньше настоящего набора.
+    if (this.#readers.size > 0 && !this.#quitCapture) this.#quitCapture = this.#snapshot();
     this.saveNow();
   }
 
@@ -82,7 +84,9 @@ export class AppSessionCoordinator {
     this.#cached.delete(id);
     if (w && remember) {
       this.#closed = trimClosedWindows([{ ...w, closedAt: closedAtNow() }, ...this.#closed.filter(old => old.id !== id)]);
-      this.#lastWindows = [w];
+      // Пустое окно, закрытое последним, не вытесняет рабочее: иначе при запуске человек видит
+      // пустой хаб, а окно с вкладками лежит в подменю «Закрытые окна».
+      if (hasSavedTabs(w.snapshot) || !this.#lastWindows.some(last => hasSavedTabs(last.snapshot))) this.#lastWindows = [w];
     }
     this.saveNow();
   }

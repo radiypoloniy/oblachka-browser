@@ -17,6 +17,7 @@ export interface TabHotkeyHost {
   openHub(): void;
   reopenLastClosed(): void;
   openNewWindow(): void;
+  quitApp(): void;
   newIncognitoTab(): void;
   returnActiveTab(): void;
   closeActiveTab(): void;
@@ -85,6 +86,11 @@ export function wireTabHotkeys(wc: WebContents, source: 'chrome' | 'tab', host: 
       event.preventDefault(); host.openNewWindow();
     } else if (code === 'KeyN' && shift) {
       event.preventDefault(); host.newIncognitoTab();
+    } else if (code === 'KeyQ' && shift) {
+      // Выход из приложения целиком. ⚠️ Только этот путь (app.quit → before-quit) сохраняет
+      // ВСЕ открытые окна одним набором; закрытие крестиком по одному оставляет при запуске
+      // только последнее окно — как в Chrome и Firefox.
+      event.preventDefault(); host.quitApp();
     } else if (code === 'KeyM' && shift) {
       event.preventDefault(); host.returnActiveTab();
     } else if (code === 'KeyW' && !shift) {

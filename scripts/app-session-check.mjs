@@ -174,6 +174,30 @@ try {
     assert.deepEqual(windowsToRestore(writes.at(-1)).map(w => w.id), ['ordinary']);
     coordinator.close('private', false);
   });
+  check('завершение сеанса ОС по окнам сохраняет весь набор', () => {
+    const coordinator = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
+    const a = window('a'), b = window('b');
+    coordinator.register('a', () => a); coordinator.register('b', () => b); coordinator.enable();
+    // session-end приходит каждому окну, а окна закрываются между этими событиями.
+    coordinator.beginQuit(); coordinator.close('a', a);
+    coordinator.beginQuit(); coordinator.close('b', b);
+    assert.deepEqual(windowsToRestore(writes.at(-1)).map(w => w.id), ['a', 'b']);
+  });
+  check('пустое окно, закрытое последним, не вытесняет рабочее', () => {
+    const coordinator = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
+    const work = window('work');
+    const empty = { id: 'empty', snapshot: { pinnedTabs: [], nodes: [], activeRef: { type: 'hub' } } };
+    coordinator.register('work', () => work); coordinator.register('empty', () => empty); coordinator.enable();
+    coordinator.close('work', work); coordinator.close('empty', empty);
+    assert.deepEqual(windowsToRestore(writes.at(-1)).map(w => w.id), ['work']);
+    assert.deepEqual(writes.at(-1).closedWindows.map(w => w.id), ['empty']);
+  });
+  check('единственное пустое окно остаётся стартовым', () => {
+    const coordinator = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
+    const empty = { id: 'empty', snapshot: { pinnedTabs: [], nodes: [], activeRef: { type: 'hub' } } };
+    coordinator.register('empty', () => empty); coordinator.enable(); coordinator.close('empty', empty);
+    assert.deepEqual(windowsToRestore(writes.at(-1)).map(w => w.id), ['empty']);
+  });
   check('снова открытое окно не подменяется своим старым снимком', () => {
     const coordinator = new AppSessionCoordinator({ save: snap => { writes.push(structuredClone(snap)); return true; } }, null);
     const old = window('a');

@@ -23,7 +23,7 @@ import { suggestWindowGroups } from '../window/organize';
 import { suggestTabTitle } from '../TabRenamer';
 import { getLoadedModelId, isModelWarm, unloadModel } from '../TranslationService';
 import { broadcastToChrome, contextFromSender } from '../WindowRegistry';
-import { Menu, clipboard, ipcMain } from 'electron';
+import { Menu, app, clipboard, ipcMain } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import type { IpcDeps } from './deps';
 import { t as tr } from '../uiText';
@@ -269,6 +269,9 @@ export function registerMenusIpc(d: IpcDeps): void {
       // Закрытые вкладки принадлежат окну, история целых окон — приложению.
       { label: tr('Восстановить вкладку или окно'), accelerator: 'Ctrl+Shift+T', enabled: d.canReopenClosed(t), click: () => d.reopenLastClosed(t) },
       { label: tr('Закрытые окна'), enabled: closedWindows.length > 0, submenu: closedWindows },
+      { type: 'separator' },
+      // Единственный видимый вход в выход целиком: только он возвращает при запуске все окна.
+      { label: tr('Выйти из Oblako'), accelerator: 'Ctrl+Shift+Q', click: () => app.quit() },
     ]).popup({ window: w });
   });
 

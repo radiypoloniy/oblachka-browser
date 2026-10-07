@@ -62,6 +62,12 @@ export function registerWindowSession(coordinator: AppSessionCoordinator, id: st
     });
   });
   win.on('closed', () => coordinator.close(id, captured, !technicalClosures.has(win)));
+  // Завершение сеанса Windows закрывает окна по одному и не присылает before-quit: без этого
+  // каждое закрытие вычеркнуло бы своё окно, и вернулось бы только последнее. Сначала просто
+  // пишем свежий снимок (сеанс ещё могут отменить), а необратимый конец фиксируем как выход.
+  // На других ОС эти события не приходят вовсе.
+  win.on('query-session-end', () => { coordinator.saveNow(); });
+  win.on('session-end', () => coordinator.beginQuit());
   win.on('focus', () => coordinator.focus(id));
   win.on('move', () => coordinator.scheduleSave());
   win.on('resize', () => coordinator.scheduleSave());
