@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { KeyRound, ChevronRight, Sparkles } from 'lucide-react';
 import type { PasswordIndicatorState } from '../../shared/ipc';
 import {
-  PopoverCard, PopoverIcon, PopoverTitle, PopoverHint, PopoverRow,
+  PopoverCard, PopoverHeader, PopoverField, PopoverHint, PopoverRow,
   PopoverActions, PrimaryButton, QuietButton, SiteIcon, hostLabel,
 } from './popoverKit';
 
@@ -51,58 +51,43 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
     }
   }
 
+  // ⚠️ Вопрос «сохранить/обновить» — одна и та же карточка с разной кнопкой. Раньше это были два
+  // почти одинаковых блока по сорок строк, и правка в одном (поле логина) в другой не доезжала.
+  const offer = state.kind === 'offer-save' || state.kind === 'offer-update' ? state.kind : null;
+  const commit = () => void act(() => (offer === 'offer-update'
+    ? api.updatePendingPassword(username)
+    : api.savePendingPassword(username)));
+
   return (
     <PopoverCard>
-      {state.kind === 'offer-save' && (
+      {offer && (
         <>
-          <PopoverIcon><KeyRound size={18} /></PopoverIcon>
-          <PopoverTitle>Сохранить пароль?</PopoverTitle>
-          <PopoverHint>{hostLabel(state.origin)} — вход будет подставляться сам при следующем визите.</PopoverHint>
-          <PopoverRow icon={<SiteIcon host={state.origin} />} title={username || 'Без логина'} />
-          <input
-            aria-label="Логин"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+          {/* ⚠️ Три кнопки «Сохранить / Не сейчас / Никогда» в 280 px не помещались (по-русски
+              ряд шире карточки на 15 px и обрезался краем вью). «Не сейчас» теперь — крестик в
+              шапке: карточка закрывается, а вопрос остаётся под ключом в тулбаре, как у Chrome.
+              Отказ навсегда — отдельной тихой кнопкой, рядом с основной. */}
+          <PopoverHeader
+            icon={<KeyRound size={18} />}
+            title={offer === 'offer-update' ? 'Обновить пароль?' : 'Сохранить пароль?'}
+            subtitle={hostLabel(state.origin)}
+            onClose={onClose}
+          />
+          {offer === 'offer-update' && (
+            <PopoverHint>Сохранённый пароль для этого логина заменится новым.</PopoverHint>
+          )}
+          <PopoverField
+            label="Логин"
             placeholder="Логин или e-mail"
-            style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', color: 'var(--text-body)', padding: '8px 10px', font: 'inherit' }}
+            value={username}
+            onChange={setUsername}
+            onEnter={busy ? undefined : commit}
+            leading={<SiteIcon host={state.origin} />}
+            disabled={busy}
           />
           <PopoverActions>
-            <PrimaryButton onClick={() => void act(() => api.savePendingPassword(username))} disabled={busy}>
-              Сохранить
+            <PrimaryButton onClick={commit} disabled={busy}>
+              {offer === 'offer-update' ? 'Заменить' : 'Сохранить'}
             </PrimaryButton>
-            <QuietButton
-              onClick={() => void act(async () => { await api.dismissPendingPassword(); return true; })}
-              disabled={busy}
-            >Не сейчас</QuietButton>
-            <QuietButton
-              onClick={() => void act(async () => { await api.dismissPendingPassword(true); return true; })}
-              disabled={busy}
-            >Никогда</QuietButton>
-          </PopoverActions>
-        </>
-      )}
-
-      {state.kind === 'offer-update' && (
-        <>
-          <PopoverIcon><KeyRound size={18} /></PopoverIcon>
-          <PopoverTitle>Обновить пароль?</PopoverTitle>
-          <PopoverHint>Для {hostLabel(state.origin)} сохранён другой пароль.</PopoverHint>
-          <PopoverRow icon={<SiteIcon host={state.origin} />} title={username || 'Без логина'} />
-          <input
-            aria-label="Логин"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Логин или e-mail"
-            style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', color: 'var(--text-body)', padding: '8px 10px', font: 'inherit' }}
-          />
-          <PopoverActions>
-            <PrimaryButton onClick={() => void act(() => api.updatePendingPassword(username))} disabled={busy}>
-              Обновить
-            </PrimaryButton>
-            <QuietButton
-              onClick={() => void act(async () => { await api.dismissPendingPassword(); return true; })}
-              disabled={busy}
-            >Не сейчас</QuietButton>
             <QuietButton
               onClick={() => void act(async () => { await api.dismissPendingPassword(true); return true; })}
               disabled={busy}
@@ -119,23 +104,28 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
           {/* ⚠️ Знак и подпись сайта тут не украшение: карточка всплывает над полем на ЧУЖОЙ
               странице, и человек обязан видеть, чьё это предложение и для какого сайта — иначе
               она неотличима от подсказки самого сайта. */}
-          <PopoverIcon><KeyRound size={18} /></PopoverIcon>
-          <PopoverTitle>Войти как</PopoverTitle>
-          <PopoverHint>{hostLabel(state.origin)}</PopoverHint>
-          {state.matches.map((m, i) => (
-            <PopoverRow
-              key={m.id}
-              index={i}
-              icon={<SiteIcon host={state.origin} />}
-              title={m.username || 'Без логина'}
-              // ⚠️ Маска фиксированной длины, а не настоящая длина пароля: длина — это подсказка
-              // тому, кто заглянул через плечо, и ради неё расширять контракт незачем.
-              hint={`${m.path ? `${m.path}  ·  ` : ''}••••••••••`}
-              trailing={<ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />}
-              onClick={() => void fill(m.id)}
-              disabled={busy}
-            />
-          ))}
+          <PopoverHeader
+            icon={<KeyRound size={18} />}
+            title="Войти как"
+            subtitle={hostLabel(state.origin)}
+            onClose={onClose}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {state.matches.map((m, i) => (
+              <PopoverRow
+                key={m.id}
+                index={i}
+                icon={<SiteIcon host={state.origin} />}
+                title={m.username || 'Без логина'}
+                // ⚠️ Маска фиксированной длины, а не настоящая длина пароля: длина — это подсказка
+                // тому, кто заглянул через плечо, и ради неё расширять контракт незачем.
+                hint={`${m.path ? `${m.path}  ·  ` : ''}••••••••••`}
+                trailing={<ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />}
+                onClick={() => void fill(m.id)}
+                disabled={busy}
+              />
+            ))}
+          </div>
           {/* Смена пароля начинается ровно здесь: сохранённый вход для сайта есть, а нужен новый
               пароль — раньше за ним приходилось идти в настройки. */}
           {state.allowGenerate && (
@@ -152,12 +142,13 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
         <>
           {/* Свой знак, а не общий ключ: это единственная карточка, где браузер что-то СОЗДАЁТ,
               и по значку она должна отличаться от «войти» и «сохранить» с одного взгляда. */}
-          <PopoverIcon><Sparkles size={18} /></PopoverIcon>
-          <PopoverTitle>Придумать пароль?</PopoverTitle>
-          <PopoverHint>
-            Для {hostLabel(state.origin)} сохранённого входа нет — сгенерируем надёжный и сразу
-            сохраним, чтобы он не потерялся.
-          </PopoverHint>
+          <PopoverHeader
+            icon={<Sparkles size={18} />}
+            title="Придумать пароль?"
+            subtitle={hostLabel(state.origin)}
+            onClose={onClose}
+          />
+          <PopoverHint>Сгенерируем надёжный пароль и сразу сохраним, чтобы он не потерялся.</PopoverHint>
           <PopoverActions>
             <PrimaryButton onClick={() => void act(() => api.generatePendingPassword())} disabled={busy}>
               Сгенерировать

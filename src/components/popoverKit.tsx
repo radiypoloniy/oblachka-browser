@@ -1,5 +1,7 @@
 import type React from 'react';
-import { RADIUS, TEXT, sp, pad, motion } from '../styles/system';
+import { useState } from 'react';
+import { X } from 'lucide-react';
+import { RADIUS, TEXT, ICON, sp, pad, motion } from '../styles/system';
 import { overlayPlate } from '../styles/island';
 import { useLanguage, tx } from '../i18n';
 
@@ -108,6 +110,126 @@ export function PopoverIcon({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Шапка карточки: значок в плашке, заголовок, подпись и крестик — одной строкой.
+ *
+ * ⚠️ Одной строкой, а не столбиком «значок → заголовок → пояснение». Столбик в 280 px съедал
+ * половину высоты карточки ещё до первого поля: значок стоял отдельным этажом над заголовком,
+ * и вопрос «сохранить пароль?» превращался в простыню. Подпись — чей это вопрос (сайт), а не
+ * пересказ заголовка.
+ *
+ * ⚠️ Крестик — «решить позже», а не «отказаться»: карточка закрывается, ответ остаётся
+ * доступен под своим значком в тулбаре. Отказ — отдельная кнопка внутри карточки.
+ */
+export function PopoverHeader({ icon, title, subtitle, onClose }: {
+  icon: React.ReactNode;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  onClose?: () => void;
+}) { const { t } = useLanguage();
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), minWidth: 0 }}>
+      <PopoverIcon>{icon}</PopoverIcon>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ ...TEXT.section, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx(t, title)}</div>
+        {subtitle !== undefined && (
+          <div style={{ ...TEXT.caption, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx(t, subtitle)}</div>
+        )}
+      </div>
+      {onClose && <PopoverClose onClick={onClose} />}
+    </div>
+  );
+}
+
+/** Крестик карточки. Тихий: значок без плашки, плашка — только под курсором. */
+export function PopoverClose({ onClick, label = 'Закрыть' }: { onClick: () => void; label?: string }) {
+  const { t } = useLanguage();
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={t(label)}
+      aria-label={t(label)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        width: 26, height: 26, flex: 'none', alignSelf: 'flex-start', padding: 0,
+        display: 'grid', placeItems: 'center', border: 'none', cursor: 'default',
+        borderRadius: RADIUS.control,
+        background: hover ? 'var(--surface-hover)' : 'transparent',
+        color: hover ? 'var(--text-body)' : 'var(--text-faint)',
+        transition: motion.hover('background', 'color'),
+      }}
+    >
+      <X size={ICON.sm} strokeWidth={2} />
+    </button>
+  );
+}
+
+/**
+ * Поле ввода карточки — утопленный колодец со значком слева.
+ *
+ * ⚠️ Колодцем (--surface-sunken), а не белым прямоугольником с рамкой: рамка добавляет карточке
+ * третью линию (кромка плиты, разделители), а светлое поле на светлой плите читается дырой.
+ * Тот же материал, что у омнибокса и дорожки сегмента. Фокус — кольцо акцента, как у остальных
+ * полей интерфейса, а не собственная обводка.
+ *
+ * ⚠️ Поле ЗАМЕНЯЕТ строку с тем же значением, а не стоит под ней: показывать логин дважды
+ * (строкой и полем) значило заставлять человека сверять две одинаковые надписи.
+ */
+export function PopoverField({ value, onChange, placeholder, label, leading, onEnter, disabled }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  /** Подпись для чтения с экрана: у поля нет видимой метки, его роль ясна из заголовка карточки. */
+  label: string;
+  leading?: React.ReactNode;
+  onEnter?: () => void;
+  disabled?: boolean;
+}) { const { t } = useLanguage();
+  const [focused, setFocused] = useState(false);
+  return (
+    <label style={{
+      display: 'flex', alignItems: 'center', gap: sp(2), minWidth: 0,
+      padding: pad(1, 2), minHeight: 38, boxSizing: 'border-box',
+      borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
+      border: `1px solid ${focused ? 'var(--accent)' : 'transparent'}`,
+      boxShadow: focused ? 'var(--ring-accent)' : 'none',
+      transition: motion.hover('border-color', 'box-shadow'),
+      opacity: disabled ? 0.5 : 1,
+    }}>
+      {leading !== undefined && (
+        <span style={{
+          width: 22, height: 22, flex: 'none', borderRadius: RADIUS.tight,
+          display: 'grid', placeItems: 'center', overflow: 'hidden', position: 'relative',
+          color: 'var(--text-muted)', fontSize: 'var(--fs-xs)', fontWeight: 600,
+        }}>
+          {leading}
+        </span>
+      )}
+      <input
+        aria-label={t(label)}
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder ? t(placeholder) : undefined}
+        spellCheck={false}
+        autoComplete="off"
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onKeyDown={onEnter ? (e) => { if (e.key === 'Enter') onEnter(); } : undefined}
+        style={{
+          flex: 1, minWidth: 0, padding: 0, border: 'none', outline: 'none',
+          background: 'transparent', color: 'var(--text-strong)',
+          font: 'inherit', fontSize: 'var(--fs-sm)', fontWeight: 500,
+          textOverflow: 'ellipsis',
+        }}
+      />
+    </label>
+  );
+}
+
 /** Заголовок карточки: роль section, без собственного кегля. */
 export function PopoverTitle({ children }: { children: React.ReactNode }) { const { t } = useLanguage();
   return <div style={{ ...TEXT.section }}>{tx(t, children)}</div>;
@@ -203,6 +325,9 @@ export function SiteIcon({ host }: { host: string }) {
   // всегда стояла «H» от «https». Заметить это глазами трудно: буква выглядит как буква.
   const clean = host.replace(/^[a-z]+:\/\//i, '').replace(/^www\./, '').replace(/[/:].*$/, '');
   const letter = (clean[0] ?? '?').toUpperCase();
+  // ⚠️ Буква — запаска на время загрузки и на сайт без значка, а не подложка: под прозрачным
+  // favicon (у GitHub, например) она просвечивала бы «G» сквозь картинку.
+  const [loaded, setLoaded] = useState(false);
   return (
     <>
       <img
@@ -210,13 +335,11 @@ export function SiteIcon({ host }: { host: string }) {
         alt=""
         width={18}
         height={18}
-        style={{ display: 'block', borderRadius: RADIUS.tight }}
-        onError={(e) => {
-          // Значка нет — прячем картинку, под ней остаётся буква.
-          (e.currentTarget as HTMLImageElement).style.display = 'none';
-        }}
+        style={{ display: loaded ? 'block' : 'none', borderRadius: RADIUS.tight }}
+        onLoad={() => setLoaded(true)}
+        onError={() => setLoaded(false)}
       />
-      <span style={{ position: 'absolute', fontSize: 'var(--fs-xs)', fontWeight: 600, zIndex: -1 }}>{letter}</span>
+      {!loaded && <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600 }}>{letter}</span>}
     </>
   );
 }

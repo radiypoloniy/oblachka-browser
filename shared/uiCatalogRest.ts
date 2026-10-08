@@ -355,4 +355,16 @@ export const REST: Record<string, string> = {
   'Добавить адрес': 'Add address',
   'Добавить карту': 'Add card',
   'Когда загружать модель': 'When to load the model',
+  // Поповер паролей (src/components/PasswordIndicatorPopover.tsx).
+  'Сохранить пароль?': 'Save password?',
+  'Обновить пароль?': 'Update password?',
+  'Войти как': 'Sign in as',
+  'Придумать пароль?': 'Suggest a password?',
+  'Сохранённый пароль для этого логина заменится новым.': 'The saved password for this username will be replaced.',
+  'Сгенерируем надёжный пароль и сразу сохраним, чтобы он не потерялся.': 'We’ll generate a strong password and save it right away so it isn’t lost.',
+  'Логин или e-mail': 'Username or email',
+  'Без логина': 'No username',
+  'Придумать новый': 'Suggest a new one',
+  'Сгенерировать': 'Generate',
+  'Заменить': 'Replace',
 };
