@@ -24,6 +24,7 @@ import type { ContentBounds, FindResult } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
 import { closeWindowView } from './viewTeardown'
+import { registerWindowContents } from './WindowRegistry'
 import { FINDBAR_MIN_HEIGHT, FINDBAR_WIDTH } from '../shared/overlayMetrics'
 
 const TOP_GAP = 8 // отступ от верха контентной зоны (под тулбаром — контентная зона и так под ним)
@@ -162,6 +163,11 @@ function ensureFindBarView(st: WindowFindBar): WebContentsView {
     },
   })
   st.view = view
+  // ⚠️ Без владельца поиск мёртв: FIND_START/NEXT/STOP/SMART разрешают окно через tabsOf →
+  // contextFromSender, а он знает только зарегистрированные вью интерфейса (с e2b26ea). Панель
+  // при этом рисуется — её открывает main, — но findInPage не вызывается ни разу. Тот же
+  // случай, что у поповера паролей в 0.9.1; стережёт scripts/overlay-owner-check.mjs.
+  registerWindowContents(st.win, view.webContents)
   // Обязателен на самой view (не только CSS background:transparent) — иначе виден непрозрачный
   // прямоугольник-подложка вокруг панели (тот же инвариант, что у поповера/AI-панели).
   view.setBackgroundColor('#00000000')
