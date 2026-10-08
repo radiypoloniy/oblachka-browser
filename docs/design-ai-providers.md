@@ -127,8 +127,9 @@ export interface ProviderCaps {
 
 - `scripts/ai-routing-check.mjs` — чистая логика ролей и фолбэков (обязателен по правилу CLAUDE.md
   для нового модуля в `shared/`, попадёт и в мутационный прогон);
-- `scripts/structured-check.mjs` — выбор стратегии по `caps` и разбор ответов-образцов (записанные
-  ответы, без сети);
+- `scripts/ai-providers-check.mjs` (выбор стратегии по `caps`) и `scripts/ai-schema-check.mjs`
+  (мост «наша схема ↔ провайдер», строгие режимы) — записанные ответы, без сети; задуманный
+  отдельный `structured-check.mjs` не заводился;
 - `contract-check --update` — новые каналы;
 - `npm run drive` целиком — критерий «ничего не изменилось»;
 - `npm run ai-bench` получает флаг `--provider`: ключ берётся из переменной окружения, не из

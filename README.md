@@ -64,7 +64,7 @@ Ad blocking on the Ghostery engine with list auto-update; VPN on Xray-core as a 
 
 Not a plan — a built product that launches. This is the state today.
 
-**Browser core.** Vertical tabs with drag-and-drop, groups, pinning, sleeping background tabs, split view, multi-window with a live tab moving to another window (the page keeps back-history, scroll and form text), session autosave, incognito on an isolated in-memory session, fullscreen video and picture-in-picture, a tab snapshot via Ctrl+Shift+S, find in page, error pages that explain Chromium codes in human language.
+**Browser core.** Vertical tabs with drag-and-drop, groups, pinning, sleeping background tabs, split view, equal browser windows (each with its own Hub, AI panel, graph and tools) with a live tab moving between them (the page keeps back-history, scroll and form text), autosave and restore of every window, Ctrl+Shift+T bringing back the last closed tab or a whole window, incognito on an isolated in-memory session, fullscreen video and picture-in-picture, a tab snapshot via Ctrl+Shift+S, find in page, error pages that explain Chromium codes in human language.
 
 **Privacy and protection.** Ghostery ad blocking with background list updates; VPN on Xray-core (vless/trojan subscription import, config generation, kill switch, a Shield popover with servers and country flags); a password manager with clickless autofill and a built-in generator; address and bank-card autofill (card number under Windows Hello, CVC never stored); site permissions with three states (allow / deny / forget — so a mistaken “no” can be undone).
 
@@ -72,7 +72,9 @@ Not a plan — a built product that launches. This is the state today.
 
 **Local AI that earns its place.** Eight functions, each picked by a hard bar (short input, short output, a checkable answer shape, one step, a cheap visible miss, personal data): editing your own text in an input while keeping Ctrl+Z, finding a tab by meaning, recognising form fields from labels, “What I did today” from your history, “you have already read this”, meaning Ctrl+F, AI tab grouping, turning a phrase into an automation rule.
 
-**Larger AI surfaces.** A notebook in the NotebookLM vein: several independent notebooks, sources as links and local files (pdf, docx, txt, md, csv), chat grounded on those sources, and Studio — recap, mind map, infographic, an interactive quiz, and an article-page in three styles you can open as a tab or save as one `.html`. Plus a graph workspace: a canvas where the person draws the plan as links, and the model does one narrow step per node. A small local model cannot plan on a long horizon — so the person draws the plan. That is an architectural decision, not a shortcut.
+**Larger AI surfaces.** A notebook in the NotebookLM vein: several independent notebooks, sources as links and local files (pdf, docx, txt, md, csv), chat grounded on those sources, and Studio — recap, mind map, infographic, an interactive quiz, and an article-page in three styles you can open as a tab or save as one `.html`. Plus a graph workspace: a canvas where the person draws the plan as links, and the model does one narrow step per node. A small local model cannot plan on a long horizon — so the person draws the plan. That is an architectural decision, not a shortcut. Product comparison across 2–5 open shop tabs, price tracking for saved products, and history search by meaning with site and period filters.
+
+**The browser as a tool for your AI client.** A built-in MCP server lets Claude Desktop, Cursor or Claude Code read tabs and history with the consent given at connection time; every change is confirmed by a card in the browser itself, not in the asking program. No clicking or form filling on pages — the same “propose, don’t act” rule.
 
 **Ordinary browser life.** A new-tab desktop with widgets (weather, FX, crypto, clock, day recap, language cards) and a free tile layout, a dark theme and four neutral palettes, page translation on Bergamot (CPU, no GPU) with a fallback to Qwen, omnibox bangs, set as default browser, auto-update through `electron-updater`. The UI ships in English for new profiles, with Russian kept for existing ones.
 
@@ -152,7 +154,8 @@ In descending order:
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to build, what must stay green, and how the project’s checks work.
 - [SECURITY.md](SECURITY.md) — where to report a vulnerability and what counts as one.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — build, commands, page translation, limits.
-- [CLAUDE.md](CLAUDE.md) — module map, working rules, and recorded reasons for architecture.
+- [CLAUDE.md](CLAUDE.md) — working rules, checks, and the map of the architecture docs.
+- [docs/](docs/README.md) — architecture by area (`docs/architecture-*.md`), release notes (`docs/releases/`).
 
 Most of those files are still in Russian. The UI for new profiles is English.
 
