@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { parseContextFile, appendContextFiles } from '../shared/aiContextImport.ts';
+const portable = parseContextFile('\uFEFF' + JSON.stringify({ id: 'foreign', title: 'Example', text: 'Role', materials: 'Reference', connectionId: 'foreign-key' }));
+assert.deepEqual(portable, { title: 'Example', text: 'Role', materials: 'Reference' });
+assert.throws(() => parseContextFile('{broken'));
+assert.throws(() => parseContextFile('{"text":""}'));
+assert.throws(() => parseContextFile(JSON.stringify({ text: 'x'.repeat(12001) })));
+assert.throws(() => parseContextFile('{"text":"Role","materials":{}}'));
+assert.throws(() => appendContextFiles('', [{ name: 'binary.txt', text: '\u0000' }]));
+assert.equal(appendContextFiles('Old', [{ name: 'reference.md', text: 'New' }]), 'Old\n\n--- reference.md ---\nNew');
+console.log('Итого: 7 прошло, 0 не прошло');

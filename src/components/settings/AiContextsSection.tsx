@@ -10,6 +10,7 @@ import {
 } from './kit';
 import { CAPS, sp } from '../../styles/system';
 import { PresetModelField } from './PresetModelField';
+import { ContextFileFields } from './ContextFileFields';
 
 // ── Секция «Наборы контекста» — редактор того, что AI-панель держит вместо страницы
 // (shared/aiContexts.ts, electron/AiContextStore.ts). Карточки — тот же SpotCard, что у скиллов:
@@ -140,6 +141,8 @@ function PresetForm({ preset, onDone }: { preset: AiContextPreset | null; onDone
         maxLength={PRESET_TITLE_MAX} onChange={setTitle}
       />
       <PresetModelField value={connectionId} onChange={setConnectionId} />
+      <ContextFileFields materials={materials} length={length} onMaterials={setMaterials}
+        onImport={value => { setTitle(value.title); setText(value.text); setMaterials(value.materials ?? ''); }} />
       <label>
         <InlineHint>Инструкции</InlineHint>
         <TextArea value={text} rows={6} onChange={setText}
