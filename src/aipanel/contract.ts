@@ -8,6 +8,7 @@ import type { AiActivityState } from '../../shared/ipc'
 import type { InsightsApi, InsightsState } from '../../shared/pageInsights'
 import type { AiFileMeta } from '../../shared/aiAttachments'
 import type { AiContextsState, ChatSource } from '../../shared/aiContexts'
+import type { AiInputMeta, InputResult } from '../../shared/aiChatInputs'
 import type { CurrencyRatesResult, WeatherResult } from '../components/aiApps';
 
 // Код причины отказа (см. electron/TranslationService.ts::ModelError, shared/ipc.ts::ModelErrorCode)
@@ -24,6 +25,7 @@ export type ChatOutcome =
   | { ok: false; error: string; errorCode?: ModelErrorCode }
 
 export interface ChatMessage {
+  inputs?: AiInputMeta[]
   role: 'user' | 'assistant'
   text: string
   /** Только у ответа. ⚠️ Хранится У СООБЩЕНИЯ, а не одним значением на панель: в одной беседе
@@ -47,6 +49,7 @@ export interface SkillItem {
 
 // Форма пуша ai-panel:context из AiPanelManager.ts::sendCurrentContext.
 export interface TabContext {
+  inputEpoch?: string
   /** id вкладки — или 'free:…' у отвязанной беседы (shared/aiContexts.ts::freeChatId). */
   tabId: string
   /** Откуда беседа берёт контекст. Нет поля — старый main: значит, страница. */
@@ -67,6 +70,10 @@ import type { CompareApi } from '../../shared/tabCompare';
 declare global {
   interface Window {
     aiPanel: InsightsApi & CompareApi & {
+      pickInputs: (tabId: string) => Promise<InputResult>
+      pasteInput: (tabId: string) => Promise<InputResult>
+      removeInput: (tabId: string, id: string) => Promise<void>
+      inputPreview: (tabId: string, id: string) => Promise<string | null>
       watchPageInsights: (visible: boolean) => void
       runPageInsights: () => void
       showInsightSource: (index: number) => void
@@ -87,7 +94,7 @@ declare global {
       // Иконка приложения на рабочем столе новой вкладки открывает панель сразу на нём.
       onOpenApp: (cb: (appId: string) => void) => () => void
       // webGrounding — тоггл-глобус: true → main отвечает через SearXNG-ветку (см. AiPanelManager.ts).
-      sendChat: (text: string, webGrounding: boolean, tabId: string) => void
+      sendChat: (text: string, webGrounding: boolean, tabId: string, inputIds?: string[]) => void
       quickTranslate: (tabId: string) => void
       // Очистить беседу текущей вкладки — main ответит обычным onContext с пустой лентой.
       clearChat: () => void

@@ -28,6 +28,7 @@ export function useAiChat() {
   // Копится по мере генерации (тот же токен-стриминг, что у поповера/AI-действий) — показывается
   // как «печатающееся» сообщение ассистента, пока не придёт финальный result.
   const [streamedText, setStreamedText] = useState('')
+  const [inputEpoch, setInputEpoch] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [errorCode, setErrorCode] = useState<ModelErrorCode | null>(null)
@@ -62,6 +63,7 @@ export function useAiChat() {
       setPageUrl(ctx.url)
       setPageFavicon(ctx.favicon ?? null)
       setMessages(ctx.messages)
+      setInputEpoch(ctx.inputEpoch ?? '')
       setStreamedText('')
       setSending(!!ctx.sending)
       setFactChecking(!!ctx.factChecking)
@@ -107,14 +109,14 @@ export function useAiChat() {
 
   // Общая точка отправки — и текстовое поле, и кнопки-подсказки шлют через неё «как будто
   // пользователь сам написал»: один и тот же путь (оптимистичное сообщение в ленте → sendChat).
-  const sendText = (text: string, webGrounding: boolean) => {
-    if (!text || sending || !tabId) return
-    setMessages((prev) => [...prev, { role: 'user', text }])
+  const sendText = (text: string, webGrounding: boolean, inputs: import('../../shared/aiChatInputs').AiInputMeta[] = []) => {
+    if ((!text && !inputs.length) || sending || !tabId) return
+    setMessages((prev) => [...prev, { role: 'user', text, inputs }])
     setStreamedText('')
     setError(null)
     setSending(true)
     setWebSearching(webGrounding)
-    window.aiPanel.sendChat(text, webGrounding, tabId)
+    window.aiPanel.sendChat(text, webGrounding, tabId, inputs.map(file => file.id))
   }
 
   // «Перевести» — не sendText: промпт (с определённым src/tgt) собирается в main, после извлечения
@@ -143,7 +145,7 @@ export function useAiChat() {
 
   return {
     tabId, pageTitle, pageUrl, pageFavicon, modelState, source,
-    messages, streamedText, sending, error, errorCode,
+    messages, streamedText, sending, error, errorCode, inputEpoch,
     skills, factCheckAvailable, factChecking, searxngConfigured, webSearching,
     sendText, sendQuickTranslate, sendFactCheck,
   }

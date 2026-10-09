@@ -8,6 +8,7 @@ import type { ChatMessage } from '../contract';
 import type { ChatSource } from '../../../shared/aiContexts';
 import type { ModelErrorCode } from '../../../shared/ipc';
 import { describeChatError } from './describeChatError';
+import { InputPreviews } from './InputPreviews';
 /**
  * Лента сообщений: своё, ответ модели, стрим по ходу генерации и состояния занятости.
  *
@@ -15,9 +16,10 @@ import { describeChatError } from './describeChatError';
  * поле ввода за обрез панели.
  */
 export function MessageList({
-  listRef, messages, streamedText, sending, factChecking, webSearching, error, errorCode, modelState, insights, source,
+  listRef, messages, streamedText, sending, factChecking, webSearching, error, errorCode, modelState, insights, source, tabId,
 }: {
   source: ChatSource;
+  tabId: string;
   listRef: React.RefObject<HTMLDivElement>;
   insights?: React.ReactNode;
   messages: ChatMessage[];
@@ -89,7 +91,7 @@ export function MessageList({
             fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)',
             whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           }}>
-            {m.text}
+            {m.inputs && <InputPreviews files={m.inputs} tabId={tabId} />}{m.text}
           </span>
         )}
       </div>

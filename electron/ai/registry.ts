@@ -17,6 +17,7 @@ import { createOpenAiCompatibleProvider } from './providers/openaiCompatible';
 import { createAnthropicProvider } from './providers/anthropic';
 import { createGeminiProvider } from './providers/gemini';
 import type { Provider } from './Provider';
+import { ProviderError } from './Provider';
 export type { JsonSchema } from '../../shared/aiSchema';
 export type { AiRole } from '../../shared/aiRouting';
 export type { ChatVia, Provider } from './Provider';
@@ -166,10 +167,22 @@ function limited(inner: Provider, max: number): Provider {
  * то есть разница появляется ровно тогда, когда человек что-то подключил.
  */
 export function modelFor(
-  role: AiRole, ensureLoaded: LocalDeps['ensureLoaded'], modelId: LocalDeps['modelId'],
+  role: AiRole, ensureLoaded: LocalDeps['ensureLoaded'], modelId: LocalDeps['modelId'], connectionId?: string,
 ): Provider {
   if (localDeps === null) init({ ensureLoaded, modelId });
+  if (connectionId) return pinnedProvider(connectionId);
   return providerFor(role).provider;
+}
+
+/** Явный выбор набора нельзя подменять другой моделью после удаления подключения или ключа. */
+export function pinnedProvider(id: string): Provider {
+  if (id === LOCAL_CONNECTION_ID) return local();
+  const conn = connections.find(c => c.id === id);
+  if (!conn) throw new ProviderError('provider', 'Модель набора недоступна. Выберите подключение в настройках набора.');
+  if (!capsFor(conn).local && !KeyStore.hasKey(id)) {
+    throw new ProviderError('no-key', `Для модели набора «${conn.label}» не задан ключ`);
+  }
+  return providerById(id);
 }
 
 /** Для диагностики и для шапки настроек: что заведено и у чего есть ключ. */

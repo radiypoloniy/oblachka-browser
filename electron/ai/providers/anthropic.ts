@@ -20,12 +20,14 @@ import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, ty
 import { arr, httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
 import type { UsageDelta } from '../../../shared/aiUsage';
 import * as UsageStore from '../UsageStore';
+import { chatTurns } from '../../../shared/aiChatInputs';
+import { inputContent, userTurn } from '../chatInputs';
 
 /** Версия API в заголовке. Anthropic требует её явно и не имеет «последней» по умолчанию. */
 const API_VERSION = '2023-06-01';
 const TOOL_NAME = 'answer';
 
-interface Msg { role: 'user' | 'assistant'; content: string }
+interface Msg { role: 'user' | 'assistant'; content: string | Record<string, unknown>[] }
 
 export interface AnthropicDeps {
   connection: Connection;
@@ -97,17 +99,17 @@ export function createAnthropicProvider(deps: AnthropicDeps): Provider {
     },
 
     async chat(userText: string, history: unknown[], systemPrompt: string, opts?: GenOpts): Promise<ChatResult> {
-      const prior = asMessages(history);
+      const turns = [...chatTurns(history), userTurn(userText, opts)];
       const t0 = Date.now();
       const r = await call({
         // ⚠️ У Anthropic системный промпт — ОТДЕЛЬНОЕ ПОЛЕ, а не сообщение с ролью system: роли
         // system в массиве messages не существует, и такое сообщение будет отвергнуто.
         ...(systemPrompt ? { system: systemPrompt } : {}),
-        messages: [...prior, { role: 'user', content: userText } satisfies Msg],
+        messages: await Promise.all(turns.map(async turn => ({ role: turn.role, content: await inputContent(turn, opts, 'anthropic', true) }))),
       }, opts, opts?.onChunk);
       return {
         out: r.text,
-        history: [...prior, { role: 'user', content: userText }, { role: 'assistant', content: r.text }],
+        history: [...turns, { role: 'assistant', content: r.text }],
         ms: Date.now() - t0,
         tokens: r.tokens,
         via: viaOf(connection),
@@ -128,22 +130,6 @@ function schemaBody(prompt: string, schema: JsonSchema): Record<string, unknown>
     tools: [{ name: TOOL_NAME, description: 'Верни ответ в этой структуре.', input_schema: toDialect(schema, 'anthropic') }],
     tool_choice: { type: 'tool', name: TOOL_NAME },
   };
-}
-
-/** История приходит из SQLite и могла быть записана кем угодно — фильтр, а не приведение типа. */
-function asMessages(history: unknown[]): Msg[] {
-  const out: Msg[] = [];
-  for (const item of history) {
-    if (typeof item !== 'object' || item === null) continue;
-    const o = item as Record<string, unknown>;
-    const content = o['content'];
-    const role = o['role'];
-    if (typeof content !== 'string') continue;
-    // ⚠️ Сообщения с ролью system из чужой истории отбрасываем: у Anthropic такой роли нет, и она
-    // сделала бы запрос невалидным целиком.
-    if (role === 'user' || role === 'assistant') out.push({ role, content });
-  }
-  return out;
 }
 
 async function readWhole(res: Response): Promise<{ text: string; toolInput: unknown; tokens: number; stop: string; usage: UsageDelta }> {

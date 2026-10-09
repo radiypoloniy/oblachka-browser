@@ -15,10 +15,14 @@ import { runChatMessage, resolveDirection, buildPrompt } from '../TranslationSer
 import { runFactCheck } from '../GeminiFactCheck'
 import { searxngSearch, buildGroundingPrompt, appendSearxngSources } from '../SearxngSearch'
 import {
-  getOrCreateContext, instructionsFor, resetChat, selectionFor, sendCurrentContext, sendToTab, setPanelSource,
+  getOrCreateContext, instructionsFor, connectionFor, resetChat, selectionFor, sendCurrentContext, sendToTab, setPanelSource,
   tabContexts, pageWcOf, type TabChatContext,
 } from './chatOwnership'
 import { AI_CONTEXTS, parseSource } from '../../shared/aiContexts'
+import { inputIds, chatTurns } from '../../shared/aiChatInputs'
+import * as inputStore from '../ai/InputFileStore'
+import { registerInputFiles, imagesAllowed } from './inputFiles'
+import type { ChatInputs } from '../ai/chatInputs'
 export { sendCurrentContext, syncTabChat } from './chatOwnership'
 
 let extractPageText: (wc: WebContents | null) => Promise<{ ok: boolean; text: string; markdown: string | null }> = async () => (
@@ -68,7 +72,8 @@ function unexpected(ctx: TabChatContext, job: number, tabId: string, error: unkn
 }
 
 export function registerTabChatIpc(): void {
-  ipcMain.on('ai-panel:chat-send', (event: IpcMainEvent, text: string, webGrounding: boolean, requestedTab?: unknown) => {
+  registerInputFiles()
+  ipcMain.on('ai-panel:chat-send', (event: IpcMainEvent, text: string, webGrounding: boolean, requestedTab?: unknown, rawIds?: unknown) => {
     const wc = event.sender
     const send = (channel: string, data: unknown) => sendToTab(tabId, channel, data, ctx.key)
     const selection = selectionFor(wc, requestedTab)
@@ -76,13 +81,22 @@ export function registerTabChatIpc(): void {
     const tabId = selection.id
     const ctx = getOrCreateContext(selection.key, selection.url, selection.title)
     if (ctx.pending) return
-    ctx.messages.push({ role: 'user', text })
+    const ids = inputIds(rawIds)
+    if (typeof text !== 'string' || ids === null || (!text.trim() && !ids.length)) return
+    let inputs: ChatInputs
+    try {
+      if (!imagesAllowed(selection.source) && chatTurns(ctx.history).some(turn => turn.inputIds?.length)) throw new Error('Для перехода с облачных вложений на встроенную модель начните новую беседу.');
+      inputs = inputStore.requestInputs(ctx.key, ids)
+    }
+    catch (error) { send('ai-panel:chat-result', { ok: false, error: error instanceof Error ? error.message : 'Вложение недоступно' }); return }
+    ctx.messages.push({ role: 'user', text, inputs: ids.map(id => inputStore.metaFor(ctx.key, id)) })
     const job = beginJob(ctx, webGrounding ? 'search' : 'chat')
     const title = ctx.title || selection.title
     const instructions = instructionsFor(selection.source)
+    const connectionId = connectionFor(selection.source)
 
     if (webGrounding) {
-      void runGrounded(tabId, ctx, job, text, instructions).catch(e => unexpected(ctx, job, tabId, e))
+      void runGrounded(tabId, ctx, job, text, instructions, connectionId, inputs).catch(e => unexpected(ctx, job, tabId, e))
       return
     }
 
@@ -103,7 +117,7 @@ export function registerTabChatIpc(): void {
       }
       const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
         if (stillJob(ctx, job)) send('ai-panel:chat-chunk', chunkText)
-      }, ctx.abort?.signal, 'chat', instructions)
+      }, ctx.abort?.signal, 'chat', instructions, connectionId, inputs)
       if (!stillJob(ctx, job)) return
       if (outcome.ok) {
         ctx.messages.push({ role: 'assistant', text: outcome.out, files: outcome.files, via: outcome.via })
@@ -217,7 +231,7 @@ export function registerTabChatIpc(): void {
 }
 
 async function runGrounded(
-  tabId: string, ctx: TabChatContext, job: number, text: string, instructions?: string,
+  tabId: string, ctx: TabChatContext, job: number, text: string, instructions?: string, connectionId?: string, inputs?: ChatInputs,
 ): Promise<void> {
   const send = (channel: string, data: unknown) => sendToTab(tabId, channel, data, ctx.key)
   const search = await searxngSearch(text)
@@ -231,7 +245,7 @@ async function runGrounded(
   const promptText = buildGroundingPrompt(text, search.results)
   const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
     if (stillJob(ctx, job)) send('ai-panel:chat-chunk', chunkText)
-  }, ctx.abort?.signal, 'chat', instructions)
+  }, ctx.abort?.signal, 'chat', instructions, connectionId, inputs)
   if (!stillJob(ctx, job)) return
   if (outcome.ok) {
     const withSources = appendSearxngSources(outcome.out, search.results)

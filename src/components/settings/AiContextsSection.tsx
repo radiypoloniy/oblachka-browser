@@ -9,6 +9,7 @@ import {
   SpotCard, SpotGrid, InkFrame, InkSwitch,
 } from './kit';
 import { CAPS, sp } from '../../styles/system';
+import { PresetModelField } from './PresetModelField';
 
 // ── Секция «Наборы контекста» — редактор того, что AI-панель держит вместо страницы
 // (shared/aiContexts.ts, electron/AiContextStore.ts). Карточки — тот же SpotCard, что у скиллов:
@@ -62,7 +63,7 @@ export default function AiContextsSection() {
                 key={preset.id}
                 stack
                 filled={isDefault}
-                selected={editing !== 'new' && editing?.id === preset.id}
+                selected={typeof editing === 'object' && editing?.id === preset.id}
                 stain={STAIN[i % STAIN.length]}
                 icon={<span style={{ fontSize: 28, lineHeight: 1 }}>📌</span>}
                 title={preset.title}
@@ -96,8 +97,8 @@ export default function AiContextsSection() {
 
       {editing && (
         <PresetForm
-          key={editing === 'new' ? 'new' : editing.id}
-          preset={editing === 'new' ? null : editing}
+          key={typeof editing === 'string' ? editing : editing.id}
+          preset={typeof editing === 'string' ? null : editing}
           onDone={() => setEditing(null)}
         />
       )}
@@ -108,14 +109,17 @@ export default function AiContextsSection() {
 function PresetForm({ preset, onDone }: { preset: AiContextPreset | null; onDone: () => void }) {
   const [title, setTitle] = useState(preset?.title ?? '');
   const [text, setText] = useState(preset?.text ?? '');
+  const [materials, setMaterials] = useState(preset?.materials ?? '');
+  const [connectionId, setConnectionId] = useState(preset?.connectionId ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const canSave = text.trim().length > 0 && !saving;
+  const length = text.length + materials.length;
+  const canSave = text.trim().length > 0 && length <= PRESET_TEXT_MAX && !saving;
 
   async function save() {
     setSaving(true); setError('');
-    const next = await window.oblako.saveAiContext({ ...(preset ? { id: preset.id } : null), title, text });
+    const next = await window.oblako.saveAiContext({ ...(preset ? { id: preset.id } : null), title, text, materials, connectionId });
     setSaving(false);
     if (next) onDone(); else setError('Не удалось сохранить');
   }
@@ -129,22 +133,27 @@ function PresetForm({ preset, onDone }: { preset: AiContextPreset | null; onDone
   return (
     <InkFrame
       title={preset ? 'Набор' : 'Новый набор'}
-      hint="Уходит модели системной инструкцией в каждом сообщении. Правка текста начинает беседы этого набора заново."
+      hint="Задайте роль и правила ответа отдельно от примеров. Изменение инструкций или материалов начинает беседы этого набора заново."
     >
       <TextField
         value={title} placeholder="Название — по умолчанию первая строка текста"
         maxLength={PRESET_TITLE_MAX} onChange={setTitle}
       />
-      {/* ⚠️ Потолок режется здесь же, при вводе, а не только в main: иначе человек вставил бы
-          длинный материал, нажал «Сохранить» и молча получил обрезанный — без шанса заметить. */}
-      <TextArea
-        value={text} rows={8}
-        placeholder="Инструкции и материал: как отвечать, в какой стилистике, что учитывать"
-        onChange={(v) => setText(v.slice(0, PRESET_TEXT_MAX))}
-      />
+      <PresetModelField value={connectionId} onChange={setConnectionId} />
+      <label>
+        <InlineHint>Инструкции</InlineHint>
+        <TextArea value={text} rows={6} onChange={setText}
+          placeholder="Кто модель, кому отвечает, на каком языке и в каком формате" />
+      </label>
+      <label>
+        <InlineHint>Справочные материалы</InlineHint>
+        <TextArea value={materials} rows={8} onChange={setMaterials}
+          placeholder="Скрипты, примеры ответов, условия и другие материалы к задаче" />
+      </label>
       <InlineHint>
-        {text.length.toLocaleString('ru-RU')} / {PRESET_TEXT_MAX.toLocaleString('ru-RU')} символов
+        {length.toLocaleString('ru-RU')} / {PRESET_TEXT_MAX.toLocaleString('ru-RU')} символов
       </InlineHint>
+      {length > PRESET_TEXT_MAX && <InlineError>Набор слишком большой. Сократите инструкции или материалы — текст не обрезается автоматически.</InlineError>}
       {error && <InlineError>{error}</InlineError>}
       <div style={{ display: 'flex', gap: sp(2), alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={() => void save()} disabled={!canSave} style={{ ...btnPrimary, opacity: canSave ? 1 : 0.6 }}>

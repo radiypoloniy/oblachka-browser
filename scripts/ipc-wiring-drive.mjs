@@ -32,6 +32,7 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { INSIGHTS } from '../shared/pageInsights.ts';
+import { AI_CONTEXTS } from '../shared/aiContexts.ts';
 import { fileURLToPath } from 'node:url';
 import { withStand, wait } from './isolated-stand.mjs';
 
@@ -87,6 +88,11 @@ const OUTSIDE_CONTRACT = new Set([
   // У карточек отдельный типизированный контракт; берём имена из него, а не копируем строки.
   INSIGHTS.config,
   INSIGHTS.set,
+  // Наборы имеют свой прежний типизированный контракт; новые вложения объявлены в shared/ipc.
+  AI_CONTEXTS.list,
+  AI_CONTEXTS.save,
+  AI_CONTEXTS.remove,
+  AI_CONTEXTS.setDefault,
   'ai-panel:model-state',
   'ai-panel:currency-rates',
   'ai-panel:weather',

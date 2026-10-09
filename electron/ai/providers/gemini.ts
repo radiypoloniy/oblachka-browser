@@ -20,6 +20,8 @@ import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, ty
 import { arr, httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
 import type { UsageDelta } from '../../../shared/aiUsage';
 import * as UsageStore from '../UsageStore';
+import { chatTurns } from '../../../shared/aiChatInputs';
+import { inputContent, userTurn } from '../chatInputs';
 
 interface Part { text: string }
 interface Content { role: 'user' | 'model'; parts: Part[] }
@@ -104,50 +106,25 @@ export function createGeminiProvider(deps: GeminiDeps): Provider {
     },
 
     async chat(userText: string, history: unknown[], systemPrompt: string, opts?: GenOpts): Promise<ChatResult> {
-      const prior = asContents(history);
+      const turns = [...chatTurns(history), userTurn(userText, opts)];
       const t0 = Date.now();
       const r = await call({
         // ⚠️ Системная инструкция — отдельное поле, как у Anthropic, и тоже не роль в массиве.
         ...(systemPrompt ? { systemInstruction: { parts: [{ text: systemPrompt }] } } : {}),
-        contents: [...prior, { role: 'user', parts: [{ text: userText }] } satisfies Content],
+        contents: await Promise.all(turns.map(async turn => ({ role: turn.role === 'assistant' ? 'model' : 'user',
+          parts: await inputContent(turn, opts, 'gemini', true) }))),
         generationConfig: generationConfig(opts),
       }, opts, opts?.onChunk);
       return {
         out: r.text,
         files: r.files,
-        history: [...prior, { role: 'user', parts: [{ text: userText }] }, { role: 'model', parts: [{ text: r.text }] }],
+        history: [...turns, { role: 'assistant', content: r.text }],
         ms: Date.now() - t0,
         tokens: r.tokens,
         via: viaOf(connection),
       };
     },
   };
-}
-
-/**
- * История приходит из SQLite и могла быть записана кем угодно — фильтр, а не приведение типа.
- *
- * ⚠️ Заодно понимает форму OpenAI ({role, content}): человек может переключить беседу с одного
- * подключения на другое посреди разговора, и терять при этом всю переписку недопустимо. Роль
- * assistant при этом становится model — иначе Gemini отвергнет запрос.
- */
-function asContents(history: unknown[]): Content[] {
-  const out: Content[] = [];
-  for (const item of history) {
-    if (typeof item !== 'object' || item === null) continue;
-    const o = item as Record<string, unknown>;
-    const rawRole = str(o['role']);
-    const role: 'user' | 'model' | null =
-      rawRole === 'user' ? 'user'
-        : rawRole === 'model' || rawRole === 'assistant' ? 'model'
-          : null;
-    if (role === null) continue;
-
-    const text = str(o['content']) ?? arr(o['parts']).map((p) => str(pick(p, ['text'])) ?? '').join('');
-    if (text === '') continue;
-    out.push({ role, parts: [{ text }] });
-  }
-  return out;
 }
 
 /**

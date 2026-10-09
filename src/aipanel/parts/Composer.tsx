@@ -1,5 +1,8 @@
-import { Send, Globe } from 'lucide-react';
+import { Send, Globe, Paperclip } from 'lucide-react';
 import { ModelChip } from '../../components/ai/ModelChip';
+import { useChatInputs } from '../useChatInputs';
+import { InputPreviews } from './InputPreviews';
+import type { AiInputMeta } from '../../../shared/aiChatInputs';
 
 /**
  * Поле ввода панели. Enter отправляет, Shift+Enter переносит строку.
@@ -14,20 +17,25 @@ import { ModelChip } from '../../components/ai/ModelChip';
  * поэтому активным он светится обводкой и фоном, а сам ничего не отправляет.
  */
 export function Composer({
-  input, setInput, onSend, onKeyDown, onFocus, sending,
-  searxngConfigured, webGroundingActive, onGlobeClick,
+  input, setInput, onSend, onKeyDown, onFocus, sending, tabId, inputEpoch,
+  searxngConfigured, webGroundingActive, onGlobeClick, pinnedConnectionId,
 }: {
   input: string
   setInput: (v: string) => void
-  onSend: () => void
+  onSend: (files?: AiInputMeta[]) => void
+  tabId: string
+  inputEpoch: string
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
   onFocus: () => void
   sending: boolean
+  pinnedConnectionId?: string
   searxngConfigured: boolean
   webGroundingActive: boolean
   onGlobeClick: () => void
 }) {
-  const idle = sending || !input.trim();
+  const attachments = useChatInputs(tabId, sending, inputEpoch);
+  const idle = sending || attachments.busy || (!input.trim() && !attachments.files.length);
+  const send = () => { if (!idle) { onSend(attachments.files); attachments.consumed(); } };
   return (
     <div style={{ padding: 'var(--pad-island)', flexShrink: 0 }}>
       {/* Белая парящая карточка вместо серой заливки прямо на textarea — тот же стиль, что у поля
@@ -40,11 +48,22 @@ export function Composer({
         borderRadius: 'var(--radius-island)', boxShadow: 'var(--shadow-card)',
         border: '1px solid var(--glass-edge)',
       }}>
+        <InputPreviews files={attachments.files} tabId={tabId} remove={attachments.remove} />
+        {attachments.error && <span role="alert" style={{ color: 'var(--danger-500)', fontSize: 'var(--fs-xs)' }}>{attachments.error}</span>}
         <textarea
           className="ai-composer-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
+          onKeyDown={e => {
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+            else onKeyDown(e);
+          }}
+          onPaste={e => {
+            if (Array.from(e.clipboardData.items).some(item => item.type.startsWith('image/'))) {
+              e.preventDefault(); void attachments.add(true);
+            }
+          }}
           // Встали в поле — main начинает греть модель (с отсрочкой, см. WARMUP_DEFER_MS).
           // Раньше это делало само открытие панели, и человек, зашедший за калькулятором,
           // платил ~900 мс подвисания main ни за что.
@@ -60,6 +79,11 @@ export function Composer({
           }}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={() => void attachments.add()} disabled={sending || attachments.busy || !tabId}
+            title="Прикрепить фото или документ (до 5 МБ). Фото требуют модели с поддержкой изображений."
+            style={{ display: 'flex', padding: 4, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
+            <Paperclip size={16} />
+          </button>
           <button
             onClick={onGlobeClick}
             title={
@@ -81,9 +105,9 @@ export function Composer({
           >
             <Globe size={16} strokeWidth={2} />
           </button>
-          <ModelChip />
+          <ModelChip pinnedConnectionId={pinnedConnectionId} />
           <button
-            onClick={onSend}
+            onClick={send}
             disabled={idle}
             title="Отправить"
             style={{

@@ -27,11 +27,10 @@ import type { AiConnectionsState } from '../../../shared/ipc';
  * быть не может: панель и поповер — хром над чужим сайтом, тон там запрещён.
  *
  * ⚠️ Меняет МАРШРУТ РОЛИ «Чат», то есть то же самое, что таблица в настройках, — просто под рукой.
- * Выбор «только для этой беседы» честно не сделан: он требует протащить исключение через отправку
- * и хранение переписки, а притвориться, что переключатель локальный, когда он глобальный, хуже,
- * чем не иметь его вовсе.
+ * У набора своё подключение: pinnedConnectionId показывает его без изменения общего маршрута.
  */
-export function ModelChip({ role = 'chat', align = 'left', drop = 'up' }: {
+export function ModelChip({ role = 'chat', align = 'left', drop = 'up', pinnedConnectionId }: {
+  pinnedConnectionId?: string;
   role?: AiRole;
   align?: 'left' | 'right';
   /** Куда раскрывать список. ⚠️ Не вкус: у композитора метка стоит внизу и вниз места нет, а в
@@ -61,12 +60,12 @@ export function ModelChip({ role = 'chat', align = 'left', drop = 'up' }: {
     return () => document.removeEventListener('mousedown', away);
   }, [open]);
 
-  if (state === null || state.connections.length === 0) return null;
+  if (state === null || (state.connections.length === 0 && !pinnedConnectionId)) return null;
 
-  const current = state.routing[role] ?? 'local';
+  const current = pinnedConnectionId ?? state.routing[role] ?? 'local';
   const chosen = state.connections.find((c) => c.id === current);
-  const label = chosen?.label ?? 'На этой машине';
-  const local = chosen === undefined || chosen.kind === 'local';
+  const label = chosen ? (pinnedConnectionId ? chosen.model : chosen.label) : current === 'local' ? 'На этой машине' : 'Модель недоступна';
+  const local = current === 'local' || chosen?.kind === 'local';
 
   const pick = (id: string): void => {
     setOpen(false);
@@ -80,8 +79,9 @@ export function ModelChip({ role = 'chat', align = 'left', drop = 'up' }: {
   return (
     <div ref={box} style={{ position: 'relative', flexShrink: 0, minWidth: 0 }}>
       <button
-        onClick={() => setOpen((v) => !v)}
-        title={`Кто отвечает: ${ROLE_INFO[role].label.toLowerCase()}`}
+        disabled={!!pinnedConnectionId}
+        onClick={() => { if (!pinnedConnectionId) setOpen((v) => !v); }}
+        title={pinnedConnectionId ? 'Модель закреплена в настройках набора' : `Кто отвечает: ${ROLE_INFO[role].label.toLowerCase()}`}
         style={{
           ...CAPS,
           display: 'flex', alignItems: 'center', gap: sp(1) + 2,
@@ -89,14 +89,14 @@ export function ModelChip({ role = 'chat', align = 'left', drop = 'up' }: {
           borderRadius: RADIUS.pill, background: open ? 'var(--surface-hover)' : 'var(--surface-sunken)',
           // Служебный факт по умолчанию тише; выбранное человеком наливается чернилами.
           color: chosen ? 'var(--text-strong)' : 'var(--text-muted)',
-          cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden',
+          cursor: pinnedConnectionId ? 'default' : 'pointer', whiteSpace: 'nowrap', overflow: 'hidden',
         }}
       >
         <Dot local={local} />
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
       </button>
 
-      {open && (
+      {open && !pinnedConnectionId && (
         // ⚠️ Сторона раскрытия — от места метки, см. `drop`: у композитора вниз места нет.
         <div style={{
           position: 'absolute', zIndex: 10, minWidth: 210,

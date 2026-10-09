@@ -12,8 +12,10 @@
 
 import { capsFor, type Connection, type ProviderCaps } from '../../shared/aiProviders';
 import type { JsonSchema } from '../../shared/aiSchema';
+import type { ChatInputs } from './chatInputs';
 
 export interface GenOpts {
+  inputs?: ChatInputs;
   maxTokens?: number;
   /** Токены по мере генерации — там, где человек СМОТРИТ на сборку и обязан видеть, что она идёт. */
   onChunk?: (text: string) => void;

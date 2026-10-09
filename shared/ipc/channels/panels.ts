@@ -4,6 +4,10 @@
 // нарезан НЕПРЕРЫВНЫМИ кусками, а не по доменам. Имя файла говорит, что в куске преобладает,
 // и не обещает, что там больше ничего нет.
 export const PANELS = {
+  AI_PANEL_INPUT_PICK: 'ai-panel:input-pick', // панель → main: chatId -> InputResult
+  AI_PANEL_INPUT_PASTE: 'ai-panel:input-paste', // панель → main: chatId -> InputResult
+  AI_PANEL_INPUT_REMOVE: 'ai-panel:input-remove', // панель → main: chatId, fileId
+  AI_PANEL_INPUT_PREVIEW: 'ai-panel:input-preview', // панель → main: chatId, fileId -> data URL | null
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
   // Заход 3: main → chrome, push при ЛЮБОМ закрытии/открытии дока (крестик и Escape ВНУТРИ

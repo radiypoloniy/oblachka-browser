@@ -50,7 +50,7 @@ import './aipanel/contract';
 function AiPanel() {
   const { t } = useLanguage(); const {
     tabId, pageTitle, pageUrl, pageFavicon, modelState, source,
-    messages, streamedText, sending, error, errorCode,
+    messages, streamedText, sending, error, errorCode, inputEpoch,
     skills, factCheckAvailable, factChecking, searxngConfigured, webSearching,
     sendText, sendQuickTranslate, sendFactCheck,
   } = useAiChat()
@@ -95,11 +95,11 @@ function AiPanel() {
     el.scrollTop = messages.length ? el.scrollHeight : 0
   }, [messages, streamedText])
 
-  const handleSend = () => {
+  const handleSend = (files: import('../shared/aiChatInputs').AiInputMeta[] = []) => {
     const text = input.trim()
-    if (!text) return
+    if (!text && !files.length) return
     setInput('')
-    sendText(text, webGroundingActive)
+    sendText(text, webGroundingActive, files)
   }
 
   // Задел под web-grounding (SearXNG) — глобус в поле ввода. Три исхода клика:
@@ -219,7 +219,7 @@ function AiPanel() {
         {/* Лента сообщений — minHeight:0 обязателен, иначе flex-контейнер не даёт себе схлопнуться
             под overflowY:auto и скролл не работает (стандартная ловушка flex+scroll). */}
       <MessageList insights={source.kind === 'page' ? <><ComparePanelAction /><PageInsights tabId={tabId} visible={mode === 'chat'} /></> : null}
-        listRef={listRef} messages={messages} streamedText={streamedText} source={source}
+        listRef={listRef} messages={messages} streamedText={streamedText} source={source} tabId={tabId ?? ''}
         sending={sending} factChecking={factChecking} webSearching={webSearching}
         error={error} errorCode={errorCode} modelState={modelState}
       />
@@ -282,10 +282,10 @@ function AiPanel() {
         )}
 
         <Composer
-          input={input} setInput={setInput}
+          input={input} setInput={setInput} tabId={tabId ?? ''} inputEpoch={inputEpoch}
           onSend={handleSend} onKeyDown={handleKeyDown}
           onFocus={() => window.aiPanel.chatIntent()}
-          sending={sending}
+          sending={sending} pinnedConnectionId={source.kind === 'preset' ? contexts.presets.find(p => p.id === source.id)?.connectionId : undefined}
           searxngConfigured={searxngConfigured}
           webGroundingActive={webGroundingActive}
           onGlobeClick={handleGlobeClick}

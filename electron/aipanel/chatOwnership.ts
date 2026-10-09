@@ -1,10 +1,13 @@
 import type { BrowserWindow, WebContents } from 'electron';
+import { randomUUID } from 'node:crypto';
 import type { AiFileMeta } from '../../shared/aiAttachments';
 import type { ModelErrorCode, TabState } from '../../shared/ipc';
 import type { runChatMessage } from '../TranslationService';
 import { allContexts, contextForWindow } from '../WindowRegistry';
 import { allPanels, existingPanel, panelBySender, type PanelInstance } from './instances';
 import * as contextStore from '../AiContextStore';
+import { releaseOwner } from '../ai/InputFileStore';
+import type { AiInputMeta } from '../../shared/aiChatInputs';
 import {
   PAGE_SOURCE, freeChatId, initialSource, resolveSource, sourceFromChatId, type ChatSource,
 } from '../../shared/aiContexts';
@@ -12,8 +15,10 @@ import {
 interface ChatMessage {
   role: 'user' | 'assistant'; text: string;
   via?: { label: string; local: boolean }; files?: AiFileMeta[];
+  inputs?: AiInputMeta[];
 }
 export interface TabChatContext {
+  inputEpoch: string;
   key: string; messages: ChatMessage[];
   history: Parameters<typeof runChatMessage>[1];
   url: string; title: string; pageText: string | null; pageMarkdown: string | null;
@@ -57,6 +62,10 @@ export function instructionsFor(source: ChatSource): string | undefined {
   return source.kind === 'preset' ? contextStore.presetText(source.id) : undefined;
 }
 
+export function connectionFor(source: ChatSource): string | undefined {
+  return source.kind === 'preset' ? contextStore.getState().presets.find(p => p.id === source.id)?.connectionId : undefined;
+}
+
 export interface ChatSelection {
   /** То, чем панель подписывает отправку: id вкладки или 'free:…'. */
   id: string; key: string; url: string; title: string; faviconUrl: string | null; source: ChatSource;
@@ -88,15 +97,16 @@ export function selectionFor(sender: WebContents, requested?: unknown): ChatSele
 export function getOrCreateContext(key: string, url: string, title = ''): TabChatContext {
   let ctx = tabContexts.get(key);
   if (!ctx) {
-    ctx = { key, messages: [], history: [], url, title, pageText: null, pageMarkdown: null,
+    ctx = { key, inputEpoch: randomUUID(), messages: [], history: [], url, title, pageText: null, pageMarkdown: null,
       pending: null, job: 0, abort: null, error: null, errorCode: null };
     tabContexts.set(key, ctx);
   }
   return ctx;
 }
 export function resetChat(ctx: TabChatContext, url: string): void {
+  releaseOwner(ctx.key);
   ctx.abort?.abort(); ctx.job++;
-  Object.assign(ctx, { url, messages: [], history: [], pageText: null, pageMarkdown: null,
+  Object.assign(ctx, { url, inputEpoch: randomUUID(), messages: [], history: [], pageText: null, pageMarkdown: null,
     pending: null, abort: null, error: null, errorCode: null });
 }
 export function sendCurrentContext(win: BrowserWindow): void {
@@ -108,7 +118,7 @@ export function sendCurrentContext(win: BrowserWindow): void {
   const ctx = getOrCreateContext(selection.key, selection.url, selection.title);
   view.webContents.send('ai-panel:context', {
     tabId: selection.id, url: selection.url, title: selection.title, favicon: selection.faviconUrl,
-    source: selection.source, messages: ctx.messages, sending: ctx.pending !== null, factChecking: ctx.pending === 'factcheck',
+    source: selection.source, inputEpoch: ctx.inputEpoch, messages: ctx.messages, sending: ctx.pending !== null, factChecking: ctx.pending === 'factcheck',
     webSearching: ctx.pending === 'search', error: ctx.error, errorCode: ctx.errorCode,
   });
 }
@@ -180,7 +190,7 @@ export function pageWcOf(tabId: string): WebContents | null {
 contextStore.onChanged((next, prev) => {
   for (const old of prev.presets) {
     const cur = next.presets.find((p) => p.id === old.id);
-    if (cur && cur.text === old.text) continue;
+    if (cur && cur.text === old.text && cur.materials === old.materials && cur.connectionId === old.connectionId) continue;
     const suffix = `:${freeChatId({ kind: 'preset', id: old.id }).slice(FREE_PREFIX.length)}`;
     for (const [key, ctx] of tabContexts) {
       if (key.startsWith(FREE_PREFIX) && key.endsWith(suffix)) { resetChat(ctx, ''); tabContexts.delete(key); }

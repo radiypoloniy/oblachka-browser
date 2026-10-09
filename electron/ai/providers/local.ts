@@ -15,6 +15,7 @@ import { capsFor, localConnection, LOCAL_CONNECTION_ID, type Connection, type Pr
 import * as UsageStore from '../UsageStore';
 import { extractJson, type JsonSchema } from '../../../shared/aiSchema';
 import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
+import { chatTurns } from '../../../shared/aiChatInputs';
 
 export interface LocalDeps {
   /** Поднять модель, если она ещё не поднята. Возвращает время загрузки (0 — была тёплой). */
@@ -72,6 +73,15 @@ export function createLocalProvider(deps: LocalDeps): Provider {
     },
 
     async chat(userText: string, history: unknown[], systemPrompt: string, opts?: GenOpts): Promise<ChatResult> {
+      if (chatTurns(history).some(turn => turn.inputIds?.length)) {
+        throw new ProviderError('context', 'Для перехода с облачных вложений на встроенную модель начните новую беседу.');
+      }
+      // Файлы читаются как текст; изображения не должны молча исчезать из запроса к Qwen.
+      for (const id of opts?.inputs?.ids ?? []) {
+        const file = await opts!.inputs!.resolve(id);
+        if (file.kind === 'image' || !file.text) throw new ProviderError('context', 'Встроенная модель читает только текст документов. Для фото и сканов выберите облачную модель.');
+        userText += `\n\nAttached reference data ${JSON.stringify(file.name)}:\n${JSON.stringify(file.text)}`;
+      }
       await deps.ensureLoaded();
       try {
         const r = await Inference.runChat(

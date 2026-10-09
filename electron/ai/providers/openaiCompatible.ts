@@ -23,8 +23,10 @@ import { arr, httpError, networkError, num, parseEventJson, pick, readSse, str, 
 import { parseDataUrl } from '../../../shared/aiAttachments';
 import type { UsageDelta } from '../../../shared/aiUsage';
 import * as UsageStore from '../UsageStore';
+import { chatTurns } from '../../../shared/aiChatInputs';
+import { inputContent, userTurn } from '../chatInputs';
 
-interface Msg { role: 'system' | 'user' | 'assistant'; content: string }
+interface Msg { role: 'system' | 'user' | 'assistant'; content: string | Record<string, unknown>[] }
 interface Read { text: string; files: RawFile[]; tokens: number; stop: string; usage: UsageDelta }
 
 export interface OpenAiCompatDeps {
@@ -95,20 +97,25 @@ export function createOpenAiCompatibleProvider(deps: OpenAiCompatDeps): Provider
     },
 
     async chat(userText: string, history: unknown[], systemPrompt: string, opts?: GenOpts): Promise<ChatResult> {
-      const prior = asMessages(history);
+      const prior = chatTurns(history);
+      const current = userTurn(userText, opts);
+      const turns = [...prior, current];
+      const nativePdf = new URL(connection.baseUrl).hostname === 'openrouter.ai';
       const messages: Msg[] = [
         ...(systemPrompt ? [{ role: 'system', content: systemPrompt } as Msg] : []),
-        ...prior,
-        { role: 'user', content: userText },
+        ...await Promise.all(turns.map(async turn => ({ role: turn.role, content: await inputContent(turn, opts, 'openai', nativePdf) }))),
       ];
       const t0 = Date.now();
-      const r = await call({ messages, max_tokens: opts?.maxTokens ?? 512 }, opts);
+      // Не подключаем платный OCR автоматически: неподдерживаемый PDF даст явную ошибку API.
+      const pdfPlugin = nativePdf && turns.some(turn => turn.inputIds?.length)
+        ? { plugins: [{ id: 'file-parser', pdf: { engine: 'native' } }] } : {};
+      const r = await call({ messages, ...pdfPlugin, max_tokens: opts?.maxTokens ?? 512 }, opts);
       return {
         out: r.text,
         files: r.files,
         // ⚠️ История возвращается БЕЗ системного промпта: он приклеивается на каждом запросе заново
         // и, попав в историю, удваивался бы с каждым ходом беседы.
-        history: [...prior, { role: 'user', content: userText }, { role: 'assistant', content: r.text }],
+        history: [...turns, { role: 'assistant', content: r.text }],
         ms: Date.now() - t0,
         tokens: r.tokens,
         via: viaOf(connection),
@@ -143,23 +150,6 @@ function promptBody(
     };
   }
   return body;
-}
-
-/**
- * История приходит непрозрачным значением (её выдал этот же провайдер), но между перезапусками она
- * лежит в SQLite и могла быть записана кем угодно. Поэтому — не приведение типа, а фильтр.
- */
-function asMessages(history: unknown[]): Msg[] {
-  const out: Msg[] = [];
-  for (const item of history) {
-    if (typeof item !== 'object' || item === null) continue;
-    const o = item as Record<string, unknown>;
-    const role = o['role'];
-    const content = o['content'];
-    if (typeof content !== 'string') continue;
-    if (role === 'user' || role === 'assistant' || role === 'system') out.push({ role, content });
-  }
-  return out;
 }
 
 async function readWhole(res: Response): Promise<Read> {

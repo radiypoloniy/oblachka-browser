@@ -13,10 +13,12 @@ import type { AiActivityState } from '../shared/ipc'
 
 import { insightsPanelBridge } from './preload/insights';
 import { compareBridge } from './preload/compare';
+import { chatInputsBridge } from './preload/chatInputs';
 import { AI_CONTEXTS, type AiContextsState, type ChatSource } from '../shared/aiContexts';
 contextBridge.exposeInMainWorld('aiPanel', {
   ...insightsPanelBridge,
   ...compareBridge,
+  ...chatInputsBridge,
   // Иконка приложения на рабочем столе новой вкладки → панель открывается сразу на нём.
   onOpenApp: (cb: (appId: string) => void) => {
     const handler = (_e: unknown, appId: string) => cb(appId)
@@ -63,7 +65,7 @@ contextBridge.exposeInMainWorld('aiPanel', {
 
   // webGrounding — тоггл-глобус (заход 2 задела): main решает по нему, идти ли через
   // SearXNG-ветку или обычный путь Qwen, см. AiPanelManager.ts::ai-panel:chat-send.
-  sendChat: (text: string, webGrounding: boolean, tabId: string) => ipcRenderer.send('ai-panel:chat-send', text, webGrounding, tabId),
+  sendChat: (text: string, webGrounding: boolean, tabId: string, inputIds?: string[]) => ipcRenderer.send('ai-panel:chat-send', text, webGrounding, tabId, inputIds),
   // Кнопка-подсказка «Перевести» — без текста: направление (src/tgt) решает main после извлечения
   // и детекции языка страницы, см. AiPanelManager.ts.
   quickTranslate: (tabId: string) => ipcRenderer.send('ai-panel:quick-translate', tabId),

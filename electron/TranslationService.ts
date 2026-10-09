@@ -790,7 +790,7 @@ export async function runChatMessage(
   onChunk?: (text: string) => void,
   // Прерывание уже идущего ответа (доезжает до llama.cpp). Заводится там, где ответ может
   // считаться долго и человеку нужна кнопка «Стоп» — см. electron/AiActivity.ts.
-  abort?: AbortSignal, role: AiRole = 'chat', instructions?: string,  // роль: панель — «Чат», блокнот и граф — своя (ROLE_INFO); instructions — набор панели (shared/aiContexts.ts)
+  abort?: AbortSignal, role: AiRole = 'chat', instructions?: string, connectionId?: string, inputs?: import('./ai/chatInputs').ChatInputs,
 ): Promise<ChatOutcome> {
   // ⚠️ ОЧЕРЕДЬ И ГРЕВ — ТОЛЬКО ДЛЯ ВСТРОЕННОЙ МОДЕЛИ, и это починка живой жалобы «подключил
   // модель, но нихуя не работает». Раньше любой чат сперва поднимал локальную Qwen: на 4B это
@@ -800,8 +800,8 @@ export async function runChatMessage(
   //
   // ⚠️ Признак — kind === 'local', а НЕ caps().local. Второй означает «считается на этой машине»
   // и верен для Ollama на localhost — но встроенную Qwen ради Ollama греть тоже незачем.
-  const model = modelFor(role, ensureLoaded, getLoadedModelId)
-  const run = () => runChatMessageQueued(model, userText, history, onChunk, abort, instructions)
+  const model = modelFor(role, ensureLoaded, getLoadedModelId, connectionId)
+  const run = () => runChatMessageQueued(model, userText, history, onChunk, abort, instructions, inputs)
   return model.connection.kind === 'local' ? withQwenQueue(run, abort) : run()
 }
 
@@ -811,13 +811,13 @@ async function runChatMessageQueued(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   history: any[],
   onChunk?: (text: string) => void,
-  abort?: AbortSignal, instructions?: string,
+  abort?: AbortSignal, instructions?: string, inputs?: import('./ai/chatInputs').ChatInputs,
 ): Promise<ChatOutcome> {
   try {
     const wasLoaded = loadPromise !== null
     const loadMs = model.connection.kind === 'local' ? await ensureLoaded() : 0
     const { out, history: newHistory, ms, tokens, via, files: raw } = await model.chat(
-      userText, history, chatSystemPrompt(instructions), { maxTokens: CHAT_MAX_TOKENS, onChunk, abort },
+      userText, history, chatSystemPrompt(instructions), { maxTokens: CHAT_MAX_TOKENS, onChunk, abort, inputs },
     )
     console.log(
       `[chat] "${userText.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +

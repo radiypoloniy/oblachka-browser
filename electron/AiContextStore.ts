@@ -11,7 +11,7 @@ import { app } from 'electron'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { EMPTY_CONTEXTS, normalizeContexts, sanitizePreset, type AiContextsState } from '../shared/aiContexts'
+import { EMPTY_CONTEXTS, normalizeContexts, sanitizePreset, presetPrompt, type AiContextsState } from '../shared/aiContexts'
 
 type Listener = (state: AiContextsState, prev: AiContextsState) => void
 
@@ -42,7 +42,8 @@ export function getState(): AiContextsState {
 }
 
 export function presetText(id: string): string | undefined {
-  return load().presets.find((p) => p.id === id)?.text
+  const preset = load().presets.find((p) => p.id === id)
+  return preset ? presetPrompt(preset) : undefined
 }
 
 export function save(input: unknown): AiContextsState | null {
