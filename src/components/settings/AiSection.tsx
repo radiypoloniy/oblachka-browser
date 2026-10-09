@@ -4,6 +4,7 @@ import type { BackfillProgress, HistoryContentCoverage, InstalledModel, Translat
 import { formatHistoryCoverageLine } from '../../../shared/historyIndex';
 import ModelsSection from '../ModelsSection';
 import SkillsSection from './SkillsSection';
+import AiContextsSection from './AiContextsSection';
 import { AiConnectionsBlock } from './AiConnectionsBlock';
 import { AiUsageBlock } from './AiUsageBlock';
 import { AiRolesBlock } from './AiRolesBlock';
@@ -52,6 +53,7 @@ export default function AiSection() {
       <TranslationEngineSection />
       <HistoryBackfillSection />
       <SkillsSection />
+      <AiContextsSection />
       {/* ⚠️ Стоит в разделе AI, хотя это НЕ наша модель, а чужая: человек ищет здесь ответ на
           вопрос «как ИИ связан с моим браузером», и обе стрелки — мы зовём модель и модель зовёт
           нас — живут в одном месте. Разводить их по разделам значило бы прятать вторую. */}

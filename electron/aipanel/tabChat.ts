@@ -14,7 +14,11 @@ import type { ModelErrorCode } from '../../shared/ipc'
 import { runChatMessage, resolveDirection, buildPrompt } from '../TranslationService'
 import { runFactCheck } from '../GeminiFactCheck'
 import { searxngSearch, buildGroundingPrompt, appendSearxngSources } from '../SearxngSearch'
-import { getOrCreateContext, resetChat, selectionFor, sendCurrentContext, sendToTab, tabContexts, pageWcOf, type TabChatContext } from './chatOwnership'
+import {
+  getOrCreateContext, instructionsFor, resetChat, selectionFor, sendCurrentContext, sendToTab, setPanelSource,
+  tabContexts, pageWcOf, type TabChatContext,
+} from './chatOwnership'
+import { AI_CONTEXTS, parseSource } from '../../shared/aiContexts'
 export { sendCurrentContext, syncTabChat } from './chatOwnership'
 
 let extractPageText: (wc: WebContents | null) => Promise<{ ok: boolean; text: string; markdown: string | null }> = async () => (
@@ -75,13 +79,15 @@ export function registerTabChatIpc(): void {
     ctx.messages.push({ role: 'user', text })
     const job = beginJob(ctx, webGrounding ? 'search' : 'chat')
     const title = ctx.title || selection.title
+    const instructions = instructionsFor(selection.source)
 
     if (webGrounding) {
-      void runGrounded(tabId, ctx, job, text).catch(e => unexpected(ctx, job, tabId, e))
+      void runGrounded(tabId, ctx, job, text, instructions).catch(e => unexpected(ctx, job, tabId, e))
       return
     }
 
-    const needsExtraction = ctx.pageText === null
+    // Отвязанная беседа страницу не читает вовсе — ни в первом ходе, ни потом: в этом её смысл.
+    const needsExtraction = selection.source.kind === 'page' && ctx.pageText === null
     const pageWc = needsExtraction ? pageWcOf(tabId) : null
     void (async () => {
       let promptText = text
@@ -97,7 +103,7 @@ export function registerTabChatIpc(): void {
       }
       const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
         if (stillJob(ctx, job)) send('ai-panel:chat-chunk', chunkText)
-      }, ctx.abort?.signal)
+      }, ctx.abort?.signal, 'chat', instructions)
       if (!stillJob(ctx, job)) return
       if (outcome.ok) {
         ctx.messages.push({ role: 'assistant', text: outcome.out, files: outcome.files, via: outcome.via })
@@ -108,6 +114,14 @@ export function registerTabChatIpc(): void {
       }
       if (stillJob(ctx, job)) send('ai-panel:chat-result', outcome)
     })().catch(e => unexpected(ctx, job, tabId, e))
+  })
+
+  // Плашка панели: страница / набор / пустой чат. Беседы не сбрасываются — у каждого источника
+  // своя, и вернуться к странице значит вернуться к её разговору, а не начать заново.
+  ipcMain.on(AI_CONTEXTS.setSource, (event, raw: unknown) => {
+    const panel = panelBySender(event.sender)
+    const source = parseSource(raw)
+    if (panel && source) setPanelSource(panel, source)
   })
 
   ipcMain.on('ai-panel:clear-chat', (event) => {
@@ -124,7 +138,8 @@ export function registerTabChatIpc(): void {
     const wc = event.sender
     const send = (channel: string, data: unknown) => sendToTab(tabId, channel, data, ctx.key)
     const selection = selectionFor(wc, requestedTab)
-    if (!selection) return
+    // Перевод и фактчек — действия НАД страницей; у отвязанной беседы страницы нет.
+    if (!selection || selection.source.kind !== 'page') return
     const tabId = selection.id
     const ctx = getOrCreateContext(selection.key, selection.url, selection.title)
     if (ctx.pending) return
@@ -168,7 +183,7 @@ export function registerTabChatIpc(): void {
     const wc = event.sender
     const send = (channel: string, data: unknown) => sendToTab(tabId, channel, data, ctx.key)
     const selection = selectionFor(wc, requestedTab)
-    if (!selection) return
+    if (!selection || selection.source.kind !== 'page') return
     const tabId = selection.id
     const ctx = getOrCreateContext(selection.key, selection.url, selection.title)
     if (ctx.pending) return
@@ -202,7 +217,7 @@ export function registerTabChatIpc(): void {
 }
 
 async function runGrounded(
-  tabId: string, ctx: TabChatContext, job: number, text: string,
+  tabId: string, ctx: TabChatContext, job: number, text: string, instructions?: string,
 ): Promise<void> {
   const send = (channel: string, data: unknown) => sendToTab(tabId, channel, data, ctx.key)
   const search = await searxngSearch(text)
@@ -216,7 +231,7 @@ async function runGrounded(
   const promptText = buildGroundingPrompt(text, search.results)
   const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
     if (stillJob(ctx, job)) send('ai-panel:chat-chunk', chunkText)
-  }, ctx.abort?.signal)
+  }, ctx.abort?.signal, 'chat', instructions)
   if (!stillJob(ctx, job)) return
   if (outcome.ok) {
     const withSources = appendSearxngSources(outcome.out, search.results)

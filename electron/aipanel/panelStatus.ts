@@ -20,6 +20,8 @@ import type { WebContentsView } from 'electron'
 import * as aiKeyStore from '../AiKeyStore'
 import * as searxngKeyStore from '../SearxngKeyStore'
 import * as skillsStore from '../SkillsStore'
+import * as contextStore from '../AiContextStore'
+import { AI_CONTEXTS } from '../../shared/aiContexts'
 import * as ConnectionStore from '../ai/ConnectionStore'
 import * as KeyStore from '../ai/KeyStore'
 import { connectionsState } from '../ai/connections'
@@ -52,6 +54,12 @@ function sendSkillsList(): void {
   send('ai-panel:skills-list', skillsStore.list())
 }
 
+/** Наборы контекста: пункты меню плашки. Тексты наборов приезжают тоже — панель их не показывает,
+ *  но превью в подсказке пункта честнее, чем голое имя. */
+function sendAiContexts(): void {
+  send(AI_CONTEXTS.changed, contextStore.getState())
+}
+
 /**
  * Подключённые модели и маршруты ролей.
  *
@@ -74,11 +82,13 @@ export function sendPanelStatuses(): void {
   sendSearxngStatus()
   sendSkillsList()
   sendConnections()
+  sendAiContexts()
 }
 
 aiKeyStore.onKeyStatusChanged(() => sendKeyStatus())
 searxngKeyStore.onStatusChanged(() => sendSearxngStatus())
 skillsStore.onSkillsChanged(() => sendSkillsList())
+contextStore.onChanged(() => sendAiContexts())
 // ⚠️ Подключение и ключ к нему живут в РАЗНЫХ хранилищах, а метка зависит от обоих: подключение
 // без ключа непригодно. Поэтому слушаем оба — иначе введённый ключ не оживил бы метку до перезапуска.
 ConnectionStore.onChanged(() => sendConnections())

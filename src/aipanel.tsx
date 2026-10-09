@@ -21,7 +21,8 @@ import { useEscapeClose, useWallpaper } from './aipanel/usePanelShell';
 import { useAiChat } from './aipanel/useAiChat';
 import { ActionsRow } from './aipanel/parts/ActionsRow'
 import { MessageList } from './aipanel/parts/MessageList'
-import { PageIsland } from './aipanel/parts/PageIsland'
+import { ContextIsland } from './aipanel/parts/ContextIsland'
+import { useAiContexts } from './aipanel/useAiContexts'
 import { PageInsights } from './aipanel/parts/PageInsights'
 import { ComparePanelAction } from './components/compare/ComparePanelAction';
 import { useChipsRow } from './aipanel/useChipsRow';
@@ -48,12 +49,12 @@ import './aipanel/contract';
 
 function AiPanel() {
   const { t } = useLanguage(); const {
-    tabId, pageTitle, pageUrl, pageFavicon, modelState,
+    tabId, pageTitle, pageUrl, pageFavicon, modelState, source,
     messages, streamedText, sending, error, errorCode,
     skills, factCheckAvailable, factChecking, searxngConfigured, webSearching,
     sendText, sendQuickTranslate, sendFactCheck,
   } = useAiChat()
-  // Беседа целиком — подписки на main, лента, признаки занятости и три способа отправки.
+  const contexts = useAiContexts() // наборы для меню плашки; беседа целиком — в useAiChat
 
   const [input, setInput] = useState('')
   // Ошибка загрузки favicon — чисто про <img> в шапке, к беседе отношения не имеет.
@@ -209,16 +210,16 @@ function AiPanel() {
           flex: 1, minHeight: 0,
           display: mode === 'chat' ? 'flex' : 'none', flexDirection: 'column',
         }}>
-      <PageIsland
-        pageTitle={pageTitle} pageHost={pageHost} pageFavicon={pageFavicon}
+      <ContextIsland
+        source={source} contexts={contexts} pageTitle={pageTitle} pageHost={pageHost} pageFavicon={pageFavicon}
         faviconError={faviconError} sending={sending}
         messages={messages} modelState={modelState} setFaviconError={setFaviconError}
       />
 
         {/* Лента сообщений — minHeight:0 обязателен, иначе flex-контейнер не даёт себе схлопнуться
             под overflowY:auto и скролл не работает (стандартная ловушка flex+scroll). */}
-      <MessageList insights={<><ComparePanelAction /><PageInsights tabId={tabId} visible={mode === 'chat'} /></>}
-        listRef={listRef} messages={messages} streamedText={streamedText}
+      <MessageList insights={source.kind === 'page' ? <><ComparePanelAction /><PageInsights tabId={tabId} visible={mode === 'chat'} /></> : null}
+        listRef={listRef} messages={messages} streamedText={streamedText} source={source}
         sending={sending} factChecking={factChecking} webSearching={webSearching}
         error={error} errorCode={errorCode} modelState={modelState}
       />
@@ -230,7 +231,7 @@ function AiPanel() {
             переходит в компактный вид (chipsCompact выше). Плашка приватности фактчека занимает
             то же место — она по-прежнему взаимоисключающа с рядом (см. showFactCheckConfirm). */}
         <ActionsRow
-          chips={chips} chipsBusy={chipsBusy} chipsCompact={chipsCompact}
+          chips={chips} chipsBusy={chipsBusy} chipsCompact={chipsCompact} hidden={source.kind !== 'page'}
           factCheckAvailable={factCheckAvailable}
           skills={skills} settingsChip={settingsChip}
           showFactCheckConfirm={showFactCheckConfirm} webGroundingActive={webGroundingActive}

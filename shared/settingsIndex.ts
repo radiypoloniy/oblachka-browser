@@ -96,6 +96,8 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
     keywords: ['умный поиск', 'поиск по истории', 'индекс'] },
   { section: 'ai', block: 'Скиллы', label: 'Скиллы', sectionLabel: 'AI',
     keywords: ['скилл', 'skill', 'кнопки ai', 'промпт', 'сценарий', 'объяснить', 'саммари', 'ai-панель'] },
+  { section: 'ai', block: 'Наборы контекста', label: 'Наборы контекста', sectionLabel: 'AI',
+    keywords: ['контекст', 'инструкции', 'стиль ответов', 'закрепить', 'отвязать', 'без страницы', 'пустой чат', 'system prompt'] },
   { section: 'ai', label: 'Фактчек и веб-поиск', sectionLabel: 'AI',
     keywords: ['gemini', 'фактчек', 'проверка фактов', 'searxng', 'веб-поиск', 'ключ api'] },
 

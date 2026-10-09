@@ -13,6 +13,7 @@ import type { AiActivityState } from '../shared/ipc'
 
 import { insightsPanelBridge } from './preload/insights';
 import { compareBridge } from './preload/compare';
+import { AI_CONTEXTS, type AiContextsState, type ChatSource } from '../shared/aiContexts';
 contextBridge.exposeInMainWorld('aiPanel', {
   ...insightsPanelBridge,
   ...compareBridge,
@@ -69,6 +70,14 @@ contextBridge.exposeInMainWorld('aiPanel', {
   // Очистить беседу текущей вкладки. Ответом придёт обычный ai-panel:context с пустой лентой —
   // отдельного канала «очищено» нет намеренно: панель и так умеет показывать присланную ленту.
   clearChat: () => ipcRenderer.send('ai-panel:clear-chat'),
+  // Источник беседы на плашке (shared/aiContexts.ts). Наборы приходят пушем при показе панели и
+  // на каждую правку в настройках — тот же приём, что onSkillsList.
+  setChatSource: (source: ChatSource) => ipcRenderer.send(AI_CONTEXTS.setSource, source),
+  onAiContexts: (cb: (state: AiContextsState) => void) => {
+    const handler = (_e: unknown, state: AiContextsState) => cb(state);
+    ipcRenderer.on(AI_CONTEXTS.changed, handler);
+    return () => ipcRenderer.removeListener(AI_CONTEXTS.changed, handler);
+  },
   onChatChunk: (cb: (text: string) => void) => {
     const handler = (_e: unknown, text: string) => cb(text);
     ipcRenderer.on('ai-panel:chat-chunk', handler);

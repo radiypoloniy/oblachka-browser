@@ -5,6 +5,7 @@ import { markdownComponents } from '../../components/aiMarkdown';
 import { ChatFiles } from '../../components/ai/ChatFiles';
 import { DISPLAY_ROW, TEXT } from '../../styles/system';
 import type { ChatMessage } from '../contract';
+import type { ChatSource } from '../../../shared/aiContexts';
 import type { ModelErrorCode } from '../../../shared/ipc';
 import { describeChatError } from './describeChatError';
 /**
@@ -14,8 +15,9 @@ import { describeChatError } from './describeChatError';
  * поле ввода за обрез панели.
  */
 export function MessageList({
-  listRef, messages, streamedText, sending, factChecking, webSearching, error, errorCode, modelState, insights,
+  listRef, messages, streamedText, sending, factChecking, webSearching, error, errorCode, modelState, insights, source,
 }: {
+  source: ChatSource;
   listRef: React.RefObject<HTMLDivElement>;
   insights?: React.ReactNode;
   messages: ChatMessage[];
@@ -41,11 +43,16 @@ export function MessageList({
     {messages.length === 0 && !sending && (
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ ...DISPLAY_ROW, fontSize: 19, color: 'var(--text-strong)' }}>
-          Спросите о странице
+          {source.kind === 'page' ? 'Спросите о странице' : source.kind === 'preset' ? 'Контекст закреплён' : 'Пустой чат'}
         </span>
         <span style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>
           {modelState && !modelState.label
             ? 'Модели нет — скачайте её в настройках, и панель начнёт отвечать.'
+            // ⚠️ Отвязанная беседа страницу не читала — подпись про «текст прочитан» соврала бы.
+            : source.kind === 'preset'
+              ? 'Модель отвечает по инструкциям набора, какая бы вкладка ни была открыта.'
+            : source.kind === 'none'
+              ? 'Разговор без страницы и без инструкций — переключение вкладок его не сбросит.'
             : modelState && !modelState.loaded
               ? 'Текст уже прочитан. Первый ответ дольше — модель поднимается.'
               : 'Текст уже прочитан — спрашивайте своими словами или возьмите готовое действие ниже.'}

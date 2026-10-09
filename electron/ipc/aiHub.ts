@@ -14,6 +14,8 @@ import { IPC } from '../../shared/ipc';
 import * as aiKeyStore from '../AiKeyStore';
 import * as searxngKeyStore from '../SearxngKeyStore';
 import * as skillsStore from '../SkillsStore';
+import * as contextStore from '../AiContextStore';
+import { AI_CONTEXTS } from '../../shared/aiContexts';
 import { broadcastToChrome } from '../WindowRegistry';
 import { dialog, ipcMain } from 'electron';
 import fsp from 'node:fs/promises';
@@ -139,6 +141,15 @@ export function registerAiHubIpc(d: IpcDeps): void {
   skillsStore.onSkillsChanged((skills) => {
     broadcastToChrome(IPC.SKILLS_CHANGED, skills);
   });
+
+  // Наборы контекста AI-панели (shared/aiContexts.ts) — редактор в настройках. Панели узнают об
+  // изменениях своей подпиской (aipanel/panelStatus.ts), беседы перестраивает chatOwnership.ts.
+  ipcMain.handle(AI_CONTEXTS.list, () => contextStore.getState());
+  ipcMain.handle(AI_CONTEXTS.save, (_e, input: unknown) => contextStore.save(input));
+  ipcMain.handle(AI_CONTEXTS.remove, (_e, id: unknown) =>
+    typeof id === 'string' ? contextStore.remove(id) : contextStore.getState());
+  ipcMain.handle(AI_CONTEXTS.setDefault, (_e, id: unknown) => contextStore.setDefault(typeof id === 'string' ? id : null));
+  contextStore.onChanged((state) => { broadcastToChrome(AI_CONTEXTS.changed, state); });
 
   // VPN, шаг 1 — подписка + список серверов. Ссылка и credential серверов остаются в main
   // (см. VpnKeyStore.ts) — тот же принцип, что у ключа Gemini чуть выше.

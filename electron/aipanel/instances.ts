@@ -16,6 +16,7 @@ import type { BrowserWindow, WebContents, WebContentsView } from 'electron'
 import { closeWindowView } from '../viewTeardown'
 import { contextForWindow } from '../WindowRegistry'
 import type { TabManager } from '../TabManager'
+import type { ChatSource } from '../../shared/aiContexts'
 
 // Панель у каждого окна одинаковая: чат и приложения. Прежний вид 'apps' (только приложения)
 // жил ради «лёгкого окна» и ушёл вместе с ним — беседы теперь принадлежат вкладкам любого окна
@@ -28,6 +29,8 @@ export interface PanelInstance {
   open: boolean
   /** На окно уже повешен слушатель resize, который двигает панель (вешаем один раз). */
   resizeBound: boolean
+  /** Источник беседы на плашке. null — ещё не выбирали: возьмётся набор по умолчанию. */
+  source: ChatSource | null
 }
 
 const panels = new Map<number, PanelInstance>()
@@ -38,7 +41,7 @@ export function panelFor(win: BrowserWindow): PanelInstance {
   if (existing) return existing
   const created: PanelInstance = {
     win,
-    view: null, open: false, resizeBound: false,
+    view: null, open: false, resizeBound: false, source: null,
   }
   panels.set(win.id, created)
   // ⚠️ Вью закрываем сами: окно не уносит с собой дочерние WebContentsView, и панель закрытого

@@ -11,6 +11,7 @@
 import type { PageLength, AiConnection, AiConnectionsState, AiConnectionTest, AiModelList, AiRunnerFound } from './ai';
 import type { AiUsage } from '../aiUsage';
 import type { InsightsApi } from '../pageInsights';
+import type { AiContextsApi } from '../aiContexts';
 import type { SearchEngineId } from '../searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../graph';
 import type { ImagePreset } from '../imagePresets';
@@ -23,7 +24,7 @@ import type { BangDefWire, BangsSnapshot, BergamotStatus, CatalogEntry, DeleteMo
 import type { AddressInput, AddressProfile, AddressUpdate, CardInput, CardMeta, CardUpdate, MediaCommand, MediaNowPlaying } from './app';
 
 
-export interface AiApi extends InsightsApi {
+export interface AiApi extends InsightsApi, AiContextsApi {
   // AI-группировка вкладок (Phase 4)
   organizeApply(clusters: OrganizeCluster[]): Promise<void>;
   organizeRollback(): Promise<void>;

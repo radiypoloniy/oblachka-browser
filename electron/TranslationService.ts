@@ -16,6 +16,7 @@ import { parseRerankIndices } from '../shared/rerankOutput'
 import { assertSearchGenerationComplete } from '../shared/searchGeneration'
 import { HISTORY_EXPANSION_PROMPT, parseHistoryExpansion } from '../shared/historyExpansion'
 import { LOCAL_CONNECTION_ID } from '../shared/aiProviders'
+import { withInstructions } from '../shared/aiContexts'
 export { withQwenQueueBackground }
 import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
 
@@ -759,7 +760,7 @@ export type ChatOutcome =
   | { ok: true; out: string; history: any[]; ms: number; tokPerSec: number; loadMs: number | null; via: ChatVia; files: AiFileMeta[] }
   | { ok: false; error: string; errorCode?: ModelErrorCode }
 
-function chatSystemPrompt(): string { return uiLanguage() === 'en' ? 'You are a helpful, concise assistant built into a web browser. Answer in English.' : 'You are a helpful, concise assistant built into a web browser. Отвечай по-русски.'; }
+function chatSystemPrompt(instructions?: string): string { return withInstructions(uiLanguage() === 'en' ? 'You are a helpful, concise assistant built into a web browser. Answer in English.' : 'You are a helpful, concise assistant built into a web browser. Отвечай по-русски.', instructions); }
 // Было 700 — обрывало развёрнутые ответы и (особенно) кнопку «Перевести страницу» в AI-панели
 // (AiPanelManager.ts::quick-translate идёт через ЭТОТ ЖЕ runChatMessage, лимит общий): вход там
 // до PAGE_TEXT_MAX_CHARS=28000 симв. (~8-10k токенов, см. её же комментарий), а выход обрезался на
@@ -789,7 +790,7 @@ export async function runChatMessage(
   onChunk?: (text: string) => void,
   // Прерывание уже идущего ответа (доезжает до llama.cpp). Заводится там, где ответ может
   // считаться долго и человеку нужна кнопка «Стоп» — см. electron/AiActivity.ts.
-  abort?: AbortSignal, role: AiRole = 'chat',  // панель — роль «Чат», блокнот и граф — своя, см. ROLE_INFO
+  abort?: AbortSignal, role: AiRole = 'chat', instructions?: string,  // роль: панель — «Чат», блокнот и граф — своя (ROLE_INFO); instructions — набор панели (shared/aiContexts.ts)
 ): Promise<ChatOutcome> {
   // ⚠️ ОЧЕРЕДЬ И ГРЕВ — ТОЛЬКО ДЛЯ ВСТРОЕННОЙ МОДЕЛИ, и это починка живой жалобы «подключил
   // модель, но нихуя не работает». Раньше любой чат сперва поднимал локальную Qwen: на 4B это
@@ -800,7 +801,7 @@ export async function runChatMessage(
   // ⚠️ Признак — kind === 'local', а НЕ caps().local. Второй означает «считается на этой машине»
   // и верен для Ollama на localhost — но встроенную Qwen ради Ollama греть тоже незачем.
   const model = modelFor(role, ensureLoaded, getLoadedModelId)
-  const run = () => runChatMessageQueued(model, userText, history, onChunk, abort)
+  const run = () => runChatMessageQueued(model, userText, history, onChunk, abort, instructions)
   return model.connection.kind === 'local' ? withQwenQueue(run, abort) : run()
 }
 
@@ -810,13 +811,13 @@ async function runChatMessageQueued(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   history: any[],
   onChunk?: (text: string) => void,
-  abort?: AbortSignal,
+  abort?: AbortSignal, instructions?: string,
 ): Promise<ChatOutcome> {
   try {
     const wasLoaded = loadPromise !== null
     const loadMs = model.connection.kind === 'local' ? await ensureLoaded() : 0
     const { out, history: newHistory, ms, tokens, via, files: raw } = await model.chat(
-      userText, history, chatSystemPrompt(), { maxTokens: CHAT_MAX_TOKENS, onChunk, abort },
+      userText, history, chatSystemPrompt(instructions), { maxTokens: CHAT_MAX_TOKENS, onChunk, abort },
     )
     console.log(
       `[chat] "${userText.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +

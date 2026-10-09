@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ChatMessage, ModelErrorCode, SkillItem } from './contract';
+import { PAGE_SOURCE, type ChatSource } from '../../shared/aiContexts';
 
 /**
  * Беседа AI-панели: всё, что приходит из main, и всё, что туда уходит.
@@ -20,6 +21,8 @@ export function useAiChat() {
   const [pageUrl, setPageUrl] = useState('')
   const [pageFavicon, setPageFavicon] = useState<string | null>(null)
   const [modelState, setModelState] = useState<{ label: string | null; loaded: boolean } | null>(null)
+  // Страница, набор или пустой чат — приезжает тем же onContext, что и лента: это одно решение.
+  const [source, setSource] = useState<ChatSource>(PAGE_SOURCE)
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
   // Копится по мере генерации (тот же токен-стриминг, что у поповера/AI-действий) — показывается
@@ -54,6 +57,7 @@ export function useAiChat() {
     // но панель решала, что ничего не происходит, и чанки/результат отфильтровывались.
     const unsubContext = window.aiPanel.onContext((ctx) => {
       setTabId(ctx.tabId)
+      setSource(ctx.source ?? PAGE_SOURCE)
       setPageTitle(ctx.title)
       setPageUrl(ctx.url)
       setPageFavicon(ctx.favicon ?? null)
@@ -138,7 +142,7 @@ export function useAiChat() {
   }
 
   return {
-    tabId, pageTitle, pageUrl, pageFavicon, modelState,
+    tabId, pageTitle, pageUrl, pageFavicon, modelState, source,
     messages, streamedText, sending, error, errorCode,
     skills, factCheckAvailable, factChecking, searxngConfigured, webSearching,
     sendText, sendQuickTranslate, sendFactCheck,

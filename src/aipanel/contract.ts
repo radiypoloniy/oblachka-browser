@@ -7,6 +7,7 @@
 import type { AiActivityState } from '../../shared/ipc'
 import type { InsightsApi, InsightsState } from '../../shared/pageInsights'
 import type { AiFileMeta } from '../../shared/aiAttachments'
+import type { AiContextsState, ChatSource } from '../../shared/aiContexts'
 import type { CurrencyRatesResult, WeatherResult } from '../components/aiApps';
 
 // Код причины отказа (см. electron/TranslationService.ts::ModelError, shared/ipc.ts::ModelErrorCode)
@@ -46,7 +47,10 @@ export interface SkillItem {
 
 // Форма пуша ai-panel:context из AiPanelManager.ts::sendCurrentContext.
 export interface TabContext {
+  /** id вкладки — или 'free:…' у отвязанной беседы (shared/aiContexts.ts::freeChatId). */
   tabId: string
+  /** Откуда беседа берёт контекст. Нет поля — старый main: значит, страница. */
+  source?: ChatSource
   url: string
   title: string
   favicon?: string | null
@@ -87,6 +91,9 @@ declare global {
       quickTranslate: (tabId: string) => void
       // Очистить беседу текущей вкладки — main ответит обычным onContext с пустой лентой.
       clearChat: () => void
+      // Плашка: страница / набор / пустой чат. Ответом придёт обычный onContext другой беседы.
+      setChatSource: (source: ChatSource) => void
+      onAiContexts: (cb: (state: AiContextsState) => void) => () => void
       onChatChunk: (cb: (text: string) => void) => () => void
       onChatResult: (cb: (outcome: ChatOutcome) => void) => () => void
       aiConnections: () => Promise<AiConnectionsState>

@@ -13,13 +13,15 @@ import type { useChipsRow } from '../useChipsRow';
  * онбординга — правка одного действия не должна требовать прочитать остальные два.
  */
 export function ActionsRow({
-  chips, chipsBusy, chipsCompact, factCheckAvailable, skills,
+  chips, chipsBusy, chipsCompact, hidden, factCheckAvailable, skills,
   settingsChip, showFactCheckConfirm, webGroundingActive,
   setShowFactCheckConfirm, sendText, sendQuickTranslate, sendFactCheck,
 }: {
   chips: ReturnType<typeof useChipsRow>;
   chipsBusy: boolean;
   chipsCompact: boolean;
+  /** Отвязанная беседа: перевод, фактчек и скиллы — действия над страницей, а её нет. */
+  hidden: boolean;
   factCheckAvailable: boolean;
   skills: SkillItem[];
   settingsChip: React.ReactNode;
@@ -30,6 +32,7 @@ export function ActionsRow({
   sendQuickTranslate: () => void;
   sendFactCheck: () => void;
 }) {
+  if (hidden) return null;
   return (
     <>
   {(

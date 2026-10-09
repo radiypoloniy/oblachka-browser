@@ -234,6 +234,7 @@ export const SETTINGS: Record<string, string> = {
   'Движок перевода страниц': 'Page translation engine',
   'Индексация истории для поиска': 'History index for search',
   'Скиллы': 'Skills',
+  'Наборы контекста': 'Context sets',
   'Фактчек и веб-поиск': 'Fact-check and web search',
   'Готова': 'Ready',
   'В памяти': 'In memory',
