@@ -8,7 +8,7 @@ import type { AiActivityState } from '../../shared/ipc'
 import type { InsightsApi, InsightsState } from '../../shared/pageInsights'
 import type { AiFileMeta } from '../../shared/aiAttachments'
 import type { AiContextsState, ChatSource } from '../../shared/aiContexts'
-import type { AiInputMeta, InputResult } from '../../shared/aiChatInputs'
+import type { AiInputMeta, DroppedInput, InputResult } from '../../shared/aiChatInputs'
 import type { CurrencyRatesResult, WeatherResult } from '../components/aiApps';
 
 // Код причины отказа (см. electron/TranslationService.ts::ModelError, shared/ipc.ts::ModelErrorCode)
@@ -71,6 +71,7 @@ declare global {
   interface Window {
     aiPanel: InsightsApi & CompareApi & {
       pickInputs: (tabId: string) => Promise<InputResult>
+      dropInputs: (tabId: string, inputs: DroppedInput[]) => Promise<InputResult>
       pasteInput: (tabId: string) => Promise<InputResult>
       removeInput: (tabId: string, id: string) => Promise<void>
       inputPreview: (tabId: string, id: string) => Promise<string | null>

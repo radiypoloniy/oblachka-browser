@@ -5,8 +5,10 @@ import { connectionFor, getOrCreateContext, selectionFor, tabContexts } from './
 import { panelBySender } from './instances';
 import * as files from '../ai/InputFileStore';
 import * as registry from '../ai/registry';
+import { registerDroppedInputs } from './dropInputs';
 
 export function registerInputFiles(): void {
+  registerDroppedInputs(imagesAllowed);
   ipcMain.handle(IPC.AI_PANEL_INPUT_PICK, async (event, requested: unknown): Promise<InputResult> => {
     const panel = panelBySender(event.sender), selected = selectionFor(event.sender, requested);
     if (!panel || !selected) return { ok: false, error: 'Беседа недоступна' };

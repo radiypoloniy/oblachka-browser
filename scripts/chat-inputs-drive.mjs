@@ -8,6 +8,17 @@ import { withStand, wait } from './isolated-stand.mjs';
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 const bodies = [];
 const server = http.createServer((req, res) => {
+  if (req.url === '/image.png') {
+    res.writeHead(200, { 'Content-Type': 'image/png' }); res.end(Buffer.from(png, 'base64')); return;
+  }
+  if (req.url === '/slow-image.png') {
+    setTimeout(() => { res.writeHead(200, { 'Content-Type': 'image/png' }); res.end(Buffer.from(png, 'base64')); }, 600); return;
+  }
+  if (req.url === '/blob-page') {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<img id="sample"><script>fetch('/image.png').then(r=>r.blob()).then(blob=>{document.querySelector('img').src=URL.createObjectURL(blob)})</script>`); return;
+  }
+  if (req.method === 'GET') { res.writeHead(404); res.end(); return; }
   let raw = '';
   req.on('data', chunk => { raw += chunk; });
   req.on('end', () => {
@@ -93,13 +104,49 @@ try {
     await panel(`window.aiPanel.removeInput('free:none',${JSON.stringify(id)})`);
     assert.ok(await sync(`inputsStand.files.preview(inputsStand.selected.key,${JSON.stringify(id)})`));
     await panel('window.aiPanel.clearChat(); true'); await wait(100);
+    const textDrop = await panel(`(() => { const data=new DataTransfer(); data.setData('text/plain','Some ordinary text');
+      const event=new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data});
+      document.querySelector('textarea').dispatchEvent(event); return event.defaultPrevented; })()`);
+    assert.equal(textDrop, false);
+    await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(`http://127.0.0.1:${server.address().port}/blob-page`)})`);
+    await until(() => result(`inputsStand.owner.tabs.getActiveWebContents()?.executeJavaScript("!!document.images[0]?.complete && !!document.images[0]?.naturalWidth")`));
+    const blobUrl = await result(`inputsStand.owner.tabs.getActiveWebContents().executeJavaScript('document.images[0].src')`);
+    const blobInput = await panel(`window.aiPanel.dropInputs('free:none',[{url:${JSON.stringify(blobUrl)}}])`);
+    assert.equal(blobInput.ok, true, JSON.stringify(blobInput));
+    assert.equal(blobInput.files[0].kind, 'image');
+    await panel(`window.aiPanel.removeInput('free:none',${JSON.stringify(blobInput.files[0].id)})`);
+    await panel(`window.slowDrop=window.aiPanel.dropInputs('free:none',[{url:${JSON.stringify(`http://127.0.0.1:${server.address().port}/slow-image.png`)}}]); true`);
+    await wait(100); await panel('window.aiPanel.clearChat(); true');
+    const stale = await panel('window.slowDrop');
+    assert.equal(stale.ok, false);
+    assert.match(stale.error, /Беседа изменилась/);
     assert.equal(await sync(`inputsStand.files.preview(inputsStand.selected.key,${JSON.stringify(id)})`), null);
     assert.equal(await panel(`document.body.textContent.includes('terms.txt')`), false);
+    // Изображение сайта бросается в ленту, а не textarea. Отправка без текста остаётся явной.
+    const imageUrl = `http://127.0.0.1:${server.address().port}/image.png`;
+    await panel(`(() => { const data = new DataTransfer(); data.setData('text/html', '<img src="${imageUrl}">');
+      document.querySelector('.ai-chat-drop-zone').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data})); return true; })()`);
+    await until(() => panel(`!!document.querySelector('img[alt="image.png"]')`));
+    assert.equal(await panel(`document.querySelector('button[title="Отправить"]').disabled`), false);
+    await panel(`document.querySelector('button[title="Отправить"]').click(); true`);
+    await until(() => sync('inputsStand.ownership.tabContexts.get(inputsStand.selected.key).messages.length === 2'));
+    assert.equal(await sync('inputsStand.ownership.tabContexts.get(inputsStand.selected.key).messages[0].text'), '');
+    assert.ok(bodies.at(-1).messages.at(-1).content.some(part => part.type === 'image_url'));
+    const forbidden = await panel(`window.aiPanel.dropInputs('free:none',[{url:'file:///C:/Windows/win.ini'}])`);
+    assert.equal(forbidden.ok, false);
+    await panel('window.aiPanel.clearChat(); true'); await wait(100);
+    // Файл с диска передаётся байтами, произвольный путь не получает права чтения main.
+    await panel(`(() => { const data = new DataTransfer(), bytes=Uint8Array.from(atob(${JSON.stringify(png)}),c=>c.charCodeAt(0));
+      data.items.add(new File([bytes],'dropped.png',{type:'image/png'}));
+      document.querySelector('.ai-chat-drop-zone').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data})); return true; })()`);
+    await until(() => panel(`!!document.querySelector('img[alt="dropped.png"]')`));
+    assert.equal(await panel(`document.querySelectorAll('img[alt="dropped.png"]').length`), 1);
+    await panel('window.aiPanel.clearChat(); true'); await wait(100);
     // У локальной изображения отклоняются до загрузки модели и сетевого запроса.
     await sync(`inputsStand.registry.setRoutingTable({}); inputsStand.electron.clipboard.readImage=()=>inputsStand.electron.nativeImage.createFromBuffer(Buffer.from(${JSON.stringify(png)},'base64')); true`);
     const pasted = await panel(`window.aiPanel.pasteInput('free:none')`);
     assert.equal(pasted.ok, false);
     assert.match(pasted.error, /не читает изображения/);
-    console.log('Итого: 21 прошло, 0 не прошло');
+    console.log('Итого: 31 прошло, 0 не прошло');
   }, { main: true });
 } finally { server.close(); }

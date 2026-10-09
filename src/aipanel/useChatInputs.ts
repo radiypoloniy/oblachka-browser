@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { INPUT_COUNT_MAX, type AiInputMeta, type InputResult } from '../../shared/aiChatInputs';
+import { INPUT_COUNT_MAX, type AiInputMeta, type DroppedInput, type InputResult } from '../../shared/aiChatInputs';
 
 export function useChatInputs(tabId: string, sending: boolean, inputEpoch: string) {
   const [files, setFiles] = useState<AiInputMeta[]>([]);
@@ -18,15 +18,20 @@ export function useChatInputs(tabId: string, sending: boolean, inputEpoch: strin
     };
   }, [tabId, inputEpoch]);
 
-  async function add(paste = false) {
+  async function add(paste = false, dropped?: () => Promise<DroppedInput[]>) {
     if (!tabId || sending || activeAdd.current) return;
     activeAdd.current = true;
     const signal = lifetime.current?.signal;
     if (!signal || signal.aborted) { activeAdd.current = false; return; }
     setBusy(true); setError('');
     let result: InputResult;
-    try { result = await (paste ? window.aiPanel.pasteInput(tabId) : window.aiPanel.pickInputs(tabId)); }
-    catch { result = { ok: false, error: 'Не удалось прикрепить файл' }; }
+    try {
+      if (dropped) {
+        const inputs = await dropped();
+        if (signal.aborted) return;
+        result = await window.aiPanel.dropInputs(tabId, inputs);
+      } else result = await (paste ? window.aiPanel.pasteInput(tabId) : window.aiPanel.pickInputs(tabId));
+    } catch (reason) { result = { ok: false, error: reason instanceof Error ? reason.message : 'Не удалось прикрепить файл' }; }
     if (signal.aborted) {
       if (result.ok) result.files.forEach(file => { void window.aiPanel.removeInput(tabId, file.id); });
       return;

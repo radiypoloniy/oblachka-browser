@@ -23,6 +23,7 @@
   "AI_FILE_SAVE=ai:file-save",
   "AI_GET_KEY_STATUS=ai:get-key-status",
   "AI_KEY_STATUS_CHANGED=ai:key-status-changed",
+  "AI_PANEL_INPUT_DROP=ai-panel:input-drop",
   "AI_PANEL_INPUT_PASTE=ai-panel:input-paste",
   "AI_PANEL_INPUT_PICK=ai-panel:input-pick",
   "AI_PANEL_INPUT_PREVIEW=ai-panel:input-preview",

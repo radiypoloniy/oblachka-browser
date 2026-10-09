@@ -3,6 +3,7 @@ export interface AiInputMeta {
   id: string; name: string; mime: string; size: number; kind: 'image' | 'pdf' | 'text';
 }
 export type InputResult = { ok: true; files: AiInputMeta[] } | { ok: false; error: string };
+export type DroppedInput = { name: string; bytes: Uint8Array } | { url: string };
 export const INPUT_FILE_MAX = 5 * 1024 * 1024;
 export const INPUT_COUNT_MAX = 5;
 export const INPUT_TEXT_MAX = 40000;

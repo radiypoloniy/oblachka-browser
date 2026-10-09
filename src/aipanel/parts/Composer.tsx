@@ -1,6 +1,6 @@
 import { Send, Globe, Paperclip } from 'lucide-react';
 import { ModelChip } from '../../components/ai/ModelChip';
-import { useChatInputs } from '../useChatInputs';
+import { useDraftInputs } from './ChatInputZone';
 import { InputPreviews } from './InputPreviews';
 import type { AiInputMeta } from '../../../shared/aiChatInputs';
 
@@ -17,14 +17,13 @@ import type { AiInputMeta } from '../../../shared/aiChatInputs';
  * поэтому активным он светится обводкой и фоном, а сам ничего не отправляет.
  */
 export function Composer({
-  input, setInput, onSend, onKeyDown, onFocus, sending, tabId, inputEpoch,
+  input, setInput, onSend, onKeyDown, onFocus, sending, tabId,
   searxngConfigured, webGroundingActive, onGlobeClick, pinnedConnectionId,
 }: {
   input: string
   setInput: (v: string) => void
   onSend: (files?: AiInputMeta[]) => void
   tabId: string
-  inputEpoch: string
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
   onFocus: () => void
   sending: boolean
@@ -33,7 +32,7 @@ export function Composer({
   webGroundingActive: boolean
   onGlobeClick: () => void
 }) {
-  const attachments = useChatInputs(tabId, sending, inputEpoch);
+  const attachments = useDraftInputs();
   const idle = sending || attachments.busy || (!input.trim() && !attachments.files.length);
   const send = () => { if (!idle) { onSend(attachments.files); attachments.consumed(); } };
   return (
@@ -49,6 +48,7 @@ export function Composer({
         border: '1px solid var(--glass-edge)',
       }}>
         <InputPreviews files={attachments.files} tabId={tabId} remove={attachments.remove} />
+        {attachments.busy && <span role="status" style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-xs)' }}>Прикрепление…</span>}
         {attachments.error && <span role="alert" style={{ color: 'var(--danger-500)', fontSize: 'var(--fs-xs)' }}>{attachments.error}</span>}
         <textarea
           className="ai-composer-input"

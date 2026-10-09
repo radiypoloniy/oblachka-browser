@@ -5,6 +5,7 @@
 // и не обещает, что там больше ничего нет.
 export const PANELS = {
   AI_PANEL_INPUT_PICK: 'ai-panel:input-pick', // панель → main: chatId -> InputResult
+  AI_PANEL_INPUT_DROP: 'ai-panel:input-drop', // панель → main: chatId, изображения -> InputResult
   AI_PANEL_INPUT_PASTE: 'ai-panel:input-paste', // панель → main: chatId -> InputResult
   AI_PANEL_INPUT_REMOVE: 'ai-panel:input-remove', // панель → main: chatId, fileId
   AI_PANEL_INPUT_PREVIEW: 'ai-panel:input-preview', // панель → main: chatId, fileId -> data URL | null

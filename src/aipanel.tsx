@@ -14,6 +14,7 @@ import { Sparkles, LayoutGrid, Plus } from 'lucide-react';
 import './styles/global.css';
 import { AiActivityPill } from './aipanel/AiActivityPill';
 import { Composer } from './aipanel/parts/Composer';
+import { ChatInputZone } from './aipanel/parts/ChatInputZone';
 import { AppsMode, wallpaperBackground } from './components/aiApps';
 import { installOverlayReveal } from './overlayReveal';
 import { PanelShell, PanelCloseButton } from './aipanel/parts/PanelShell';
@@ -206,7 +207,7 @@ function AiPanel() {
             прокрутку ленты на место, где её оставил React, а не человек.
             Обёртка повторяет геометрию блока приложений (flex:1, minHeight:0, колонка) — трое
             прежних соседей раскладываются внутри неё ровно так же, как раскладывались снаружи. */}
-        <div className={mode === 'chat' ? 'oblako-mode-in' : undefined} style={{
+        <ChatInputZone tabId={tabId ?? ''} inputEpoch={inputEpoch} sending={sending} className={mode === 'chat' ? 'oblako-mode-in' : undefined} style={{
           flex: 1, minHeight: 0,
           display: mode === 'chat' ? 'flex' : 'none', flexDirection: 'column',
         }}>
@@ -282,7 +283,7 @@ function AiPanel() {
         )}
 
         <Composer
-          input={input} setInput={setInput} tabId={tabId ?? ''} inputEpoch={inputEpoch}
+          input={input} setInput={setInput} tabId={tabId ?? ''}
           onSend={handleSend} onKeyDown={handleKeyDown}
           onFocus={() => window.aiPanel.chatIntent()}
           sending={sending} pinnedConnectionId={source.kind === 'preset' ? contexts.presets.find(p => p.id === source.id)?.connectionId : undefined}
@@ -290,7 +291,7 @@ function AiPanel() {
           webGroundingActive={webGroundingActive}
           onGlobeClick={handleGlobeClick}
         />
-        </div>
+        </ChatInputZone>
         {/* display:none, а не условный рендер — состояние приложений (идущий таймер, набранное
             в калькуляторе) переживает переключение в чат и обратно. */}
         <div className={mode === 'apps' ? 'oblako-mode-in' : undefined} style={{
