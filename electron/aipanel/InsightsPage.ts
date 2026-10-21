@@ -18,14 +18,14 @@ export const INSIGHT_SAMPLE = String.raw`(() => {
         return [...r.addedNodes, ...r.removedNodes].some(n => n.nodeType !== 1 || !n.matches(excluded));
       })) state.dirty = true;
     });
-    state.observer.observe(document.body,{subtree:true,childList:true,characterData:true});
+    state.observer.observe(document.body,{subtree:true,childList:true});
   }
   clearTimeout(state.expires);
   state.expires = setTimeout(() => {state.observer.disconnect(); delete globalThis.__oblakoInsights;},15000);
   if (!state.root?.isConnected || state.body !== document.body) {
     state.dirty = true; state.body = document.body;
     state.observer.disconnect();
-    state.observer.observe(document.body,{subtree:true,childList:true,characterData:true});
+    state.observer.observe(document.body,{subtree:true,childList:true});
   }
   if (!state.dirty) return null;
   state.dirty = false;

@@ -64,8 +64,11 @@ export function wireTabHotkeys(wc: WebContents, source: 'chrome' | 'tab', host: 
         } else if (host.omniboxEditing()) {
           // не гасим: Toolbar::handleKeyDown вернёт адрес
         } else {
+          // Только пока идёт загрузка, как в Chrome. stop() на загруженной странице — это
+          // window.stop(): обрывает все её запросы, на YouTube — догрузку видео (повторный Esc
+          // после выхода из полного экрана ронял плеер). И Esc нужен самой странице.
           const active = host.activeWebContents();
-          if (active) { event.preventDefault(); active.stop(); }
+          if (active && active.isLoading()) { event.preventDefault(); active.stop(); }
         }
         return;
       }

@@ -93,6 +93,8 @@ export function wireTabPageLifecycle(id: string, wc: WebContents, host: PageLife
     host.win.once('enter-full-screen', () => setImmediate(() => {
       if (!resized) { host.win.removeListener('resize', reposition); reposition(); }
     }));
+    // Вью — под размер экрана ДО разворота окна (см. TabManager.applyBounds).
+    host.repositionViews();
     host.win.setFullScreen(true);
   });
   wc.on('leave-html-full-screen', () => {
@@ -101,9 +103,11 @@ export function wireTabPageLifecycle(id: string, wc: WebContents, host: PageLife
     host.setFullscreenTabId(null);
     if (host.win.isDestroyed()) return;
     if (!host.win.isFullScreen()) { host.repositionViews(); return; }
-    // Обычные bounds измеряет chrome-renderer после resize. Здесь они ещё от fullscreen;
-    // их раннее применение давало огромный промежуточный плеер и вторую тяжёлую раскладку.
+    // setFullScreenTabId(null) уже вернул дырку, сохранённую до разворота. Сначала сворачиваем
+    // окно, потом ставим вью в эту дырку: страница раскладывается один раз под итоговый размер.
+    // Если окно вернулось не в прежний размер, chrome поправит bounds своим ResizeObserver.
     host.win.setFullScreen(false);
+    host.repositionViews();
   });
 
   wc.on('page-title-updated', (_e, title) => {

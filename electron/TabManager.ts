@@ -1,4 +1,4 @@
-import { app, WebContentsView, BrowserWindow, ipcMain, net } from 'electron';
+import { app, WebContentsView, BrowserWindow, ipcMain, net, screen } from 'electron';
 import type { ManagedTab } from './tabTransferTypes';
 import { detachTab, adoptTab, type DetachedTab, type TabTransferHost } from './tabTransfer';
 import type { LoadURLOptions, MenuItemConstructorOptions, PostBody, Referrer, WebContents } from 'electron';
@@ -148,6 +148,10 @@ export class TabManager {
   // занимает всё окно, а присланные рендерером bounds на неё не действуют — иначе первый же
   // ResizeObserver вернул бы кадр обратно в дырку под контент.
   private fullscreenTabId: string | null = null;
+  // Дырка под контент ДО полноэкранного режима. Пока ролик развёрнут, chrome присылает bounds
+  // полноэкранной раскладки; при выходе возвращаем страницу сразу в прежний прямоугольник, а не
+  // ждём круг «resize окна → ResizeObserver chrome → IPC», иначе выход идёт лесенкой.
+  private boundsBeforeFullscreen: ContentBounds | null = null;
   // Поисковик для omnibox-навигации и ПКМ-поиска — единый источник для обеих точек.
   // Применяется извне через setSearchEngine() сразу после конструктора (см. main.ts,
   // SettingsManager) и при смене настройки — сам TabManager настройку не персистирует.
@@ -290,6 +294,28 @@ export class TabManager {
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
     this.hubTab = { id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 };
     this.startSleepTimer();
+    // Окно может выйти из полного экрана мимо страницы (Win+↓, перенос на другой монитор, смена
+    // разрешения). Тогда страница осталась бы в HTML-fullscreen, а её вью — поверх всего окна:
+    // ни вкладок, ни омнибокса, только закрыть окно. Выводим страницу следом.
+    win.on('leave-full-screen', () => {
+      const id = this.fullscreenTabId;
+      if (!id) return;
+      const wc = this.tabMap.get(id)?.view?.webContents;
+      this.#setFullscreenTab(null);
+      this.repositionViews();
+      if (wc && !wc.isDestroyed()) {
+        void wc.executeJavaScript('document.fullscreenElement && document.exitFullscreen()', true).catch(() => {});
+      }
+    });
+  }
+
+  #setFullscreenTab(tabId: string | null): void {
+    if (tabId && !this.fullscreenTabId) this.boundsBeforeFullscreen = { ...this.bounds };
+    if (!tabId && this.boundsBeforeFullscreen) {
+      this.bounds = this.boundsBeforeFullscreen;
+      this.boundsBeforeFullscreen = null;
+    }
+    this.fullscreenTabId = tabId;
   }
 
   // Меняет движок для omnibox-навигации и ПКМ-поиска (единый источник для обеих точек).
@@ -1255,7 +1281,7 @@ export class TabManager {
         this.#navFrom.set(id, hostOfUrl(url));
       },
       getFullscreenTabId: () => this.fullscreenTabId,
-      setFullscreenTabId: (tabId) => { this.fullscreenTabId = tabId; },
+      setFullscreenTabId: (tabId) => this.#setFullscreenTab(tabId),
       repositionViews: () => this.repositionViews(),
       onTitleUpdate: (url, title, page) => this.onTitleUpdateCb?.(url, title, page),
       cacheFavicon: (page, url) => this.#cacheFaviconData(page, url),
@@ -3247,7 +3273,13 @@ export class TabManager {
     // Полноэкранный ролик занимает ВСЁ окно, а не дырку под контент. Скругление снимаем:
     // на краю экрана оно давало бы чёрные засечки по углам кадра.
     if (this.fullscreenTabId && this.tabMap.get(this.fullscreenTabId)?.view === view) {
-      const { width: w, height: h } = this.win.getContentBounds();
+      // Сразу размер ЭКРАНА, а не текущего окна: вью ставится до разворота окна, и плеер
+      // раскладывается один раз под итоговый размер. Лишнее за краем окна просто обрезается,
+      // пока окно не развернётся. Против «лесенки»: маленький кадр → растущее окно → полный.
+      const content = this.win.getContentBounds();
+      const display = screen.getDisplayMatching(this.win.getBounds()).bounds;
+      const w = Math.max(content.width, display.width);
+      const h = Math.max(content.height, display.height);
       view.setBounds({ x: 0, y: 0, width: w, height: h });
       view.setBorderRadius(0);
       return;

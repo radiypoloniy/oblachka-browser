@@ -1,5 +1,6 @@
 import type { WebContents } from 'electron';
 import { allContexts } from '../WindowRegistry';
+import { existingPanel } from './instances';
 import { insightsConfig } from './InsightsStore';
 import { eligibleInsightPage, insightPageText, releaseInsightPage } from './InsightsPage';
 import { prepareInsights, type PreparedInsights } from './InsightsGeneration';
@@ -28,6 +29,11 @@ async function prepareActive(): Promise<void> {
   for (const ctx of allContexts()) {
     if (!insightsConfig().enabled) break;
     if (ctx.win.isDestroyed() || !ctx.win.isVisible() || ctx.win.isMinimized()) continue;
+    // Чтение DOM раз в 2,5 с стоит заметно на тяжёлых страницах (YouTube): только при открытой
+    // панели и не в полном экране, где страница перестраивается целиком.
+    // ⚠️ Подготовка ДО открытия панели (29a8aa5) отключена ОСОЗНАННО, ради экономии: первые
+    // подсказки после открытия появляются с задержкой — это принятая цена, а не баг.
+    if (!existingPanel(ctx.win)?.open || ctx.win.isFullScreen()) continue;
     const tab = ctx.tabs.snapshot().find(t => t.isActive);
     const wc = tab ? ctx.tabs.getActiveWebContents(tab.id) : null;
     if (!tab || !wc || wc.isDestroyed() || !eligibleInsightPage(tab.url)) continue;

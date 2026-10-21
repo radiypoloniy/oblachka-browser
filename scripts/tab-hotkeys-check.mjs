@@ -31,7 +31,8 @@ let owned = true;
 let screenshotOpen = false;
 let findBarOpen = false;
 let omniboxEditing = false;
-let activePage = { stop: () => calls.push('stop') };
+let pageLoading = true;
+let activePage = { stop: () => calls.push('stop'), isLoading: () => pageLoading };
 const host = {
   ownsWebContents: () => owned,
   screenshotOpen: () => screenshotOpen,
@@ -61,7 +62,12 @@ check('второй Esc закрывает FindBar', [wc.key('Escape'), calls.sp
 omniboxEditing = true;
 check('Esc в омнибоксе остаётся React', [wc.key('Escape'), calls.splice(0)], [false, []]);
 omniboxEditing = false;
-check('Esc без оверлея останавливает страницу', [wc.key('Escape'), calls.splice(0)], [true, ['stop']]);
+check('Esc без оверлея останавливает загрузку', [wc.key('Escape'), calls.splice(0)], [true, ['stop']]);
+// ⚠️ Живой случай: stop() на загруженной странице — это window.stop(), он обрывал догрузку видео
+// YouTube, и повторный Esc после выхода из полного экрана ронял плеер. Esc принадлежит странице.
+pageLoading = false;
+check('Esc на загруженной странице её не трогает и уходит странице', [wc.key('Escape'), calls.splice(0)], [false, []]);
+pageLoading = true;
 check('Shift+Esc открывает диспетчер', [wc.key('Escape', { shift: true }), calls.splice(0)], [true, ['openTaskManager']]);
 check('F5 обновляет, Ctrl+F5 — без кэша',
   [wc.key('F5'), wc.key('F5', { control: true }), calls.splice(0)], [true, true, ['reload', 'reloadHard']]);

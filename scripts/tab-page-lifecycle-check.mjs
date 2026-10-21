@@ -94,14 +94,18 @@ check('показанный split-партнёр виден, инкогнито 
 ]);
 
 wc.emit('enter-html-full-screen');
-check('оверлеи убраны до разворота окна и раскладки', calls.splice(0), [['prepare-fullscreen'], ['fullscreen-id', 'tab-a']]);
+// ⚠️ Вью ставится под размер ЭКРАНА ещё ДО разворота окна (TabManager.applyBounds): плеер
+// раскладывается один раз под итоговый размер, а не лесенкой вслед за растущим окном.
+check('оверлеи убраны, вью под экран до разворота окна', calls.splice(0), [['prepare-fullscreen'], ['fullscreen-id', 'tab-a'], ['reposition']]);
 win.emit('enter-full-screen');
 check('сигнал fullscreen ещё не применяет прежний размер окна', calls.splice(0), []);
 win.emit('resize');
 check('после фактического resize вью переставлена', calls.splice(0), [['reposition']]);
 wc.emit('leave-html-full-screen');
 win.emit('leave-full-screen');
-check('выход сбрасывает вкладку и ждёт свежих bounds renderer', calls.splice(0), [['fullscreen-id', null]]);
+// ⚠️ Выход ставит вью СРАЗУ в дырку, сохранённую до разворота (её возвращает setFullscreenTabId),
+// а не ждёт круга «resize → ResizeObserver хрома → IPC»: ожидание и давало выход лесенкой.
+check('выход сбрасывает вкладку и сразу возвращает вью в прежнюю дырку', calls.splice(0), [['fullscreen-id', null], ['reposition']]);
 
 wc.emit('page-favicon-updated', {}, []);
 check('пустой favicon не стирает прежний', calls.splice(0), []);

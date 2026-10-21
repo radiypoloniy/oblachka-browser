@@ -899,7 +899,11 @@ function createWindow(role: WindowRole = 'main', saved?: SavedWindow) {
   layoutChrome();
   win.on('resize', layoutChrome);
   // Полноэкранная страница закрывает chrome целиком: его ResizeObserver может быть приостановлен.
-  win.on('leave-html-full-screen', () => chromeView.webContents.send(IPC.CONTENT_REFRESH_BOUNDS));
+  // Замер — после фактического выхода окна из полного экрана, а не в момент выхода страницы:
+  // тогда chrome ещё разложен на весь экран и присылал огромную дырку (промежуточный кадр).
+  win.on('leave-full-screen', () => setTimeout(() => {
+    if (!chromeView.webContents.isDestroyed()) chromeView.webContents.send(IPC.CONTENT_REFRESH_BOUNDS);
+  }, 120));
 
   wireSharedSessions();
 
