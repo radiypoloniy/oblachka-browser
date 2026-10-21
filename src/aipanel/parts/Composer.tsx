@@ -71,7 +71,11 @@ export function Composer({
           placeholder="Написать сообщение…"
           rows={1}
           style={{
-            width: '100%', resize: 'none', maxHeight: 96,
+            // ⚠️ Поле РАСТЁТ по тексту (field-sizing в global.css), как у Claude и ChatGPT, и
+            // упирается в долю высоты панели — дальше своя прокрутка. Раньше стояли rows=1 и
+            // maxHeight без авторазмера: предел не достигался никогда, и любой абзац читался
+            // одной строкой с прокруткой внутри.
+            width: '100%', resize: 'none', maxHeight: '40vh',
             border: 'none', outline: 'none',
             background: 'transparent', padding: '4px 2px',
             fontSize: 'var(--fs-md)', fontFamily: 'var(--font-sans)',

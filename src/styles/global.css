@@ -229,6 +229,13 @@ button, input, textarea, select { font-family: inherit; }
    матчиться и нативный скролл возвращается — там он нужен по-настоящему. */
 .ai-composer-input:placeholder-shown { overflow-y: hidden; }
 
+/* Авторазмер поля ввода чата по содержимому (Chromium 123+, в Electron 42 есть) — без JS-замера
+   scrollHeight на каждый символ. Предел высоты задаёт maxHeight в Composer.tsx.
+   ⚠️ Пустое поле — фиксированная одна строка: field-sizing меряет и ПЛЕЙСХОЛДЕР, а он в узкой
+   панели переносится (разбор выше), и пустое поле выросло бы до двух строк ради невидимого текста. */
+.ai-composer-input { field-sizing: content; }
+.ai-composer-input:placeholder-shown { field-sizing: fixed; }
+
 /* Настройки: боковой нав сворачивается в столбик иконок при узкой ширине контентной
    колонки (см. Settings.tsx — root несёт .settings-root). Инлайновые стили в Settings.tsx
    по каскаду выигрывают у обычных правил из таблицы стилей — !important здесь обязателен,
