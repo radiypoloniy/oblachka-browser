@@ -28,6 +28,8 @@
 | [roadmap.md](roadmap.md) | Техническая карта: что сделано, что осталось, что отложено и почему |
 | [usability-roadmap.md](usability-roadmap.md) | Продуктовая карта удобства (сентябрь 2026) |
 | [releases/](releases/) | Заметки к выпускам и протоколы их проверки |
+| [pitch.md](pitch.md) · [pitch.ru.md](pitch.ru.md) | Длинный разбор проекта: проблема, ответ, бизнес-модель, риски (прежний README) |
+| [images/](images/) | Скриншоты README — снимаются `node scripts/readme-shots.mjs`, руками не правятся |
 
 ## Снимки: планы и аудиты (в репозитории)
 
