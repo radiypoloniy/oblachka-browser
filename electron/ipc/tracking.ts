@@ -10,7 +10,7 @@ import { sendFindResult, showFindBar } from '../FindBarManager';
 import { highlightCandidates } from '../SmartFind';
 import { checkAllNow } from '../TrackingChecker';
 import { broadcastToChrome, contextForWindow, contextFromSender } from '../WindowRegistry';
-import { clipboard, ipcMain } from 'electron';
+import { ClipboardItem, clipboard, ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
 import * as travelpayoutsKeyStore from '../TravelpayoutsKeyStore';
 
@@ -58,18 +58,18 @@ export function registerTrackingIpc(d: IpcDeps): void {
   // только тот, кто пользовался нашим списком.
   // text остаётся ОБЯЗАТЕЛЬНЫМ: место вставки может не понимать html (поле ввода, терминал), и без
   // текстовой части там не появилось бы вообще ничего.
-  ipcMain.handle(IPC.CLIPBOARD_PUT, (_e, id: number) => {
+  ipcMain.handle(IPC.CLIPBOARD_PUT, async (_e, id: number) => {
     const entry = clipboardBuffer.entryById(id);
     if (!entry) return;
-    if (entry.html) clipboard.write({ text: entry.text, html: entry.html });
-    else clipboard.writeText(entry.text);
+    if (entry.html) await clipboard.write([new ClipboardItem({ 'text/plain': entry.text, 'text/html': entry.html })]);
+    else await clipboard.writeText(entry.text);
   });
   // Один адрес из записи. ⚠️ Пришедший url СВЕРЯЕТСЯ со списком ссылок этой записи и только потом
   // попадает в системный буфер: канал не должен превращаться в «запиши в буфер ОС что скажу» —
   // поповер хоть и наш, но это отдельная вью, и доверять её строке на слово незачем.
-  ipcMain.handle(IPC.CLIPBOARD_PUT_LINK, (_e, id: number, url: string) => {
+  ipcMain.handle(IPC.CLIPBOARD_PUT_LINK, async (_e, id: number, url: string) => {
     const entry = clipboardBuffer.entryById(id);
-    if (entry?.links?.some((l) => l.url === url)) clipboard.writeText(url);
+    if (entry?.links?.some((l) => l.url === url)) await clipboard.writeText(url);
   });
   // Переход к источнику: открыть страницу, где текст скопировали, и подсветить его.
   // ⚠️ Своей подсветки не изобретаем — те же highlightCandidates + findQuoteInPage, что у

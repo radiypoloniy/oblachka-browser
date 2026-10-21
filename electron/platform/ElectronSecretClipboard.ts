@@ -6,15 +6,17 @@ import type { SecretClipboard } from './SecretClipboard';
 export class ElectronSecretClipboard implements SecretClipboard {
   async writeSecret(text: string): Promise<{ ok: boolean; protected: boolean }> {
     try {
-      clipboard.writeText(text);
+      await clipboard.writeText(text);
       return { ok: true, protected: false };
     } catch {
       return { ok: false, protected: false };
     }
   }
 
-  readText(): string {
-    try { return clipboard.readText(); } catch { return ''; }
+  // ⚠️ await обязателен: с Electron 44 readText асинхронный, и без него отказ буфера (занят
+  // другим процессом) проскочил бы мимо catch отклонённым промисом.
+  async readText(): Promise<string> {
+    try { return await clipboard.readText(); } catch { return ''; }
   }
 
   clear(): void {

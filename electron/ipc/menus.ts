@@ -23,7 +23,7 @@ import { suggestWindowGroups } from '../window/organize';
 import { suggestTabTitle } from '../TabRenamer';
 import { getLoadedModelId, isModelWarm, unloadModel } from '../TranslationService';
 import { broadcastToChrome, contextFromSender } from '../WindowRegistry';
-import { Menu, app, clipboard, ipcMain } from 'electron';
+import { ClipboardItem, Menu, app, clipboard, ipcMain } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import type { IpcDeps } from './deps';
 import { t as tr } from '../uiText';
@@ -324,7 +324,7 @@ export function registerMenusIpc(d: IpcDeps): void {
           // '\n\n' (не '\n') — пустая строка между ссылками при вставке в обычное текстовое поле;
           // join не оставляет заключающего разделителя, поэтому хвостовой пустой строки в конце нет.
           const text = contents.map(({ url, title }) => `[${title}](${url})`).join('\n\n');
-          clipboard.write({ text, html });
+          void clipboard.write([new ClipboardItem({ 'text/plain': text, 'text/html': html })]);
         },
       },
       ...(groupToGraph ? [{ ...groupToGraph, icon: menuIcon('Workflow') }] : []),

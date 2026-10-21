@@ -74,6 +74,10 @@ await withStand(async (ctx) => {
   await ctx.evalMain(`routingStand.electron.ipcMain._invokeHandlers.get('tab:create')({ sender: routingStand.overlay.webContents }, ${JSON.stringify(ctx.echoUrl('/bound'))})`);
   assert.equal((await inWindow('a', 'window.oblako.getAllTabs()')).length, tabsA.length + 1);
   await ctx.evalMain('routingStand.overlayContents.close(); routingStand.routing.sendTo(routingStand.overlayContents, "stand:late-answer")');
+  // ⚠️ close() уничтожает webContents не сразу. До Electron 44 уничтожение успевало к следующему
+  // вызову CDP, с 44 — нет, и проверка спрашивала реестр о ещё живой вью (3 падения из 3).
+  // Ждём уничтожения явно: проверяется реестр после закрытия, а не скорость закрытия.
+  for (let i = 0; i < 40 && !(await ctx.evalMain('routingStand.overlayContents.isDestroyed()')); i++) await wait(50);
   assert.equal(await ctx.evalMain('routingStand.registry.contextFromSender(routingStand.overlayContents) === null'), true);
   console.log('OK: два окна, адресный IPC, чужой tabId, неизвестная/закрытая вью, привязка и перенос overlay, изоляция страницы, фокус.');
 }, { main: true });

@@ -12,7 +12,7 @@ Ad blocking and VPN out of the box, a local language model on top of your tabs a
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)
-![Electron 42](https://img.shields.io/badge/Electron-42-47848F)
+![Electron 44](https://img.shields.io/badge/Electron-44-47848F)
 [![Release](https://img.shields.io/github/v/release/radiypoloniy/oblachka-browser?label=version)](https://github.com/radiypoloniy/oblachka-browser/releases)
 
 <img src="docs/images/browse.png" width="820" alt="Vertical tabs, a page and the AI panel">

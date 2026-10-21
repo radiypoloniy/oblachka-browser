@@ -173,7 +173,7 @@ export class PasswordManager {
       if (field === 'username') {
         const row = this.#db.prepare(`SELECT username FROM credentials WHERE id = ?`).get(id) as { username: string } | undefined;
         if (!row) return false;
-        clipboard.writeText(row.username);
+        await clipboard.writeText(row.username);
         return true;
       }
       const value = this.reveal(id);
@@ -181,10 +181,12 @@ export class PasswordManager {
       const result = await this.#secretClipboard.writeSecret(value, ownerHandle);
       if (!result.ok) return false;
       const generation = ++this.#clipboardGeneration;
-      setTimeout(() => {
+      setTimeout(async () => {
         // Новая копия из Oblako продлевает срок именно новой записи. Чужой текст не стираем.
         if (this.#clipboardGeneration !== generation) return;
-        if (this.#secretClipboard.readText() === value) this.#secretClipboard.clear();
+        const current = await this.#secretClipboard.readText();
+        // Поколение проверяется второй раз: пока чтение буфера ждало, могла прийти новая копия.
+        if (this.#clipboardGeneration === generation && current === value) this.#secretClipboard.clear();
       }, CLIPBOARD_CLEAR_MS);
       return true;
     } catch (e) {

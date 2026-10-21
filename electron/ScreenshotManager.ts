@@ -16,7 +16,7 @@
 // Техника карточки — та же, что у FindBar/поповера загрузок: своя прозрачная WebContentsView
 // поверх страницы (DOM в чроме не годится — нативная вью страницы лежит поверх React-слоя).
 // Состояние — по окну: снимок делается в том окне, где нажали, включая лёгкие.
-import { WebContentsView, ipcMain, app, clipboard, nativeImage, shell } from 'electron';
+import { ClipboardItem, WebContentsView, ipcMain, app, clipboard, nativeImage, shell } from 'electron';
 import type { BrowserWindow, WebContents } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -201,7 +201,7 @@ function ensureIpcRegistered(): void {
   ipcMain.on('screenshot:copy', (_e, dataUrl: string) => {
     try {
       const img = nativeImage.createFromDataURL(dataUrl);
-      if (!img.isEmpty()) clipboard.writeImage(img);
+      if (!img.isEmpty()) void clipboard.write([new ClipboardItem({ 'image/png': new Blob([img.toPNG()]) })]);
     } catch { /* битый dataURL — молча, карточка уже показала «скопировано» */ }
   });
 

@@ -1524,7 +1524,8 @@ app.on('window-all-closed', () => {
 // ⚠️ Профиль по умолчанию исключён на уровне контракта (profileClearsOnExit): его партиция —
 // сессия со ВСЕМИ логинами человека, и очистка там означала бы разлогин везде при каждом выходе.
 const CLEARED_STORAGES = [
-  'cookies', 'localstorage', 'indexdb', 'websql', 'serviceworkers', 'cachestorage',
+  // 'websql' здесь был до Electron 44: Chromium убрал WebSQL ещё в Electron 31, тип — в 44.
+  'cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage',
 ] as const;
 const appShutdown = registerAppShutdown(app, {
   saveSession: () => {

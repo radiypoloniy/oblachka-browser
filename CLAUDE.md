@@ -23,7 +23,7 @@ Oblako — приватный браузер на Electron (Chromium + Node), Wi
 см. ниже. Актуальный список готового/недостающего — в README.md и в
 `docs/roadmap.md`.
 
-Стек: **Electron 42 + TypeScript (strict) + Vite + React 18**. Иконки — lucide-react.
+Стек: **Electron 44 + TypeScript (strict) + Vite + React 18**. Иконки — lucide-react.
 UI построен на дизайн-системе Oblako (Liquid Glass) через CSS-токены. AI-инференс —
 `node-llama-cpp` (локальная LLM Qwen) + `@mozilla/readability` (извлечение текста
 страницы). Эмбеддинги/векторный поиск (`@huggingface/transformers`) испытывались

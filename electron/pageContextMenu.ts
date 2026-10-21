@@ -187,7 +187,7 @@ function linkSection(host: PageContextMenuHost, id: string, wc: WebContents, p: 
       },
     });
   }
-  out.push({ type: 'separator' }, { label: tr('Копировать адрес ссылки'), icon: menuIcon('Copy'), click: () => clipboard.writeText(p.linkURL) });
+  out.push({ type: 'separator' }, { label: tr('Копировать адрес ссылки'), icon: menuIcon('Copy'), click: () => void clipboard.writeText(p.linkURL) });
   // «Добавить в граф» строит main: TabManager не должен знать про хранилище графов,
   // ему отдают готовый пункт меню (тот же приём, что с tabManagerRef у менеджеров вью).
   const toGraph = host.graphMenuItem([{ url: p.linkURL, title: p.linkText || p.linkURL }]);

@@ -1,4 +1,4 @@
-import { clipboard, dialog, ipcMain } from 'electron';
+import { clipboard, dialog, ipcMain, nativeImage } from 'electron';
 import { IPC } from '../../shared/ipc';
 import { INPUT_EXTENSIONS, INPUT_COUNT_MAX, type InputResult } from '../../shared/aiChatInputs';
 import { connectionFor, getOrCreateContext, selectionFor, tabContexts } from './chatOwnership';
@@ -33,16 +33,16 @@ export function registerInputFiles(): void {
       return { ok: false, error: error instanceof Error ? error.message : 'Не удалось прикрепить файл' };
     }
   });
-  ipcMain.handle(IPC.AI_PANEL_INPUT_PASTE, (event, requested: unknown): InputResult => {
+  ipcMain.handle(IPC.AI_PANEL_INPUT_PASTE, async (event, requested: unknown): Promise<InputResult> => {
     const selected = selectionFor(event.sender, requested);
     if (!selected || selectionFor(event.sender)?.key !== selected.key) return { ok: false, error: 'Беседа изменилась' };
     try {
       const ctx = getOrCreateContext(selected.key, selected.url, selected.title);
       if (ctx.pending) throw new Error('Дождитесь ответа модели');
       if (!imagesAllowed(selected.source)) throw new Error('Встроенная модель не читает изображения');
-      const image = clipboard.readImage();
-      if (image.isEmpty()) throw new Error('В буфере нет изображения');
-      return { ok: true, files: [files.importImage(selected.key, image.toPNG())] };
+      const png = await readClipboardPng();
+      if (!png) throw new Error('В буфере нет изображения');
+      return { ok: true, files: [files.importImage(selected.key, png)] };
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Не удалось вставить изображение' }; }
   });
   ipcMain.handle(IPC.AI_PANEL_INPUT_REMOVE, (event, requested: unknown, id: unknown) => {
@@ -53,6 +53,21 @@ export function registerInputFiles(): void {
     const selected = selectionFor(event.sender, requested);
     return selected && typeof id === 'string' ? files.preview(selected.key, id) : null;
   });
+}
+
+// С Electron 44 readImage() убран: картинку достаём из clipboard.read() по MIME image/*.
+// Через nativeImage, а не байтами как есть: в буфере бывает не только PNG, а файлы беседы
+// ждут именно его.
+async function readClipboardPng(): Promise<Buffer | null> {
+  for (const item of await clipboard.read()) {
+    const type = item.types.find(t => t.startsWith('image/'));
+    if (!type) continue;
+    const blob = await item.getType(type);
+    if (!(blob instanceof Blob)) continue;
+    const image = nativeImage.createFromBuffer(Buffer.from(await blob.arrayBuffer()));
+    if (!image.isEmpty()) return image.toPNG();
+  }
+  return null;
 }
 
 export function imagesAllowed(source: Parameters<typeof connectionFor>[0]): boolean {
