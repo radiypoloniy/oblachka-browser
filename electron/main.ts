@@ -82,6 +82,7 @@ import { warmup as warmupTranslation } from './TranslationService';
 import { shutdownInference } from './inference/InferenceHost';
 import { startModelIdleWatcher, stopModelIdleWatcher } from './ModelIdleWatcher';
 import { firstUrlFromArgv } from './startUrlArgv';
+import { registerSecondInstance } from './secondInstance';
 import { isExternalAppUrl, openExternalWithConsent, setExternalConsentAsk } from './ExternalProtocol';
 import { installCertificateTrust } from './CertificateTrust';
 import { setSettingsManager as setAiPanelSettingsManager } from './AiPanelManager';
@@ -198,6 +199,8 @@ async function runTranslateTestWindow(): Promise<void> {
 
 // Адрес, пришедший до того, как окно готово его принять (macOS open-url на холодном старте).
 let pendingStartUrl: string | null = null;
+// Окна сессии подняты и стартовый адрес разобран. До этого повторный запуск не создаёт окон сам.
+let sessionRestored = false;
 
 
 // t0 стартовых тайминов: фиксируем в app.whenReady, до createWindow.
@@ -1337,21 +1340,12 @@ function bringToFront(win: BrowserWindow): void {
   app.focus({ steal: true });
 }
 
-// Ссылка из другого приложения при УЖЕ запущенном браузере: открываем вкладку и поднимаем окно.
-app.on('second-instance', (_e, argv) => {
-  const url = firstUrlFromArgv(argv);
-  const ctx = preferredContext();
-  // ⚠️ Окон может не быть вовсе (все закрыты, а процесс ещё жив — например, доигрывает выход).
-  // Молча терять ссылку нельзя: для человека это «браузер не открыл страницу». Поднимаем окно
-  // заново и отдаём адрес ему.
-  if (!ctx) {
-    const revived = createWindow();
-    if (url) revived.tabs.createTab(url);
-    bringToFront(revived.win);
-    return;
-  }
-  bringToFront(ctx.win);
-  if (url) ctx.tabs.createTab(url);
+// Ярлык или ссылка из другого приложения при УЖЕ запущенном браузере — см. secondInstance.ts.
+registerSecondInstance({
+  preferredContext, createWindow, bringToFront,
+  isRestored: () => sessionRestored,
+  // Первый отложенный адрес не вытесняется повторными кликами по ярлыку.
+  deferUrl: (url) => { pendingStartUrl ??= url; },
 });
 
 // macOS отдаёт ссылки не аргументом, а событием. Пути расходятся только здесь.
@@ -1496,6 +1490,7 @@ app.whenReady().then(async () => {
   const startUrl = pendingStartUrl ?? firstUrlFromArgv(process.argv);
   pendingStartUrl = null;
   if (startUrl) (allContexts().find(c => c.sessionId === startupWindowId) ?? preferredContext())?.tabs.createTab(startUrl);
+  sessionRestored = true;
 
   // Сторож простоя модели. ⚠️ Здесь, в самом конце whenReady, а не рядом с прочей инициализацией:
   // ветки LLAMA_TEST/TRANSLATE_TEST выходят раньше, и стендам этот таймер не нужен вовсе.
