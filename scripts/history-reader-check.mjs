@@ -117,7 +117,7 @@ await withStand(async ctx => {
   const archive=path.join(ctx.profile,'history-reader-test.asar');
   const packedSource=path.join(ctx.profile,'history-reader-pack');
   fs.cpSync(path.resolve('dist-electron'),packedSource,{recursive:true});
-  for (const name of ['better-sqlite3','bindings','file-uri-to-path','snowball-stemmers']) {
+  for (const name of ['better-sqlite3','snowball-stemmers']) {
     fs.cpSync(path.resolve('node_modules',name),path.join(packedSource,'node_modules',name),{recursive:true});
   }
   await createPackageWithOptions(packedSource,archive,{unpackDir:'node_modules/better-sqlite3'});

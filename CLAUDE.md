@@ -30,8 +30,9 @@ UI построен на дизайн-системе Oblako (Liquid Glass) че�
 и были удалены из проекта целиком — тупиковый подход на этом корпусе, не баг (см.
 `TabOrganizer.ts` и `HistorySearch.ts` ниже). Перевод страниц — движок Bergamot
 (WASM/CPU, `@browsermt/bergamot-translator`, свой `worker_thread`) с фолбэком на
-Qwen. История — `better-sqlite3` (нативный модуль, требует пересборки под
-Electron ABI, см. `postinstall`). Артефакты «Студии» блокнота рисуют
+Qwen. История — `better-sqlite3` (нативный модуль на N-API: с 13-й версии готовый
+бинарник лежит в пакете и не зависит от ABI Electron; `postinstall` только проверяет, что он
+грузится, — `scripts/verify-sqlite.mjs`). Артефакты «Студии» блокнота рисуют
 детерминированные либы в renderer: майндкарты — `markmap-lib` + `markmap-view`
 (SVG), инфографика — своя вёрстка карточек в `studioViews.tsx` (движок
 `@antv/infographic` убран: его шаблоны с фиксированной шириной полей ломали

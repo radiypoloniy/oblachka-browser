@@ -47,6 +47,13 @@ files:
   # обязательные в рантайме binariesGithubRelease.json и grammars/ (~380 КБ на всё) —
   # без них node-llama-cpp падает с ENOENT ещё до загрузки модели.
   - '!**/node_modules/node-llama-cpp/llama/gitRelease.bundle'
+  # better-sqlite3 с 13-й версии везёт готовые бинарники ВСЕХ платформ (8 штук по ~2 МБ) плюс
+  # исходники SQLite для локальной сборки (10 МБ). Под win-x64 нужен один файл.
+  # ⚠️ При порте на macOS darwin-* отсюда убрать, иначе приложение стартует без истории и паролей.
+  - '!**/node_modules/better-sqlite3/deps/**'
+  - '!**/node_modules/better-sqlite3/prebuilds/darwin-*.node'
+  - '!**/node_modules/better-sqlite3/prebuilds/linux*.node'
+  - '!**/node_modules/better-sqlite3/prebuilds/win32-arm64.node'
 
 # Нативный код обязан лежать распакованным: .node и .dll нельзя загрузить из asar-архива.
 asarUnpack:
@@ -85,9 +92,9 @@ extraResources:
 # GGUF-модели (resources/models/gguf, 6.3 ГБ) в установщик НЕ кладутся сознательно: они
 # качаются пользователем из UI в userData (ModelDownloader.ts/ModelRegistry.ts).
 
-# better-sqlite3 уже пересобран под ABI Electron через electron-rebuild (postinstall в
-# package.json). Повторная пересборка силами electron-builder только добавляет шанс уронить
-# рабочий модуль на машине без C++ tools — а результат тот же самый.
+# better-sqlite3 с 13-й версии везёт готовый бинарник на N-API, независимый от ABI Electron.
+# Пересборка силами electron-builder нашла бы в пакете binding.gyp и полезла бы компилировать
+# SQLite из исходников — на машине без C++ tools это роняет сборку, а результат тот же самый.
 npmRebuild: false
 
 # Fuses — только упакованный exe (`npm run dist` / `release`). `npm start` и `npm run dev`

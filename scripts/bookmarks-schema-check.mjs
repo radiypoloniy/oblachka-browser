@@ -17,10 +17,10 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-// ⚠️ better-sqlite3 в этом проекте пересобран под ABI Electron (см. postinstall), и системный
-// node его не загрузит — упрётся в NODE_MODULE_VERSION. Поэтому скрипт при первом же отказе
-// перезапускает сам себя нодой, встроенной в Electron: ELECTRON_RUN_AS_NODE даёт обычный node
-// с нужным ABI и без единого окна. Ради этого же schema-модуль и не импортирует 'electron'.
+// ⚠️ До better-sqlite3 13 модуль собирался под ABI Electron, и системный node его не загружал —
+// упирался в NODE_MODULE_VERSION. С 13-й версии бинарник на N-API и грузится обоими, но
+// перезапуск нодой, встроенной в Electron (ELECTRON_RUN_AS_NODE, без единого окна), оставлен
+// страховкой на случай отката версии. Ради этого же schema-модуль и не импортирует 'electron'.
 let Database;
 try {
   Database = require('better-sqlite3');

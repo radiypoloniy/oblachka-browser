@@ -76,7 +76,7 @@
     "bergamot-smoke": "node scripts/bergamot-smoke.mjs",
     "measure-model": "node scripts/measure-model-requirements.mjs",
     "postinstall:hooks": "node scripts/install-hooks.mjs",
-    "postinstall:sqlite": "node scripts/rebuild-sqlite.mjs",
+    "postinstall:sqlite": "node scripts/verify-sqlite.mjs",
     "postinstall:bergamot": "node scripts/patch-bergamot.mjs",
     "postinstall:llama": "node scripts/patch-llama-gpu-test.mjs",
     "postinstall": "npm run postinstall:sqlite && npm run postinstall:bergamot && npm run postinstall:llama && npm run postinstall:hooks",
@@ -90,7 +90,7 @@
     "@ghostery/adblocker-electron": "^2.18.0",
     "@mozilla/readability": "^0.6.0",
     "@xyflow/react": "^12.11.2",
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "^13.0.3",
     "electron-updater": "^6.8.9",
     "franc-min": "^6.2.0",
     "lucide-react": "0.383.0",
@@ -107,7 +107,6 @@
     "turndown": "^7.2.4"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "20.14.0",
     "@types/react": "18.3.3",
