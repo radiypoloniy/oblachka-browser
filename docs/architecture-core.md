@@ -285,10 +285,16 @@
   ⚠️ Инкогнито в дерево не сериализуется, и `#computeActiveRef` тоже не пишет
   приватный URL: иначе он оказывался в файле сессии, хотя вкладки в файле нет
   (живой `leak-check`, 21.08.2026).
-- `electron/AdBlockManager.ts` — блокировка рекламы: `@ghostery/adblocker-electron`,
-  prebuilt-движок с CDN Ghostery (EasyList + uBO-листы, включая quick-fixes/unbreak и
-  YouTube-фильтры, + EasyPrivacy), кэш в userData с фоновым автообновлением раз в 3 дня
-  при старте; whitelist по доменам. EasyList из `download-filters` движок НЕ использует.
+- `electron/AdBlockManager.ts` — блокировка рекламы: `@ghostery/adblocker-electron` (≥ 2.20:
+  общий `safeSelf` между скриптлетами, иначе семь обёрток `JSON.stringify` на YouTube дают 128
+  вызовов на один — сторожит `npm test -- scriptlet`). Движок собирается `fromLists` из
+  ПЕРВОИСТОЧНИКОВ (`FILTER_LISTS`: uBO с `ublockorigin.github.io` включая filters-2025/2026 и
+  quick-fixes, EasyList, EasyPrivacy, Peter Lowe), кэш `adblock-engine-upstream.bin` в userData с
+  фоновым обновлением раз в сутки при старте; whitelist по доменам.
+  ⚠️ НЕ возвращаться к `fromPrebuilt*`: они качают копию списков из репозитория Ghostery, а её бот
+  встал 14.08.2026 — «обновление» шло августовскими файлами, и 27.10 видео YouTube перестало
+  стартовать. Код скриптлетов (`resources.json`) по-прежнему из той копии — готового в
+  первоисточнике нет. EasyList из `download-filters` движок НЕ использует.
 - `electron/UpdateManager.ts` — автообновление через `electron-updater`. Адрес
   фида в коде НЕ прописан: `electron-builder` кладёт рядом с asar `app-update.yml`
   (блок `publish` в `electron-builder.yml`), апдейтер читает его сам. Политика

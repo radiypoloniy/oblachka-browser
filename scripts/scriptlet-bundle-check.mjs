@@ -61,6 +61,37 @@ console.log('\n— ChatGPT: обвязка обязана остаться ОД�
   check('объявления функций тоже видны снаружи блока', run(), 'function');
 }
 
+console.log('\n— YouTube: «родная» функция у всех скриптлетов одна (safeSelf) —');
+{
+  // ⚠️ Случай с живого YouTube (27.10.2026): актуальные фильтры uBO ставят СЕМЬ
+  // trusted-edit-inbound-object на JSON.stringify. safeSelf снимает снимок «родных» функций и
+  // запоминает его на СЕБЕ, а у каждого блока склейки своя копия функции — значит каждый
+  // следующий скриптлет принимал за родной JSON.stringify обёртку предыдущего, и один вызов
+  // страницы превращался в 2^7 = 128. Лечит Ghostery с 2.20.0 (PR #5855, снимок делится через
+  // scriptletGlobals), поэтому проверяем НАСТОЯЩУЮ сборку скриптлета библиотекой: откат версии
+  // или смена её обвязки покраснеет здесь, а не на YouTube.
+  const { Resources } = await import('@ghostery/adblocker');
+  const resources = new Resources({
+    scriptlets: [
+      {
+        name: 'safe-self.fn', aliases: [], dependencies: [], executionWorld: 'MAIN', requiresTrust: false,
+        body: 'function safeSelf() { if (safeSelf.safe) { return safeSelf.safe; } const safe = { JSON_stringify: JSON.stringify }; safeSelf.safe = safe; return safe; }',
+      },
+      {
+        name: 'wrap-stringify.js', aliases: [], dependencies: ['safe-self.fn'], executionWorld: 'MAIN', requiresTrust: false,
+        body: 'function wrapStringify() { const safe = safeSelf(); const wrapped = JSON.stringify; JSON.stringify = function (...args) { safe.JSON_stringify(args[0]); return wrapped.apply(this, args); }; }',
+      },
+    ],
+  });
+  const seven = Array.from({ length: 7 }, () => resources.getScriptlet('wrap-stringify'));
+  const vm = await import('node:vm');
+  const ctx = vm.createContext({ calls: 0 });
+  vm.runInContext('const native = JSON.stringify; JSON.stringify = function (...a) { calls += 1; return native.apply(this, a); };', ctx);
+  vm.runInContext(joinScriptlets(seven), ctx);
+  vm.runInContext('JSON.stringify({})', ctx);
+  check('семь обёрток JSON.stringify: по вызову на обёртку + свой, а не 128', ctx.calls, 8);
+}
+
 console.log('\n— мелочи —');
 {
   check('пустой список даёт пустую строку', joinScriptlets([]), '');

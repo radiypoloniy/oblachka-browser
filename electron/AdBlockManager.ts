@@ -18,6 +18,7 @@ import { joinScriptlets } from '../shared/scriptletBundle';
 import { normalizeDomain } from '../shared/domain';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
 import { fetchInProfile } from './ProfileSession';
+import { FILTER_LISTS } from './adblockLists';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
@@ -27,15 +28,17 @@ type BetterSqlite3 = typeof import('better-sqlite3');
 const SETTINGS_DEBOUNCE_MS   = 1_500;
 const STATS_PUSH_DEBOUNCE_MS = 1_000;
 // Таймаут на сетевое скачивание листов при первом запуске.
-// Если кэш engine.bin уже есть — fromPrebuiltAdsAndTracking грузит его без сети
+// Если кэш движка уже есть — fromLists грузит его без сети
 // и завершается до дедлайна; таймер лишь предохраняет от зависания при отсутствии сети.
 const FETCH_TIMEOUT_MS = 15_000;
 // Возраст кэша движка, после которого листы протухли и обновляются В ФОНЕ при старте.
 // До этого фикса кэш не обновлялся НИКОГДА (fromCached: файл прочитался — сеть не трогается),
 // движок замерзал датой первого запуска — а вместе с ним uBO quick-fixes/unbreak, листы,
 // которыми апстрим оперативно чинит поломанные фильтрами сайты (кейс ChatGPT/Pinterest).
-// 3 дня — баланс: и YouTube-фильтры (меняются часто), и ~7МБ трафика не на каждый старт.
-const ENGINE_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+// Сутки: YouTube меняет плеер почти ежедневно, и uBO отвечает правками в quick-fixes в тот же
+// день. Три дня означали до трёх суток неработающего видео после каждой такой смены; ~8 МБ раз
+// в сутки — терпимая цена.
+const ENGINE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 // Таймаут фонового обновления — щедрее стартового: качается ~десяток листов + resources.json,
 // и никого не блокирует (старт уже прошёл на кэшовом движке).
 const REFRESH_TIMEOUT_MS = 60_000;
@@ -88,9 +91,10 @@ export class AdBlockManager {
     const userData = app.getPath('userData');
     this.#settingsPath = path.join(userData, 'adblock-settings.json');
     this.#dbPath = path.join(userData, 'adblock.sqlite');
-    // Prebuilt-бинарник с косметикой. Имя отличается от старого ghostery-engine.bin
-    // (тот был без косметики) — при первом запуске скачается свежая версия с CDN.
-    this.#enginePath = path.join(userData, 'ghostery-engine-prebuilt.bin');
+    // Новое имя при смене ИСТОЧНИКА списков — намеренно: прежний ghostery-engine-prebuilt.bin
+    // свежий по дате, но августовский по содержимому, и с ним обновление ждало бы ещё сутки.
+    // Старый файл не удаляется (данные профиля не трогаем), просто больше не читается.
+    this.#enginePath = path.join(userData, 'adblock-engine-upstream.bin');
     // ⚠️ Регистрируем СРАЗУ, не после загрузки движка: канал синхронный, и гостевая страница на
     // него ЖДЁТ. Пока движок не готов (или выключен) — отвечаем null мгновенно, и страница идёт
     // дальше без задержки. Слушатель, появившийся позже первой навигации, означал бы ожидание
@@ -167,7 +171,7 @@ export class AdBlockManager {
         setTimeout(() => reject(new Error('adblock refresh timeout')), REFRESH_TIMEOUT_MS),
       );
       const fresh = await Promise.race([
-        ElectronBlocker.fromPrebuiltAdsAndTracking((url) => fetchInProfile(url)),
+        ElectronBlocker.fromLists((url) => fetchInProfile(url), [...FILTER_LISTS]),
         deadline,
       ]);
       // tmp+rename — битый недописанный кэш при падении на середине не должен подменить целый
@@ -525,13 +529,15 @@ export class AdBlockManager {
 
   async #loadBlocker(): Promise<ElectronBlocker | null> {
     try {
-      // fromPrebuiltAdsAndTracking: скачивает prebuilt-бинарник с CDN Ghostery
-      // (уже скомпилирован с косметикой). При повторных стартах — из кэша (<50ms).
+      // fromLists: качает FILTER_LISTS и собирает движок (с косметикой). При повторных стартах —
+      // из кэша (<50ms).
       // fetchInProfile (модуль Electron), НЕ глобальный fetch() — живой аудит утечек VPN (см. план,
       // шаг 3): глобальный fetch() не уважает session.setProxy(), обновление списков блокировки
       // при включённом VPN продолжало бы идти напрямую в обход туннеля.
-      const load = ElectronBlocker.fromPrebuiltAdsAndTracking(
+      const load = ElectronBlocker.fromLists(
         (url) => fetchInProfile(url),
+        [...FILTER_LISTS],
+        {},
         {
           path: this.#enginePath,
           read:  (p) => fs.promises.readFile(p),
@@ -545,7 +551,7 @@ export class AdBlockManager {
       );
 
       const blocker = await Promise.race([load, deadline]);
-      console.log('[AdBlock] движок загружен (Ghostery prebuilt, сеть + косметика)');
+      console.log('[AdBlock] движок загружен (списки uBO/EasyList, сеть + косметика)');
       return blocker;
     } catch (e) {
       console.warn('[AdBlock] не удалось загрузить движок:', (e as Error).message);
